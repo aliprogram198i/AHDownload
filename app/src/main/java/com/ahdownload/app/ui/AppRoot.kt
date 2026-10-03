@@ -20,7 +20,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -241,26 +240,25 @@ private fun HomeScreen(openDownloads: () -> Unit) {
 
 @Composable
 private fun HeroHeader() {
-    Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(30.dp)).background(
-            Brush.linearGradient(
-                listOf(
-                    MaterialTheme.colorScheme.primaryContainer,
-                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .65f),
-                    MaterialTheme.colorScheme.surface
-                )
-            )
-        ).padding(22.dp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            Modifier.padding(22.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 BrandMark()
                 Spacer(Modifier.width(12.dp))
                 Text("AHDownload", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             }
             Text("مركز تنزيل الوسائط الذكي", style = MaterialTheme.typography.titleMedium)
-            Text("الصق الرابط، تحقّق من المحتوى، ثم اختر ما تريد تنزيله.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "الصق الرابط، تحقّق من المحتوى، ثم اختر ما تريد تنزيله.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -283,7 +281,7 @@ private fun LinkInputCard(
     onPaste: () -> Unit,
     onAnalyze: () -> Unit
 ) {
-    ElevatedCard(shape = RoundedCornerShape(24.dp)) {
+    Card(shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Link, null, tint = MaterialTheme.colorScheme.primary)
@@ -358,7 +356,7 @@ private fun MediaResultCard(info: LinkAnalysis, onDownload: (String, String) -> 
             .sortedWith(compareByDescending<ResolvedFormat> { it.hasVideo }.thenByDescending { it.height ?: 0 }.thenByDescending { it.abr ?: 0.0 })
             .take(12)
     }
-    ElevatedCard(shape = RoundedCornerShape(24.dp)) {
+    Card(shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -497,7 +495,7 @@ private fun SummaryPill(modifier: Modifier, label: String, value: String) {
 
 @Composable
 private fun DownloadCard(job: DownloadJob, onCancel: () -> Unit) {
-    ElevatedCard(shape = RoundedCornerShape(20.dp), modifier = Modifier.animateContentSize()) {
+    Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.animateContentSize()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer),
@@ -641,7 +639,7 @@ private fun SettingsScreen() {
 
 @Composable
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    ElevatedCard(shape = RoundedCornerShape(20.dp)) {
+    Card(shape = RoundedCornerShape(20.dp)) {
         Column {
             Text(title, Modifier.padding(start = 16.dp, top = 15.dp),
                 fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
