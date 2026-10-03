@@ -10,6 +10,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DownloadRepository
+import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
@@ -92,6 +96,7 @@ private fun HomeScreen(openDownloads: () -> Unit) {
     var analyzing by remember { mutableStateOf(false) }
     var analysis by remember { mutableStateOf<LinkAnalysis?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var sourceKind by remember { mutableStateOf("unknown") }
 
     LaunchedEffect(Unit) {
         val intent = (context as? android.app.Activity)?.intent
@@ -107,9 +112,18 @@ private fun HomeScreen(openDownloads: () -> Unit) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("AHDownload", style = MaterialTheme.typography.headlineLarge)
-                Text("Smart Download & Media Center", style = MaterialTheme.typography.bodyLarge)
-                Text("نزّل الملفات إلى تخزين الجهاز بدون ضغط أو تقسيم تلقائي.", style = MaterialTheme.typography.bodyMedium)
+                Box(
+                Modifier.fillMaxWidth().background(
+                    Brush.linearGradient(listOf(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.surface)),
+                    RoundedCornerShape(28.dp)
+                )
+            ) {
+                Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("AHDownload", style = MaterialTheme.typography.headlineLarge)
+                    Text("مركز تنزيل الوسائط الذكي", style = MaterialTheme.typography.titleMedium)
+                    Text("حلّل الرابط أولًا، اختر المصدر الحقيقي، ثم نزّل الملف الأصلي بدون ضغط تلقائي.", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             }
         }
         item {
@@ -138,10 +152,21 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                             analyzing = true
                             error = null
                             scope.launch {
-                                val result = analyzeDirectUrl(clean)
+                                val resolver = DirectUrlResolver()
+                                val result = resolver.resolve(clean)
                                 analyzing = false
-                                result.onSuccess { analysis = it }
-                                    .onFailure { error = "تعذر تحليل الرابط مباشرة: " + (it.message ?: "مصدر غير متاح") }
+                                result.onSuccess {
+                                    sourceKind = if (it.isDirect) "direct" else "media"
+                                    analysis = LinkAnalysis(it.source, it.formats.firstOrNull()?.let { f -> if (f.hasVideo) "video/" + (f.container ?: "media") else if (f.hasAudio) "audio/" + (f.container ?: "media") else "application/octet-stream" }, it.sizeBytes, it.title)
+                                }.onFailure { failure ->
+                                    val host = runCatching { Uri.parse(clean).host.orEmpty().lowercase() }.getOrDefault("")
+                                    sourceKind = if (isKnownVideoPlatform(host)) "platform" else "unknown"
+                                    error = if (sourceKind == "platform")
+                                        "تم التعرف على رابط فيديو من منصة. هذا الرابط ليس ملفًا مباشرًا؛ يحتاج محرك Resolver خارجي للحصول على الصيغ الحقيقية."
+                                    else if (failure.message == "HTML_PAGE_NOT_MEDIA")
+                                        "الرابط يعيد صفحة HTML وليس ملف فيديو مباشرًا."
+                                    else "تعذر تحليل المصدر: " + (failure.message ?: "مصدر غير متاح")
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -150,9 +175,20 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                             CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(if (analyzing) "جاري التحليل…" else "تحليل الرابط")
+                        Text(if (analyzing) "جاري التحليل…" else "تحليل ذكي للرابط")
                     }
                     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        }
+        if (sourceKind == "platform" && analysis == null) {
+            item {
+                ElevatedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("🎬 تم اكتشاف فيديو", style = MaterialTheme.typography.titleLarge)
+                        Text("الرابط من منصة فيديو وليس رابط ملف MP4 مباشر. لن يتم تنزيل HTML أو حفظه كفيديو بالخطأ.")
+                        AssistChip(onClick = {}, label = { Text("Resolver مطلوب") }, leadingIcon = { Icon(Icons.Default.Cloud, null) })
+                    }
                 }
             }
         }
@@ -409,3 +445,8 @@ private fun EmptyState(title: String, subtitle: String) {
         }
     }
 }
+
+private fun isKnownVideoPlatform(host: String): Boolean = listOf(
+    "youtube.com", "youtu.be", "instagram.com", "facebook.com", "fb.watch",
+    "tiktok.com", "twitter.com", "x.com", "vimeo.com", "reddit.com"
+).any { host == it || host.endsWith("." + it) }
