@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +64,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
    scope.launch{
     EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
-     if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats","platform="+platform)}
+     if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size)}
     }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
     analyzing=false
