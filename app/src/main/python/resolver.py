@@ -78,7 +78,7 @@ def _format_score(f):
     return progressive, video, height, bitrate
 
 
-def resolve(url):
+def resolve(url, cookies=None):
     url = (url or "").strip()
     if not re.match(r"^https?://", url, re.I):
         raise ValueError("INVALID_URL")
@@ -150,7 +150,7 @@ def resolve(url):
 def resolve_json(payload):
     try:
         body = json.loads(payload or "{}")
-        return json.dumps(resolve(body.get("url")), ensure_ascii=False)
+        return json.dumps(resolve(body.get("url"), cookies=body.get("cookies")), ensure_ascii=False)
     except ValueError as exc:
         return json.dumps({"error": str(exc)})
     except Exception as exc:
