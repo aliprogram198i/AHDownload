@@ -1,7 +1,7 @@
 package com.ahdownload.app.download
 
-import android.content.Context
 import android.webkit.MimeTypeMap
+import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ahdownload.app.data.DownloadRepository
@@ -13,11 +13,7 @@ import java.io.RandomAccessFile
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class DirectDownloadWorker(
-    appContext: Context,
-    params: WorkerParameters
-) : CoroutineWorker(appContext, params) {
-
+class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     companion object {
         const val KEY_JOB_ID = "job_id"
         const val KEY_URL = "url"
@@ -34,18 +30,17 @@ class DirectDownloadWorker(
         val url = inputData.getString(KEY_URL) ?: return Result.failure()
         val title = inputData.getString(KEY_TITLE) ?: "download"
         val repo = DownloadRepository(applicationContext)
-
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
             val extension = MimeTypeMap.getFileExtensionFromUrl(url).takeIf { it.isNotBlank() } ?: "bin"
             val safeTitle = title.replace(Regex("[\\/:*?\"<>|]"), "_").take(120)
-            val target = File(dir, safeTitle + "." + extension)
-            val part = File(dir, safeTitle + "." + extension + ".part")
-
+            val target = File(dir, "$safeTitle.$extension")
+            val part = File(dir, "$safeTitle.$extension.part")
             var existing = if (part.exists()) part.length() else 0L
+
             val request = Request.Builder().url(url).apply {
-                if (existing > 0L) header("Range", "bytes=" + existing + "-")
+                if (existing > 0L) header("Range", "bytes=$existing-")
             }.build()
 
             client.newCall(request).execute().use { response ->
@@ -53,7 +48,6 @@ class DirectDownloadWorker(
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return if (response.code in 500..599) Result.retry() else Result.failure()
                 }
-
                 val body = response.body
                 val append = existing > 0L && response.code == 206
                 if (!append) existing = 0L
@@ -63,6 +57,7 @@ class DirectDownloadWorker(
 
                 body.byteStream().use { input ->
                     RandomAccessFile(part, "rw").use { raf ->
+                        raf.setLength(existing)
                         raf.seek(existing)
                         val buffer = ByteArray(64 * 1024)
                         var done = existing
@@ -74,26 +69,30 @@ class DirectDownloadWorker(
                             raf.write(buffer, 0, read)
                             done += read
                             if (done - checkpoint >= 256 * 1024L) {
-                                val progress = total?.let {
-                                    ((done * 100L) / it).toInt().coerceIn(0, 100)
-                                } ?: 0
-                                repo.update(jobId) {
-                                    it.copy(progress = progress, downloadedBytes = done)
-                                }
+                                val progress = total?.let { ((done * 100L) / it).toInt().coerceIn(0, 100) } ?: 0
+                                repo.update(jobId) { it.copy(progress = progress, downloadedBytes = done) }
                                 checkpoint = done
                             }
                         }
-                        repo.update(jobId) {
-                            it.copy(progress = 100, downloadedBytes = done)
-                        }
+                        repo.update(jobId) { it.copy(progress = 100, downloadedBytes = done) }
                     }
                 }
             }
 
             if (target.exists()) target.delete()
             if (!part.renameTo(target)) throw IOException("finalize_failed")
+            val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
+                ?: "application/octet-stream"
+            val published = StoragePublisher.publish(applicationContext, target, target.name, mime)
+            if (published?.startsWith("content://") == true) target.delete()
+
             repo.update(jobId) {
-                it.copy(status = DownloadStatus.COMPLETED, progress = 100, downloadedBytes = target.length())
+                it.copy(
+                    status = DownloadStatus.COMPLETED,
+                    progress = 100,
+                    downloadedBytes = if (target.exists()) target.length() else it.downloadedBytes,
+                    outputUri = published
+                )
             }
             Result.success()
         } catch (_: IOException) {
