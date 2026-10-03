@@ -28,7 +28,7 @@ android {
         }
         debug { applicationIdSuffix = ".debug" }
     }
-    buildFeatures { compose = true }
+    buildFeatures {\n        compose = true\n        buildConfig = true\n    }\n\n    // Empty by default: platform resolution is enabled only when a trusted backend is configured.\n    defaultConfig {\n        buildConfigField("String", "RESOLVER_BASE_URL", "\"\")\n    }
 }
 
 dependencies {
