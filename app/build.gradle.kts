@@ -45,10 +45,6 @@ chaquopy {
     }
 }
 
-sourceSets {
-    getByName("main") { python.srcDir("src/main/python") }
-}
-
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.10.01"))
     implementation("androidx.activity:activity-compose:1.11.0")
