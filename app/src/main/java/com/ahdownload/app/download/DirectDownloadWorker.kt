@@ -48,6 +48,11 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return if (response.code in 500..599) Result.retry() else Result.failure()
                 }
+                val contentType = response.header("Content-Type")?.substringBefore(";")?.trim()?.lowercase()
+                if (contentType == "text/html" || contentType == "application/xhtml+xml") {
+                    repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
+                    return Result.failure()
+                }
                 val body = response.body
                 val append = existing > 0L && response.code == 206
                 if (!append) existing = 0L
