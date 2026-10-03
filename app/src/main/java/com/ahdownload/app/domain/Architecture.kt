@@ -1,7 +1,11 @@
 package com.ahdownload.app.domain
 
 enum class MediaType { VIDEO, AUDIO, FILE, UNKNOWN }
-enum class DownloadStatus { CREATED, VALIDATING, RESOLVING, READY, QUEUED, DOWNLOADING, PAUSED, RETRYING, CANCELLED, FAILED, PROCESSING, FINALIZING, COMPLETED }
+
+enum class DownloadStatus {
+    CREATED, VALIDATING, RESOLVING, READY, QUEUED, DOWNLOADING,
+    PAUSED, RETRYING, CANCELLED, FAILED, PROCESSING, FINALIZING, COMPLETED
+}
 
 data class MediaFormat(
     val id: String, val type: MediaType, val container: String?, val codec: String?,
@@ -15,8 +19,15 @@ data class MediaInfo(
 )
 
 data class DownloadJob(
-    val id: String, val sourceUrl: String, val title: String, val formatUrl: String,
-    val status: DownloadStatus, val progress: Int, val downloadedBytes: Long, val totalBytes: Long?
+    val id: String,
+    val sourceUrl: String,
+    val title: String,
+    val formatUrl: String,
+    val status: DownloadStatus,
+    val progress: Int,
+    val downloadedBytes: Long,
+    val totalBytes: Long?,
+    val outputUri: String? = null
 )
 
 interface SourceResolver {
