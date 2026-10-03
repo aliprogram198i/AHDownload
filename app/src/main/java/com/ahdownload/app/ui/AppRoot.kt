@@ -23,6 +23,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.data.DirectUrlResolver
+import com.ahdownload.app.data.ResolverApiClient
+import com.ahdownload.app.domain.MediaFormat
+import com.ahdownload.app.domain.MediaType
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
@@ -38,7 +41,8 @@ private data class LinkAnalysis(
     val url: String,
     val contentType: String?,
     val sizeBytes: Long?,
-    val title: String
+    val title: String,
+    val formats: List<MediaFormat> = emptyList()
 ) {
     val isMedia: Boolean
         get() = contentType?.startsWith("video/") == true ||
@@ -97,6 +101,9 @@ private fun HomeScreen(openDownloads: () -> Unit) {
     var analysis by remember { mutableStateOf<LinkAnalysis?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var sourceKind by remember { mutableStateOf("unknown") }
+    var formats by remember { mutableStateOf<List<MediaFormat>>(emptyList()) }
+    var selectedFormatId by remember { mutableStateOf<String?>(null) }
+    var resolverMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val intent = (context as? android.app.Activity)?.intent
@@ -157,15 +164,54 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                                 analyzing = false
                                 result.onSuccess {
                                     sourceKind = if (it.isDirect) "direct" else "media"
-                                    analysis = LinkAnalysis(it.source, it.formats.firstOrNull()?.let { f -> if (f.hasVideo) "video/" + (f.container ?: "media") else if (f.hasAudio) "audio/" + (f.container ?: "media") else "application/octet-stream" }, it.sizeBytes, it.title)
+                                    formats = it.formats
+                                    selectedFormatId = it.formats.firstOrNull()?.id
+                                    resolverMessage = null
+                                    analysis = LinkAnalysis(
+                                        it.source,
+                                        it.formats.firstOrNull()?.let { f ->
+                                            when {
+                                                f.hasVideo -> "video/" + (f.container ?: "media")
+                                                f.hasAudio -> "audio/" + (f.container ?: "media")
+                                                else -> "application/octet-stream"
+                                            }
+                                        },
+                                        it.sizeBytes,
+                                        it.title,
+                                        it.formats
+                                    )
                                 }.onFailure { failure ->
                                     val host = runCatching { Uri.parse(clean).host.orEmpty().lowercase() }.getOrDefault("")
                                     sourceKind = if (isKnownVideoPlatform(host)) "platform" else "unknown"
-                                    error = if (sourceKind == "platform")
-                                        "تم التعرف على رابط فيديو من منصة. هذا الرابط ليس ملفًا مباشرًا؛ يحتاج محرك Resolver خارجي للحصول على الصيغ الحقيقية."
-                                    else if (failure.message == "HTML_PAGE_NOT_MEDIA")
-                                        "الرابط يعيد صفحة HTML وليس ملف فيديو مباشرًا."
-                                    else "تعذر تحليل المصدر: " + (failure.message ?: "مصدر غير متاح")
+                                    if (sourceKind == "platform") {
+                                        val api = ResolverApiClient()
+                                        if (api.isConfigured) {
+                                            val remote = api.resolve(clean)
+                                            remote.onSuccess { info ->
+                                                formats = info.formats
+                                                selectedFormatId = info.formats.firstOrNull()?.id
+                                                resolverMessage = "تم الحصول على الصيغ الحقيقية من Resolver."
+                                                analysis = LinkAnalysis(
+                                                    info.source,
+                                                    "video/" + (info.formats.firstOrNull()?.container ?: "media"),
+                                                    info.sizeBytes,
+                                                    info.title,
+                                                    info.formats
+                                                )
+                                                error = null
+                                            }.onFailure { remoteFailure ->
+                                                resolverMessage = "تعذر الوصول إلى Resolver: " + (remoteFailure.message ?: "مصدر غير متاح")
+                                                error = resolverMessage
+                                            }
+                                        } else {
+                                            resolverMessage = "Resolver غير مهيأ في نسخة التطبيق الحالية؛ لن يتم تنزيل صفحة HTML."
+                                            error = resolverMessage
+                                        }
+                                    } else {
+                                        error = if (failure.message == "HTML_PAGE_NOT_MEDIA")
+                                            "الرابط يعيد صفحة HTML وليس ملف فيديو مباشرًا."
+                                        else "تعذر تحليل المصدر: " + (failure.message ?: "مصدر غير متاح")
+                                    }
                                 }
                             }
                         },
@@ -213,14 +259,35 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                             if (info.isMedia)
                                 "تم اكتشاف ملف وسائط مباشر. سيُحفظ الملف الأصلي دون ضغط."
                             else
-                                "تم اكتشاف ملف مباشر. روابط المنصات التي تحتاج Resolver ليست ممثلة كملفات مباشرة."
+                                "تم اكتشاف ملف مباشر."
                         )
+                        if (formats.size > 1) {
+                            Text("اختر الصيغة", style = MaterialTheme.typography.titleSmall)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                formats.forEach { format ->
+                                    val selected = format.id == selectedFormatId
+                                    OutlinedButton(
+                                        onClick = { selectedFormatId = format.id },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(formatLabel(format, selected))
+                                    }
+                                }
+                            }
+                        }
+                        resolverMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                        val selected = formats.firstOrNull { it.id == selectedFormatId } ?: formats.firstOrNull()
                         Button(
+                            enabled = selected != null,
                             onClick = {
-                                repository.create(info.url, info.title)
-                                url = ""
-                                analysis = null
-                                openDownloads()
+                                selected?.let {
+                                    repository.create(it.url, info.title)
+                                    url = ""
+                                    analysis = null
+                                    formats = emptyList()
+                                    selectedFormatId = null
+                                    openDownloads()
+                                }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("بدء التنزيل") }
@@ -257,6 +324,17 @@ private suspend fun analyzeDirectUrl(url: String): Result<LinkAnalysis> = withCo
 
 private fun titleFromUrl(url: String): String =
     Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() } ?: "AHDownload file"
+
+private fun formatLabel(format: MediaFormat, selected: Boolean): String {
+    val kind = when (format.type) {
+        MediaType.VIDEO -> "فيديو"
+        MediaType.AUDIO -> "صوت"
+        MediaType.FILE, MediaType.UNKNOWN -> "ملف"
+    }
+    val quality = format.resolution ?: format.container ?: "جودة غير محددة"
+    val size = format.estimatedSize?.let { " · " + formatBytes(it) }.orEmpty()
+    return (if (selected) "✓ " else "") + kind + " · " + quality + size
+}
 
 private fun formatBytes(value: Long): String {
     if (value < 1024) return value.toString() + " B"
