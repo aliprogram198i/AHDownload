@@ -85,7 +85,7 @@ private fun NavigationBarItemButton(nav: NavHostController, route: String, targe
     val selected = route == target
     Surface(
         modifier = Modifier
-            .weight(1f)
+            .fillMaxWidth(0.25f)
             .padding(horizontal = 4.dp, vertical = 5.dp),
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(16.dp)
