@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DirectUrlResolver
-import com.ahdownload.app.data.PlatformResolverClient
+import com.ahdownload.app.data.EmbeddedPlatformResolver
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.domain.DownloadJob
@@ -38,9 +38,6 @@ import com.ahdownload.app.ui.theme.AHDownloadTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
-import com.ahdownload.app.BuildConfig
-
-private const val PLATFORM_RESOLVER_BASE_URL = BuildConfig.PLATFORM_RESOLVER_BASE_URL
 
 private data class LinkAnalysis(
     val url: String,
@@ -170,8 +167,8 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                     analysis = null
                     scope.launch {
                         val detectedPlatform = detectPlatform(clean)
-                        val result = if (detectedPlatform != null && PLATFORM_RESOLVER_BASE_URL.isNotBlank()) {
-                            PlatformResolverClient(PLATFORM_RESOLVER_BASE_URL).resolve(clean).map { resolved ->
+                        val result = if (detectedPlatform != null) {
+                            EmbeddedPlatformResolver().resolve(clean).map { resolved ->
                                 LinkAnalysis(
                                     resolved.source,
                                     resolved.formats.firstOrNull()?.let { f ->
@@ -207,8 +204,6 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                                 error = when {
                                     failure.message == "HTML_PAGE_NOT_MEDIA" ->
                                         "هذا رابط صفحة وليس ملف وسائط مباشر. لن يتم حفظ HTML بالخطأ."
-                                    failure.message == "RESOLVER_NOT_CONFIGURED" ->
-                                        "تم التعرف على رابط " + platform + "، لكن محرك استخراج المنصة غير متصل حالياً."
                                     platform != null ->
                                         "تعذر استخراج وسائط حقيقية من " + platform + ". لن يتم تنزيل صفحة HTML بالخطأ."
                                     else ->
