@@ -226,8 +226,8 @@ private fun HomeScreen(openDownloads: () -> Unit) {
         }
         analysis?.let { info ->
             item {
-                MediaResultCard(info) { selectedUrl, selectedTitle ->
-                    repository.create(selectedUrl, selectedTitle)
+                MediaResultCard(info) { selectedFormat, selectedTitle ->
+                    repository.create(selectedFormat.url, selectedTitle, selectedFormat.ext)
                     url = ""
                     analysis = null
                     openDownloads()
@@ -348,10 +348,10 @@ private fun InfoCard(icon: ImageVector, title: String, text: String, tone: CardT
 }
 
 @Composable
-private fun MediaResultCard(info: LinkAnalysis, onDownload: (String, String) -> Unit) {
+private fun MediaResultCard(info: LinkAnalysis, onDownload: (ResolvedFormat, String) -> Unit) {
     var selected by remember(info.url, info.formats) { mutableStateOf(info.formats.firstOrNull()) }
     val available = remember(info.formats) {
-        info.formats.filter { it.hasVideo || it.hasAudio }
+        info.formats.filter { (it.hasVideo || it.hasAudio) && (it.url.startsWith("http://") || it.url.startsWith("https://")) }
             .distinctBy { it.height.toString() + ":" + it.abr.toString() + ":" + it.ext + ":" + it.hasVideo + ":" + it.hasAudio }
             .sortedWith(compareByDescending<ResolvedFormat> { it.hasVideo }.thenByDescending { it.height ?: 0 }.thenByDescending { it.abr ?: 0.0 })
             .take(12)
@@ -414,8 +414,8 @@ private fun MediaResultCard(info: LinkAnalysis, onDownload: (String, String) -> 
             Text(if (info.isVideo) "تم التحقق من المصدر. لا يوجد ضغط أو تقسيم تلقائي."
                  else "تم التحقق من المصدر قبل بدء التنزيل.")
             Button(
-                onClick = { onDownload(selected?.url ?: info.url, info.title) },
-                enabled = selected != null || info.url.isNotBlank(),
+                onClick = { selected?.let { onDownload(it, info.title) } },
+                enabled = selected != null,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
