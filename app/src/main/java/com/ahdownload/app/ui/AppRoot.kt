@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Brush
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DirectUrlResolver
@@ -242,23 +243,54 @@ private fun HomeScreen(openDownloads: () -> Unit) {
 private fun HeroHeader() {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.primary,
+        shadowElevation = 6.dp
     ) {
-        Column(
-            Modifier.padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.secondary
+                        )
+                    )
+                )
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BrandMark()
-                Spacer(Modifier.width(12.dp))
-                Text("AHDownload", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Column(
+                Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    BrandMark()
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "AHDownload",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Text(
+                            "SMART DOWNLOAD CENTER",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.78f),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                Text(
+                    "حمّل ملفاتك من مكان واحد، بوضوح وتحكم كامل.",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+                Text(
+                    "حلّل الرابط أولاً، اختر الجودة، ثم ابدأ التنزيل.",
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.82f)
+                )
             }
-            Text("مركز تنزيل الوسائط الذكي", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "الصق الرابط، تحقّق من المحتوى، ثم اختر ما تريد تنزيله.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }
@@ -266,10 +298,18 @@ private fun HeroHeader() {
 @Composable
 private fun BrandMark() {
     Box(
-        Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.primary),
+        Modifier
+            .size(52.dp)
+            .clip(RoundedCornerShape(17.dp))
+            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Default.Download, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(27.dp))
+        Icon(
+            Icons.Default.Download,
+            null,
+            tint = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier.size(29.dp)
+        )
     }
 }
 
@@ -435,7 +475,17 @@ private fun MetaChip(icon: ImageVector, text: String) {
 @Composable
 private fun QuickFeatures() {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("مصمم ليكون بسيطاً", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("مصمم ليكون بسيطاً", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("تجربة واضحة بدون خطوات زائدة", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.secondary)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             FeatureTile(Modifier.weight(1f), Icons.Default.Security, "تحقق قبل الحفظ")
             FeatureTile(Modifier.weight(1f), Icons.Default.HighQuality, "بدون ضغط تلقائي")
