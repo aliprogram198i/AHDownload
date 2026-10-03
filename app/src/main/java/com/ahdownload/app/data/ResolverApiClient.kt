@@ -83,7 +83,7 @@ class ResolverApiClient {
                         else -> MediaType.FILE
                     },
                     title = root.optString("title").ifBlank { "AHDownload" },
-                    thumbnailUrl = root.optString("thumbnail").takeIf { it.isNotBlank() },
+                    thumbnailUrl = root.optString("thumbnailUrl").takeIf { it.isNotBlank() },
                     durationMs = root.optLong("duration").takeIf { it > 0 },
                     sizeBytes = formats.mapNotNull { it.estimatedSize }.maxOrNull(),
                     formats = formats,
