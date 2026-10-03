@@ -20,10 +20,12 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: gradle
-      - name: Make Gradle executable
-        run: chmod +x gradlew
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
       - name: Build signed release APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: gradle --no-daemon assembleRelease
       - name: Verify APK exists
         run: test -s app/build/outputs/apk/release/app-release.apk
       - name: Upload APK
