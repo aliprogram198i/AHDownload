@@ -25,13 +25,11 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", """")
         }
         debug {
             applicationIdSuffix = ".debug"
-            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", "\"\")
-        }
-        release {
-            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", "\"\")
+            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", """")
         }
     }
     buildFeatures {
