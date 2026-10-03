@@ -1,0 +1,33 @@
+name: AHDownload Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - name: Make Gradle executable
+        run: chmod +x gradlew
+      - name: Build signed release APK
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Verify APK exists
+        run: test -s app/build/outputs/apk/release/app-release.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AHDownload-release
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
