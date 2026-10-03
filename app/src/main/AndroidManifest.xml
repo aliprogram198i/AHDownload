@@ -4,6 +4,7 @@
 
     <application
         android:allowBackup="false"
+        android:icon="@drawable/ic_ahdownload"
         android:label="AHDownload"
         android:supportsRtl="true"
         android:theme="@style/Theme.AHDownload">
