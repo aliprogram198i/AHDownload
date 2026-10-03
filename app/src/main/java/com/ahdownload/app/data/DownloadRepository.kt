@@ -41,7 +41,7 @@ class DownloadRepository(context: Context) {
         }.reversed()
     }
 
-    fun create(url: String, title: String = titleFromUrl(url)): DownloadJob {
+    fun create(url: String, title: String = titleFromUrl(url), extension: String? = null): DownloadJob {
         val job = DownloadJob(
             id = UUID.randomUUID().toString(),
             sourceUrl = url,
@@ -58,7 +58,8 @@ class DownloadRepository(context: Context) {
                 workDataOf(
                     DirectDownloadWorker.KEY_JOB_ID to job.id,
                     DirectDownloadWorker.KEY_URL to url,
-                    DirectDownloadWorker.KEY_TITLE to job.title
+                    DirectDownloadWorker.KEY_TITLE to job.title,
+                    DirectDownloadWorker.KEY_EXTENSION to (extension ?: "")
                 )
             )
             .setBackoffCriteria(
