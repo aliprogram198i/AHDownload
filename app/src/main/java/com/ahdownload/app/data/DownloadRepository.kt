@@ -2,12 +2,16 @@ package com.ahdownload.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.work.*
+import androidx.work.BackoffPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.download.DirectDownloadWorker
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Duration
 import java.util.UUID
 
 class DownloadRepository(context: Context) {
@@ -29,18 +33,19 @@ class DownloadRepository(context: Context) {
                         status = DownloadStatus.valueOf(o.getString("status")),
                         progress = o.optInt("progress"),
                         downloadedBytes = o.optLong("downloadedBytes"),
-                        totalBytes = o.optLong("totalBytes").takeIf { it > 0L }
+                        totalBytes = o.optLong("totalBytes").takeIf { it > 0L },
+                        outputUri = o.optString("outputUri").takeIf { it.isNotBlank() }
                     )
                 )
             }
         }.reversed()
     }
 
-    fun create(url: String): DownloadJob {
+    fun create(url: String, title: String = titleFromUrl(url)): DownloadJob {
         val job = DownloadJob(
             id = UUID.randomUUID().toString(),
             sourceUrl = url,
-            title = titleFromUrl(url),
+            title = title.ifBlank { "AHDownload file" },
             formatUrl = url,
             status = DownloadStatus.QUEUED,
             progress = 0,
@@ -56,7 +61,10 @@ class DownloadRepository(context: Context) {
                     DirectDownloadWorker.KEY_TITLE to job.title
                 )
             )
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, java.time.Duration.ofSeconds(10))
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                Duration.ofSeconds(10)
+            )
             .addTag("ahdownload:" + job.id)
             .build()
         WorkManager.getInstance(app).enqueue(request)
@@ -86,6 +94,7 @@ class DownloadRepository(context: Context) {
                 put("progress", j.progress)
                 put("downloadedBytes", j.downloadedBytes)
                 put("totalBytes", j.totalBytes ?: 0L)
+                put("outputUri", j.outputUri ?: "")
             })
         }
         prefs.edit().putString("jobs", array.toString()).apply()
