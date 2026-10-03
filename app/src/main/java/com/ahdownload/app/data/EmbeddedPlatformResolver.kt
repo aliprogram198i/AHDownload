@@ -54,7 +54,7 @@ class EmbeddedPlatformResolver(
             }
 
             try {
-                AppLogger.info(context ?: return@runCatching call(null), "resolver.start", "host=" + android.net.Uri.parse(url).host.orEmpty())
+                context?.let { AppLogger.info(it, "resolver.start", "host=" + android.net.Uri.parse(url).host.orEmpty()) }
                 call(null)
             } catch (first: Throwable) {
                 val host = android.net.Uri.parse(url).host.orEmpty().lowercase()
