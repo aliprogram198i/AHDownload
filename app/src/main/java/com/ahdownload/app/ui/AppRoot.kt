@@ -1,5 +1,7 @@
 package com.ahdownload.app.ui
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,16 +14,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
+import com.ahdownload.app.data.DownloadRepository
+import com.ahdownload.app.domain.DownloadJob
+import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
-
-private enum class MediaChoice { VIDEO, AUDIO, FILE }
+import kotlinx.coroutines.delay
 
 @Composable
 fun AppRoot() {
     AHDownloadTheme {
         val nav = rememberNavController()
-        val back by nav.currentBackStackEntryAsState()
-        val route = back?.destination?.route
+        val entry by nav.currentBackStackEntryAsState()
+        val route = entry?.destination?.route
         Scaffold(
             bottomBar = {
                 NavigationBar {
@@ -30,19 +34,19 @@ fun AppRoot() {
                         Triple("downloads", "التنزيلات", Icons.Default.Download),
                         Triple("library", "المكتبة", Icons.Default.Folder),
                         Triple("settings", "الإعدادات", Icons.Default.Settings)
-                    ).forEach { (r, label, icon) ->
+                    ).forEach { item ->
                         NavigationBarItem(
-                            selected = route == r,
-                            onClick = { nav.navigate(r) { launchSingleTop = true } },
-                            icon = { Icon(icon, contentDescription = null) },
-                            label = { Text(label) }
+                            selected = route == item.first,
+                            onClick = { nav.navigate(item.first) { launchSingleTop = true } },
+                            icon = { Icon(item.third, null) },
+                            label = { Text(item.second) }
                         )
                     }
                 }
             }
         ) { padding ->
-            NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(padding)) {
-                composable("home") { HomeScreen() }
+            NavHost(nav, "home", Modifier.padding(padding)) {
+                composable("home") { HomeScreen { nav.navigate("downloads") } }
                 composable("downloads") { DownloadsScreen() }
                 composable("library") { LibraryScreen() }
                 composable("settings") { SettingsScreen() }
@@ -52,14 +56,16 @@ fun AppRoot() {
 }
 
 @Composable
-private fun HomeScreen() {
+private fun HomeScreen(openDownloads: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { DownloadRepository(context) }
     var url by remember { mutableStateOf("") }
-    var analyzing by remember { mutableStateOf(false) }
-    var analyzed by remember { mutableStateOf(false) }
-    var choice by remember { mutableStateOf(MediaChoice.VIDEO) }
+    var checking by remember { mutableStateOf(false) }
+    var valid by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        Modifier.fillMaxSize(),
         contentPadding = PaddingValues(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -73,102 +79,139 @@ private fun HomeScreen() {
                     Text("تنزيل رابط", style = MaterialTheme.typography.titleLarge)
                     OutlinedTextField(
                         value = url,
-                        onValueChange = { url = it; analyzed = false },
+                        onValueChange = {
+                            url = it
+                            valid = false
+                            message = null
+                        },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("ألصق الرابط هنا") },
-                        placeholder = { Text("https://…") },
+                        label = { Text("الرابط") },
+                        placeholder = { Text("https://example.com/video.mp4") },
                         leadingIcon = { Icon(Icons.Default.Link, null) },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                url = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                            }) { Icon(Icons.Default.ContentPaste, "لصق") }
+                        },
                         singleLine = true
                     )
                     Button(
-                        onClick = { analyzing = true; analyzed = false },
-                        enabled = url.trim().startsWith("http") && !analyzing,
+                        enabled = url.trim().startsWith("http") && !checking,
+                        onClick = { checking = true; message = null },
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (analyzing) "جاري تحليل الرابط…" else "تحليل الرابط") }
-                    if (analyzing) {
-                        LaunchedEffect(Unit) {
-                            kotlinx.coroutines.delay(500)
-                            analyzing = false
-                            analyzed = true
-                        }
-                    }
-                }
-            }
-        }
-        if (analyzed) {
-            item {
-                ElevatedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("نتيجة التحليل", style = MaterialTheme.typography.titleLarge)
-                        Text(url, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("سيتم عرض الصيغ والجودات الفعلية فقط بعد وصول بيانات المصدر.")
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                            listOf(MediaChoice.VIDEO to "فيديو", MediaChoice.AUDIO to "صوت", MediaChoice.FILE to "ملف").forEachIndexed { index, (value, label) ->
-                                SegmentedButton(
-                                    selected = choice == value,
-                                    onClick = { choice = value },
-                                    shape = SegmentedButtonDefaults.itemShape(index, 3)
-                                ) { Text(label) }
+                    ) { Text(if (checking) "جاري التحقق…" else "تحليل الرابط") }
+                    if (checking) {
+                        LaunchedEffect(url) {
+                            delay(300)
+                            checking = false
+                            valid = url.trim().startsWith("http")
+                            message = if (valid) {
+                                "الرابط صالح. التنزيل المباشر يعمل مع الملفات التي يعرضها المصدر كـ HTTP/HTTPS."
+                            } else {
+                                "الرابط غير صالح."
                             }
                         }
-                        Button(onClick = {}, Modifier.fillMaxWidth()) { Text("اختيار الصيغة والتنزيل") }
+                    }
+                    message?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                    if (valid) {
+                        Button(
+                            onClick = {
+                                repository.create(url.trim())
+                                url = ""
+                                valid = false
+                                openDownloads()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("بدء التنزيل") }
                     }
                 }
             }
         }
-        item { Text("وصول سريع", style = MaterialTheme.typography.titleMedium) }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickCard("📋", "لصق الرابط") { }
-                QuickCard("📥", "التنزيلات") { }
-                QuickCard("✂️", "Smart Studio") { }
+            OutlinedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("حماية السلوك", style = MaterialTheme.typography.titleMedium)
+                    Text("لا ضغط تلقائي، لا تقسيم تلقائي، واستئناف باستخدام HTTP Range عند توفره. روابط المنصات التي تحتاج Resolver API ليست ممثلة كروابط مباشرة.")
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun QuickCard(icon: String, title: String, onClick: () -> Unit) {
-    OutlinedCard(Modifier.weight(1f), onClick = onClick) {
-        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(icon, style = MaterialTheme.typography.titleLarge)
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
 private fun DownloadsScreen() {
-    val items = remember { mutableStateListOf<Pair<String, Int>>() }
-    if (items.isEmpty()) {
-        EmptyState("لا توجد تنزيلات بعد", "عند بدء تنزيل سيظهر تقدمه هنا.")
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { DownloadRepository(context) }
+    var jobs by remember { mutableStateOf(repository.all()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            jobs = repository.all()
+            delay(750)
+        }
+    }
+
+    if (jobs.isEmpty()) {
+        EmptyState("لا توجد تنزيلات", "ابدأ من الرئيسية.")
     } else {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(items) { (title, progress) ->
-                ElevatedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(title, style = MaterialTheme.typography.titleMedium)
-                        LinearProgressIndicator({ progress / 100f }, Modifier.fillMaxWidth())
-                        Text("$progress%")
-                    }
-                }
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            items(jobs, key = { it.id }) { job ->
+                DownloadCard(job) { repository.cancel(job.id) }
             }
         }
     }
 }
 
 @Composable
-private fun LibraryScreen() {
-    EmptyState("المكتبة فارغة", "ستظهر الملفات المكتملة هنا بعد تنزيلها بنجاح.")
+private fun DownloadCard(job: DownloadJob, onCancel: () -> Unit) {
+    ElevatedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(job.title, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(progress = { job.progress / 100f }, Modifier.fillMaxWidth())
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(job.progress.toString() + "%")
+                Text(statusLabel(job.status))
+            }
+            if (job.status == DownloadStatus.DOWNLOADING ||
+                job.status == DownloadStatus.QUEUED ||
+                job.status == DownloadStatus.RETRYING) {
+                OutlinedButton(onClick = onCancel) { Text("إلغاء") }
+            }
+        }
+    }
+}
+
+private fun statusLabel(status: DownloadStatus) = when (status) {
+    DownloadStatus.COMPLETED -> "مكتمل"
+    DownloadStatus.DOWNLOADING -> "جارٍ التنزيل"
+    DownloadStatus.QUEUED -> "في الانتظار"
+    DownloadStatus.RETRYING -> "إعادة المحاولة"
+    DownloadStatus.FAILED -> "فشل"
+    DownloadStatus.CANCELLED -> "ملغى"
+    else -> status.name
 }
 
 @Composable
-private fun EmptyState(title: String, subtitle: String) {
-    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(52.dp))
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium)
+private fun LibraryScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val repository = remember { DownloadRepository(context) }
+    val completed = repository.all().filter { it.status == DownloadStatus.COMPLETED }
+    if (completed.isEmpty()) {
+        EmptyState("المكتبة فارغة", "ستظهر الملفات المكتملة هنا.")
+    } else {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+            items(completed) { job ->
+                ListItem(
+                    leadingContent = { Icon(Icons.Default.InsertDriveFile, null) },
+                    headlineContent = { Text(job.title) },
+                    supportingContent = { Text(job.sourceUrl, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                )
+            }
         }
     }
 }
@@ -179,7 +222,7 @@ private fun SettingsScreen() {
     var notifications by remember { mutableStateOf(true) }
     var background by remember { mutableStateOf(true) }
     var concurrent by remember { mutableIntStateOf(2) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp)) {
         item { Text("الإعدادات", style = MaterialTheme.typography.headlineMedium) }
         item { Setting("التنزيل عبر Wi‑Fi فقط", wifiOnly) { wifiOnly = it } }
         item { Setting("إشعارات اكتمال التنزيل", notifications) { notifications = it } }
@@ -187,7 +230,7 @@ private fun SettingsScreen() {
         item {
             ListItem(
                 headlineContent = { Text("التنزيلات المتزامنة") },
-                supportingContent = { Text("$concurrent تنزيلات") },
+                supportingContent = { Text(concurrent.toString() + " تنزيلات") },
                 trailingContent = {
                     Row {
                         IconButton(onClick = { if (concurrent > 1) concurrent-- }) { Icon(Icons.Default.Remove, null) }
@@ -196,12 +239,28 @@ private fun SettingsScreen() {
                 }
             )
         }
-        item { HorizontalDivider() }
-        item { Text("التطبيق لا يضغط أو يقسم الفيديو تلقائيًا. التقسيم والمعالجة خيارات يدوية داخل Smart Studio.", Modifier.padding(vertical = 12.dp)) }
+        item {
+            Text(
+                "Smart Studio يبقى يدويًا بعد التنزيل. لا ضغط أو تقسيم تلقائي.",
+                Modifier.padding(vertical = 16.dp)
+            )
+        }
     }
 }
 
 @Composable
 private fun Setting(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     ListItem(headlineContent = { Text(title) }, trailingContent = { Switch(checked, onChange) })
+}
+
+@Composable
+private fun EmptyState(title: String, subtitle: String) {
+    Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.FolderOpen, null, Modifier.size(52.dp))
+            Spacer(Modifier.height(8.dp))
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(subtitle)
+        }
+    }
 }
