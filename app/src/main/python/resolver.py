@@ -1,6 +1,8 @@
+import html
 import json
 import re
 import urllib.parse
+import urllib.request
 import yt_dlp
 
 ALLOWED_HOSTS = {
@@ -9,6 +11,11 @@ ALLOWED_HOSTS = {
 }
 DIRECT_PROTOCOLS = {"http", "https"}
 HTML_TYPES = {"text/html", "application/xhtml+xml"}
+USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 15; Mobile) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/140.0 Mobile Safari/537.36"
+)
 
 
 def _host(url):
@@ -78,14 +85,8 @@ def _format_score(f):
     return progressive, video, height, bitrate
 
 
-def resolve(url):
-    url = (url or "").strip()
-    if not re.match(r"^https?://", url, re.I):
-        raise ValueError("INVALID_URL")
-    if not _allowed(url):
-        raise ValueError("UNSUPPORTED_PLATFORM")
-
-    opts = {
+def _base_opts():
+    return {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -95,20 +96,100 @@ def resolve(url):
         "retries": 2,
         "fragment_retries": 2,
         "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Linux; Android 15; Mobile) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/140.0 Mobile Safari/537.36"
-            ),
+            "User-Agent": USER_AGENT,
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
 
+
+def _extract_info(url):
+    attempts = [_base_opts()]
+    host = _host(url)
+    if host == "youtube.com" or host.endswith(".youtube.com") or host == "youtu.be":
+        for client in (["android"], ["tv_downgraded", "android"]):
+            opts = _base_opts()
+            opts["extractor_args"] = {"youtube": {"player_client": client}}
+            attempts.append(opts)
+
+    last_error = None
+    for opts in attempts:
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            if info:
+                return info
+        except Exception as exc:
+            last_error = exc
+
+    if last_error:
+        raise RuntimeError("EXTRACTION_FAILED:" + str(last_error)[:240])
+    raise RuntimeError("NO_MEDIA")
+
+
+def _instagram_html_fallback(url):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if content_type in HTML_TYPES or "html" in content_type:
+            page = response.read(4 * 1024 * 1024).decode("utf-8", "ignore")
+        else:
+            raise RuntimeError("INSTAGRAM_FALLBACK_NOT_HTML")
+
+    def meta(name):
+        patterns = [
+            r'<meta[^>]+property=["\']' + re.escape(name) + r'["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']' + re.escape(name) + r'["\']',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, page, re.I)
+            if match:
+                return html.unescape(match.group(1)).replace("\\/", "/")
+        return None
+
+    media_url = meta("og:video:secure_url") or meta("og:video")
+    if not media_url or not media_url.startswith(("http://", "https://")):
+        raise RuntimeError("EXTRACTION_FAILED:INSTAGRAM_NO_DIRECT_MEDIA_IN_PAGE")
+
+    return {
+        "title": meta("og:title") or "Instagram media",
+        "thumbnail": meta("og:image"),
+        "duration": None,
+        "extractor_key": "InstagramFallback",
+        "formats": [{
+            "format_id": "instagram-direct",
+            "ext": "mp4",
+            "protocol": "https",
+            "width": None,
+            "height": None,
+            "vcodec": "unknown",
+            "acodec": "unknown",
+            "filesize": None,
+            "url": media_url,
+        }],
+    }
+
+
+def resolve(url):
+    url = (url or "").strip()
+    if not re.match(r"^https?://", url, re.I):
+        raise ValueError("INVALID_URL")
+    if not _allowed(url):
+        raise ValueError("UNSUPPORTED_PLATFORM")
+
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-    except Exception as exc:
-        raise RuntimeError("EXTRACTION_FAILED:" + str(exc)[:240])
+        info = _extract_info(url)
+    except RuntimeError:
+        if _host(url) == "instagram.com" or _host(url).endswith(".instagram.com"):
+            info = _instagram_html_fallback(url)
+        else:
+            raise
 
     if not info:
         raise RuntimeError("NO_MEDIA")
