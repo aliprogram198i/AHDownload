@@ -55,8 +55,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("releaseOfficial")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("releaseOfficial")
+            } else {
+                signingConfigs.getByName("debug")
             }
         }
         debug { applicationIdSuffix = ".debug" }
