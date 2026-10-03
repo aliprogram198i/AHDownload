@@ -94,25 +94,164 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
 
 @Composable private fun MediaAnalysisCard(info:LinkAnalysis,onDownload:(ResolvedFormat)->Unit){
  var mode by remember(info.url){mutableStateOf("video")}
- val videoFormats=remember(info.formats){info.formats.filter{it.hasVideo}.distinctBy{it.height.toString()+":"+it.ext+":"+it.hasAudio}}
- val audioFormats=remember(info.formats){info.formats.filter{it.hasAudio&&!it.hasVideo}.distinctBy{it.abr.toString()+":"+it.ext}}
+ var showMore by remember(info.url){mutableStateOf(false)}
+
+ val videoFormats=remember(info.formats){
+  info.formats
+   .filter{it.hasVideo&&it.hasAudio}
+   .groupBy{it.height?:0}
+   .mapNotNull{(_,items)->items.maxWithOrNull(compareBy<ResolvedFormat>{it.sizeBytes?:Long.MAX_VALUE}.thenBy{it.id})}
+   .sortedWith(compareByDescending<ResolvedFormat>{it.height?:0}.thenBy{it.sizeBytes?:Long.MAX_VALUE})
+ }
+ val videoOnlyFormats=remember(info.formats){
+  info.formats
+   .filter{it.hasVideo&&!it.hasAudio}
+   .groupBy{it.height?:0}
+   .mapNotNull{(_,items)->items.maxWithOrNull(compareBy<ResolvedFormat>{it.sizeBytes?:Long.MAX_VALUE}.thenBy{it.id})}
+   .sortedByDescending{it.height?:0}
+ }
+ val audioFormats=remember(info.formats){
+  info.formats
+   .filter{it.hasAudio&&!it.hasVideo}
+   .groupBy{it.abr?.toInt()?:0}
+   .mapNotNull{(_,items)->items.maxWithOrNull(compareBy<ResolvedFormat>{it.sizeBytes?:Long.MAX_VALUE}.thenBy{it.id})}
+   .sortedWith(compareByDescending<ResolvedFormat>{it.abr?:0.0}.thenBy{it.sizeBytes?:Long.MAX_VALUE})
+ }
  val list=if(mode=="video")videoFormats else audioFormats
- var selected by remember(info.url,mode){mutableStateOf(list.firstOrNull())}
- Card(shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-  Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer),contentAlignment=Alignment.Center){Icon(if(mode=="video")Icons.Default.Movie else Icons.Default.Audiotrack,null,Modifier.size(30.dp))};Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f)){Text(info.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(info.platform,color=MaterialTheme.colorScheme.onSurfaceVariant)}}
-  HorizontalDivider()
-  SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()){
-   SegmentedButton(mode=="video",{mode="video";selected=videoFormats.firstOrNull()},shape=SegmentedButtonDefaults.itemShape(0,2)){Text("فيديو ("+videoFormats.size+")")}
-   SegmentedButton(mode=="audio",{mode="audio";selected=audioFormats.firstOrNull()},shape=SegmentedButtonDefaults.itemShape(1,2)){Text("صوت ("+audioFormats.size+")")}
+ val recommendedVideo=remember(videoFormats){chooseRecommendedVideo(videoFormats)}
+ val recommendedAudio=remember(audioFormats){audioFormats.firstOrNull()}
+ var selected by remember(info.url,mode){mutableStateOf(if(mode=="video")recommendedVideo else recommendedAudio)}
+
+ Card(shape=RoundedCornerShape(24.dp)){
+  Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
+   Row(verticalAlignment=Alignment.CenterVertically){
+    Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer),contentAlignment=Alignment.Center){
+     Icon(if(mode=="video")Icons.Default.Movie else Icons.Default.Audiotrack,null,Modifier.size(30.dp))
+    }
+    Spacer(Modifier.width(12.dp))
+    Column(Modifier.weight(1f)){
+     Text(info.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis)
+     Text(info.platform,color=MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+   }
+   HorizontalDivider()
+   SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()){
+    SegmentedButton(mode=="video",{mode="video";selected=recommendedVideo;showMore=false},shape=SegmentedButtonDefaults.itemShape(0,2)){Text("فيديو")}
+    SegmentedButton(mode=="audio",{mode="audio";selected=recommendedAudio;showMore=false},shape=SegmentedButtonDefaults.itemShape(1,2)){Text("صوت")}
+   }
+
+   if(list.isEmpty()){
+    Text(
+     if(mode=="video")"المصدر لم يوفر فيديوً بصوت مدمج ضمن الصيغ الصالحة المعروضة."
+     else "المصدر لم يوفر مسار صوت منفصل ضمن الصيغ المستخرجة.",
+     color=MaterialTheme.colorScheme.onSurfaceVariant
+    )
+   } else if(mode=="video"){
+    Text("اختيار سريع",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+    recommendedVideo?.let{format->
+     RecommendedFormatCard(format,selected?.id==format.id,onClick={selected=format},onDownload={onDownload(format)})
+    }
+    videoFormats.filter{it.id!=recommendedVideo?.id}.take(if(showMore) videoFormats.size else 3).forEach{format->
+     SimpleFormatRow(format,selected?.id==format.id){selected=format}
+    }
+    if(videoFormats.size>4){
+     TextButton(onClick={showMore},modifier=Modifier.fillMaxWidth()){
+      Text(if(showMore)"إخفاء الخيارات الإضافية" else "عرض كل الجودات المتاحة ("+videoFormats.size+")")
+      Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
+     }
+    }
+    if(videoOnlyFormats.isNotEmpty()&&showMore){
+     HorizontalDivider()
+     Text("صيغ فيديو بدون صوت",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
+     Text("هذه الصيغ لا تُعرض كخيار أساسي لأنها لا تحتوي على صوت مدمج.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     videoOnlyFormats.take(8).forEach{format->SimpleFormatRow(format,false,enabled=false){}}
+    }
+    Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
+     Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text("تنزيل الفيديو")
+    }
+   } else {
+    Text("اختيار سريع",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
+    recommendedAudio?.let{format->
+     RecommendedFormatCard(format,selected?.id==format.id,onClick={selected=format},onDownload={onDownload(format)})
+    }
+    audioFormats.filter{it.id!=recommendedAudio?.id}.take(if(showMore) audioFormats.size else 3).forEach{format->
+     SimpleFormatRow(format,selected?.id==format.id){selected=format}
+    }
+    if(audioFormats.size>4){
+     TextButton(onClick={showMore},modifier=Modifier.fillMaxWidth()){
+      Text(if(showMore)"إخفاء الخيارات الإضافية" else "عرض كل الجودات المتاحة ("+audioFormats.size+")")
+      Icon(if(showMore)Icons.Default.ExpandMore else Icons.Default.ExpandMore,null)
+     }
+    }
+    Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
+     Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text("تنزيل الصوت")
+    }
+   }
+   Text("الجودات المعروضة مستخرجة فعلياً من المصدر، ويتم تجميع الصيغ المتطابقة لتجنب التكرار.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
-  if(list.isEmpty())Text(if(mode=="video")"المصدر لم يوفر فيديو قابلاً للتنزيل ضمن الصيغ المستخرجة." else "المصدر لم يوفر مسار صوت منفصل.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-  else{
-   Text(if(mode=="video")"الجودة المتوفرة فعلياً" else "جودة الصوت المتوفرة فعلياً",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
-   list.take(16).forEach{format->val active=selected?.id==format.id;OutlinedButton({selected=format},Modifier.fillMaxWidth(),shape=RoundedCornerShape(14.dp),colors=ButtonDefaults.outlinedButtonColors(containerColor=if(active)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)){Icon(if(mode=="video")Icons.Default.Movie else Icons.Default.Audiotrack,null);Spacer(Modifier.width(8.dp));Text(formatLabel(format),Modifier.weight(1f));if(active)Icon(Icons.Default.CheckCircle,null)}}
-   Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text(if(mode=="video")"تنزيل الفيديو" else "تنزيل الصوت")}
+ }
+}
+
+@Composable private fun RecommendedFormatCard(format:ResolvedFormat,selected:Boolean,onClick:()->Unit,onDownload:()->Unit){
+ Card(
+  onClick=onClick,
+  modifier=Modifier.fillMaxWidth(),
+  colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
+  shape=RoundedCornerShape(18.dp)
+ ){
+  Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
+   Row(verticalAlignment=Alignment.CenterVertically){
+    Surface(shape=RoundedCornerShape(10.dp),color=MaterialTheme.colorScheme.primary){
+     Text("موصى بها",Modifier.padding(horizontal=9.dp,vertical=5.dp),color=MaterialTheme.colorScheme.onPrimary,style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
+    }
+    Spacer(Modifier.weight(1f))
+    if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
+   }
+   Text(formatQuality(format),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
+   Text(formatDetails(format),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Text("اختيار متوازن للاستخدام اليومي",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   OutlinedButton(onClick=onDownload,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(13.dp)){
+    Icon(Icons.Default.Download,null);Spacer(Modifier.width(7.dp));Text("تنزيل هذه الجودة")
+   }
   }
-  Text("المعروض هنا مستخرج من المصدر نفسه؛ لا توجد جودات وهمية أو خيارات ثابتة.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
- }}
+ }
+}
+
+@Composable private fun SimpleFormatRow(format:ResolvedFormat,selected:Boolean,enabled:Boolean=true,onClick:()->Unit){
+ OutlinedButton(
+  onClick=onClick,
+  enabled=enabled,
+  modifier=Modifier.fillMaxWidth(),
+  shape=RoundedCornerShape(14.dp),
+  colors=ButtonDefaults.outlinedButtonColors(
+   containerColor=if(selected)MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+  )
+ ){
+  Icon(if(format.hasVideo)Icons.Default.Movie else Icons.Default.Audiotrack,null)
+  Spacer(Modifier.width(8.dp))
+  Column(Modifier.weight(1f),horizontalAlignment=Alignment.Start){
+   Text(formatQuality(format),fontWeight=FontWeight.SemiBold)
+   Text(formatDetails(format),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant,maxLines=1,overflow=TextOverflow.Ellipsis)
+  }
+  if(selected)Icon(Icons.Default.CheckCircle,null)
+ }
+}
+
+private fun formatQuality(format:ResolvedFormat):String{
+ return format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+" kbps"}?:"جودة غير محددة"
+}
+
+private fun formatDetails(format:ResolvedFormat):String{
+ val dimensions=if((format.width?:0)>0&&(format.height?:0)>0)format.width.toString()+"×"+format.height else null
+ val audio=when{format.hasVideo&&format.hasAudio->"صوت مدمج";format.hasVideo->"بدون صوت";format.hasAudio->"صوت"}
+ val size=format.sizeBytes?.let{" • "+formatBytes(it)}?:""
+ return listOfNotNull(dimensions,audio,format.ext.takeIf{it.isNotBlank()}?.uppercase(Locale.US),size.removePrefix(" • ").takeIf{it.isNotBlank()}).joinToString(" • ")
+}
+
+private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?{
+ if(formats.isEmpty())return null
+ val underOrEqual1080=formats.filter{(it.height?:0)<=1080}
+ return (underOrEqual1080.maxByOrNull{it.height?:0}?:formats.maxByOrNull{it.height?:0})
 }
 
 @Composable private fun DownloadsScreen(){
