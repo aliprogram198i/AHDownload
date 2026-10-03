@@ -24,7 +24,7 @@ object ErrorLog {
         val app = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            record(app, "UNCAUGHT_EXCEPTION", "انهيار غير معالج", throwable, "thread=\${thread.name}")
+            record(app, "UNCAUGHT_EXCEPTION", "انهيار غير معالج", throwable, "thread=" + thread.name")
             previous?.uncaughtException(thread, throwable)
         }
     }
@@ -90,11 +90,11 @@ object ErrorLog {
         val entries = entries(context)
         val header = buildString {
             appendLine("AHDownload — سجل الأخطاء الحقيقي")
-            appendLine("Generated: \${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())}")
+            appendLine("Generated: " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date()))
             appendLine("App: AHDownload")
-            appendLine("Android: \${Build.VERSION.RELEASE} (SDK \${Build.VERSION.SDK_INT})")
-            appendLine("Device: \${Build.MANUFACTURER} \${Build.MODEL}")
-            appendLine("Entries: \${entries.size}")
+            appendLine("Android: " + Build.VERSION.RELEASE + " (SDK " + Build.VERSION.SDK_INT + ")")
+            appendLine("Device: " + Build.MANUFACTURER + " " + Build.MODEL)
+            appendLine("Entries: " + entries.size)
             appendLine("=".repeat(72))
         }
         return header + entries.joinToString("\n\n") { it.toText() }
