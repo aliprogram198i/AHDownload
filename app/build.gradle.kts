@@ -35,7 +35,7 @@ android {
 
     // Empty by default: platform resolution is enabled only when a trusted backend is configured.
     defaultConfig {
-        buildConfigField("String", "RESOLVER_BASE_URL", "\"\")
+                buildConfigField("String", "RESOLVER_BASE_URL", "\""\"")
     }
 }
 
