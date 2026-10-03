@@ -42,6 +42,7 @@ private data class LinkAnalysis(
             contentType?.startsWith("image/") == true
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppRoot() {
     AHDownloadTheme {
