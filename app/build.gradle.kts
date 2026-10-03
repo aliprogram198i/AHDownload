@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.chaquo.python")
 }
 
 android {
@@ -11,31 +12,36 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", "\"\"")
         }
-        debug {
-            applicationIdSuffix = ".debug"
-            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", "\"\"")
-        }
+        debug { applicationIdSuffix = ".debug" }
     }
-    buildFeatures {
-        compose = true
-        buildConfig = true
+    buildFeatures { compose = true; buildConfig = true }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip { install("yt-dlp==2026.8.19") }
     }
+}
+
+sourceSets {
+    getByName("main") { python.srcDir("src/main/python") }
 }
 
 dependencies {
