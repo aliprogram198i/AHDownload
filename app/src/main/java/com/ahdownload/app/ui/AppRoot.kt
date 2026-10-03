@@ -168,7 +168,7 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                     scope.launch {
                         val detectedPlatform = detectPlatform(clean)
                         val result = if (detectedPlatform != null) {
-                            EmbeddedPlatformResolver().resolve(clean).map { resolved ->
+                            EmbeddedPlatformResolver(context).resolve(clean).map { resolved ->
                                 LinkAnalysis(
                                     resolved.source,
                                     resolved.formats.firstOrNull()?.let { f ->
