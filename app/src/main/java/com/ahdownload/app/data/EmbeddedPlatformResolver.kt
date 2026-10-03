@@ -1,6 +1,7 @@
 package com.ahdownload.app.data
 
 import android.content.Context
+import com.ahdownload.app.diagnostics.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -53,6 +54,7 @@ class EmbeddedPlatformResolver(
             }
 
             try {
+                AppLogger.info(context ?: return@runCatching call(null), "resolver.start", "host=" + android.net.Uri.parse(url).host.orEmpty())
                 call(null)
             } catch (first: Throwable) {
                 val host = android.net.Uri.parse(url).host.orEmpty().lowercase()
@@ -64,8 +66,11 @@ class EmbeddedPlatformResolver(
 
                 val cookies = WebViewSessionBridge(context).cookiesFor(url)
                 if (cookies.isNullOrBlank()) throw first
+                AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true")
                 call(cookies)
             }
+        }.onFailure { failure ->
+            context?.let { AppLogger.error(it, "resolver.failed", failure, "host=" + android.net.Uri.parse(url).host.orEmpty()) }
         }
     }
 }
