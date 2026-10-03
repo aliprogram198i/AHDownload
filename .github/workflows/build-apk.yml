@@ -1,6 +1,7 @@
 name: Build AHDownload APK
 
 on:
+  pull_request:
   push:
     branches: ["main"]
   workflow_dispatch:
