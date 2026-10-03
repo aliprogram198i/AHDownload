@@ -10,24 +10,19 @@ enum class DownloadStatus {
 data class MediaFormat(
     val id: String, val type: MediaType, val container: String?, val codec: String?,
     val resolution: String?, val fps: Int?, val bitrate: Long?, val hasAudio: Boolean,
-    val hasVideo: Boolean, val estimatedSize: Long?, val url: String
+    val hasVideo: Boolean, val estimatedSize: Long?, val url: String, val title: String? = null
 )
 
 data class MediaInfo(
     val source: String, val type: MediaType, val title: String, val thumbnailUrl: String?,
-    val durationMs: Long?, val sizeBytes: Long?, val formats: List<MediaFormat>
+    val durationMs: Long?, val sizeBytes: Long?, val formats: List<MediaFormat>,
+    val isDirect: Boolean = false
 )
 
 data class DownloadJob(
-    val id: String,
-    val sourceUrl: String,
-    val title: String,
-    val formatUrl: String,
-    val status: DownloadStatus,
-    val progress: Int,
-    val downloadedBytes: Long,
-    val totalBytes: Long?,
-    val outputUri: String? = null
+    val id: String, val sourceUrl: String, val title: String, val formatUrl: String,
+    val status: DownloadStatus, val progress: Int, val downloadedBytes: Long,
+    val totalBytes: Long?, val outputUri: String? = null
 )
 
 interface SourceResolver {
