@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ahdownload.app.data.DownloadRepository
+import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.domain.DownloadStatus
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,6 +33,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val repo = DownloadRepository(applicationContext)
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
+            AppLogger.info(applicationContext, "download.start", "job=$jobId")
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
             val extension = MimeTypeMap.getFileExtensionFromUrl(url).takeIf { it.isNotBlank() } ?: "bin"
             val safeTitle = title.replace(Regex("[\\/:*?\"<>|]"), "_").take(120)
@@ -51,6 +53,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 val contentType = response.header("Content-Type")?.substringBefore(";")?.trim()?.lowercase()
                 if (contentType == "text/html" || contentType == "application/xhtml+xml") {
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
+                    AppLogger.error(applicationContext, "download.rejected_html", details = "job=$jobId contentType=$contentType")
                     return Result.failure()
                 }
                 val body = response.body
@@ -99,12 +102,15 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     outputUri = published
                 )
             }
+            AppLogger.info(applicationContext, "download.completed", "job=$jobId")
             Result.success()
-        } catch (_: IOException) {
+        } catch (e: IOException) {
             repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING) }
+            AppLogger.error(applicationContext, "download.io_retry", e, "job=$jobId")
             Result.retry()
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
             repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
+            AppLogger.error(applicationContext, "download.failed", e, "job=$jobId")
             Result.failure()
         }
     }
