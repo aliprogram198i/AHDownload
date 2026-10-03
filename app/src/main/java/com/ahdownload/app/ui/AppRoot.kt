@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DirectUrlResolver
+import com.ahdownload.app.data.PlatformResolverClient
+import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
@@ -36,13 +38,17 @@ import com.ahdownload.app.ui.theme.AHDownloadTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+import com.ahdownload.app.BuildConfig
+
+private const val PLATFORM_RESOLVER_BASE_URL = BuildConfig.PLATFORM_RESOLVER_BASE_URL
 
 private data class LinkAnalysis(
     val url: String,
     val contentType: String?,
     val sizeBytes: Long?,
     val title: String,
-    val platform: String? = null
+    val platform: String? = null,
+    val formats: List<ResolvedFormat> = emptyList()
 ) {
     val isVideo get() = contentType?.startsWith("video/") == true
     val isAudio get() = contentType?.startsWith("audio/") == true
@@ -163,33 +169,52 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                     error = null
                     analysis = null
                     scope.launch {
-                        val result = DirectUrlResolver().resolve(clean)
-                        analyzing = false
-                        result.onSuccess {
-                            analysis = LinkAnalysis(
-                                it.source,
-                                it.formats.firstOrNull()?.let { f ->
-                                    when {
-                                        f.hasVideo -> "video/" + (f.container ?: "media")
-                                        f.hasAudio -> "audio/" + (f.container ?: "media")
-                                        else -> "application/octet-stream"
-                                    }
-                                },
-                                it.sizeBytes,
-                                it.title,
-                                detectPlatform(clean)
-                            )
-                        }.onFailure { failure ->
-                            platform = detectPlatform(clean)
-                            error = when {
-                                failure.message == "HTML_PAGE_NOT_MEDIA" ->
-                                    "هذا رابط صفحة وليس ملف وسائط مباشر. لن يتم حفظ HTML على أنه فيديو."
-                                platform != null ->
-                                    "تم التعرف على رابط " + platform + ". للحصول على الجودات الحقيقية من صفحات المنصات، يلزم ربط محرك استخراج مصادر للمنصة."
-                                else ->
-                                    "تعذر قراءة المصدر. تحقق من الرابط واتصال الإنترنت ثم حاول مرة أخرى."
+                        val detectedPlatform = detectPlatform(clean)
+                        val result = if (detectedPlatform != null && PLATFORM_RESOLVER_BASE_URL.isNotBlank()) {
+                            PlatformResolverClient(PLATFORM_RESOLVER_BASE_URL).resolve(clean).map { resolved ->
+                                LinkAnalysis(
+                                    resolved.source,
+                                    resolved.formats.firstOrNull()?.let { f ->
+                                        if (f.hasVideo) "video/" + f.ext else if (f.hasAudio) "audio/" + f.ext else "application/octet-stream"
+                                    },
+                                    resolved.formats.firstOrNull()?.sizeBytes,
+                                    resolved.title,
+                                    detectedPlatform,
+                                    resolved.formats
+                                )
+                            }
+                        } else {
+                            DirectUrlResolver().resolve(clean).map {
+                                LinkAnalysis(
+                                    it.source,
+                                    it.formats.firstOrNull()?.let { f ->
+                                        when {
+                                            f.hasVideo -> "video/" + (f.container ?: "media")
+                                            f.hasAudio -> "audio/" + (f.container ?: "media")
+                                            else -> "application/octet-stream"
+                                        }
+                                    },
+                                    it.sizeBytes,
+                                    it.title,
+                                    detectedPlatform
+                                )
                             }
                         }
+                        analyzing = false
+                        result.onSuccess { info -> analysis = info }
+                            .onFailure { failure ->
+                                platform = detectedPlatform
+                                error = when {
+                                    failure.message == "HTML_PAGE_NOT_MEDIA" ->
+                                        "هذا رابط صفحة وليس ملف وسائط مباشر. لن يتم حفظ HTML بالخطأ."
+                                    failure.message == "RESOLVER_NOT_CONFIGURED" ->
+                                        "تم التعرف على رابط " + platform + "، لكن محرك استخراج المنصة غير متصل حالياً."
+                                    platform != null ->
+                                        "تعذر استخراج وسائط حقيقية من " + platform + ". لن يتم تنزيل صفحة HTML بالخطأ."
+                                    else ->
+                                        "تعذر قراءة المصدر. تحقق من الرابط واتصال الإنترنت ثم حاول مرة أخرى."
+                                }
+                            }
                     }
                 }
             )
@@ -207,8 +232,8 @@ private fun HomeScreen(openDownloads: () -> Unit) {
         }
         analysis?.let { info ->
             item {
-                MediaResultCard(info) {
-                    repository.create(info.url, info.title)
+                MediaResultCard(info) { selectedUrl, selectedTitle ->
+                    repository.create(selectedUrl, selectedTitle)
                     url = ""
                     analysis = null
                     openDownloads()
@@ -330,7 +355,14 @@ private fun InfoCard(icon: ImageVector, title: String, text: String, tone: CardT
 }
 
 @Composable
-private fun MediaResultCard(info: LinkAnalysis, onDownload: () -> Unit) {
+private fun MediaResultCard(info: LinkAnalysis, onDownload: (String, String) -> Unit) {
+    var selected by remember(info.url, info.formats) { mutableStateOf(info.formats.firstOrNull()) }
+    val available = remember(info.formats) {
+        info.formats.filter { it.hasVideo || it.hasAudio }
+            .distinctBy { it.height.toString() + ":" + it.abr.toString() + ":" + it.ext + ":" + it.hasVideo + ":" + it.hasAudio }
+            .sortedWith(compareByDescending<ResolvedFormat> { it.hasVideo }.thenByDescending { it.height ?: 0 }.thenByDescending { it.abr ?: 0.0 })
+            .take(12)
+    }
     ElevatedCard(shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -367,10 +399,33 @@ private fun MediaResultCard(info: LinkAnalysis, onDownload: () -> Unit) {
                 MetaChip(Icons.Default.Verified, if (info.isMedia) "مصدر وسائط" else "ملف مباشر")
                 info.sizeBytes?.let { MetaChip(Icons.Default.Storage, formatBytes(it)) }
             }
-            Text(if (info.isVideo) "تم التحقق من ملف فيديو مباشر. لا يوجد ضغط تلقائي."
+            if (available.isNotEmpty()) {
+                Text("الصيغ المتاحة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                available.forEach { format ->
+                    val isSelected = selected?.id == format.id
+                    OutlinedButton(
+                        onClick = { selected = format },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+                        )
+                    ) {
+                        Icon(if (format.hasVideo) Icons.Default.Movie else Icons.Default.Audiotrack, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(formatLabel(format), modifier = Modifier.weight(1f))
+                        if (isSelected) Icon(Icons.Default.CheckCircle, null)
+                    }
+                }
+            }
+            Text(if (info.isVideo) "تم التحقق من المصدر. لا يوجد ضغط أو تقسيم تلقائي."
                  else "تم التحقق من المصدر قبل بدء التنزيل.")
-            Button(onClick = onDownload, modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(16.dp)) {
+            Button(
+                onClick = { onDownload(selected?.url ?: info.url, info.title) },
+                enabled = selected != null || info.url.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
                 Icon(Icons.Default.Download, null)
                 Spacer(Modifier.width(8.dp))
                 Text("بدء التنزيل")
@@ -617,6 +672,13 @@ private fun EmptyState(icon: ImageVector, title: String, subtitle: String) {
             Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+private fun formatLabel(format: ResolvedFormat): String {
+    val quality = format.height?.let { it.toString() + "p" } ?: format.abr?.let { it.toInt().toString() + " kbps" } ?: format.ext.uppercase(Locale.US)
+    val mode = when { format.hasVideo && format.hasAudio -> "فيديو"; format.hasVideo -> "فيديو بدون صوت"; else -> "صوت" }
+    val size = format.sizeBytes?.let { " • " + formatBytes(it) } ?: ""
+    return mode + " • " + quality + " • " + format.ext.uppercase(Locale.US) + size
 }
 
 private fun fileIcon(title: String): ImageVector {
