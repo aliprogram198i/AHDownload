@@ -43,7 +43,7 @@ android {
                 storePassword = signingStorePassword
                 keyAlias = signingAlias
                 keyPassword = signingKeyPassword
-                storeType = "JKS"
+                storeType = "PKCS12"
             }
         }
     }
