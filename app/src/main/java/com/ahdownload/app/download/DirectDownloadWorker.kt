@@ -18,6 +18,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_JOB_ID = "job_id"
         const val KEY_URL = "url"
         const val KEY_TITLE = "title"
+        const val KEY_EXTENSION = "extension"
     }
 
     private val client = OkHttpClient.Builder()
@@ -29,11 +30,14 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val jobId = inputData.getString(KEY_JOB_ID) ?: return Result.failure()
         val url = inputData.getString(KEY_URL) ?: return Result.failure()
         val title = inputData.getString(KEY_TITLE) ?: "download"
+        val requestedExtension = inputData.getString(KEY_EXTENSION).orEmpty().lowercase()
         val repo = DownloadRepository(applicationContext)
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
-            val extension = MimeTypeMap.getFileExtensionFromUrl(url).takeIf { it.isNotBlank() } ?: "bin"
+            val extension = requestedExtension.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+                ?: MimeTypeMap.getFileExtensionFromUrl(url).takeIf { it.isNotBlank() }
+                ?: "bin"
             val safeTitle = title.replace(Regex("[\\/:*?\"<>|]"), "_").take(120)
             val target = File(dir, "$safeTitle.$extension")
             val part = File(dir, "$safeTitle.$extension.part")
