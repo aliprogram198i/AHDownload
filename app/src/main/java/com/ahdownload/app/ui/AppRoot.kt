@@ -32,6 +32,7 @@ import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.data.DownloadRepository
+import com.ahdownload.app.diagnostics.ErrorLog
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
@@ -62,7 +63,7 @@ fun AppRoot() {
         val route = entry?.destination?.route ?: "home"
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
-            topBar = { if (route != "home") AppTopBar(route) { nav.navigate("settings") { launchSingleTop = true } } },
+            topBar = { AppTopBar(route, { nav.navigate("settings") { launchSingleTop = true } }, { nav.navigate("logs") { launchSingleTop = true } }) },
             bottomBar = {
                 NavigationBar {
                     NavigationBarItemButton(nav, route, "home", "الرئيسية", Icons.Default.Home)
@@ -78,6 +79,7 @@ fun AppRoot() {
                 composable("library") { LibraryScreen() }
                 composable("studio") { StudioScreen() }
                 composable("settings") { SettingsScreen() }
+                composable("logs") { ErrorLogScreen() }
             }
         }
     }
@@ -109,17 +111,24 @@ private fun NavigationBarItemButton(nav: NavHostController, route: String, targe
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AppTopBar(route: String, openSettings: () -> Unit) {
+private fun AppTopBar(route: String, openSettings: () -> Unit, openLogs: () -> Unit) {
     val title = when (route) {
         "downloads" -> "التنزيلات"
         "library" -> "المكتبة"
         "studio" -> "Smart Studio"
         "settings" -> "الإعدادات"
+        "logs" -> "سجل الأخطاء"
+        "home" -> "AHDownload"
         else -> "AHDownload"
     }
     TopAppBar(
         title = { Text(title, fontWeight = FontWeight.SemiBold) },
         actions = {
+            TextButton(onClick = openLogs) {
+                Icon(Icons.Default.BugReport, "سجل")
+                Spacer(Modifier.width(4.dp))
+                Text("سجل")
+            }
             if (route != "settings") IconButton(onClick = openSettings) {
                 Icon(Icons.Default.Settings, "الإعدادات")
             }
@@ -200,6 +209,7 @@ private fun HomeScreen(openDownloads: () -> Unit) {
                         analyzing = false
                         result.onSuccess { info -> analysis = info }
                             .onFailure { failure ->
+                                ErrorLog.recordFailure(context, "LINK_ANALYSIS_FAILED", failure, "url=" + ErrorLog.sanitizeUrl(clean) + "; platform=" + (detectedPlatform ?: "direct"))
                                 platform = detectedPlatform
                                 error = when {
                                     failure.message == "HTML_PAGE_NOT_MEDIA" ->
@@ -642,6 +652,102 @@ private fun StudioCard(icon: ImageVector, title: String, description: String) {
             supportingContent = { Text(description) },
             trailingContent = { Icon(Icons.Default.ChevronRight, null) }
         )
+    }
+}
+
+@Composable
+private fun ErrorLogScreen() {
+    val context = LocalContext.current
+    var entries by remember { mutableStateOf(ErrorLog.entries(context)) }
+    var copied by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        entries = ErrorLog.entries(context)
+        copied = false
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        Card(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.BugReport, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("سجل الأخطاء الحقيقي", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (entries.isEmpty()) "لا توجد أخطاء مسجلة حالياً." else entries.size.toString() + " حادثة محفوظة محلياً",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Text(
+                    "يتضمن الاستثناءات غير المعالجة وأخطاء التحليل والتنزيل مع السبب وStack Trace وبيئة الجهاز. لا يتم تسجيل الرابط كاملاً؛ يتم تنقيته لحماية رموز الاستعلام.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = {
+                            val text = ErrorLog.export(context)
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload error log", text))
+                            copied = true
+                        },
+                        enabled = entries.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.ContentCopy, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (copied) "تم النسخ" else "نسخ السجل")
+                    }
+                    OutlinedButton(onClick = { ErrorLog.clear(context); refresh() }, enabled = entries.isNotEmpty()) {
+                        Icon(Icons.Default.DeleteSweep, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("مسح")
+                    }
+                }
+            }
+        }
+
+        if (entries.isEmpty()) {
+            EmptyState(Icons.Default.CheckCircle, "لا توجد أخطاء", "عند حدوث خطأ حقيقي سيظهر هنا تلقائياً.")
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(entries) { entry ->
+                    Card(shape = RoundedCornerShape(18.dp)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.width(8.dp))
+                                Text(entry.type, fontWeight = FontWeight.Bold)
+                            }
+                            Text(entry.time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(entry.message, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                            if (entry.context.isNotBlank()) {
+                                Text("السياق: " + entry.context, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (entry.exception.isNotBlank()) {
+                                Text("الاستثناء: " + entry.exception, style = MaterialTheme.typography.bodySmall)
+                            }
+                            if (entry.stackTrace.isNotBlank()) {
+                                Text(
+                                    entry.stackTrace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 8,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
