@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DirectUrlResolver
+import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.data.EmbeddedPlatformResolver
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.data.DownloadRepository
@@ -76,7 +77,8 @@ fun AppRoot() {
                 composable("downloads") { DownloadsScreen() }
                 composable("library") { LibraryScreen() }
                 composable("studio") { StudioScreen() }
-                composable("settings") { SettingsScreen() }
+                composable("settings") { SettingsScreen { nav.navigate("diagnostics") } }
+                composable("diagnostics") { DiagnosticsScreen() }
             }
         }
     }
@@ -596,7 +598,7 @@ private fun StudioCard(icon: ImageVector, title: String, description: String) {
 }
 
 @Composable
-private fun SettingsScreen() {
+private fun SettingsScreen(openDiagnostics: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE) }
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
@@ -629,6 +631,14 @@ private fun SettingsScreen() {
                 headlineContent = { Text("موقع التنزيل") }, supportingContent = { Text("مجلد AHDownload في تخزين الجهاز") })
             ListItem(leadingContent = { Icon(Icons.Default.Storage, null) },
                 headlineContent = { Text("الملفات الأصلية") }, supportingContent = { Text("لا يوجد ضغط تلقائي أو تقسيم تلقائي.") })
+        } }
+        item { SettingsSection("التشخيص") {
+            ListItem(
+                leadingContent = { Icon(Icons.Default.BugReport, null) },
+                headlineContent = { Text("سجل التطبيق") },
+                supportingContent = { Text("عرض ونسخ الأخطاء والأحداث الحقيقية المحفوظة محلياً.") },
+                trailingContent = { TextButton(onClick = openDiagnostics) { Text("فتح") } }
+            )
         } }
         item { SettingsSection("الخصوصية") {
             ListItem(leadingContent = { Icon(Icons.Default.Lock, null) },

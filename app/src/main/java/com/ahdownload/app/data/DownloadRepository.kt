@@ -6,6 +6,8 @@ import androidx.work.BackoffPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.download.DirectDownloadWorker
@@ -53,6 +55,11 @@ class DownloadRepository(context: Context) {
             totalBytes = null
         )
         save(job)
+        val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        val constraints = Constraints.Builder().apply {
+            if (settings.getBoolean("wifi_only", false)) setRequiredNetworkType(NetworkType.UNMETERED)
+            else setRequiredNetworkType(NetworkType.CONNECTED)
+        }.build()
         val request = OneTimeWorkRequestBuilder<DirectDownloadWorker>()
             .setInputData(
                 workDataOf(
@@ -61,6 +68,7 @@ class DownloadRepository(context: Context) {
                     DirectDownloadWorker.KEY_TITLE to job.title
                 )
             )
+            .setConstraints(constraints)
             .setBackoffCriteria(
                 BackoffPolicy.EXPONENTIAL,
                 Duration.ofSeconds(10)
