@@ -24,7 +24,7 @@ object ErrorLog {
         val app = context.applicationContext
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            record(app, "UNCAUGHT_EXCEPTION", "انهيار غير معالج", throwable, "thread=" + thread.name")
+            record(app, "UNCAUGHT_EXCEPTION", "انهيار غير معالج", throwable, "thread=" + thread.name)
             previous?.uncaughtException(thread, throwable)
         }
     }
