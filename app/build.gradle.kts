@@ -13,7 +13,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
-        buildConfigField("String", "RESOLVER_BASE_URL", "\"\"\"")
+        buildConfigField("String", "RESOLVER_BASE_URL", "\"\"")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -32,11 +32,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    // Empty by default: platform resolution is enabled only when a trusted backend is configured.
-    defaultConfig {
-                buildConfigField("String", "RESOLVER_BASE_URL", "\""\"")
     }
 }
 
