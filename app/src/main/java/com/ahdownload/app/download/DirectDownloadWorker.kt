@@ -6,6 +6,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.domain.DownloadStatus
+import com.ahdownload.app.diagnostics.ErrorLog
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -18,6 +19,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_JOB_ID = "job_id"
         const val KEY_URL = "url"
         const val KEY_TITLE = "title"
+        const val KEY_EXTENSION = "extension"
     }
 
     private val client = OkHttpClient.Builder()
@@ -29,11 +31,14 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val jobId = inputData.getString(KEY_JOB_ID) ?: return Result.failure()
         val url = inputData.getString(KEY_URL) ?: return Result.failure()
         val title = inputData.getString(KEY_TITLE) ?: "download"
+        val requestedExtension = inputData.getString(KEY_EXTENSION).orEmpty().lowercase()
         val repo = DownloadRepository(applicationContext)
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
-            val extension = MimeTypeMap.getFileExtensionFromUrl(url).takeIf { it.isNotBlank() } ?: "bin"
+            val extension = requestedExtension.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+                ?: MimeTypeMap.getFileExtensionFromUrl(url).takeIf { it.isNotBlank() }
+                ?: "bin"
             val safeTitle = title.replace(Regex("[\\/:*?\"<>|]"), "_").take(120)
             val target = File(dir, "$safeTitle.$extension")
             val part = File(dir, "$safeTitle.$extension.part")
@@ -45,11 +50,15 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    val failure = IOException("HTTP " + response.code)
+                    ErrorLog.recordFailure(applicationContext, "DOWNLOAD_HTTP_ERROR", failure, "jobId=" + jobId + "; url=" + ErrorLog.sanitizeUrl(url))
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return if (response.code in 500..599) Result.retry() else Result.failure()
                 }
                 val contentType = response.header("Content-Type")?.substringBefore(";")?.trim()?.lowercase()
                 if (contentType == "text/html" || contentType == "application/xhtml+xml") {
+                    val failure = IOException("HTML_PAGE_NOT_MEDIA: " + contentType)
+                    ErrorLog.recordFailure(applicationContext, "HTML_PAGE_NOT_MEDIA", failure, "jobId=" + jobId + "; url=" + ErrorLog.sanitizeUrl(url))
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return Result.failure()
                 }
@@ -100,10 +109,12 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 )
             }
             Result.success()
-        } catch (_: IOException) {
+        } catch (failure: IOException) {
+            ErrorLog.recordFailure(applicationContext, "DOWNLOAD_IO_ERROR", failure, "jobId=" + jobId + "; url=" + ErrorLog.sanitizeUrl(url))
             repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING) }
             Result.retry()
-        } catch (_: Throwable) {
+        } catch (failure: Throwable) {
+            ErrorLog.recordFailure(applicationContext, "DOWNLOAD_UNEXPECTED_ERROR", failure, "jobId=" + jobId + "; url=" + ErrorLog.sanitizeUrl(url))
             repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
             Result.failure()
         }
