@@ -9,6 +9,7 @@ import androidx.work.workDataOf
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.download.DirectDownloadWorker
+import com.ahdownload.app.diagnostics.ErrorLog
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Duration
@@ -68,7 +69,11 @@ class DownloadRepository(context: Context) {
             )
             .addTag("ahdownload:" + job.id)
             .build()
-        WorkManager.getInstance(app).enqueue(request)
+        runCatching { WorkManager.getInstance(app).enqueue(request) }
+            .onFailure { failure ->
+                ErrorLog.recordFailure(app, "DOWNLOAD_ENQUEUE_FAILED", failure, "jobId=" + job.id + "; url=" + ErrorLog.sanitizeUrl(url))
+                update(job.id) { it.copy(status = DownloadStatus.FAILED) }
+            }
         return job
     }
 
