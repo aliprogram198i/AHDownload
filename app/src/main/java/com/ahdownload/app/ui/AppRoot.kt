@@ -64,11 +64,14 @@ fun AppRoot() {
             containerColor = MaterialTheme.colorScheme.background,
             topBar = { if (route != "home") AppTopBar(route) { nav.navigate("settings") { launchSingleTop = true } } },
             bottomBar = {
-                NavigationBar {
+                NavigationBar(
+                    tonalElevation = 3.dp,
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
                     NavigationBarItemButton(nav, route, "home", "الرئيسية", Icons.Default.Home)
                     NavigationBarItemButton(nav, route, "downloads", "التنزيلات", Icons.Default.Download)
-                    NavigationBarItemButton(nav, route, "library", "المكتبة", Icons.Default.VideoLibrary)
                     NavigationBarItemButton(nav, route, "studio", "الاستديو", Icons.Default.AutoAwesome)
+                    NavigationBarItemButton(nav, route, "settings", "الإعدادات", Icons.Default.Settings)
                 }
             }
         ) { padding ->
@@ -85,27 +88,26 @@ fun AppRoot() {
 }
 
 @Composable
-private fun NavigationBarItemButton(nav: NavHostController, route: String, target: String, label: String, icon: ImageVector) {
-    val selected = route == target
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth(0.25f)
-            .padding(horizontal = 4.dp, vertical = 5.dp),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(58.dp)
-                .clickable { nav.navigate(target) { launchSingleTop = true; restoreState = true } },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(label, style = MaterialTheme.typography.labelSmall)
-        }
-    }
+private fun NavigationBarItemButton(
+    nav: NavHostController,
+    route: String,
+    target: String,
+    label: String,
+    icon: ImageVector
+) {
+    NavigationBarItem(
+        selected = route == target,
+        onClick = {
+            nav.navigate(target) {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo(nav.graph.startDestinationId) { saveState = true }
+            }
+        },
+        icon = { Icon(icon, contentDescription = label) },
+        label = { Text(label, maxLines = 1) },
+        alwaysShowLabel = true
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -258,9 +260,13 @@ private fun HeroHeader() {
             }
             Text("مركز تنزيل الوسائط الذكي", style = MaterialTheme.typography.titleMedium)
             Text(
-                "الصق الرابط، تحقّق من المحتوى، ثم اختر ما تريد تنزيله.",
+                "الصق الرابط، تحقّق من المصدر، ثم اختر الجودة المناسبة.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetaChip(Icons.Default.Verified, "مصدر موثوق")
+                MetaChip(Icons.Default.Security, "تنزيل آمن")
+            }
         }
     }
 }
