@@ -1,0 +1,1 @@
+Build verification marker. Runtime session cookies remain on-device only.
