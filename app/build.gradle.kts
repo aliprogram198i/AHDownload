@@ -26,9 +26,18 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
-        debug { applicationIdSuffix = ".debug" }
+        debug {
+            applicationIdSuffix = ".debug"
+            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", "\"\")
+        }
+        release {
+            buildConfigField("String", "PLATFORM_RESOLVER_BASE_URL", "\"\")
+        }
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {
