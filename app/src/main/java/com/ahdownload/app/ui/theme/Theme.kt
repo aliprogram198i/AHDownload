@@ -9,33 +9,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF16324F),
+    primary = Color(0xFF0B5CFF),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE4ECF2),
-    onPrimaryContainer = Color(0xFF10283E),
-    secondary = Color(0xFF197C7A),
-    secondaryContainer = Color(0xFFDDEEEB),
-    onSecondaryContainer = Color(0xFF0E2D2B),
-    tertiary = Color(0xFF4C6A88),
-    background = Color(0xFFF7F5F0),
-    surface = Color(0xFFF7F5F0),
-    surfaceVariant = Color(0xFFE9E7E1),
-    outline = Color(0xFF77756F)
+    primaryContainer = Color(0xFFE5EEFF),
+    onPrimaryContainer = Color(0xFF06245F),
+    secondary = Color(0xFF00A896),
+    secondaryContainer = Color(0xFFDDF7F3),
+    onSecondaryContainer = Color(0xFF003D37),
+    tertiary = Color(0xFF6750A4),
+    background = Color(0xFFF6F8FC),
+    surface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFFEEF2F7),
+    outline = Color(0xFF7A8494)
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFB8C4FF),
-    onPrimary = Color(0xFF0C216F),
-    primaryContainer = Color(0xFF1F357E),
-    onPrimaryContainer = Color(0xFFDCE2FF),
-    secondary = Color(0xFFC4C5DD),
-    secondaryContainer = Color(0xFF44465A),
-    onSecondaryContainer = Color(0xFFE1E2F6),
-    tertiary = Color(0xFF63DBC5),
-    background = Color(0xFF101114),
-    surface = Color(0xFF15171B),
-    surfaceVariant = Color(0xFF282A30),
-    outline = Color(0xFF90929B)
+    primary = Color(0xFF8FB4FF),
+    onPrimary = Color(0xFF002E73),
+    primaryContainer = Color(0xFF173B78),
+    onPrimaryContainer = Color(0xFFDCE8FF),
+    secondary = Color(0xFF5FE0CF),
+    secondaryContainer = Color(0xFF164B47),
+    onSecondaryContainer = Color(0xFFBFF4EB),
+    tertiary = Color(0xFFD0BCFF),
+    background = Color(0xFF0A0E14),
+    surface = Color(0xFF10151D),
+    surfaceVariant = Color(0xFF1C2430),
+    outline = Color(0xFF9AA8BB)
 )
 
 private val AppTypography = Typography().run {
