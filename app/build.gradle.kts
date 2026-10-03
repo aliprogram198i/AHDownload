@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -22,13 +24,44 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    val signingFile = providers.environmentVariable("AH_KEYSTORE_FILE").orNull
+    val signingStorePassword = providers.environmentVariable("AH_KEYSTORE_PASSWORD").orNull
+    val signingAlias = providers.environmentVariable("AH_KEY_ALIAS").orNull
+    val signingKeyPassword = providers.environmentVariable("AH_KEY_PASSWORD").orNull
+    val hasReleaseSigning = listOf(
+        signingFile,
+        signingStorePassword,
+        signingAlias,
+        signingKeyPassword
+    ).all { !it.isNullOrBlank() && File(it!!).exists() }
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("releaseOfficial") {
+                storeFile = File(signingFile!!)
+                storePassword = signingStorePassword
+                keyAlias = signingAlias
+                keyPassword = signingKeyPassword
+                storeType = "JKS"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("releaseOfficial")
+            }
         }
         debug { applicationIdSuffix = ".debug" }
     }
+
     buildFeatures { compose = true; buildConfig = true }
 }
 
