@@ -9,13 +9,13 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,10 +62,10 @@ fun AppRoot() {
             topBar = { if (route != "home") AppTopBar(route) { nav.navigate("settings") { launchSingleTop = true } } },
             bottomBar = {
                 NavigationBar {
-                    NavigationItem(nav, route, "home", "الرئيسية", Icons.Default.Home)
-                    NavigationItem(nav, route, "downloads", "التنزيلات", Icons.Default.Download)
-                    NavigationItem(nav, route, "library", "المكتبة", Icons.Default.VideoLibrary)
-                    NavigationItem(nav, route, "studio", "الاستديو", Icons.Default.AutoAwesome)
+                    NavigationBarItemButton(nav, route, "home", "الرئيسية", Icons.Default.Home)
+                    NavigationBarItemButton(nav, route, "downloads", "التنزيلات", Icons.Default.Download)
+                    NavigationBarItemButton(nav, route, "library", "المكتبة", Icons.Default.VideoLibrary)
+                    NavigationBarItemButton(nav, route, "studio", "الاستديو", Icons.Default.AutoAwesome)
                 }
             }
         ) { padding ->
@@ -81,13 +81,27 @@ fun AppRoot() {
 }
 
 @Composable
-private fun NavigationItem(nav: NavHostController, route: String, target: String, label: String, icon: ImageVector) {
-    NavigationBarItem(
-        selected = route == target,
-        onClick = { nav.navigate(target) { launchSingleTop = true; restoreState = true } },
-        icon = { Icon(icon, null) },
-        label = { Text(label) }
-    )
+private fun NavigationBarItemButton(nav: NavHostController, route: String, target: String, label: String, icon: ImageVector) {
+    val selected = route == target
+    Surface(
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 4.dp, vertical = 5.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp)
+                .clickable { nav.navigate(target) { launchSingleTop = true; restoreState = true } },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, null, tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(label, style = MaterialTheme.typography.labelSmall)
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
