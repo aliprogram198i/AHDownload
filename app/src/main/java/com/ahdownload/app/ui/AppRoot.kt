@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,21 +50,24 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  }
 }
 @Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){
- NavigationBarItem(
-  selected=route==target,
-  onClick={
-   if(route!=target){
-    nav.navigate(target){
-     launchSingleTop=true
-     restoreState=true
-     popUpTo(nav.graph.startDestinationId){saveState=true}
+ Column(
+  Modifier
+   .weight(1f)
+   .clickable{
+    if(route!=target){
+     nav.navigate(target){
+      launchSingleTop=true
+      restoreState=true
+      popUpTo(nav.graph.startDestinationId){saveState=true}
+     }
     }
-   }
-  },
-  icon={Icon(icon,contentDescription=label)},
-  label={Text(label)},
-  alwaysShowLabel=true
- )
+   },
+  horizontalAlignment=Alignment.CenterHorizontally,
+  verticalArrangement=Arrangement.Center
+ ){
+  Icon(icon,contentDescription=label,tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+  Text(label,style=MaterialTheme.typography.labelSmall,color=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+ }
 }
 
 @Composable private fun HomeScreen(openDownloads:()->Unit){
