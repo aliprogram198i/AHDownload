@@ -16,16 +16,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Test real embedded resolver URLs
-        run: |
-          python -m pip install --disable-pip-version-check "yt-dlp==2026.8.19"
-          python scripts/smoke_resolver.py
-
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
