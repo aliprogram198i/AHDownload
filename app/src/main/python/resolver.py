@@ -101,6 +101,7 @@ def resolve(url, cookies=None):
                 "Chrome/140.0 Mobile Safari/537.36"
             ),
             "Accept-Language": "en-US,en;q=0.9",
+            **({"Cookie": cookies} if cookies else {}),
         },
     }
 
