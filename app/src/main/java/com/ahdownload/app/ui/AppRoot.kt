@@ -52,7 +52,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
 @Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){
  Column(
   Modifier
-   .weight(1f)
+   .fillMaxWidth(0.3333f)
    .clickable{
     if(route!=target){
      nav.navigate(target){
