@@ -14,10 +14,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -49,7 +49,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("settings"){SettingsScreen{nav.navigate("diagnostics")}};composable("diagnostics"){DiagnosticsScreen()}}}
  }
 }
-@Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){NavigationBarItem(selected=route==target,onClick={nav.navigate(target){launchSingleTop=true;restoreState=true;popUpTo(nav.graph.startDestinationId){saveState=true}}},icon={Icon(icon,label)},label={Text(label)})}
+@Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){Column(Modifier.weight(1f).fillMaxHeight().clickable{nav.navigate(target){launchSingleTop=true;restoreState=true;popUpTo(nav.graph.startDestinationId){saveState=true}}},horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Icon(icon,label,tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant);Text(label,style=MaterialTheme.typography.labelSmall,color=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)}}
 
 @Composable private fun HomeScreen(openDownloads:()->Unit){
  val context=LocalContext.current;val repository=remember{DownloadRepository(context)};val scope=rememberCoroutineScope()
