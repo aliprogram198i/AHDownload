@@ -180,7 +180,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
     if(audioFormats.size>4){
      TextButton(onClick={showMore},modifier=Modifier.fillMaxWidth()){
       Text(if(showMore)"إخفاء الخيارات الإضافية" else "عرض كل الجودات المتاحة ("+audioFormats.size+")")
-      Icon(if(showMore)Icons.Default.ExpandMore else Icons.Default.ExpandMore,null)
+      Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
      }
     }
     Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
@@ -243,7 +243,7 @@ private fun formatQuality(format:ResolvedFormat):String{
 
 private fun formatDetails(format:ResolvedFormat):String{
  val dimensions=if((format.width?:0)>0&&(format.height?:0)>0)format.width.toString()+"×"+format.height else null
- val audio=when{format.hasVideo&&format.hasAudio->"صوت مدمج";format.hasVideo->"بدون صوت";format.hasAudio->"صوت"}
+ val audio=when{format.hasVideo&&format.hasAudio->"صوت مدمج";format.hasVideo->"بدون صوت";format.hasAudio->"صوت";else->"وسائط"}
  val size=format.sizeBytes?.let{" • "+formatBytes(it)}?:""
  return listOfNotNull(dimensions,audio,format.ext.takeIf{it.isNotBlank()}?.uppercase(Locale.US),size.removePrefix(" • ").takeIf{it.isNotBlank()}).joinToString(" • ")
 }
