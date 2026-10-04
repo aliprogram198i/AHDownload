@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    2
+    3
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -23,7 +23,10 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
                 total_bytes INTEGER,
                 output_uri TEXT,
                 thumbnail_url TEXT,
-                duration_ms INTEGER
+                duration_ms INTEGER,
+                speed_bps INTEGER NOT NULL DEFAULT 0,
+                eta_seconds INTEGER,
+                error_code TEXT
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX idx_downloads_status ON downloads(status)")
@@ -33,6 +36,11 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 2) {
             db.execSQL("ALTER TABLE downloads ADD COLUMN thumbnail_url TEXT")
             db.execSQL("ALTER TABLE downloads ADD COLUMN duration_ms INTEGER")
+        }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN speed_bps INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN eta_seconds INTEGER")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN error_code TEXT")
         }
     }
 }
