@@ -113,6 +113,8 @@ class WebViewSessionBridge(private val context: Context) {
                         ? (document.documentElement.outerHTML || '') : '';
                       const escaped = html
                         .replace(/\\\\\//g, '/')
+                        .replace(/\\u002F/gi, '/')
+                        .replace(/\\u003A/gi, ':')
                         .replace(/\\u0026/gi, '&');
                       const mediaPatterns = [
                         /https?:\\/\\/[^"'<>\\s]+?\\.(?:mp4|m4v|webm|mov)(?:[?#][^"'<>\\s]*)?/gi,
