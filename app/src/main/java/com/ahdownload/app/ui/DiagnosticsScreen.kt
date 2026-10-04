@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,11 +21,17 @@ import com.ahdownload.app.diagnostics.AppLogger
 fun DiagnosticsScreen() {
     val context = LocalContext.current
     var log by remember { mutableStateOf(AppLogger.copyText(context)) }
+    fun refreshLog() { log = AppLogger.copyText(context) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("سجل التطبيق", style = MaterialTheme.typography.headlineMedium)
         Text("سجل تشخيص حقيقي محفوظ محلياً. لا يتم إرسال السجل إلى خادم.", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { refreshLog() }) {
+                Icon(Icons.Default.Refresh, null)
+                Spacer(Modifier.width(6.dp))
+                Text("تحديث")
+            }
             Button(onClick = {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", log))
@@ -43,7 +50,7 @@ fun DiagnosticsScreen() {
             }
             OutlinedButton(onClick = {
                 AppLogger.clear(context)
-                log = AppLogger.copyText(context)
+                refreshLog()
             }) {
                 Icon(Icons.Default.DeleteSweep, null)
                 Spacer(Modifier.width(6.dp))
