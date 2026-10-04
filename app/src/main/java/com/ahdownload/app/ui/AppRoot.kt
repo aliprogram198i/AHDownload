@@ -15,6 +15,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
@@ -258,7 +259,10 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  Card(
   onClick=onClick,
   modifier=Modifier.fillMaxWidth(),
-  colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
+  colors=CardDefaults.cardColors(containerColor=animateColorAsState(
+   if(selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+   label="recommendedColor"
+  ).value),
   shape=RoundedCornerShape(18.dp)
  ){
   Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
@@ -267,7 +271,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
      Text("موصى بها",Modifier.padding(horizontal=9.dp,vertical=5.dp),color=MaterialTheme.colorScheme.onPrimary,style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
     }
     Spacer(Modifier.weight(1f))
-    if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
+    if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.graphicsLayer{scaleX=1.08f;scaleY=1.08f})
    }
    Text(formatQuality(format),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
    Text(formatDetails(format),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
