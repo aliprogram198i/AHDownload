@@ -60,15 +60,15 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   val nav=rememberNavController();val entry by nav.currentBackStackEntryAsState();val route=entry?.destination?.route?:"home"
   Scaffold(
    containerColor=MaterialTheme.colorScheme.background,
-   topBar={if(route!="home")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="settings")"الإعدادات" else if(route=="accounts")"الحسابات" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
-   bottomBar={NavigationBar{NavItem(nav,route,"home","الرئيسية",Icons.Default.Home);NavItem(nav,route,"downloads","التنزيلات",Icons.Default.Download);NavItem(nav,route,"settings","الإعدادات",Icons.Default.Settings)}}
-  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")})};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
+   topBar={if(route!="home")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="settings")"الإعدادات" else if(route=="accounts")"الحسابات" else if(route=="studio")"Smart Studio" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
+   bottomBar={NavigationBar{NavItem(nav,route,"home","الرئيسية",Icons.Default.Home);NavItem(nav,route,"downloads","التنزيلات",Icons.Default.Download);NavItem(nav,route,"studio","الاستوديو",Icons.Default.AutoFixHigh);NavItem(nav,route,"settings","الإعدادات",Icons.Default.Settings)}}
+  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")})};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
  }
 }
 @Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){
  Column(
   Modifier
-   .fillMaxWidth(0.3333f)
+   .fillMaxWidth(0.25f)
    .clickable{
     if(route!=target){
      nav.navigate(target){
