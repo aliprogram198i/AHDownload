@@ -1,6 +1,10 @@
 package com.ahdownload.app.download
 
 import android.webkit.MimeTypeMap
+import android.webkit.CookieManager
+import androidx.core.app.NotificationCompat
+import android.app.PendingIntent
+import com.ahdownload.app.MainActivity
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -15,11 +19,13 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
+    companion object { private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36" }
     companion object {
         const val KEY_JOB_ID = "job_id"
         const val KEY_URL = "url"
         const val KEY_TITLE = "title"
         const val KEY_EXTENSION = "extension"
+        const val KEY_SOURCE_URL = "source_url"
     }
 
     private val client = OkHttpClient.Builder()
@@ -32,6 +38,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val url = inputData.getString(KEY_URL) ?: return Result.failure()
         val title = inputData.getString(KEY_TITLE) ?: "download"
         val requestedExtension = inputData.getString(KEY_EXTENSION).orEmpty()
+        val sourceUrl = inputData.getString(KEY_SOURCE_URL).orEmpty()
         val repo = DownloadRepository(applicationContext)
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
@@ -48,9 +55,20 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val part = File(dir, "$safeTitle.$extension.part")
             var existing = if (part.exists()) part.length() else 0L
 
-            val request = Request.Builder().url(url).apply {
-                if (existing > 0L) header("Range", "bytes=$existing-")
-            }.build()
+            val requestBuilder = Request.Builder().url(url)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "*/*")
+            if (sourceUrl.isNotBlank()) requestBuilder.header("Referer", sourceUrl)
+            val sourceHost = runCatching { okhttp3.HttpUrl.parse(sourceUrl)?.host?.lowercase() }.getOrNull().orEmpty()
+            if (sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ||
+                sourceHost == "youtube.com" || sourceHost.endsWith(".youtube.com")) {
+                runCatching { CookieManager.getInstance().getCookie(sourceUrl) }
+                    .getOrNull()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { requestBuilder.header("Cookie", it) }
+            }
+            if (existing > 0L) requestBuilder.header("Range", "bytes=$existing-")
+            val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -116,6 +134,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 )
             }
             AppLogger.info(applicationContext, "download.completed", "job=$jobId")
+            notifyCompleted(jobId, title)
             Result.success()
         } catch (e: IOException) {
             repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING) }
@@ -126,5 +145,29 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             AppLogger.error(applicationContext, "download.failed", e, "job=$jobId")
             Result.failure()
         }
+    private fun notifyCompleted(jobId: String, title: String) {
+        val prefs = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("notifications", true)) return
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                applicationContext, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+
+        val intent = android.content.Intent(applicationContext, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(
+            applicationContext, jobId.hashCode(), intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(applicationContext, "downloads")
+            .setSmallIcon(com.ahdownload.app.R.drawable.ic_ahdownload)
+            .setContentTitle("اكتمل التنزيل")
+            .setContentText(title)
+            .setContentIntent(pending)
+            .setAutoCancel(true)
+            .build()
+        androidx.core.app.NotificationManagerCompat.from(applicationContext)
+            .notify(jobId.hashCode(), notification)
+    }
+
     }
 }
