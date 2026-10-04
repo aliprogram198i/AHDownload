@@ -162,7 +162,7 @@ class DownloadRepository private constructor(context: Context) {
             ExistingWorkPolicy.REPLACE,
             request
         )
-        return truee
+        return true
     }
 
     /** Enqueue one refreshed format as the single authoritative worker for this job. */
