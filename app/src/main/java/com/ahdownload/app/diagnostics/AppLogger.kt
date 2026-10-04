@@ -105,7 +105,19 @@ object AppLogger {
         // not embedded in a URL.
         result = result.replace(
             Regex("""(?im)^(\s*(?:cookie|authorization|proxy-authorization|set-cookie|x-csrftoken|password|passwd|secret|access_token|refresh_token|sessionid|token)\s*[:=]\s*)[^\n]+"""),
+            "${'
+        )
+        result = result.replace(
+            Regex("""(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key|oe|igshid)=)[^&\s]+"""),
             "$1[REDACTED]"
+        )
+        return result
+    }
+
+    private fun now(): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date())
+}
+ }1[REDACTED]"
         )
         result = result.replace(
             Regex("""(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key|oe|igshid)=)[^&\s]+"""),
