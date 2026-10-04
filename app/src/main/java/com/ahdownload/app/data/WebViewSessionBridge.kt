@@ -15,12 +15,13 @@ import kotlin.coroutines.resume
 data class WebViewMediaSnapshot(
     val cookies: String?,
     val title: String?,
-    val mediaUrls: List<String>
+    val mediaUrls: List<String>,
+    val authenticated: Boolean
 )
 
 /**
- * Loads a platform page in Android WebView and captures both session cookies
- * and media resource URLs. No cookie value is logged or returned to telemetry.
+ * Loads a platform page in Android WebView and captures session state plus
+ * media URLs. Cookie values are never logged or exposed to telemetry.
  */
 class WebViewSessionBridge(private val context: Context) {
     @SuppressLint("SetJavaScriptEnabled")
@@ -35,6 +36,8 @@ class WebViewSessionBridge(private val context: Context) {
             var finished = false
             var timeoutRunnable: Runnable? = null
             val capturedUrls = linkedSetOf<String>()
+            var pageAuthenticated = false
+            var pageTitle: String? = null
 
             fun addCandidate(raw: String?) {
                 val value = raw?.trim().orEmpty()
@@ -64,8 +67,25 @@ class WebViewSessionBridge(private val context: Context) {
             fun currentCookies(): String? =
                 CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }
 
+            fun cookieAuthenticated(cookies: String?): Boolean {
+                val names = cookies.orEmpty()
+                    .split(';')
+                    .mapNotNull { it.trim().substringBefore('=').takeIf(String::isNotBlank) }
+                    .toSet()
+                val host = runCatching { android.net.Uri.parse(url).host.orEmpty().lowercase() }.getOrDefault("")
+                return when {
+                    host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" ->
+                        setOf("SID", "SAPISID", "APISID", "__Secure-3PSID", "LOGIN_INFO").any(names::contains)
+                    host == "instagram.com" || host.endsWith(".instagram.com") ->
+                        "sessionid" in names
+                    host == "facebook.com" || host.endsWith(".facebook.com") ->
+                        "c_user" in names && "xs" in names
+                    else -> false
+                }
+            }
+
             fun fallbackSnapshot(): WebViewMediaSnapshot =
-                WebViewMediaSnapshot(currentCookies(), null, capturedUrls.take(32))
+                WebViewMediaSnapshot(currentCookies(), pageTitle, capturedUrls.take(64), pageAuthenticated || cookieAuthenticated(currentCookies()))
 
             fun inspect(view: WebView, attempt: Int = 1) {
                 val script = """
@@ -73,7 +93,10 @@ class WebViewSessionBridge(private val context: Context) {
                       const urls = new Set();
                       const add = (v) => {
                         if (!v) return;
-                        try { v = new URL(v, location.href).href; } catch (_) {}
+                        try {
+                          v = v.replace(/\\\//g, '/');
+                          v = new URL(v, location.href).href;
+                        } catch (_) {}
                         if (/^https?:\/\//i.test(v)) urls.add(v);
                       };
                       document.querySelectorAll('video').forEach(v => {
@@ -85,23 +108,52 @@ class WebViewSessionBridge(private val context: Context) {
                         'meta[property="og:video"], meta[property="og:video:secure_url"], ' +
                         'meta[name="twitter:player:stream"]'
                       ).forEach(m => add(m.content));
+
+                      const html = document.documentElement
+                        ? (document.documentElement.outerHTML || '') : '';
+                      const escaped = html
+                        .replace(/\\\\\//g, '/')
+                        .replace(/\\u0026/gi, '&');
+                      const mediaPatterns = [
+                        /https?:\\/\\/[^"'<>\\s]+?\\.(?:mp4|m4v|webm|mov)(?:[?#][^"'<>\\s]*)?/gi,
+                        /https?:\\/\\/[^"'<>\\s]*(?:cdninstagram|fbcdn|scontent)[^"'<>\\s]*/gi,
+                        /"video_url"\\s*:\\s*"([^"]+)"/gi,
+                        /"playback_url"\\s*:\\s*"([^"]+)"/gi
+                      ];
+                      mediaPatterns.forEach(re => {
+                        let match;
+                        while ((match = re.exec(escaped)) !== null) add(match[1] || match[0]);
+                      });
+
                       try {
                         performance.getEntriesByType('resource').forEach(e => {
                           const n = e.name || '';
-                          if (/\.(?:mp4|m4v|webm|mov|m3u8)(?:[?#]|$)/i.test(n) ||
-                              /\/(?:video|playback|stream)(?:[/?]|$)/i.test(n) ||
+                          if (/\\.(?:mp4|m4v|webm|mov|m3u8)(?:[?#]|$)/i.test(n) ||
+                              /\\/(?:video|playback|stream)(?:[/?]|$)/i.test(n) ||
                               /(cdninstagram|fbcdn|scontent)/i.test(n)) add(n);
                         });
                       } catch (_) {}
-                      try {
-                        const html = document.documentElement
-                          ? (document.documentElement.outerHTML || '') : '';
-                        const matches = html.match(/https?:\/\/[^"'<>\s]+/gi) || [];
-                        matches.forEach(add);
-                      } catch (_) {}
+
+                      const bodyText = (document.body && document.body.innerText || '').toLowerCase();
+                      const host = location.hostname.toLowerCase();
+                      const hasYoutubeAccount =
+                        !!document.querySelector('ytd-masthead #avatar-btn, ytd-topbar-menu-button-renderer #avatar-btn') ||
+                        (!!document.querySelector('ytd-masthead') && !bodyText.includes('sign in'));
+                      const hasInstagramAccount =
+                        !!document.querySelector('svg[aria-label="Home"], svg[aria-label="New post"]') &&
+                        !bodyText.includes('log in');
+                      const hasFacebookAccount =
+                        !!document.querySelector('[aria-label*="Account"], [aria-label*="profile" i]') &&
+                        !bodyText.includes('log in');
+                      const authenticated =
+                        (host.includes('youtube.') || host === 'youtu.be') ? hasYoutubeAccount :
+                        host.includes('instagram.') ? hasInstagramAccount :
+                        host.includes('facebook.') ? hasFacebookAccount : false;
+
                       return JSON.stringify({
                         title: document.title || null,
-                        urls: Array.from(urls).slice(0, 32)
+                        authenticated,
+                        urls: Array.from(urls).slice(0, 64)
                       });
                     })();
                 """.trimIndent()
@@ -113,15 +165,17 @@ class WebViewSessionBridge(private val context: Context) {
                         org.json.JSONObject(decoded)
                     }.getOrNull()
 
-                    val title = parsed?.optString("title")?.takeIf { it.isNotBlank() }
+                    parsed?.optString("title")?.takeIf { it.isNotBlank() }?.let { pageTitle = it }
+                    pageAuthenticated = pageAuthenticated || (parsed?.optBoolean("authenticated", false) == true)
                     parsed?.optJSONArray("urls")?.let { array ->
                         for (i in 0 until array.length()) addCandidate(array.optString(i))
                     }
 
-                    if (capturedUrls.isNotEmpty() || attempt >= 3) {
-                        finish(WebViewMediaSnapshot(currentCookies(), title, capturedUrls.take(32)))
+                    if (attempt >= 4 || capturedUrls.any { isLikelyMediaUrl(it) }) {
+                        val cookies = currentCookies()
+                        finish(WebViewMediaSnapshot(cookies, pageTitle, capturedUrls.take(64), pageAuthenticated || cookieAuthenticated(cookies)))
                     } else {
-                        main.postDelayed({ inspect(view, attempt + 1) }, 2_000L)
+                        main.postDelayed({ inspect(view, attempt + 1) }, 1_500L)
                     }
                 }
             }
@@ -140,15 +194,14 @@ class WebViewSessionBridge(private val context: Context) {
 
                 view.settings.javaScriptEnabled = true
                 view.settings.domStorageEnabled = true
-                view.settings.databaseEnabled = true
                 view.settings.mediaPlaybackRequiresUserGesture = false
                 view.settings.userAgentString =
-                    "Mozilla/5.0 (Linux; Android 15; Mobile) " +
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
+                    "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
-                        main.postDelayed({ inspect(view, 1) }, 1_500L)
+                        main.postDelayed({ inspect(view, 1) }, 1_200L)
                     }
 
                     override fun onLoadResource(view: WebView, resourceUrl: String) {
@@ -182,4 +235,9 @@ class WebViewSessionBridge(private val context: Context) {
                 main.post { finish(fallbackSnapshot()) }
             }
         }
+
+    private fun isLikelyMediaUrl(url: String): Boolean =
+        Regex("""(?i)\.(?:mp4|m4v|webm|mov)(?:[?#].*)?$""").containsMatchIn(url) ||
+            Regex("""(?i)(cdninstagram|fbcdn|scontent).*(?:video|\.mp4)""").containsMatchIn(url)
+
 }

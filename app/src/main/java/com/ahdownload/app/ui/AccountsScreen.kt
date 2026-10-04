@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
+import com.ahdownload.app.data.WebViewSessionBridge
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +39,8 @@ fun AccountsScreen() {
     var selected by remember { mutableStateOf<PlatformAccount?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var loginError by remember { mutableStateOf<String?>(null) }
+    var verifying by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     if (selected != null) {
         Column(Modifier.fillMaxSize()) {
@@ -45,25 +49,43 @@ fun AccountsScreen() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(selected!!.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = {
-                    CookieManager.getInstance().flush()
-                    val cookies = CookieManager.getInstance().getCookie(selected!!.url).orEmpty()
-                    val authenticated = hasAuthenticatedSession(selected!!.key, cookies)
-                    if (authenticated) {
-                        AppLogger.info(context, "account.session_saved", "platform=" + selected!!.key)
-                        loginError = null
-                        selected = null
-                        refresh++
-                    } else {
-                        AppLogger.error(
-                            context,
-                            "account.session_not_verified",
-                            IllegalStateException("AUTH_SESSION_NOT_VERIFIED"),
-                            "platform=" + selected!!.key
-                        )
-                        loginError = "لم يتم التحقق من جلسة تسجيل الدخول. أكمل تسجيل الدخول داخل الصفحة ثم اضغط تم."
+                TextButton(
+                    enabled = !verifying,
+                    onClick = {
+                        val account = selected ?: return@TextButton
+                        scope.launch {
+                            verifying = true
+                            loginError = null
+                            runCatching {
+                                CookieManager.getInstance().flush()
+                                WebViewSessionBridge(context).snapshotFor(account.url, timeoutMs = 15_000L)
+                            }.onSuccess { snapshot ->
+                                if (snapshot.authenticated) {
+                                    AppLogger.info(context, "account.session_saved", "platform=" + account.key)
+                                    selected = null
+                                    refresh++
+                                } else {
+                                    AppLogger.error(
+                                        context,
+                                        "account.session_not_verified",
+                                        IllegalStateException("AUTH_SESSION_NOT_VERIFIED"),
+                                        "platform=" + account.key
+                                    )
+                                    loginError = "لم يتم التحقق من جلسة تسجيل الدخول. أكمل تسجيل الدخول داخل الصفحة ثم اضغط تم مرة أخرى."
+                                }
+                            }.onFailure { failure ->
+                                AppLogger.error(
+                                    context,
+                                    "account.session_verification_failed",
+                                    failure,
+                                    "platform=" + account.key
+                                )
+                                loginError = "تعذر فحص جلسة الحساب. أعد المحاولة."
+                            }
+                            verifying = false
+                        }
                     }
-                }) { Text("تم") }
+                ) { Text(if (verifying) "جارٍ التحقق..." else "تم") }
             }
             loginError?.let {
                 Card(

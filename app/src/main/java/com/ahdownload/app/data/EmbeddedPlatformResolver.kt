@@ -86,7 +86,7 @@ class EmbeddedPlatformResolver(
                     val bridge = WebViewSessionBridge(context)
                     val snapshot = bridge.snapshotFor(cleanUrl)
                     if (!snapshot.cookies.isNullOrBlank()) {
-                        AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true candidates=" + snapshot.mediaUrls.size)
+                        AppLogger.info(context, "resolver.webview_session", "cookies_obtained=" + (!snapshot.cookies.isNullOrBlank()) + " authenticated=" + snapshot.authenticated + " candidates=" + snapshot.mediaUrls.size)
                         try {
                             return@runCatching call(snapshot.cookies)
                         } catch (sessionFailure: Throwable) {
@@ -133,7 +133,7 @@ class EmbeddedPlatformResolver(
     }
 
     private fun probeWebViewMedia(sourceUrl: String, snapshot: WebViewMediaSnapshot): ResolvedMedia? {
-        for (candidate in snapshot.mediaUrls.distinct()) {
+        for (candidate in snapshot.mediaUrls.distinct().sortedByDescending(::mediaCandidateScore)) {
             runCatching {
                 val builder = Request.Builder()
                     .url(candidate)
@@ -152,9 +152,10 @@ class EmbeddedPlatformResolver(
                         .orEmpty()
                     if (contentType.startsWith("text/") || contentType == "application/xhtml+xml") return@use
                     if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegurl") return@use
-                    if (!contentType.startsWith("video/") && !contentType.startsWith("audio/")) return@use
+                    val extensionLooksMedia = candidate.substringBefore("?").substringBefore("#").lowercase().let { it.endsWith(".mp4") || it.endsWith(".m4v") || it.endsWith(".webm") || it.endsWith(".mov") || it.endsWith(".m4a") || it.endsWith(".mp3") }
+                    if (!contentType.startsWith("video/") && !contentType.startsWith("audio/") && !(contentType == "application/octet-stream" && extensionLooksMedia)) return@use
 
-                    val isVideo = contentType.startsWith("video/")
+                    val isVideo = contentType.startsWith("video/") || extensionLooksMedia && candidate.substringBefore("?").substringBefore("#").lowercase().let { it.endsWith(".mp4") || it.endsWith(".m4v") || it.endsWith(".webm") || it.endsWith(".mov") }
                     val ext = extensionFor(contentType, candidate)
                     val size = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
                     return ResolvedMedia(
@@ -181,6 +182,18 @@ class EmbeddedPlatformResolver(
             }
         }
         return null
+    }
+
+    private fun mediaCandidateScore(url: String): Int {
+        val lower = url.lowercase()
+        var score = 0
+        if (lower.contains("cdninstagram")) score += 40
+        if (lower.contains("fbcdn") || lower.contains("scontent")) score += 30
+        if (lower.contains(".mp4")) score += 50
+        if (lower.contains(".m4v") || lower.contains(".mov")) score += 35
+        if (lower.contains(".m3u8")) score -= 100
+        if (lower.contains("thumbnail") || lower.contains("profile") || lower.contains("avatar")) score -= 60
+        return score
     }
 
     private fun extensionFor(contentType: String, url: String): String {
