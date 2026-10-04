@@ -5,7 +5,11 @@ plugins {
 
 android {
     namespace = "com.ahdownload.app"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "com.ahdownload.app"
