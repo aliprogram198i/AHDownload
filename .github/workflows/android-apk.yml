@@ -185,7 +185,18 @@ jobs:
             for screen in home downloads studio settings; do
               if ! timeout 30s adb exec-out run-as com.ahdownload.app.debug cat "files/visual-audit/$screen.png" > "visual-audit/$screen.png"; then
                 echo "VISUAL_EVIDENCE_EXTRACTION_FAILED screen=$screen"
-                diagnostics
+                    echo "::group::ADB device state"
+                adb devices -l || true
+                adb shell getprop ro.build.version.sdk || true
+                adb shell getprop sys.boot_completed || true
+                echo "::endgroup::"
+                echo "::group::Package state"
+                adb shell dumpsys package com.ahdownload.app || true
+                adb shell dumpsys activity activities | tail -n 120 || true
+                echo "::endgroup::"
+                echo "::group::Recent logcat"
+                adb logcat -d -t 1000 || true
+                echo "::endgroup::"
                 exit 1
               fi
               test -s "visual-audit/$screen.png"
