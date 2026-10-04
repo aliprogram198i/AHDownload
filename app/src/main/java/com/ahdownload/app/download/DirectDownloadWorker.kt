@@ -21,6 +21,8 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import android.media.MediaExtractor
 import android.media.MediaMuxer
 import android.media.MediaFormat
@@ -37,6 +39,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_AUDIO_URL = "audio_url"
         const val KEY_AUDIO_EXTENSION = "audio_extension"
         private const val MAX_RETRY_ATTEMPTS = 3
+        private val downloadSemaphore = Semaphore(2)
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
     }
 
@@ -55,7 +58,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val audioUrl = inputData.getString(KEY_AUDIO_URL).orEmpty()
         val audioExtension = inputData.getString(KEY_AUDIO_EXTENSION).orEmpty()
         val repo = DownloadRepository.get(applicationContext)
-        return try {
+        return downloadSemaphore.withPermit {
+            try {
             clearFailureState(repo, jobId)
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             notifyProgress(jobId, title, 0, null, 0L)
@@ -244,6 +248,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
             AppLogger.error(applicationContext, "download.failed", e, "job=$jobId")
             Result.failure()
+            }
         }
     }
 
