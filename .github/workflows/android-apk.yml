@@ -109,7 +109,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot-load -no-snapshot-save -noaudio -no-boot-anim -camera-back none -camera-front none
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
 
             diagnostics() {
               echo "::group::ADB device state"
@@ -132,7 +132,7 @@ jobs:
 
             boot_completed=""
             for _ in $(seq 1 90); do
-              boot_completed="$(adb shell getprop sys.boot_completed | tr -d '\r')"
+              boot_completed="$(adb shell getprop sys.boot_completed | tr -d '\r')" || true
               [ "$boot_completed" = "1" ] && break
               sleep 2
             done
