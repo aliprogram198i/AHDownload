@@ -30,8 +30,12 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$AH_KEYSTORE_BASE64"
+          test -n "${{ secrets.AH_KEYSTORE_PASSWORD }}"
+          test -n "${{ secrets.AH_KEY_ALIAS }}"
+          test -n "${{ secrets.AH_KEY_PASSWORD }}"
           printf '%s' "$AH_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/AHDownload-release.keystore"
           test -s "$RUNNER_TEMP/AHDownload-release.keystore"
+          keytool -list -keystore "$RUNNER_TEMP/AHDownload-release.keystore" -storepass "${{ secrets.AH_KEYSTORE_PASSWORD }}" -alias "${{ secrets.AH_KEY_ALIAS }}" >/dev/null
 
       - name: Build signed release APK
         env:
