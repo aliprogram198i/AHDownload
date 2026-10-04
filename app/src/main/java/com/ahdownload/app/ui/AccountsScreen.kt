@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +36,7 @@ fun AccountsScreen() {
     val context = LocalContext.current
     var selected by remember { mutableStateOf<PlatformAccount?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
+    var loginError by remember { mutableStateOf<String?>(null) }
 
     if (selected != null) {
         Column(Modifier.fillMaxSize()) {
@@ -45,10 +47,37 @@ fun AccountsScreen() {
                 Text(selected!!.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                 TextButton(onClick = {
                     CookieManager.getInstance().flush()
-                    AppLogger.info(context, "account.session_saved", "platform=" + selected!!.key)
-                    selected = null
-                    refresh++
+                    val cookies = CookieManager.getInstance().getCookie(selected!!.url).orEmpty()
+                    val authenticated = hasAuthenticatedSession(selected!!.key, cookies)
+                    if (authenticated) {
+                        AppLogger.info(context, "account.session_saved", "platform=" + selected!!.key)
+                        loginError = null
+                        selected = null
+                        refresh++
+                    } else {
+                        AppLogger.error(
+                            context,
+                            "account.session_not_verified",
+                            IllegalStateException("AUTH_SESSION_NOT_VERIFIED"),
+                            "platform=" + selected!!.key
+                        )
+                        loginError = "لم يتم التحقق من جلسة تسجيل الدخول. أكمل تسجيل الدخول داخل الصفحة ثم اضغط تم."
+                    }
                 }) { Text("تم") }
+            }
+            loginError?.let {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    ListItem(
+                        leadingContent = { Icon(Icons.Default.Warning, null) },
+                        headlineContent = { Text("تعذر التحقق من الحساب") },
+                        supportingContent = { Text(it) }
+                    )
+                }
             }
             AndroidView(
                 factory = {
@@ -125,5 +154,21 @@ fun AccountsScreen() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+
+private fun hasAuthenticatedSession(platform: String, cookies: String): Boolean {
+    val names = cookies.split(';')
+        .mapNotNull { part ->
+            part.trim().substringBefore('=').takeIf { it.isNotBlank() }
+        }
+        .toSet()
+
+    return when (platform) {
+        "instagram" -> "sessionid" in names
+        "facebook" -> "c_user" in names && "xs" in names
+        "youtube" -> setOf("SID", "SAPISID", "APISID").any(names::contains)
+        else -> false
     }
 }
