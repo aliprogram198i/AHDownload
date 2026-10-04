@@ -98,7 +98,9 @@ def _decode_url(value):
         value = json.loads('"' + value.replace('"', '\\"') + '"')
     except Exception:
         pass
-    return value
+    value = value.replace("\\u002F", "/").replace("\\u003A", ":").replace("\\u0026", "&")
+    return urllib.parse.unquote(value)
+
 
 
 def _instagram_page_fallback(url, cookies=None):
