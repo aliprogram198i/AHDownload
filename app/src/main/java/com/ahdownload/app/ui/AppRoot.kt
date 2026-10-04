@@ -172,8 +172,8 @@ private fun NavItem(
    scope.launch{
     if(platform==null){
      DirectUrlResolver().resolve(clean).onSuccess{resolved->
-      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}
-      if(formats.isEmpty()){error="الرابط المباشر لم يعرض ملف وسائط قابلًا للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
+      val formats=resolved.formats
+      if(formats.isEmpty()){error="الرابط المباشر لم يعرض ملفًا قابلاً للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
       else{
        analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds,resolved.thumbnail,formats.firstOrNull()?.mediaType ?: MediaType.FILE, profile.value)
        AppLogger.info(context,"analysis.success","platform=Direct formats="+formats.size)
@@ -187,7 +187,7 @@ private fun NavItem(
        video + audio
       }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
-      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds,resolved.thumbnail);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
+      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds,resolved.thumbnail,MediaType.VIDEO,profile.value);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
      }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
     }
     analyzing=false
@@ -234,8 +234,8 @@ private fun NavItem(
 }
 @Composable private fun UrlCard(url:String,analyzing:Boolean,onUrlChange:(String)->Unit,onPaste:()->Unit,onAnalyze:()->Unit){
  Card(shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
-  Text("رابط الفيديو",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
-  OutlinedTextField(value=url,onValueChange=onUrlChange,Modifier.fillMaxWidth(),placeholder={Text("الصق رابط الفيديو هنا")},singleLine=true,shape=RoundedCornerShape(16.dp),leadingIcon={Icon(Icons.Default.Link,null)},trailingIcon={if(url.isBlank())IconButton(onPaste){Icon(Icons.Default.ContentPaste,"لصق")}else IconButton({onUrlChange("")}){Icon(Icons.Default.Clear,"مسح")}})
+  Text("رابط الوسائط أو الملف",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
+  OutlinedTextField(value=url,onValueChange=onUrlChange,Modifier.fillMaxWidth(),placeholder={Text("الصق رابط فيديو أو صوت أو ملف هنا")},singleLine=true,shape=RoundedCornerShape(16.dp),leadingIcon={Icon(Icons.Default.Link,null)},trailingIcon={if(url.isBlank())IconButton(onPaste){Icon(Icons.Default.ContentPaste,"لصق")}else IconButton({onUrlChange("")}){Icon(Icons.Default.Clear,"مسح")}})
   AHGradientButton(onClick=onAnalyze,enabled=url.trim().startsWith("http")&&!analyzing,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(16.dp)){if(analyzing){CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp);Spacer(Modifier.width(9.dp));Text("جاري استخراج الصيغ…")}else{Icon(Icons.Default.Search,null);Spacer(Modifier.width(8.dp));Text("تحليل الرابط")}}
  }}
 }
