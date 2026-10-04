@@ -369,6 +369,12 @@ private fun AnalysisSkeleton() {
      Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text(if(mode=="video")"تنزيل الفيديو" else "تنزيل الصوت")
     }
    }
+   val multiItems = info.formats.count { it.itemIndex > 0 }
+   if (multiItems > 1) {
+    TextButton(onClick = { info.formats.filter { it.itemIndex > 0 }.forEach(onDownload) }, modifier = Modifier.fillMaxWidth()) {
+     Icon(Icons.Default.DownloadDone, null); Spacer(Modifier.width(5.dp)); Text("\u062a\u0646\u0632\u064a\u0644 \u0643\u0644 \u0627\u0644\u0639\u0646\u0627\u0635\u0631 (" + multiItems + ")")
+    }
+   }
    Text("الصيغ مبنية على مصادر حقيقية فقط. الصيغة التي تظهر «بدون صوت» يمكن تنزيلها كفيديو فقط، بينما صيغ الدمج المدعومة تعرض «صوت مدمج».",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
   }
  }
