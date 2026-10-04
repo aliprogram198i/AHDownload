@@ -32,7 +32,9 @@ data class ResolvedFormat(
         hasVideo -> MediaType.VIDEO
         hasAudio -> MediaType.AUDIO
         else -> MediaType.FILE
-    }
+    },
+    val itemIndex: Int = 0,
+    val itemLabel: String? = null
 )
 
 data class ResolvedMedia(
