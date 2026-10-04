@@ -20,9 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.ui.DesignAudit
 
-private fun buildDesignSnapshot(): String {
-    return buildString {
+private fun buildDesignSnapshot(context: Context): String {
+    return DesignAudit.snapshot(context) + "\n" + buildString {
         appendLine("AHDownload UI DESIGN SNAPSHOT")
         appendLine("generated_at=" + System.currentTimeMillis())
         appendLine("theme=AHDownloadTheme")
@@ -40,8 +41,8 @@ private fun buildDesignSnapshot(): String {
 fun DiagnosticsScreen() {
     val context = LocalContext.current
     var log by remember { mutableStateOf(AppLogger.copyText(context)) }
-    var designSnapshot by remember { mutableStateOf(buildDesignSnapshot()) }
-    fun refreshLog() { log = AppLogger.copyText(context); designSnapshot = buildDesignSnapshot() }
+    var designSnapshot by remember { mutableStateOf(buildDesignSnapshot(context)) }
+    fun refreshLog() { log = AppLogger.copyText(context); designSnapshot = buildDesignSnapshot(context) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("سجل التطبيق", style = MaterialTheme.typography.headlineMedium)
         Text("سجل تشخيص حقيقي محفوظ محلياً. لا يتم إرسال السجل إلى خادم.", style = MaterialTheme.typography.bodyMedium)
