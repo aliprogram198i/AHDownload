@@ -54,11 +54,12 @@ class VisualSmokeTest {
             )
             try {
                 view.draw(Canvas(bitmap))
-                val directory = File(
-                    composeRule.activity.filesDir,
-                    "visual-audit"
-                ).apply { mkdirs() }
-                FileOutputStream(File(directory, "$name.png")).use { output ->
+                val directory = composeRule.activity.getDir(
+                    "visual-audit",
+                    android.content.Context.MODE_PRIVATE
+                )
+                val outputFile = java.io.File(directory, "$name.png")
+                java.io.FileOutputStream(outputFile).use { output: java.io.FileOutputStream ->
                     check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                         "VISUAL_CAPTURE_WRITE_FAILED"
                     }
