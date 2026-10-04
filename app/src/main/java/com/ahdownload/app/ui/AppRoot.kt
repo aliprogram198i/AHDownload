@@ -199,7 +199,25 @@ private fun NavItem(
   }}
   if(analyzing) item{AnalysisSkeleton()}
   item{AnimatedVisibility(error!=null){InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())}}
-  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext,selected.mergeRequired,selected.audioUrl,selected.audioExt,selected.httpHeaders,selected.audioHeaders,info.thumbnailUrl,info.durationSeconds?.times(1000L)?.toLong(),info.url);url="";analysis=null;openDownloads()}}}
+  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(
+ selected.url,
+ buildDownloadTitle(info.title,selected),
+ selected.ext,
+ selected.mergeRequired,
+ selected.audioUrl,
+ selected.audioExt,
+ selected.httpHeaders,
+ selected.audioHeaders,
+ info.thumbnailUrl,
+ info.durationSeconds?.times(1000L)?.toLong(),
+ info.url,
+ selected.mediaType,
+ formatQuality(selected),
+ selected.codec,
+ selected.fps,
+ selected.tbr
+)
+url="";analysis=null;openDownloads()}}}
  }
 }
 
@@ -435,6 +453,7 @@ private fun formatDetails(format:ResolvedFormat):String{
 }
 
 @Composable private fun DownloadsScreen(openStudio:()->Unit){
+ LaunchedEffect(Unit){ DesignAudit.recordComponent("DownloadsScreen") }
  val context=LocalContext.current
  val repository=remember{DownloadRepository.get(context)}
  val vm:DownloadsViewModel=viewModel()
@@ -529,7 +548,28 @@ private fun formatDetails(format:ResolvedFormat):String{
        Icon(if(job.favorite)Icons.Default.Star else Icons.Default.StarBorder,contentDescription=if(job.favorite)"إزالة من المفضلة" else "إضافة للمفضلة",tint=if(job.favorite)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
       }
      }
-     Text(statusLabel(job.status)+(job.durationMs?.let{" • "+formatDuration(it/1000.0)}?:""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     Text(
+      buildString {
+       append(statusLabel(job.status))
+       job.qualityLabel?.let { append(" • "); append(it) }
+       job.durationMs?.let { append(" • "); append(formatDuration(it / 1000.0)) }
+      },
+      style=MaterialTheme.typography.bodySmall,
+      color=MaterialTheme.colorScheme.onSurfaceVariant
+     )
+     if(job.codec!=null||job.fps!=null||job.bitrate!=null){
+      Text(
+       listOfNotNull(
+        job.codec,
+        job.fps?.let { String.format(Locale.US, "%.0f FPS", it) },
+        job.bitrate?.let { String.format(Locale.US, "%.0f kbps", it) }
+       ).joinToString(" • "),
+       style=MaterialTheme.typography.bodySmall,
+       color=MaterialTheme.colorScheme.onSurfaceVariant,
+       maxLines=1,
+       overflow=TextOverflow.Ellipsis
+      )
+     }
      if(job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.RETRYING)
       Text((if(job.speedBytesPerSec>0)formatBytes(job.speedBytesPerSec)+"/s" else "جارٍ الحساب")+(job.etaSeconds?.let{" • متبقٍ "+formatDuration(it.toDouble())}?:""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
      if(job.status==DownloadStatus.FAILED)
@@ -549,7 +589,8 @@ private fun formatDetails(format:ResolvedFormat):String{
       TextButton(onClick=onDelete){Text("حذف")}
      }
      job.status==DownloadStatus.FAILED->{
-      if(job.errorCode=="MEDIA_SOURCE_REFRESH_FAILED") TextButton(onClick=onSmartRetry){Text("إعادة تحليل المصدر")}
+      if(job.errorCode in setOf("MEDIA_SOURCE_REFRESH_FAILED","HTTP_401","HTTP_403","HTTP_410","HTML_RESPONSE"))
+       TextButton(onClick=onSmartRetry){Text("إعادة تحليل المصدر")}
       else TextButton(onClick=onRetry){Text("إعادة المحاولة")}
       TextButton(onClick=onDelete){Text("حذف")}
      }
@@ -601,7 +642,7 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
         contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { SettingsHeader() }
+        item { LaunchedEffect(Unit){ DesignAudit.recordComponent("SettingsScreen") }; SettingsHeader() }
 
         item {
             SettingsSection(title = "المظهر", icon = Icons.Default.Palette) {
