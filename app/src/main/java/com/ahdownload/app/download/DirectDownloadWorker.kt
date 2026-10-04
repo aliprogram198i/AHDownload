@@ -260,7 +260,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             if (e.message == "MEDIA_SIGNATURE_MISMATCH" || e.message == "MEDIA_HTML_OR_ERROR_RESPONSE") {
                 if (sourceUrl.isNotBlank()) {
                     val fresh = MediaUrlRefresher(applicationContext)
-                        .refresh(sourceUrl, extension, mergeRequired)
+                        .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired)
                         .getOrNull()
                     if (fresh != null && fresh.url.isNotBlank() && fresh.url != url &&
                         repo.requeueWithRefreshedFormat(jobId, fresh)) {
