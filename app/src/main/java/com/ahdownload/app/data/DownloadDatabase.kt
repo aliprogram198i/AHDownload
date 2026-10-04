@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    6
+    7
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -36,6 +36,8 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX idx_downloads_status ON downloads(status)")
+        db.execSQL("CREATE INDEX idx_downloads_favorite ON downloads(favorite)")
+        db.execSQL("CREATE INDEX idx_downloads_created_at ON downloads(created_at)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -60,6 +62,16 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
         }
         if (oldVersion < 6) {
             db.execSQL("ALTER TABLE downloads ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+        }
+        if (oldVersion < 7) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN media_type TEXT NOT NULL DEFAULT 'UNKNOWN'")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN quality_label TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN codec TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN fps REAL")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN bitrate REAL")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_favorite ON downloads(favorite)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at)")
         }
     }
 }
