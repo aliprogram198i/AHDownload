@@ -41,6 +41,7 @@ import androidx.navigation.compose.*
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
+import com.ahdownload.app.data.FormatRanker
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.domain.DownloadJob
