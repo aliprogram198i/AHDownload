@@ -111,6 +111,7 @@ fun AHGradientButton(
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
 ) {
+    DesignAudit.recordComponent("AHGradientButton")
     androidx.compose.foundation.layout.Box(
         modifier = modifier
             .clip(shape)
@@ -136,6 +137,7 @@ fun AHGradientOutlinedButton(
     enabled: Boolean = true,
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
 ) {
+    DesignAudit.recordComponent("AHGradientOutlinedButton")
     val shape = RoundedCornerShape(14.dp)
     androidx.compose.foundation.layout.Box(
         modifier = modifier
