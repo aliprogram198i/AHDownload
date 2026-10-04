@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import com.ahdownload.app.data.DownloadRepository
+import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.diagnostics.AppLogger
@@ -40,7 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private data class LinkAnalysis(val url:String,val title:String,val platform:String,val formats:List<ResolvedFormat>)
+private data class LinkAnalysis(val url:String,val title:String,val platform:String,val formats:List<ResolvedFormat>,val durationSeconds:Double? = null)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun AppRoot(){
@@ -82,15 +83,28 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   item{HomeHeader()}
   item{UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
    val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
-   AppLogger.info(context,"analysis.start","platform="+(platform?:"unknown")+" host="+(runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault(""))+" url_hash="+AppLogger.fingerprint(clean))
-   if(platform==null||Uri.parse(clean).host.isNullOrBlank()){error="الرابط غير صالح أو غير مدعوم. تحقق من الرابط ثم أعد المحاولة.";return@UrlCard}
+   val host=runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault("")
+   AppLogger.info(context,"analysis.start","platform="+(platform?:"Direct")+" host="+host+" url_hash="+AppLogger.fingerprint(clean))
+   if(host.isBlank()){error="الرابط غير صالح. تحقق من الرابط ثم أعد المحاولة.";return@UrlCard}
    analyzing=true;error=null;analysis=null
    scope.launch{
-    EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
-     val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
-     if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
-     else{analysis=LinkAnalysis(clean,resolved.title,platform,formats);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
-    }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
+    if(platform==null){
+     DirectUrlResolver().resolve(clean).onSuccess{resolved->
+      val source=resolved.formats.firstOrNull()
+      if(source==null){error="الرابط المباشر لم يعرض ملفاً قابلاً للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
+      else{
+       val format=ResolvedFormat("direct",source.container?: "bin",null,null,null,source.estimatedSize,source.hasVideo,source.hasAudio,source.url,false,null,null)
+       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",listOf(format),resolved.durationMs?.div(1000.0))
+       AppLogger.info(context,"analysis.success","platform=Direct formats=1")
+      }
+     }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
+    }else{
+     EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
+      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
+      if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
+      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
+     }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
+    }
     analyzing=false
    }
   }}
@@ -155,7 +169,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
     Spacer(Modifier.width(12.dp))
     Column(Modifier.weight(1f)){
      Text(info.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis)
-     Text(info.platform,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     Text(info.platform + (info.durationSeconds?.let { " • " + formatDuration(it) } ?: ""),color=MaterialTheme.colorScheme.onSurfaceVariant)
     }
    }
    HorizontalDivider()
@@ -173,7 +187,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
    } else if(mode=="video"){
     Text("اختيار سريع",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
     recommendedVideo?.let{format->
-     RecommendedFormatCard(format,selected?.id==format.id,onClick={selected=format},onDownload={onDownload(format)})
+     RecommendedFormatCard(format,selected?.id==format.id,onClick={selected=format})
     }
     videoFormats.filter{it.id!=recommendedVideo?.id}.take(if(showMore) videoFormats.size else 3).forEach{format->
      SimpleFormatRow(format,selected?.id==format.id){selected=format}
@@ -183,12 +197,6 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
       Text(if(showMore)"إخفاء الخيارات الإضافية" else "عرض كل الجودات المتاحة ("+videoFormats.size+")")
       Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
      }
-    }
-    if(videoOnlyFormats.isNotEmpty()&&showMore){
-     HorizontalDivider()
-     Text("صيغ فيديو بدون صوت",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
-     Text("تم استخدامها داخلياً لبناء جودة فيديو بصوت مدمج عند توفر مسار H.264 + AAC.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-     videoOnlyFormats.take(8).forEach{format->SimpleFormatRow(format,false,enabled=false){}}
     }
     Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
      Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text("تنزيل الفيديو")
@@ -216,7 +224,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  }
 }
 
-@Composable private fun RecommendedFormatCard(format:ResolvedFormat,selected:Boolean,onClick:()->Unit,onDownload:()->Unit){
+@Composable private fun RecommendedFormatCard(format:ResolvedFormat,selected:Boolean,onClick:()->Unit){
  Card(
   onClick=onClick,
   modifier=Modifier.fillMaxWidth(),
@@ -234,9 +242,6 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
    Text(formatQuality(format),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
    Text(formatDetails(format),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
    Text("اختيار متوازن للاستخدام اليومي",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   OutlinedButton(onClick=onDownload,modifier=Modifier.fillMaxWidth(),shape=RoundedCornerShape(13.dp)){
-    Icon(Icons.Default.Download,null);Spacer(Modifier.width(7.dp));Text("تنزيل هذه الجودة")
-   }
   }
  }
 }
@@ -341,4 +346,5 @@ private fun normalizeInputUrl(raw:String):String{
  return value
 }
 private fun detectPlatform(url:String):String?{val host=runCatching{Uri.parse(url).host.orEmpty().lowercase(Locale.US).removePrefix("www.")}.getOrDefault("");return when{host=="youtube.com"||host.endsWith(".youtube.com")||host=="youtu.be"->"YouTube";host=="instagram.com"||host.endsWith(".instagram.com")->"Instagram";host=="facebook.com"||host.endsWith(".facebook.com")||host=="fb.watch"->"Facebook";host=="tiktok.com"||host.endsWith(".tiktok.com")->"TikTok";host=="twitter.com"||host.endsWith(".twitter.com")||host=="x.com"||host.endsWith(".x.com")->"X";host=="vimeo.com"||host.endsWith(".vimeo.com")->"Vimeo";host=="reddit.com"||host.endsWith(".reddit.com")->"Reddit";else->null}}
+private fun formatDuration(seconds:Double):String{val total=seconds.toLong().coerceAtLeast(0);val h=total/3600;val m=(total%3600)/60;val sec=total%60;return if(h>0)String.format(Locale.US,"%d:%02d:%02d",h,m,sec) else String.format(Locale.US,"%d:%02d",m,sec)}
 private fun formatBytes(value:Long):String{if(value<1024)return value.toString()+" B";val units=listOf("KB","MB","GB","TB");var n=value.toDouble();var index=-1;while(n>=1024&&index<units.lastIndex){n/=1024;index++};return String.format(Locale.US,"%.1f %s",n,units[index])}
