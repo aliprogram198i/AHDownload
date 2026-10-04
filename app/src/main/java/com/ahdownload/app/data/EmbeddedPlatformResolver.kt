@@ -19,7 +19,11 @@ class EmbeddedPlatformResolver(
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    suspend fun resolve(url: String): Result<ResolvedMedia> {
+    suspend fun resolve(
+        url: String,
+        excludedUrls: Set<String> = emptySet(),
+        forceFresh: Boolean = false
+    ): Result<ResolvedMedia> {
         val cleanUrl = url
             .replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"), "")
             .trim()
@@ -79,7 +83,7 @@ class EmbeddedPlatformResolver(
                 // Instagram gets one deterministic session snapshot: use its cookies with yt-dlp,
                 // then probe only the verified media candidates from that same WebView session.
                 if (isInstagramHost(host) && context != null) {
-                    val snapshot = WebViewSessionBridge(context).snapshotFor(cleanUrl)
+                    val snapshot = WebViewSessionBridge(context).snapshotFor(cleanUrl, forceFresh = forceFresh)
                     AppLogger.info(
                         context,
                         "resolver.instagram_session",
@@ -92,7 +96,7 @@ class EmbeddedPlatformResolver(
                             return@runCatching it
                         }
                     }
-                    val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
+                    val webViewMedia = probeWebViewMedia(cleanUrl, snapshot, excludedUrls)
                     if (webViewMedia != null) {
                         AppLogger.info(
                             context,
@@ -177,7 +181,11 @@ class EmbeddedPlatformResolver(
         }
     }
 
-    private fun probeWebViewMedia(sourceUrl: String, snapshot: WebViewMediaSnapshot): ResolvedMedia? {
+    private fun probeWebViewMedia(
+        sourceUrl: String,
+        snapshot: WebViewMediaSnapshot,
+        excludedUrls: Set<String> = emptySet()
+    ): ResolvedMedia? {
         val isInstagram = sourceUrl.contains("instagram.", ignoreCase = true)
         val origin = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) {
             "https://www.facebook.com"
@@ -185,7 +193,7 @@ class EmbeddedPlatformResolver(
             "https://www.instagram.com"
         }
 
-        for (candidate in snapshot.mediaUrls.distinct().sortedByDescending(::mediaCandidateScore)) {
+        for (candidate in snapshot.mediaUrls.distinct().filterNot { it in excludedUrls }.sortedByDescending(::mediaCandidateScore)) {
             val path = candidate.substringBefore("?").substringBefore("#").lowercase()
             val extensionLooksMedia = path.endsWith(".mp4") || path.endsWith(".m4v") ||
                 path.endsWith(".webm") || path.endsWith(".mov") || path.endsWith(".m4a") || path.endsWith(".mp3")
