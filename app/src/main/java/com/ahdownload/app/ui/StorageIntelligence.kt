@@ -1,6 +1,7 @@
 package com.ahdownload.app.ui
 
 import android.os.StatFs
+import android.os.Environment
 import android.os.storage.StorageManager
 import android.content.Context
 
@@ -14,19 +15,8 @@ data class StorageInfo(
 
 object StorageIntelligence {
     fun read(context: Context): StorageInfo {
-        val storageManager = context.getSystemService(StorageManager::class.java)
-        val uuid = storageManager.getUuidForPath(context.filesDir)
-        return runCatching {
-            val stats = storageManager.getAllocatableBytes(uuid)
-            val total = StorageManager.getStorageBytesForUuid(context, uuid)
-            StorageInfo(totalBytes = total, availableBytes = stats)
-        }.getOrElse {
-            val stat = StatFs(context.filesDir.path)
-            StorageInfo(
-                totalBytes = stat.totalBytes,
-                availableBytes = stat.availableBytes
-            )
-        }
+        val stat = StatFs(Environment.getExternalStorageDirectory().path)
+        return StorageInfo(totalBytes = stat.totalBytes, availableBytes = stat.availableBytes)
     }
 
     fun format(bytes: Long): String {
