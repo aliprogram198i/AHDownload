@@ -32,8 +32,8 @@ object MediaValidator {
             !textPrefix.startsWith("<!doctype html") &&
                 !textPrefix.startsWith("<html") &&
                 !textPrefix.startsWith("<?xml") &&
-                !textPrefix.startsWith("{"error"") &&
-                !textPrefix.startsWith("{"status":"error"")
+                !textPrefix.startsWith("{\"error\"") &&
+                !textPrefix.startsWith("{\"status\":\"error\"")
         ) { "MEDIA_HTML_OR_ERROR_RESPONSE" }
 
         val valid = when (ext) {
