@@ -60,6 +60,11 @@ object AppLogger {
         }
     }
 
-    private fun sanitize(value: String): String = value\n        .replace(Regex("(?i)(cookie|authorization|proxy-authorization)\\\\s*[:=]\\\\s*[^\\\\n]+"), "$1=[REDACTED]")\n        .replace(Regex("(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key)=)[^&\\\\s]+"), "$1[REDACTED]")\n\n    private fun now(): String =
+    private fun sanitize(value: String): String =
+        value
+            .replace(Regex("(?i)(cookie|authorization|proxy-authorization)\\s*[:=]\\s*[^\\n]+"), "$1=[REDACTED]")
+            .replace(Regex("(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key)=)[^&\\s]+"), "$1[REDACTED]")
+
+    private fun now(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date())
 }
