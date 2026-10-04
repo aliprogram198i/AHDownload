@@ -11,6 +11,8 @@ import androidx.work.workDataOf
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.download.DirectDownloadWorker
+import com.ahdownload.app.download.DownloadTempStore
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.Duration
@@ -65,7 +67,8 @@ class DownloadRepository private constructor(context: Context) {
             audioUrl = audioUrl,
             audioExtension = audioExtension,
             httpHeaders = httpHeaders,
-            audioHeaders = audioHeaders
+            audioHeaders = audioHeaders,
+            favorite = false
         )
         synchronized(lock) { insert(job) }
         trimHistory()
@@ -123,6 +126,7 @@ class DownloadRepository private constructor(context: Context) {
                 if (next.audioExtension != null) put("audio_extension", next.audioExtension) else putNull("audio_extension")
                 put("http_headers", encodeHeaders(next.httpHeaders))
                 put("audio_headers", encodeHeaders(next.audioHeaders))
+                put("favorite", if (next.favorite) 1 else 0)
                 if (next.thumbnailUrl != null) put("thumbnail_url", next.thumbnailUrl) else putNull("thumbnail_url")
                 if (next.durationMs != null) put("duration_ms", next.durationMs) else putNull("duration_ms")
             }
@@ -133,11 +137,13 @@ class DownloadRepository private constructor(context: Context) {
 
     fun cancel(jobId: String) {
         WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + jobId)
-        update(jobId) { it.copy(status = DownloadStatus.CANCELLED) }
+        DownloadTempStore.clear(app, jobId)
+        update(jobId) { it.copy(status = DownloadStatus.CANCELLED, downloadedBytes = 0L, progress = 0, speedBytesPerSec = 0L, etaSeconds = null) }
     }
 
     fun delete(jobId: String) {
         WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + jobId)
+        DownloadTempStore.clear(app, jobId)
         synchronized(lock) { db.writableDatabase.delete("downloads", "id=?", arrayOf(jobId)) }
         refresh()
     }
@@ -230,6 +236,10 @@ class DownloadRepository private constructor(context: Context) {
         return true
     }
 
+    fun toggleFavorite(jobId: String) {
+        update(jobId) { it.copy(favorite = !it.favorite) }
+    }
+
     private fun workName(jobId: String): String = "ahdownload-job:$jobId"
 
     private fun trimHistory() {
@@ -276,6 +286,7 @@ class DownloadRepository private constructor(context: Context) {
             if (job.audioExtension != null) put("audio_extension", job.audioExtension)
             put("http_headers", encodeHeaders(job.httpHeaders))
             put("audio_headers", encodeHeaders(job.audioHeaders))
+            put("favorite", if (job.favorite) 1 else 0)
             if (job.thumbnailUrl != null) put("thumbnail_url", job.thumbnailUrl)
             if (job.durationMs != null) put("duration_ms", job.durationMs)
         }
@@ -342,7 +353,8 @@ class DownloadRepository private constructor(context: Context) {
             audioUrl = nullableText("audio_url"),
             audioExtension = nullableText("audio_extension"),
             httpHeaders = decodeHeaders(nullableText("http_headers")),
-            audioHeaders = decodeHeaders(nullableText("audio_headers"))
+            audioHeaders = decodeHeaders(nullableText("audio_headers")),
+            favorite = getInt(getColumnIndexOrThrow("favorite")) != 0
         )
     }
 
