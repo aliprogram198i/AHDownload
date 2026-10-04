@@ -73,6 +73,10 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     File(dir, "$safeTitle.video.part"),
                     File(dir, "$safeTitle." + audioExtension.ifBlank { "m4a" } + ".part"),
                     target, repo)
+                MediaValidator.validateFile(target, "mp4").getOrElse {
+                    target.delete()
+                    throw IOException(it.message ?: "MEDIA_VALIDATION_FAILED")
+                }
                 val published = StoragePublisher.publish(applicationContext, target, target.name, "video/mp4")
                 if (published?.startsWith("content://") == true) target.delete()
                 repo.update(jobId) { it.copy(status = DownloadStatus.COMPLETED, progress = 100,
