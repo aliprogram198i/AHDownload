@@ -40,6 +40,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_MERGE_REQUIRED = "merge_required"
         const val KEY_AUDIO_URL = "audio_url"
         const val KEY_AUDIO_EXTENSION = "audio_extension"
+        const val KEY_HTTP_HEADERS = "http_headers"
+        const val KEY_AUDIO_HEADERS = "audio_headers"
         private const val MAX_RETRY_ATTEMPTS = 3
         private val downloadSemaphore = Semaphore(2)
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
@@ -59,6 +61,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val mergeRequired = inputData.getBoolean(KEY_MERGE_REQUIRED, false)
         val audioUrl = inputData.getString(KEY_AUDIO_URL).orEmpty()
         val audioExtension = inputData.getString(KEY_AUDIO_EXTENSION).orEmpty()
+        val httpHeaders = decodeHeaders(inputData.getString(KEY_HTTP_HEADERS))
+        val audioHeaders = decodeHeaders(inputData.getString(KEY_AUDIO_HEADERS))
         val repo = DownloadRepository.get(applicationContext)
         return downloadSemaphore.withPermit {
             try {
@@ -84,7 +88,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 val audioPart = File(dir, "$safeTitle." + audioExtension.ifBlank { "m4a" } + ".part")
                 try {
                     downloadMergedMedia(jobId, title, url, audioUrl, sourceUrl, extension,
-                        videoPart, audioPart, target, repo)
+                        httpHeaders, audioHeaders, videoPart, audioPart, target, repo)
                 } catch (refresh: RefreshRequired) {
                     videoPart.delete()
                     audioPart.delete()
@@ -114,9 +118,10 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             }
 
             val requestBuilder = Request.Builder().url(url)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "*/*")
-                .header("Accept-Language", "en-US,en;q=0.9")
+            applyHeaders(requestBuilder, httpHeaders)
+            requestBuilder.header("User-Agent", httpHeaders["User-Agent"] ?: USER_AGENT)
+            requestBuilder.header("Accept", httpHeaders["Accept"] ?: "*/*")
+            requestBuilder.header("Accept-Language", httpHeaders["Accept-Language"] ?: "en-US,en;q=0.9")
             val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
             if (sourceUrl.isNotBlank()) {
                 requestBuilder.header("Referer", sourceUrl)
@@ -156,7 +161,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     }
                     if (response.code in setOf(401, 403, 410) && sourceUrl.isNotBlank()) {
                         val fresh = MediaUrlRefresher(applicationContext)
-                            .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired)
+                            .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired, url)
                             .getOrNull()
                         if (fresh != null && fresh.url.isNotBlank() && fresh.url != url) {
                             if (repo.requeueWithRefreshedFormat(jobId, fresh)) {
@@ -260,7 +265,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             if (e.message == "MEDIA_SIGNATURE_MISMATCH" || e.message == "MEDIA_HTML_OR_ERROR_RESPONSE") {
                 if (sourceUrl.isNotBlank()) {
                     val fresh = MediaUrlRefresher(applicationContext)
-                        .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired)
+                        .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired, url)
                         .getOrNull()
                     if (fresh != null && fresh.url.isNotBlank() && fresh.url != url &&
                         repo.requeueWithRefreshedFormat(jobId, fresh)) {
@@ -299,15 +304,17 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         audioUrl: String,
         sourceUrl: String,
         extension: String,
+        videoHeaders: Map<String, String>,
+        audioHeaders: Map<String, String>,
         videoFile: File,
         audioFile: File,
         target: File,
         repo: DownloadRepository
     ) {
         try {
-            downloadStream(videoUrl, sourceUrl, videoFile)
+            downloadStream(videoUrl, sourceUrl, videoHeaders, videoFile)
             repo.update(jobId) { it.copy(progress = 50, downloadedBytes = videoFile.length()) }
-            downloadStream(audioUrl, sourceUrl, audioFile)
+            downloadStream(audioUrl, sourceUrl, audioHeaders, audioFile)
             repo.update(jobId) { it.copy(progress = 80, downloadedBytes = videoFile.length() + audioFile.length()) }
         } catch (e: HttpMediaException) {
             if (e.code in setOf(401, 403, 410) && sourceUrl.isNotBlank()) {
@@ -333,9 +340,12 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         AppLogger.info(applicationContext, "download.merge_completed", "job=$jobId bytes=${target.length()}")
     }
 
-    private fun downloadStream(url: String, sourceUrl: String, target: File) {
+    private fun downloadStream(url: String, sourceUrl: String, headers: Map<String, String>, target: File) {
         val existing = if (target.exists()) target.length() else 0L
-        val b = Request.Builder().url(url).header("User-Agent", USER_AGENT).header("Accept", "*/*")
+        val b = Request.Builder().url(url)
+        applyHeaders(b, headers)
+        b.header("User-Agent", headers["User-Agent"] ?: USER_AGENT)
+        b.header("Accept", headers["Accept"] ?: "*/*")
         if (sourceUrl.isNotBlank()) b.header("Referer", sourceUrl)
         runCatching { CookieManager.getInstance().getCookie(sourceUrl) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { b.header("Cookie", it) }
         if (existing > 0L) b.header("Range", "bytes=$existing-")
@@ -370,6 +380,29 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 }
             }
         }
+    }
+
+    private fun applyHeaders(builder: Request.Builder, headers: Map<String, String>) {
+        for ((name, value) in headers) {
+            val lower = name.lowercase(java.util.Locale.US)
+            if (lower in setOf("host", "content-length", "cookie", "authorization", "proxy-authorization", "range")) continue
+            if (name.isNotBlank() && value.isNotBlank()) {
+                runCatching { builder.header(name, value) }
+            }
+        }
+    }
+
+    private fun decodeHeaders(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val json = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val result = linkedMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = json.optString(key).trim()
+            if (value.isNotBlank()) result[key] = value
+        }
+        return result
     }
 
     private class HttpMediaException(val code: Int) : IOException("MEDIA_DOWNLOAD_HTTP_$code")
