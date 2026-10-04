@@ -127,7 +127,6 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                         requestBuilder.header("Origin", "https://www.facebook.com")
                 }
             }
-            val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
             if (sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ||
                 sourceHost == "youtube.com" || sourceHost.endsWith(".youtube.com") ||
                 sourceHost == "facebook.com" || sourceHost.endsWith(".facebook.com") ||
