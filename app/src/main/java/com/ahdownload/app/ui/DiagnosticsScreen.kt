@@ -21,11 +21,27 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.diagnostics.AppLogger
 
+private fun buildDesignSnapshot(): String {
+    return buildString {
+        appendLine("AHDownload UI DESIGN SNAPSHOT")
+        appendLine("generated_at=" + System.currentTimeMillis())
+        appendLine("theme=AHDownloadTheme")
+        appendLine("system=unified-gradient-interaction")
+        appendLine("button.primary=AHGradientButton")
+        appendLine("button.secondary=AHGradientOutlinedButton")
+        appendLine("shape.primary=16dp")
+        appendLine("shape.card=20-28dp")
+        appendLine("screens=الرئيسية;التنزيلات;Smart Studio;الإعدادات;الحسابات;سجل التطبيق")
+        appendLine("sensitive_data=excluded")
+    }
+}
+
 @Composable
 fun DiagnosticsScreen() {
     val context = LocalContext.current
     var log by remember { mutableStateOf(AppLogger.copyText(context)) }
-    fun refreshLog() { log = AppLogger.copyText(context) }
+    var designSnapshot by remember { mutableStateOf(buildDesignSnapshot()) }
+    fun refreshLog() { log = AppLogger.copyText(context); designSnapshot = buildDesignSnapshot() }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("سجل التطبيق", style = MaterialTheme.typography.headlineMedium)
         Text("سجل تشخيص حقيقي محفوظ محلياً. لا يتم إرسال السجل إلى خادم.", style = MaterialTheme.typography.bodyMedium)
@@ -75,7 +91,7 @@ fun DiagnosticsScreen() {
         Spacer(Modifier.height(12.dp))
         Surface(Modifier.fillMaxSize(), tonalElevation = 1.dp) {
             LazyColumn(contentPadding = PaddingValues(12.dp)) {
-                item { Text(log, style = MaterialTheme.typography.bodySmall) }
+                item { Text(designSnapshot + "\n--- RUNTIME DIAGNOSTICS ---\n" + log, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
