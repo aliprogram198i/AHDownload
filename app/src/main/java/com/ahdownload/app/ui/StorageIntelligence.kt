@@ -2,6 +2,7 @@ package com.ahdownload.app.ui
 
 import android.content.Context
 import android.os.StatFs
+import android.os.Environment
 
 data class StorageInfo(
     val totalBytes: Long,
@@ -13,7 +14,7 @@ data class StorageInfo(
 
 object StorageIntelligence {
     fun read(context: Context): StorageInfo {
-        val stat = StatFs(context.filesDir.path)
+        val stat = StatFs(Environment.getExternalStorageDirectory().path)
         return StorageInfo(totalBytes = stat.totalBytes, availableBytes = stat.availableBytes)
     }
 
