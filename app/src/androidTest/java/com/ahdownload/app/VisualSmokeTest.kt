@@ -3,11 +3,8 @@ package com.ahdownload.app
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import androidx.compose.ui.test.hasClickAction
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
@@ -23,27 +20,35 @@ class VisualSmokeTest {
 
     @Test
     fun primaryScreensRenderAndProduceEvidence() {
-        composeRule.onNodeWithText("AHDownload").fetchSemanticsNode()
+        require(composeRule.onAllNodesWithText("AHDownload").fetchSemanticsNodes().isNotEmpty()) {
+            "VISUAL_HOME_NOT_RENDERED"
+        }
         capture("home")
 
-        composeRule.onNode(hasText("التنزيلات") and hasClickAction()).performClick()
+        composeRule.onAllNodesWithText("التنزيلات").onLast().performClick()
         composeRule.waitForIdle()
         require(composeRule.onAllNodesWithText("التنزيلات").fetchSemanticsNodes().isNotEmpty()) {
             "VISUAL_DOWNLOADS_SCREEN_NOT_RENDERED"
         }
         capture("downloads")
 
-        composeRule.onNode(hasText("الاستوديو") and hasClickAction()).performClick()
+        composeRule.onAllNodesWithText("الاستوديو").onLast().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Smart Studio").fetchSemanticsNode()
+        require(composeRule.onAllNodesWithText("Smart Studio").fetchSemanticsNodes().isNotEmpty()) {
+            "VISUAL_STUDIO_SCREEN_NOT_RENDERED"
+        }
         capture("studio")
 
-        composeRule.onNode(hasText("الإعدادات") and hasClickAction()).performClick()
+        composeRule.onAllNodesWithText("الإعدادات").onLast().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("إعدادات AHDownload").fetchSemanticsNode()
+        require(composeRule.onAllNodesWithText("إعدادات AHDownload").fetchSemanticsNodes().isNotEmpty()) {
+            "VISUAL_SETTINGS_SCREEN_NOT_RENDERED"
+        }
         capture("settings")
 
-        composeRule.onNodeWithText("سجل التطبيق").fetchSemanticsNode()
+        require(composeRule.onAllNodesWithText("سجل التطبيق").fetchSemanticsNodes().isNotEmpty()) {
+            "VISUAL_DIAGNOSTICS_ENTRY_NOT_RENDERED"
+        }
     }
 
     private fun capture(name: String) {
