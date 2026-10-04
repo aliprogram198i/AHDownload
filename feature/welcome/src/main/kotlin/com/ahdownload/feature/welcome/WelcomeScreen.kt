@@ -34,7 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.alpha
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -64,6 +64,7 @@ private fun WelcomeScreen(
     onContinue: () -> Unit,
 ) {
     val transition = rememberInfiniteTransition(label = "welcomeMotion")
+    val waveColor = MaterialTheme.colorScheme.secondary
     val orbScale by transition.animateFloat(
         initialValue = 0.92f,
         targetValue = 1.08f,
@@ -114,7 +115,7 @@ private fun WelcomeScreen(
             }
             drawPath(
                 path = path,
-                color = MaterialTheme.colorScheme.secondary,
+                color = waveColor,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.4f),
             )
         }
