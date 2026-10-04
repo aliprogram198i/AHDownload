@@ -93,7 +93,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
         }
     }
 }
-  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen{nav.navigate("studio")}};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")},themeMode){mode->themeMode=mode;prefs.edit().putString("theme_mode",mode.name).apply()}};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
+  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen(openDownloads={nav.navigate("downloads")},openAccounts={nav.navigate("accounts")})};composable("downloads"){DownloadsScreen{nav.navigate("studio")}};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")},themeMode){mode->themeMode=mode;prefs.edit().putString("theme_mode",mode.name).apply()}};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
  }
 }
 @Composable
@@ -157,22 +157,22 @@ private fun NavItem(
     }
 }
 
-@Composable private fun HomeScreen(openDownloads:()->Unit){
+@Composable private fun HomeScreen(openDownloads:()->Unit, openAccounts:()->Unit){
  val context=LocalContext.current;val repository=remember{DownloadRepository.get(context)};val scope=rememberCoroutineScope()
- var url by remember{mutableStateOf("")};var analyzing by remember{mutableStateOf(false)};var analysis by remember{mutableStateOf<LinkAnalysis?>(null)};var error by remember{mutableStateOf<String?>(null)}
+ var url by remember{mutableStateOf("")};var analyzing by remember{mutableStateOf(false)};var analysis by remember{mutableStateOf<LinkAnalysis?>(null)};var error by remember{mutableStateOf<String?>(null)};var suggestAccountLogin by remember{mutableStateOf(false)}
  val settingsPrefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)}
  LaunchedEffect(Unit){val intent=(context as? android.app.Activity)?.intent;if(intent?.action==Intent.ACTION_SEND&&intent.type=="text/plain")url=intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().trim()
    else if(intent?.action==Intent.ACTION_VIEW) url=intent.dataString.orEmpty().trim()}
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
   item{HomeHeader()}
-  item{LaunchedEffect(Unit){DesignAudit.recordComponent("HomeScreen")}; UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
+  item{LaunchedEffect(Unit){DesignAudit.recordComponent("HomeScreen")}; UrlCard(url,analyzing,{url=it;error=null;analysis=null;suggestAccountLogin=false},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
    DesignAudit.recordInteraction("home", "url_input", "analyze")
    val selectedProfile=DownloadProfile.from(settingsPrefs.getString("download_profile",DownloadProfile.BALANCED.name))
    val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
    val host=runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault("")
    AppLogger.info(context,"analysis.start","platform="+(platform?:"Direct")+" host="+host+" url_hash="+AppLogger.fingerprint(clean))
    if(host.isBlank()){error="الرابط غير صالح. تحقق من الرابط ثم أعد المحاولة.";return@UrlCard}
-   analyzing=true;error=null;analysis=null
+   analyzing=true;error=null;analysis=null;suggestAccountLogin=false
    scope.launch{
     if(platform==null){
      DirectUrlResolver().resolve(clean).onSuccess{resolved->
@@ -192,13 +192,40 @@ private fun NavItem(
       }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
       else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds,resolved.thumbnail,MediaType.VIDEO,selectedProfile);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
-     }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
+     }.onFailure{failure->
+      val failureText=failure.message.orEmpty().lowercase(Locale.US)
+      suggestAccountLogin=platform=="Instagram" && (
+        "sign in" in failureText || "login" in failureText ||
+        "empty media response" in failureText || "cookies" in failureText
+      )
+      error=if(suggestAccountLogin)
+        "Instagram لم يسمح بقراءة الوسائط في الجلسة الحالية. سجّل الدخول ثم أعد التحليل."
+      else
+        "تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو."
+      AppLogger.error(context,"analysis.failed",failure,"platform="+platform)
+    }
     }
     analyzing=false
    }
   }}
   if(analyzing) item{AnalysisSkeleton()}
-  item{AnimatedVisibility(error!=null){InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())}}
+  item{
+   AnimatedVisibility(error!=null){
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)){
+     InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())
+     if(suggestAccountLogin){
+      OutlinedButton(
+       onClick={DesignAudit.recordInteraction("home","account_recovery","open");openAccounts()},
+       modifier=Modifier.fillMaxWidth()
+      ){
+       Icon(Icons.Default.AccountCircle,null)
+       Spacer(Modifier.width(7.dp))
+       Text("فتح الحسابات")
+      }
+     }
+    }
+   }
+  }
   analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(
  selected.url,
  buildDownloadTitle(info.title,selected),
