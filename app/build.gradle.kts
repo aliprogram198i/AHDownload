@@ -55,10 +55,20 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("releaseOfficial")
+            }
+        }
+    }
+
+    tasks.matching {
+        it.name == "assembleRelease" || it.name == "bundleRelease"
+    }.configureEach {
+        doFirst {
             check(hasReleaseSigning) {
                 "Release signing is required. Configure AH_KEYSTORE_FILE, AH_KEYSTORE_PASSWORD, AH_KEY_ALIAS, and AH_KEY_PASSWORD."
             }
-            signingConfig = signingConfigs.getByName("releaseOfficial")
+        }
         }
         debug { applicationIdSuffix = ".debug" }
     }
