@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    1
+    2
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -21,14 +21,18 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
                 progress INTEGER NOT NULL DEFAULT 0,
                 downloaded_bytes INTEGER NOT NULL DEFAULT 0,
                 total_bytes INTEGER,
-                output_uri TEXT
+                output_uri TEXT,
+                thumbnail_url TEXT,
+                duration_ms INTEGER
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX idx_downloads_status ON downloads(status)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Database version 1 is intentionally minimal. Future schema changes must
-        // use an explicit migration instead of destructive recreation.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN thumbnail_url TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN duration_ms INTEGER")
+        }
     }
 }
