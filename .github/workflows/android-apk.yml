@@ -103,7 +103,6 @@ jobs:
             adb shell monkey -p com.ahdownload.app 1 || (adb logcat -d -t 400; exit 1)
             sleep 5
             adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.9.1' || (adb shell dumpsys package com.ahdownload.app; adb logcat -d -t 600; exit 1)
-            adb shell dumpsys package com.ahdownload.app | grep 'versionName=1.9.0'
 
       - name: Calculate SHA-256
         id: checksum
