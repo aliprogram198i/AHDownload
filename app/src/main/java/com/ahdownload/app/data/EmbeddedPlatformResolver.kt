@@ -168,7 +168,7 @@ class EmbeddedPlatformResolver(
 
         val best = validated.maxByOrNull { it.score } ?: return null
         val isVideo = best.contentType.startsWith("video/") ||
-            hasMediaExtension(best.url) || !best.contentType.startsWith("audio/")
+            hasMediaExtension(best.url)
 
         return ResolvedMedia(
             title = snapshot.title?.takeIf { it.isNotBlank() } ?: "Instagram video",
