@@ -14,6 +14,21 @@ object DesignAudit {
     private var currentScreen = "unknown"
     private var lastUpdated = 0L
 
+    private val screenContracts = linkedMapOf(
+        "home" to ScreenContract("الرئيسية", "Home", "header;url_input;primary_action;analysis_result"),
+        "downloads" to ScreenContract("التنزيلات", "Downloads", "summary;filters;download_cards;actions"),
+        "studio" to ScreenContract("Smart Studio", "Studio", "source_picker;metadata;processing_actions;result"),
+        "settings" to ScreenContract("الإعدادات", "Settings", "header;download_preferences;accounts;diagnostics;privacy;about"),
+        "accounts" to ScreenContract("الحسابات", "Accounts", "platform_cards;session_status;login_action"),
+        "diagnostics" to ScreenContract("سجل التطبيق", "Diagnostics", "audit_snapshot;runtime_log;refresh;copy;share;clear")
+    )
+
+    private data class ScreenContract(
+        val displayName: String,
+        val technicalName: String,
+        val expectedElements: String
+    )
+
     fun recordScreen(screen: String) {
         synchronized(lock) {
             currentScreen = screen
@@ -27,6 +42,11 @@ object DesignAudit {
             componentCounts[type] = (componentCounts[type] ?: 0) + 1
             lastUpdated = System.currentTimeMillis()
         }
+    }
+
+    fun recordInteraction(screen: String, component: String, action: String) {
+        if (screen.isBlank() || component.isBlank() || action.isBlank()) return
+        recordComponent("interaction:" + component + ":" + action)
     }
 
     fun snapshot(context: Context): String {
@@ -45,7 +65,7 @@ object DesignAudit {
         val dm = context.resources.displayMetrics
         return buildString {
             appendLine("AHDownload UI DESIGN AUDIT")
-            appendLine("schema=1")
+            appendLine("schema=2")
             appendLine("generated_at=" + date)
             appendLine("app_package=" + context.packageName)
             appendLine("android_sdk=" + Build.VERSION.SDK_INT)
@@ -84,9 +104,21 @@ object DesignAudit {
             appendLine("title=semi_bold")
             appendLine("label=semi_bold")
             appendLine()
+            appendLine("[SCREEN_CONTRACTS]")
+            screenContracts.forEach { (_, c) ->
+                appendLine(c.technicalName + " display_name=" + c.displayName + " expected=" + c.expectedElements)
+            }
+            appendLine()
             appendLine("[RUNTIME_SCREENS]")
             if (screenData.isEmpty()) appendLine("none_observed=true")
-            screenData.forEach { (name, visits) -> appendLine(name + " visits=" + visits) }
+            screenData.forEach { (name, visits) ->
+                val contract = screenContracts[name]
+                appendLine(
+                    name + " visits=" + visits +
+                        " known=" + (contract != null) +
+                        (contract?.let { " expected=" + it.expectedElements } ?: "")
+                )
+            }
             appendLine()
             appendLine("[RUNTIME_COMPONENTS]")
             if (componentData.isEmpty()) appendLine("none_observed=true")
@@ -100,8 +132,14 @@ object DesignAudit {
             appendLine("passwords=excluded")
             appendLine("account_credentials=excluded")
             appendLine()
+            appendLine("[LIMITATIONS]")
+            appendLine("compose_tree_introspection=false")
+            appendLine("pixel_geometry_capture=false")
+            appendLine("screen_contracts=declared_design_targets")
+            appendLine("runtime_components=explicitly_observed_registrations")
+            appendLine()
             appendLine("[IMPLEMENTATION_NOTE]")
-            appendLine("Runtime section contains observed registrations, not a fabricated Compose-tree dump.")
+            appendLine("This audit reports declared design contracts plus runtime observations; it does not invent an unobserved Compose tree or pixel geometry.")
         }
     }
 }

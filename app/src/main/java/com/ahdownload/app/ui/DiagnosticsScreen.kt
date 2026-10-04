@@ -34,6 +34,8 @@ private fun buildDesignSnapshot(context: Context): String {
         appendLine("shape.card=20-28dp")
         appendLine("screens=الرئيسية;التنزيلات;Smart Studio;الإعدادات;الحسابات;سجل التطبيق")
         appendLine("sensitive_data=excluded")
+        appendLine("inspection_mode=design-contract + runtime-observation")
+        appendLine("inspection_scope=screen_structure;component_usage;interaction_paths;privacy")
     }
 }
 
@@ -46,6 +48,12 @@ fun DiagnosticsScreen() {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("سجل التطبيق", style = MaterialTheme.typography.headlineMedium)
         Text("سجل تشخيص حقيقي محفوظ محلياً. لا يتم إرسال السجل إلى خادم.", style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(6.dp))
+        AssistChip(
+            onClick = { refreshLog() },
+            label = { Text("فحص الواجهة: عقود تصميم + ملاحظات تشغيل") },
+            leadingIcon = { Icon(Icons.Default.CheckCircle, null) }
+        )
         Spacer(Modifier.height(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
