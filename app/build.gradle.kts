@@ -107,6 +107,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2025.10.01"))
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:rules:1.7.0")
