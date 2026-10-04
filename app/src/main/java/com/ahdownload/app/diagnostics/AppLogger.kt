@@ -18,7 +18,7 @@ object AppLogger {
 
     fun error(context: Context, event: String, throwable: Throwable? = null, details: String = "") {
         val stack = throwable?.stackTraceToString().orEmpty()
-        write(context, "ERROR", event, listOf(details, throwable?.javaClass?.name.orEmpty(), throwable?.message.orEmpty(), stack).filter { it.isNotBlank() }.joinToString("\n"))
+        write(context, "ERROR", event, sanitize(listOf(details, throwable?.javaClass?.name.orEmpty(), throwable?.message.orEmpty(), stack).filter { it.isNotBlank() }.joinToString("\n")))
     }
 
     fun read(context: Context): String {
@@ -56,7 +56,7 @@ object AppLogger {
                 val text = file.readText()
                 file.writeText(text.takeLast((MAX_BYTES / 2).toInt()))
             }
-            file.appendText("[${now()}] [$level] $event${if (details.isBlank()) "" else "\n$details"}\n")
+            file.appendText(sanitize("[${now()}] [$level] $event${if (details.isBlank()) "" else "\n$details"}\n"))
         }
     }
 

@@ -17,6 +17,7 @@ val hasReleaseSigning = listOf(
     signingAlias,
     signingKeyPassword
 ).all { !it.isNullOrBlank() && File(it!!).exists() }
+val isPullRequestBuild = System.getenv("GITHUB_EVENT_NAME").equals("pull_request", ignoreCase = true)
 
 android {
     namespace = "com.ahdownload.app"
@@ -25,8 +26,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
@@ -69,8 +70,10 @@ tasks.matching {
     it.name == "assembleRelease" || it.name == "bundleRelease"
 }.configureEach {
     doFirst {
-        check(hasReleaseSigning) {
-            "Release signing is required. Configure AH_KEYSTORE_FILE, AH_KEYSTORE_PASSWORD, AH_KEY_ALIAS, and AH_KEY_PASSWORD."
+        if (!isPullRequestBuild) {
+            check(hasReleaseSigning) {
+                "Release signing is required for production builds. Configure the AH_* signing secrets."
+            }
         }
     }
 }
