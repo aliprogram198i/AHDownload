@@ -42,6 +42,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_AUDIO_EXTENSION = "audio_extension"
         const val KEY_HTTP_HEADERS = "http_headers"
         const val KEY_AUDIO_HEADERS = "audio_headers"
+        const val KEY_MEDIA_REFRESHED = "media_refreshed"
         private const val MAX_RETRY_ATTEMPTS = 3
         private val downloadSemaphore = Semaphore(2)
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
@@ -63,6 +64,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val audioExtension = inputData.getString(KEY_AUDIO_EXTENSION).orEmpty()
         val httpHeaders = decodeHeaders(inputData.getString(KEY_HTTP_HEADERS))
         val audioHeaders = decodeHeaders(inputData.getString(KEY_AUDIO_HEADERS))
+        val mediaRefreshed = inputData.getBoolean(KEY_MEDIA_REFRESHED, false)
         val repo = DownloadRepository.get(applicationContext)
         return downloadSemaphore.withPermit {
             try {
@@ -262,21 +264,34 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             Result.success()
         } catch (e: IOException) {
             val attempt = runAttemptCount + 1
-            if (e.message == "MEDIA_SIGNATURE_MISMATCH" || e.message == "MEDIA_HTML_OR_ERROR_RESPONSE") {
-                if (sourceUrl.isNotBlank()) {
-                    val fresh = MediaUrlRefresher(applicationContext)
-                        .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired, url)
-                        .getOrNull()
-                    if (fresh != null && fresh.url.isNotBlank() && fresh.url != url &&
-                        repo.requeueWithRefreshedFormat(jobId, fresh)) {
-                        AppLogger.info(
-                            applicationContext,
-                            "download.url_refreshed",
-                            "job=$jobId reason=media_validation"
-                        )
-                        return Result.success()
-                    }
+            if ((e.message == "MEDIA_SIGNATURE_MISMATCH" || e.message == "MEDIA_HTML_OR_ERROR_RESPONSE") &&
+                sourceUrl.isNotBlank() && !mediaRefreshed) {
+                val fresh = MediaUrlRefresher(applicationContext)
+                    .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired, url)
+                    .getOrNull()
+                if (fresh != null && fresh.url.isNotBlank() && fresh.url != url &&
+                    repo.requeueWithRefreshedFormat(jobId, fresh, mediaRefreshed = true)) {
+                    AppLogger.info(
+                        applicationContext,
+                        "download.url_refreshed",
+                        "job=$jobId reason=media_validation"
+                    )
+                    return Result.success()
                 }
+                repo.update(jobId) {
+                    it.copy(
+                        status = DownloadStatus.FAILED,
+                        errorCode = "MEDIA_SOURCE_REFRESH_FAILED"
+                    )
+                }
+                AppLogger.error(
+                    applicationContext,
+                    "download.media_source_refresh_failed",
+                    e,
+                    "job=$jobId refreshed=false"
+                )
+                notifyFailed(jobId, title, "انتهت صلاحية مصدر الوسائط؛ أعد المحاولة")
+                return Result.failure()
             }
             if (attempt < MAX_RETRY_ATTEMPTS) {
                 repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, errorCode = "IO_RETRY_$attempt") }
