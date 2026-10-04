@@ -55,7 +55,7 @@ fun DiagnosticsScreen() {
                 }
                 AHGradientButton(onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", log))
+                    clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", designSnapshot + "\n--- RUNTIME DIAGNOSTICS ---\n" + log))
                 }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.ContentCopy, null)
                     Spacer(Modifier.width(6.dp))
@@ -64,7 +64,7 @@ fun DiagnosticsScreen() {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
-                    val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log) }
+                    val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, designSnapshot + "\n--- RUNTIME DIAGNOSTICS ---\n" + log) }
                     context.startActivity(Intent.createChooser(share, "مشاركة سجل AHDownload"))
                 }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.Share, null)
