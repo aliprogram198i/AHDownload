@@ -29,7 +29,7 @@ class WebViewSessionBridge(private val context: Context) {
         snapshotFor(url, timeoutMs).cookies
 
     @SuppressLint("SetJavaScriptEnabled")
-    suspend fun snapshotFor(url: String, timeoutMs: Long = 25_000L): WebViewMediaSnapshot =
+    suspend fun snapshotFor(\n        url: String,\n        timeoutMs: Long = 25_000L,\n        forceFresh: Boolean = false\n    ): WebViewMediaSnapshot =
         suspendCancellableCoroutine { continuation ->
             val main = Handler(Looper.getMainLooper())
             var webView: WebView? = null
@@ -253,7 +253,7 @@ class WebViewSessionBridge(private val context: Context) {
                 }
 
                 main.postDelayed(timeout, timeoutMs)
-                view.loadUrl(url)
+                val loadUrl = if (forceFresh) {\n                    val separator = if (url.contains('?')) '&' else '?'\n                    url + separator + "_ah_refresh=" + System.currentTimeMillis()\n                } else {\n                    url\n                }\n                view.loadUrl(loadUrl)
             }
 
             continuation.invokeOnCancellation {
