@@ -42,6 +42,7 @@ private fun buildDesignSnapshot(context: Context): String {
 @Composable
 fun DiagnosticsScreen() {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { DesignAudit.recordComponent("DiagnosticsScreen") }
     var log by remember { mutableStateOf(AppLogger.copyText(context)) }
     var designSnapshot by remember { mutableStateOf(buildDesignSnapshot(context)) }
     fun refreshLog() { log = AppLogger.copyText(context); designSnapshot = buildDesignSnapshot(context) }

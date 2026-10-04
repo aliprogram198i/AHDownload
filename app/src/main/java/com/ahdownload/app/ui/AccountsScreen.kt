@@ -49,6 +49,7 @@ private const val VERIFY_INTERVAL_MS = 15 * 60 * 1000L
 @Composable
 fun AccountsScreen() {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { DesignAudit.recordComponent("AccountsScreen") }
     var selected by remember { mutableStateOf<PlatformAccount?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var loginError by remember { mutableStateOf<String?>(null) }
@@ -264,7 +265,7 @@ fun AccountsScreen() {
                                     when {
                                         isVerifying -> "جارٍ اختبار الجلسة في الخلفية…"
                                         connected && verificationFresh -> "متصل • تم التحقق مؤخراً"
-                                        connected -> "متصل محلياً • لم يُجرَ اختبار حديث"
+                                        connected -> "جلسة محفوظة • تحتاج اختبار اتصال"
                                         else -> "غير متصل • تسجيل الدخول اختياري للمحتوى العام"
                                     }
                                 )
@@ -276,7 +277,7 @@ fun AccountsScreen() {
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Icon(
-                                            if (verificationFresh) Icons.Default.Verified else Icons.Default.CheckCircle,
+                                            if (verificationFresh) Icons.Default.Verified else Icons.Default.AccessTime,
                                             contentDescription = "متصل",
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.graphicsLayer {
@@ -335,7 +336,7 @@ fun AccountsScreen() {
                                     when {
                                         isVerifying -> "التحقق يتم في الخلفية دون تعطيل الشاشة."
                                         verificationFresh -> "آخر تحقق: " + formatRelativeVerification(last)
-                                        else -> "يمكنك اختبار الاتصال الآن."
+                                        else -> "الجلسة محفوظة على الجهاز ولم تُثبت حديثاً."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

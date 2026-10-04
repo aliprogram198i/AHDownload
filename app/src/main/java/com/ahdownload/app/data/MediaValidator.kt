@@ -40,7 +40,12 @@ object MediaValidator {
             "mp4", "m4v", "m4a", "mov" -> isIsoBmff(sample)
             "webm", "mkv" -> hasEbmlHeader(sample)
             "mp3" -> isMp3(sample)
-            else -> true
+            "pdf" -> hasAsciiPrefix(sample, "%PDF-")
+            "zip", "docx", "xlsx", "pptx" -> hasZipHeader(sample)
+            "7z" -> hasBytes(sample, byteArrayOf(0x37, 0x7A, 0xBC.toByte(), 0xAF.toByte(), 0x27, 0x1C))
+            "rar" -> hasAsciiPrefix(sample, "Rar!")
+            else -> !looksLikeHtmlOrTextError(sample)
+
         }
 
         require(valid) { "MEDIA_SIGNATURE_MISMATCH" }
@@ -86,6 +91,29 @@ object MediaValidator {
             bytes[1] == 0x45.toByte() &&
             bytes[2] == 0xDF.toByte() &&
             bytes[3] == 0xA3.toByte()
+
+    private fun looksLikeHtmlOrTextError(bytes: ByteArray): Boolean {
+        val text = bytes.copyOf(minOf(bytes.size, 512))
+            .let { String(it, Charsets.UTF_8) }
+            .trimStart()
+            .lowercase(Locale.US)
+        return text.startsWith("<!doctype") || text.startsWith("<html") ||
+            text.startsWith("<?xml") || text.startsWith("""{"error""")
+    }
+
+    private fun hasAsciiPrefix(bytes: ByteArray, value: String): Boolean =
+        bytes.size >= value.length &&
+            bytes.copyOf(value.length).contentEquals(value.toByteArray(Charsets.US_ASCII))
+
+    private fun hasZipHeader(bytes: ByteArray): Boolean =
+        bytes.size >= 4 &&
+            bytes[0] == 'P'.code.toByte() &&
+            bytes[1] == 'K'.code.toByte() &&
+            bytes[2] == 0x03.toByte() &&
+            bytes[3] == 0x04.toByte()
+
+    private fun hasBytes(bytes: ByteArray, expected: ByteArray): Boolean =
+        bytes.size >= expected.size && bytes.copyOf(expected.size).contentEquals(expected)
 
     private fun isMp3(bytes: ByteArray): Boolean =
         hasAscii(bytes, "ID3") ||

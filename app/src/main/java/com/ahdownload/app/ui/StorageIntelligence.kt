@@ -1,9 +1,8 @@
 package com.ahdownload.app.ui
 
+import android.content.Context
 import android.os.StatFs
 import android.os.Environment
-import android.os.storage.StorageManager
-import android.content.Context
 
 data class StorageInfo(
     val totalBytes: Long,

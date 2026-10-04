@@ -34,6 +34,7 @@ import java.util.Locale
 @Composable
 fun StudioScreen() {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { DesignAudit.recordComponent("StudioScreen") }
     val scope = rememberCoroutineScope()
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var name by remember { mutableStateOf("") }
@@ -45,8 +46,7 @@ fun StudioScreen() {
     var message by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+    fun inspectUri(uri: Uri) {
         selectedUri = uri
         message = null
         error = null
@@ -69,13 +69,29 @@ fun StudioScreen() {
                 mime = result.first.mime
                 name = result.second
                 size = result.third
-                AppLogger.info(context, "studio.file_selected", "mime=" + result.first.mime + " size=" + (result.third ?: 0L))
+                AppLogger.info(
+                    context,
+                    "studio.file_selected",
+                    "mime=" + result.first.mime + " size=" + (result.third ?: 0L)
+                )
             }.onFailure {
                 selectedUri = null
                 error = "تعذر قراءة الملف. اختر ملف فيديو أو صوت صالحاً."
                 AppLogger.error(context, "studio.file_read_failed", it)
             }
             busy = false
+        }
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        inspectUri(uri)
+    }
+
+    LaunchedEffect(Unit) {
+        StudioBridge.pendingUri?.let { uri ->
+            StudioBridge.pendingUri = null
+            inspectUri(uri)
         }
     }
 

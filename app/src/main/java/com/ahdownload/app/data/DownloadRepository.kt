@@ -11,6 +11,7 @@ import androidx.work.workDataOf
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.download.DirectDownloadWorker
+import com.ahdownload.app.download.DownloadTempStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.Duration
@@ -65,7 +66,8 @@ class DownloadRepository private constructor(context: Context) {
             audioUrl = audioUrl,
             audioExtension = audioExtension,
             httpHeaders = httpHeaders,
-            audioHeaders = audioHeaders
+            audioHeaders = audioHeaders,
+            favorite = false
         )
         synchronized(lock) { insert(job) }
         trimHistory()
@@ -123,6 +125,7 @@ class DownloadRepository private constructor(context: Context) {
                 if (next.audioExtension != null) put("audio_extension", next.audioExtension) else putNull("audio_extension")
                 put("http_headers", encodeHeaders(next.httpHeaders))
                 put("audio_headers", encodeHeaders(next.audioHeaders))
+                put("favorite", if (next.favorite) 1 else 0)
                 if (next.thumbnailUrl != null) put("thumbnail_url", next.thumbnailUrl) else putNull("thumbnail_url")
                 if (next.durationMs != null) put("duration_ms", next.durationMs) else putNull("duration_ms")
             }
@@ -133,11 +136,13 @@ class DownloadRepository private constructor(context: Context) {
 
     fun cancel(jobId: String) {
         WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + jobId)
-        update(jobId) { it.copy(status = DownloadStatus.CANCELLED) }
+        DownloadTempStore.clear(app, jobId)
+        update(jobId) { it.copy(status = DownloadStatus.CANCELLED, downloadedBytes = 0L, progress = 0, speedBytesPerSec = 0L, etaSeconds = null) }
     }
 
     fun delete(jobId: String) {
         WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + jobId)
+        DownloadTempStore.clear(app, jobId)
         synchronized(lock) { db.writableDatabase.delete("downloads", "id=?", arrayOf(jobId)) }
         refresh()
     }
@@ -230,6 +235,70 @@ class DownloadRepository private constructor(context: Context) {
         return true
     }
 
+    fun toggleFavorite(jobId: String) {
+        update(jobId) { it.copy(favorite = !it.favorite) }
+    }
+
+    fun applyNetworkPolicy() {
+        val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(
+                if (settings.getBoolean("wifi_only", false)) NetworkType.UNMETERED
+                else NetworkType.CONNECTED
+            )
+            .build()
+        all()
+            .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.RETRYING }
+            .forEach { job ->
+                WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + job.id)
+                val request = OneTimeWorkRequestBuilder<DirectDownloadWorker>()
+                    .setInputData(
+                        workDataOf(
+                            DirectDownloadWorker.KEY_JOB_ID to job.id,
+                            DirectDownloadWorker.KEY_URL to job.formatUrl,
+                            DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
+                            DirectDownloadWorker.KEY_TITLE to job.title,
+                            DirectDownloadWorker.KEY_EXTENSION to job.extension.orEmpty(),
+                            DirectDownloadWorker.KEY_MERGE_REQUIRED to job.mergeRequired,
+                            DirectDownloadWorker.KEY_AUDIO_URL to job.audioUrl.orEmpty(),
+                            DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty(),
+                            DirectDownloadWorker.KEY_HTTP_HEADERS to encodeHeaders(job.httpHeaders),
+                            DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(job.audioHeaders)
+                        )
+                    )
+                    .setConstraints(constraints)
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
+                    .addTag("ahdownload:" + job.id)
+                    .build()
+                WorkManager.getInstance(app).enqueueUniqueWork(
+                    workName(job.id),
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
+            }
+    }
+
+    suspend fun refreshAndRetry(jobId: String): Boolean = withContext(Dispatchers.IO) {
+        val job = synchronized(lock) { find(jobId) } ?: return@withContext false
+        if (job.sourceUrl.isBlank()) return@withContext false
+        val host = android.net.Uri.parse(job.sourceUrl).host.orEmpty().lowercase()
+        val supported = host == "youtube.com" || host.endsWith(".youtube.com") ||
+            host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") ||
+            host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch"
+        if (!supported) return@withContext retry(jobId)
+        val refreshed = EmbeddedPlatformResolver(app)
+            .resolve(job.sourceUrl, excludedUrls = setOf(job.formatUrl), forceFresh = true)
+            .getOrNull()
+            ?: return@withContext false
+        val selected = refreshed.formats
+            .firstOrNull { it.url != job.formatUrl && it.ext.equals(job.extension.orEmpty(), ignoreCase = true) &&
+                it.mergeRequired == job.mergeRequired }
+            ?: refreshed.formats.firstOrNull { it.url != job.formatUrl && it.mergeRequired == job.mergeRequired }
+            ?: refreshed.formats.firstOrNull { it.url != job.formatUrl }
+            ?: return@withContext false
+        requeueWithRefreshedFormat(jobId, selected, mediaRefreshed = true)
+    }
+
     private fun workName(jobId: String): String = "ahdownload-job:$jobId"
 
     private fun trimHistory() {
@@ -276,6 +345,7 @@ class DownloadRepository private constructor(context: Context) {
             if (job.audioExtension != null) put("audio_extension", job.audioExtension)
             put("http_headers", encodeHeaders(job.httpHeaders))
             put("audio_headers", encodeHeaders(job.audioHeaders))
+            put("favorite", if (job.favorite) 1 else 0)
             if (job.thumbnailUrl != null) put("thumbnail_url", job.thumbnailUrl)
             if (job.durationMs != null) put("duration_ms", job.durationMs)
         }
@@ -342,7 +412,8 @@ class DownloadRepository private constructor(context: Context) {
             audioUrl = nullableText("audio_url"),
             audioExtension = nullableText("audio_extension"),
             httpHeaders = decodeHeaders(nullableText("http_headers")),
-            audioHeaders = decodeHeaders(nullableText("audio_headers"))
+            audioHeaders = decodeHeaders(nullableText("audio_headers")),
+            favorite = getInt(getColumnIndexOrThrow("favorite")) != 0
         )
     }
 

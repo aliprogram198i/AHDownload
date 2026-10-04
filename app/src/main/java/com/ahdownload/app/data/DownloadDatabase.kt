@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    5
+    6
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -57,6 +57,9 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
         if (oldVersion < 5) {
             db.execSQL("ALTER TABLE downloads ADD COLUMN http_headers TEXT")
             db.execSQL("ALTER TABLE downloads ADD COLUMN audio_headers TEXT")
+        }
+        if (oldVersion < 6) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
         }
     }
 }

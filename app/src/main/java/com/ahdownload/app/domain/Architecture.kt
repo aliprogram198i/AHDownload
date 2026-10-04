@@ -29,7 +29,8 @@ data class DownloadJob(
     val extension: String? = null, val mergeRequired: Boolean = false,
     val audioUrl: String? = null, val audioExtension: String? = null,
     val httpHeaders: Map<String, String> = emptyMap(),
-    val audioHeaders: Map<String, String> = emptyMap()
+    val audioHeaders: Map<String, String> = emptyMap(),
+    val favorite: Boolean = false
 )
 
 interface SourceResolver {

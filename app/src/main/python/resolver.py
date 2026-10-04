@@ -83,6 +83,7 @@ def _format(item):
         "fps": item.get("fps"),
         "abr": item.get("abr"),
         "tbr": item.get("tbr"),
+        "fps": item.get("fps"),
         "sizeBytes": item.get("filesize") or item.get("filesize_approx"),
         "hasVideo": has_video,
         "hasAudio": has_audio,
