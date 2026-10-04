@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:name=".AHDownloadApplication"
+        android:allowBackup="true"
+        android:label="AHDownload"
+        android:icon="@drawable/ic_ahdownload"
+        android:roundIcon="@drawable/ic_ahdownload"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AHDownload">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
