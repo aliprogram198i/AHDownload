@@ -88,7 +88,9 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             if (sourceUrl.isNotBlank()) requestBuilder.header("Referer", sourceUrl)
             val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
             if (sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ||
-                sourceHost == "youtube.com" || sourceHost.endsWith(".youtube.com")) {
+                sourceHost == "youtube.com" || sourceHost.endsWith(".youtube.com") ||
+                sourceHost == "facebook.com" || sourceHost.endsWith(".facebook.com") ||
+                sourceHost == "fb.watch") {
                 runCatching { CookieManager.getInstance().getCookie(sourceUrl) }
                     .getOrNull()
                     ?.takeIf { it.isNotBlank() }
@@ -179,8 +181,15 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         repo.update(jobId) { it.copy(progress = 50, downloadedBytes = videoFile.length()) }
         downloadStream(audioUrl, sourceUrl, audioFile)
         repo.update(jobId) { it.copy(progress = 80, downloadedBytes = videoFile.length() + audioFile.length()) }
-        muxMp4(videoFile, audioFile, target)
-        videoFile.delete(); audioFile.delete()
+        try {
+            muxMp4(videoFile, audioFile, target)
+        } catch (e: Throwable) {
+            AppLogger.error(applicationContext, "download.merge_failed", e, "job=$jobId")
+            throw e
+        } finally {
+            videoFile.delete()
+            audioFile.delete()
+        }
         repo.update(jobId) { it.copy(progress = 100, downloadedBytes = target.length()) }
         AppLogger.info(applicationContext, "download.merge_completed", "job=$jobId bytes=${target.length()}")
     }
