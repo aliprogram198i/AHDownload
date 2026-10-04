@@ -9,7 +9,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ahdownload.app.data.DownloadRepository
-import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.diagnostics.AppLogger\nimport com.ahdownload.app.data.MediaUrlRefresher\nimport com.ahdownload.app.data.MediaValidator
 import com.ahdownload.app.domain.DownloadStatus
 import okhttp3.OkHttpClient
 import okhttp3.Request
