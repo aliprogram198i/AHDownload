@@ -240,6 +240,27 @@ class DownloadRepository private constructor(context: Context) {
         update(jobId) { it.copy(favorite = !it.favorite) }
     }
 
+    suspend fun refreshAndRetry(jobId: String): Boolean = withContext(Dispatchers.IO) {
+        val job = synchronized(lock) { find(jobId) } ?: return@withContext false
+        if (job.sourceUrl.isBlank()) return@withContext false
+        val host = android.net.Uri.parse(job.sourceUrl).host.orEmpty().lowercase()
+        val supported = host == "youtube.com" || host.endsWith(".youtube.com") ||
+            host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") ||
+            host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch"
+        if (!supported) return@withContext retry(jobId)
+        val refreshed = EmbeddedPlatformResolver(app)
+            .resolve(job.sourceUrl, excludedUrls = setOf(job.formatUrl), forceFresh = true)
+            .getOrNull()
+            ?: return@withContext false
+        val selected = refreshed.formats
+            .firstOrNull { it.url != job.formatUrl && it.ext.equals(job.extension.orEmpty(), ignoreCase = true) &&
+                it.mergeRequired == job.mergeRequired }
+            ?: refreshed.formats.firstOrNull { it.url != job.formatUrl && it.mergeRequired == job.mergeRequired }
+            ?: refreshed.formats.firstOrNull { it.url != job.formatUrl }
+            ?: return@withContext false
+        requeueWithRefreshedFormat(jobId, selected, mediaRefreshed = true)
+    }
+
     private fun workName(jobId: String): String = "ahdownload-job:$jobId"
 
     private fun trimHistory() {
