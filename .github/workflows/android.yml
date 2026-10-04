@@ -38,6 +38,13 @@ jobs:
       - name: Install Android SDK 36
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
+      - name: Verify checkout
+        run: |
+          echo "Checked-out commit:"
+          git rev-parse HEAD
+          echo "App build plugin header:"
+          sed -n '1,10p' app/build.gradle.kts
+
       - name: Compile and test
         run: gradle --no-daemon testDebugUnitTest assembleDebug
 
