@@ -111,7 +111,11 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
      }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
     }else{
      EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
-      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
+      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.let { raw ->
+       val video=FormatRanker.rankVideo(raw.filter{it.hasVideo})
+       val audio=FormatRanker.rankAudio(raw.filter{it.hasAudio&&!it.hasVideo})
+       video + audio
+      }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
       else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
      }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
@@ -316,11 +320,7 @@ private fun formatDetails(format:ResolvedFormat):String{
  return listOfNotNull(dimensions,audio,format.ext.takeIf{it.isNotBlank()}?.uppercase(Locale.US),size.removePrefix(" • ").takeIf{it.isNotBlank()}).joinToString(" • ")
 }
 
-private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?{
- if(formats.isEmpty())return null
- val underOrEqual1080=formats.filter{(it.height?:0)<=1080}
- return (underOrEqual1080.maxByOrNull{it.height?:0}?:formats.maxByOrNull{it.height?:0})
-}
+private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat? = FormatRanker.recommendedVideo(formats)
 
 @Composable private fun DownloadsScreen(){
  val context=LocalContext.current;val repository=remember{DownloadRepository(context)};var jobs by remember{mutableStateOf(repository.all())};LaunchedEffect(Unit){while(true){jobs=repository.all();delay(700)}}
