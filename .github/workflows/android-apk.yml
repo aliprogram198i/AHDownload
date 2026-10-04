@@ -69,7 +69,7 @@ jobs:
           tag_name: v1.3.0
           name: AHDownload v1.3.0
           body: |
-            AHDownload v1.2.0
+            AHDownload v1.3.0
 
             Production release APK.
 
