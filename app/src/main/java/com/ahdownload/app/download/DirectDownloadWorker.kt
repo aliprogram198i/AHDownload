@@ -34,6 +34,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_MERGE_REQUIRED = "merge_required"
         const val KEY_AUDIO_URL = "audio_url"
         const val KEY_AUDIO_EXTENSION = "audio_extension"
+        private const val MAX_RETRY_ATTEMPTS = 3
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
     }
 
@@ -53,7 +54,9 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val audioExtension = inputData.getString(KEY_AUDIO_EXTENSION).orEmpty()
         val repo = DownloadRepository.get(applicationContext)
         return try {
+            clearFailureState(repo, jobId)
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
+            notifyProgress(jobId, title, 0, null, 0L)
             AppLogger.info(applicationContext, "download.start", "job=$jobId")
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
             val extension = requestedExtension
@@ -109,7 +112,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 if (!response.isSuccessful) {
                     if (response.code == 416 && existing > 0L) {
                         part.delete()
-                        repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, downloadedBytes = 0L, progress = 0) }
+                        repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, downloadedBytes = 0L, progress = 0, speedBytesPerSec = 0L, etaSeconds = null, errorCode = "RANGE_RESET") }
+                        notifyProgress(jobId, title, 0, null, 0L)
                         AppLogger.info(applicationContext, "download.range_reset", "job=$jobId")
                         return Result.retry()
                     }
@@ -146,13 +150,14 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                             return Result.success()
                         }
                     }
-                    repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
-                    return if (response.code in 500..599) Result.retry() else Result.failure()
+                    markFailed(repo, jobId, "HTTP_${response.code}")
+                    return if (response.code in 500..599 && runAttemptCount + 1 < MAX_RETRY_ATTEMPTS) { Result.retry() } else { notifyFailed(jobId, title, "فشل الاتصال بالمصدر"); Result.failure() }
                 }
                 val contentType = response.header("Content-Type")?.substringBefore(";")?.trim()?.lowercase()
                 if (contentType == "text/html" || contentType == "application/xhtml+xml") {
-                    repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
+                    markFailed(repo, jobId, "HTML_RESPONSE")
                     AppLogger.error(applicationContext, "download.rejected_html", details = "job=$jobId contentType=$contentType")
+                    notifyFailed(jobId, title, "المصدر أعاد صفحة ويب بدلاً من ملف وسائط")
                     return Result.failure()
                 }
                 val body = response.body
@@ -166,7 +171,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 if (!append) existing = 0L
                 val length = body.contentLength()
                 val total = if (length > 0L) existing + length else null
-                repo.update(jobId) { it.copy(totalBytes = total, downloadedBytes = existing) }
+                val startedNanos = System.nanoTime()
+                repo.update(jobId) { it.copy(totalBytes = total, downloadedBytes = existing, speedBytesPerSec = 0L, etaSeconds = null) }
 
                 body.byteStream().use { input ->
                     RandomAccessFile(part, "rw").use { raf ->
@@ -175,6 +181,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                         val buffer = ByteArray(64 * 1024)
                         var done = existing
                         var checkpoint = existing
+                        var lastNotifyBytes = existing
+                        var lastNotifyNanos = startedNanos
                         while (true) {
                             if (isStopped) return Result.retry()
                             val read = input.read(buffer)
@@ -183,11 +191,23 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                             done += read
                             if (done - checkpoint >= 256 * 1024L) {
                                 val progress = total?.let { ((done * 100L) / it).toInt().coerceIn(0, 100) } ?: 0
-                                repo.update(jobId) { it.copy(progress = progress, downloadedBytes = done) }
+                                val now = System.nanoTime()
+                                val elapsedSec = ((now - startedNanos) / 1_000_000_000L).coerceAtLeast(1L)
+                                val speed = ((done - existing) / elapsedSec).coerceAtLeast(0L)
+                                val eta = if (speed > 0L && total != null) ((total - done).coerceAtLeast(0L) / speed) else null
+                                repo.update(jobId) { it.copy(progress = progress, downloadedBytes = done, speedBytesPerSec = speed, etaSeconds = eta) }
+                                if (done - lastNotifyBytes >= 512 * 1024L || now - lastNotifyNanos >= 2_000_000_000L) {
+                                    notifyProgress(jobId, title, progress, eta, speed)
+                                    lastNotifyBytes = done
+                                    lastNotifyNanos = now
+                                }
                                 checkpoint = done
                             }
                         }
-                        repo.update(jobId) { it.copy(progress = 100, downloadedBytes = done) }
+                        val elapsedSec = ((System.nanoTime() - startedNanos) / 1_000_000_000L).coerceAtLeast(1L)
+                        val speed = ((done - existing) / elapsedSec).coerceAtLeast(0L)
+                        repo.update(jobId) { it.copy(progress = 100, downloadedBytes = done, speedBytesPerSec = speed, etaSeconds = 0L) }
+                        notifyProgress(jobId, title, 100, 0L, speed)
                     }
                 }
             }
@@ -290,6 +310,40 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         }
     }
 
+    private fun clearFailureState(repo: DownloadRepository, jobId: String) {
+        repo.update(jobId) { it.copy(errorCode = null, speedBytesPerSec = 0L, etaSeconds = null) }
+    }
+
+    private fun markFailed(repo: DownloadRepository, jobId: String, code: String) {
+        repo.update(jobId) { it.copy(status = DownloadStatus.FAILED, errorCode = code, speedBytesPerSec = 0L, etaSeconds = null) }
+    }
+
+    private fun notificationAllowed(): Boolean {
+        val prefs = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("notifications", true)) return false
+        return Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun notifyProgress(jobId: String, title: String, progress: Int, etaSeconds: Long?, speedBytesPerSec: Long) {
+        if (!notificationAllowed()) return
+        val intent = android.content.Intent(applicationContext, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(applicationContext, jobId.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val text = if (speedBytesPerSec > 0L) "جارٍ التنزيل • " + progress + "% • " + formatRate(speedBytesPerSec) + (etaSeconds?.let { " • متبقٍ " + formatDuration(it) } ?: "") else "جارٍ التنزيل • " + progress + "%"
+        val notification = NotificationCompat.Builder(applicationContext, "downloads").setSmallIcon(com.ahdownload.app.R.drawable.ic_ahdownload).setContentTitle(title).setContentText(text).setContentIntent(pending).setOnlyAlertOnce(true).setOngoing(progress < 100).setProgress(100, progress.coerceIn(0, 100), false).build()
+        androidx.core.app.NotificationManagerCompat.from(applicationContext).notify(jobId.hashCode(), notification)
+    }
+
+    private fun notifyFailed(jobId: String, title: String, reason: String) {
+        if (!notificationAllowed()) return
+        val intent = android.content.Intent(applicationContext, MainActivity::class.java)
+        val pending = PendingIntent.getActivity(applicationContext, jobId.hashCode(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(applicationContext, "downloads").setSmallIcon(com.ahdownload.app.R.drawable.ic_ahdownload).setContentTitle("فشل التنزيل").setContentText(title + " • " + reason).setContentIntent(pending).setAutoCancel(true).build()
+        androidx.core.app.NotificationManagerCompat.from(applicationContext).notify(jobId.hashCode(), notification)
+    }
+
+    private fun formatRate(bytesPerSec: Long): String = formatBytes(bytesPerSec) + "/s"
+    private fun formatDuration(seconds: Long): String { val h=seconds/3600; val m=(seconds%3600)/60; val s=seconds%60; return if(h>0) String.format(java.util.Locale.US,"%d:%02d:%02d",h,m,s) else String.format(java.util.Locale.US,"%d:%02d",m,s) }
+    private fun formatBytes(value: Long): String { if(value<1024)return "$value B"; var n=value.toDouble(); val units=arrayOf("KB","MB","GB","TB"); var i=-1; while(n>=1024&&i<units.lastIndex){n/=1024;i++}; return String.format(java.util.Locale.US,"%.1f %s",n,units[i]) }
     private fun notifyCompleted(jobId: String, title: String) {
         val prefs = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("notifications", true)) return
