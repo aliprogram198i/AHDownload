@@ -71,7 +71,12 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             clearFailureState(repo, jobId)
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             notifyProgress(jobId, title, 0, null, 0L)
-            AppLogger.info(applicationContext, "download.start", "job=$jobId")
+            AppLogger.info(
+                applicationContext,
+                "download.start",
+                "job=" + jobId + " host=" + (android.net.Uri.parse(sourceUrl).host.orEmpty().lowercase()) +
+                    " ext=" + extension + " merge=" + mergeRequired + " resumedBytes=" + existing
+            )
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
             val extension = requestedExtension
                 .lowercase()
@@ -151,6 +156,11 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 requestBuilder.header("Sec-Fetch-Site", "cross-site")
             }
             val request = requestBuilder.build()
+            AppLogger.info(
+                applicationContext,
+                "download.request",
+                "job=" + jobId + " host=" + sourceHost + " range=" + (existing > 0L)
+            )
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -242,10 +252,27 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
 
             if (target.exists()) target.delete()
             if (!part.renameTo(target)) throw IOException("finalize_failed")
+            AppLogger.info(
+                applicationContext,
+                "download.media_validation_start",
+                "job=" + jobId + " ext=" + extension + " bytes=" + target.length()
+            )
             MediaValidator.validateFile(target, extension).getOrElse {
+                val reason = it.message ?: "MEDIA_VALIDATION_FAILED"
+                AppLogger.error(
+                    applicationContext,
+                    "download.media_validation_failed",
+                    it,
+                    "job=" + jobId + " ext=" + extension + " bytes=" + target.length() + " reason=" + reason
+                )
                 target.delete()
-                throw IOException(it.message ?: "MEDIA_VALIDATION_FAILED")
+                throw IOException(reason)
             }
+            AppLogger.info(
+                applicationContext,
+                "download.media_validation_success",
+                "job=" + jobId + " ext=" + extension + " bytes=" + target.length()
+            )
             val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
                 ?: "application/octet-stream"
             val published = StoragePublisher.publish(applicationContext, target, target.name, mime)
@@ -266,9 +293,20 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val attempt = runAttemptCount + 1
             if ((e.message == "MEDIA_SIGNATURE_MISMATCH" || e.message == "MEDIA_HTML_OR_ERROR_RESPONSE") &&
                 sourceUrl.isNotBlank() && !mediaRefreshed) {
-                val fresh = MediaUrlRefresher(applicationContext)
+                AppLogger.warn(
+                    applicationContext,
+                    "download.media_refresh_start",
+                    "job=" + jobId + " reason=" + (e.message ?: "MEDIA_VALIDATION_FAILED")
+                )
+                val refreshResult = MediaUrlRefresher(applicationContext)
                     .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired, url)
-                    .getOrNull()
+                val fresh = refreshResult.getOrNull()
+                AppLogger.info(
+                    applicationContext,
+                    "download.media_refresh_result",
+                    "job=" + jobId + " success=" + (fresh != null) +
+                        " ext=" + (fresh?.ext ?: "") + " merge=" + (fresh?.mergeRequired ?: false)
+                )
                 if (fresh != null && fresh.url.isNotBlank() && fresh.url != url &&
                     repo.requeueWithRefreshedFormat(jobId, fresh, mediaRefreshed = true)) {
                     AppLogger.info(
@@ -287,8 +325,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 AppLogger.error(
                     applicationContext,
                     "download.media_source_refresh_failed",
-                    e,
-                    "job=$jobId refreshed=false"
+                    refreshResult.exceptionOrNull() ?: e,
+                    "job=" + jobId + " refreshed=false reason=" + (e.message ?: "MEDIA_VALIDATION_FAILED")
                 )
                 notifyFailed(jobId, title, "انتهت صلاحية مصدر الوسائط؛ أعد المحاولة")
                 return Result.failure()
