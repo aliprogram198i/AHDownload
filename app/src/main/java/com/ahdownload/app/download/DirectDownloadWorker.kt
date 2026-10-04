@@ -63,8 +63,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 ?: MimeTypeMap.getFileExtensionFromUrl(url).lowercase().takeIf { it.isNotBlank() }
                 ?: "bin"
             val safeTitle = title.replace(Regex("[\\/:*?\"<>|]"), "_").take(120)
-            val target = File(dir, "$safeTitle.$extension")
-            val part = File(dir, "$safeTitle.$extension.part")
+            val target = uniqueTarget(dir, safeTitle, extension)
+            val part = File(dir, "$safeTitle.${target.name.substringAfterLast(".")}.part")
             var existing = if (part.exists()) part.length() else 0L
 
             if (mergeRequired && audioUrl.isNotBlank()) {
@@ -278,6 +278,18 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         extractor.selectTrack(track); val buffer = ByteBuffer.allocate(1024 * 1024); val info = android.media.MediaCodec.BufferInfo()
         while (true) { val size = extractor.readSampleData(buffer, 0); if (size < 0) break; info.offset = 0; info.size = size; info.presentationTimeUs = extractor.sampleTime; info.flags = extractor.sampleFlags; muxer.writeSampleData(outputTrack, buffer, info); extractor.advance(); buffer.clear() }
     }
+    private fun uniqueTarget(dir: File, safeTitle: String, extension: String): File {
+        val first = File(dir, "$safeTitle.$extension")
+        if (!first.exists() && !File(dir, "$safeTitle.$extension.part").exists()) return first
+        var index = 2
+        while (true) {
+            val candidate = File(dir, "$safeTitle ($index).$extension")
+            val part = File(dir, "$safeTitle ($index).$extension.part")
+            if (!candidate.exists() && !part.exists()) return candidate
+            index++
+        }
+    }
+
     private fun notifyCompleted(jobId: String, title: String) {
         val prefs = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("notifications", true)) return
