@@ -17,7 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 val AHBrandGradient = Brush.linearGradient(listOf(Color(0xFF315BFF), Color(0xFF7B4DFF), Color(0xFF16B8B1)))
-val AHBrandGradientSoft = Brush.linearGradient(listOf(Color(0xFFE7ECFF), Color(0xFFF0E9FF), Color(0xFFE2F8F6)))
+val AHBrandGradientSoft = Brush.linearGradient(listOf(Color(0xFF151B2D), Color(0xFF1B1730), Color(0xFF102523)))
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF315BFF),
@@ -46,26 +46,26 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFB9C7FF),
-    onPrimary = Color(0xFF002D6E),
-    primaryContainer = Color(0xFF243F99),
-    onPrimaryContainer = Color(0xFFDCE7FF),
-    secondary = Color(0xFF7BE0DB),
-    onSecondary = Color(0xFF003735),
-    secondaryContainer = Color(0xFF07504D),
-    onSecondaryContainer = Color(0xFFA3ECE7),
-    tertiary = Color(0xFFD0BFFF),
-    onTertiary = Color(0xFF39205F),
-    tertiaryContainer = Color(0xFF503782),
-    onTertiaryContainer = Color(0xFFEADDFF),
-    background = Color(0xFF0D1015),
-    onBackground = Color(0xFFE4E7ED),
-    surface = Color(0xFF0D1015),
-    onSurface = Color(0xFFE4E7ED),
-    surfaceVariant = Color(0xFF20252D),
-    onSurfaceVariant = Color(0xFFC3C7D0),
-    outline = Color(0xFF8D929D),
-    outlineVariant = Color(0xFF424750),
+    primary = Color(0xFF6F8BFF),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF202D62),
+    onPrimaryContainer = Color(0xFFDCE3FF),
+    secondary = Color(0xFF35D2C5),
+    onSecondary = Color(0xFF062522),
+    secondaryContainer = Color(0xFF123E3B),
+    onSecondaryContainer = Color(0xFFA9F3EC),
+    tertiary = Color(0xFFA78BFA),
+    onTertiary = Color(0xFF24113F),
+    tertiaryContainer = Color(0xFF3A2864),
+    onTertiaryContainer = Color(0xFFE8DDFF),
+    background = Color(0xFF080A10),
+    onBackground = Color(0xFFF2F4FA),
+    surface = Color(0xFF0F121A),
+    onSurface = Color(0xFFF2F4FA),
+    surfaceVariant = Color(0xFF171B24),
+    onSurfaceVariant = Color(0xFF9AA2B3),
+    outline = Color(0xFF626A7A),
+    outlineVariant = Color(0xFF292F3B),
     error = Color(0xFFFFB4AB),
     errorContainer = Color(0xFF93000A),
     onErrorContainer = Color(0xFFFFDAD6)
