@@ -127,6 +127,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
     analyzing=false
    }
   }}
+  if(analyzing) item{AnalysisSkeleton()}
   item{AnimatedVisibility(error!=null){InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())}}
   analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext,selected.mergeRequired,selected.audioUrl,selected.audioExt,info.thumbnailUrl,info.durationSeconds?.times(1000L)?.toLong());url="";analysis=null;openDownloads()}}}
  }
@@ -172,7 +173,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   AHGradientButton(onClick=onAnalyze,enabled=url.trim().startsWith("http")&&!analyzing,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(16.dp)){if(analyzing){CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp);Spacer(Modifier.width(9.dp));Text("جاري استخراج الصيغ…")}else{Icon(Icons.Default.Search,null);Spacer(Modifier.width(8.dp));Text("تحليل الرابط")}}
  }}
 }
-@Composable private fun InfoCard(icon:ImageVector,title:String,text:String){Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.errorContainer),shape=RoundedCornerShape(20.dp)){Row(Modifier.padding(16.dp),verticalAlignment=Alignment.Top){Icon(icon,null,tint=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.width(12.dp));Column{Text(title,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.height(4.dp));Text(text,color=MaterialTheme.colorScheme.onErrorContainer)}}}}
+@Composable private fun AnalysisSkeleton(){Card(shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant));Spacer(Modifier.width(12.dp));Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)){Box(Modifier.fillMaxWidth(.72f).height(18.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant));Box(Modifier.fillMaxWidth(.45f).height(14.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant))}};Box(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant));Box(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant));Text("جاري تحليل المصدر واختيار الصيغ الحقيقية…",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}\n\n@Composable private fun InfoCard(icon:ImageVector,title:String,text:String){Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.errorContainer),shape=RoundedCornerShape(20.dp)){Row(Modifier.padding(16.dp),verticalAlignment=Alignment.Top){Icon(icon,null,tint=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.width(12.dp));Column{Text(title,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.height(4.dp));Text(text,color=MaterialTheme.colorScheme.onErrorContainer)}}}}
 
 @Composable private fun MediaAnalysisCard(info:LinkAnalysis,onDownload:(ResolvedFormat)->Unit){
  var mode by remember(info.url){mutableStateOf("video")}
@@ -208,7 +209,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   Column(Modifier.padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
    Row(verticalAlignment=Alignment.CenterVertically){
     Box(Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.secondaryContainer),contentAlignment=Alignment.Center){
-     Icon(if(mode=="video")Icons.Default.Movie else Icons.Default.Audiotrack,null,Modifier.size(30.dp))
+     if(!info.thumbnailUrl.isNullOrBlank()) AsyncImage(model=info.thumbnailUrl,contentDescription="صورة مصغرة",modifier=Modifier.fillMaxSize()) else Icon(if(mode=="video")Icons.Default.Movie else Icons.Default.Audiotrack,null,Modifier.size(30.dp))
     }
     Spacer(Modifier.width(12.dp))
     Column(Modifier.weight(1f)){
