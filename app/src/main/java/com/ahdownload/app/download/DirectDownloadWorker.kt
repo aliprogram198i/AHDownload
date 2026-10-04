@@ -9,7 +9,9 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ahdownload.app.data.DownloadRepository
-import com.ahdownload.app.diagnostics.AppLogger\nimport com.ahdownload.app.data.MediaUrlRefresher\nimport com.ahdownload.app.data.MediaValidator
+import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.data.MediaUrlRefresher
+import com.ahdownload.app.data.MediaValidator
 import com.ahdownload.app.domain.DownloadStatus
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -100,7 +102,13 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {\n                    if (response.code == 416 && existing > 0L) {\n                        part.delete()\n                        repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, downloadedBytes = 0L, progress = 0) }\n                        AppLogger.info(applicationContext, "download.range_reset", "job=$jobId")\n                        return Result.retry()\n                    }
+                if (!response.isSuccessful) {
+                    if (response.code == 416 && existing > 0L) {
+                        part.delete()
+                        repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, downloadedBytes = 0L, progress = 0) }
+                        AppLogger.info(applicationContext, "download.range_reset", "job=$jobId")
+                        return Result.retry()
+                    }
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return if (response.code in 500..599) Result.retry() else Result.failure()
                 }
