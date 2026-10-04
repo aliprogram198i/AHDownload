@@ -111,23 +111,6 @@ jobs:
           script: |
             set -eu
 
-            diagnostics() {
-              echo "::group::ADB device state"
-              adb devices -l || true
-              adb shell getprop ro.build.version.sdk || true
-              adb shell getprop sys.boot_completed || true
-              echo "::endgroup::"
-
-              echo "::group::Package state"
-              adb shell dumpsys package com.ahdownload.app || true
-              adb shell dumpsys activity activities | tail -n 120 || true
-              echo "::endgroup::"
-
-              echo "::group::Recent logcat"
-              adb logcat -d -t 1000 || true
-              echo "::endgroup::"
-            }
-
             adb wait-for-device
 
             boot_completed=""
@@ -139,7 +122,18 @@ jobs:
 
             if [ "$boot_completed" != "1" ]; then
               echo "ANDROID_EMULATOR_BOOT_TIMEOUT"
-              diagnostics
+              echo "::group::ADB device state"
+              adb devices -l || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell getprop sys.boot_completed || true
+              echo "::endgroup::"
+              echo "::group::Package state"
+              adb shell dumpsys package com.ahdownload.app || true
+              adb shell dumpsys activity activities | tail -n 120 || true
+              echo "::endgroup::"
+              echo "::group::Recent logcat"
+              adb logcat -d -t 1000 || true
+              echo "::endgroup::"
               exit 1
             fi
 
@@ -154,7 +148,18 @@ jobs:
 
             if ! timeout 120s adb install -r "$APK"; then
               echo "APK_INSTALL_TIMEOUT_OR_FAILURE"
-              diagnostics
+              echo "::group::ADB device state"
+              adb devices -l || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell getprop sys.boot_completed || true
+              echo "::endgroup::"
+              echo "::group::Package state"
+              adb shell dumpsys package com.ahdownload.app || true
+              adb shell dumpsys activity activities | tail -n 120 || true
+              echo "::endgroup::"
+              echo "::group::Recent logcat"
+              adb logcat -d -t 1000 || true
+              echo "::endgroup::"
               exit 1
             fi
 
@@ -162,7 +167,18 @@ jobs:
 
             if ! timeout 60s adb shell monkey -p com.ahdownload.app 1; then
               echo "APK_LAUNCH_TIMEOUT_OR_FAILURE"
-              diagnostics
+              echo "::group::ADB device state"
+              adb devices -l || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell getprop sys.boot_completed || true
+              echo "::endgroup::"
+              echo "::group::Package state"
+              adb shell dumpsys package com.ahdownload.app || true
+              adb shell dumpsys activity activities | tail -n 120 || true
+              echo "::endgroup::"
+              echo "::group::Recent logcat"
+              adb logcat -d -t 1000 || true
+              echo "::endgroup::"
               exit 1
             fi
 
@@ -170,7 +186,18 @@ jobs:
 
             if ! adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.10.0'; then
               echo "APK_PACKAGE_METADATA_CHECK_FAILED"
-              diagnostics
+              echo "::group::ADB device state"
+              adb devices -l || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell getprop sys.boot_completed || true
+              echo "::endgroup::"
+              echo "::group::Package state"
+              adb shell dumpsys package com.ahdownload.app || true
+              adb shell dumpsys activity activities | tail -n 120 || true
+              echo "::endgroup::"
+              echo "::group::Recent logcat"
+              adb logcat -d -t 1000 || true
+              echo "::endgroup::"
               exit 1
             fi
 
@@ -178,14 +205,25 @@ jobs:
 
             if ! timeout 8m gradle --no-daemon connectedDebugAndroidTest --console=plain; then
               echo "ANDROID_INSTRUMENTATION_TEST_TIMEOUT_OR_FAILURE"
-              diagnostics
+              echo "::group::ADB device state"
+              adb devices -l || true
+              adb shell getprop ro.build.version.sdk || true
+              adb shell getprop sys.boot_completed || true
+              echo "::endgroup::"
+              echo "::group::Package state"
+              adb shell dumpsys package com.ahdownload.app || true
+              adb shell dumpsys activity activities | tail -n 120 || true
+              echo "::endgroup::"
+              echo "::group::Recent logcat"
+              adb logcat -d -t 1000 || true
+              echo "::endgroup::"
               exit 1
             fi
 
             for screen in home downloads studio settings; do
               if ! timeout 30s adb exec-out run-as com.ahdownload.app.debug cat "files/visual-audit/$screen.png" > "visual-audit/$screen.png"; then
                 echo "VISUAL_EVIDENCE_EXTRACTION_FAILED screen=$screen"
-                    echo "::group::ADB device state"
+                echo "::group::ADB device state"
                 adb devices -l || true
                 adb shell getprop ro.build.version.sdk || true
                 adb shell getprop sys.boot_completed || true
