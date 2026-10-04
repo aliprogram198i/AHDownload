@@ -10,6 +10,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.data.MediaUrlRefresher
+import com.ahdownload.app.data.MediaValidator
 import com.ahdownload.app.domain.DownloadStatus
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -71,6 +73,10 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     File(dir, "$safeTitle.video.part"),
                     File(dir, "$safeTitle." + audioExtension.ifBlank { "m4a" } + ".part"),
                     target, repo)
+                MediaValidator.validateFile(target, "mp4").getOrElse {
+                    target.delete()
+                    throw IOException(it.message ?: "MEDIA_VALIDATION_FAILED")
+                }
                 val published = StoragePublisher.publish(applicationContext, target, target.name, "video/mp4")
                 if (published?.startsWith("content://") == true) target.delete()
                 repo.update(jobId) { it.copy(status = DownloadStatus.COMPLETED, progress = 100,
@@ -101,6 +107,45 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
 
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
+                    if (response.code == 416 && existing > 0L) {
+                        part.delete()
+                        repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, downloadedBytes = 0L, progress = 0) }
+                        AppLogger.info(applicationContext, "download.range_reset", "job=$jobId")
+                        return Result.retry()
+                    }
+                    if (response.code in setOf(401, 403, 410) && sourceUrl.isNotBlank()) {
+                        val fresh = MediaUrlRefresher(applicationContext)
+                            .refresh(sourceUrl, extension, false)
+                            .getOrNull()
+                        if (fresh != null && fresh.url.isNotBlank() && fresh.url != url) {
+                            val settings = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+                            val constraints = androidx.work.Constraints.Builder()
+                                .setRequiredNetworkType(
+                                    if (settings.getBoolean("wifi_only", false))
+                                        androidx.work.NetworkType.UNMETERED
+                                    else androidx.work.NetworkType.CONNECTED
+                                )
+                                .build()
+                            val request = androidx.work.OneTimeWorkRequestBuilder<DirectDownloadWorker>()
+                                .setInputData(androidx.work.workDataOf(
+                                    KEY_JOB_ID to jobId,
+                                    KEY_URL to fresh.url,
+                                    KEY_TITLE to title,
+                                    KEY_EXTENSION to extension,
+                                    KEY_SOURCE_URL to sourceUrl,
+                                    KEY_MERGE_REQUIRED to false,
+                                    KEY_AUDIO_URL to "",
+                                    KEY_AUDIO_EXTENSION to ""
+                                ))
+                                .setConstraints(constraints)
+                                .addTag("ahdownload:$jobId")
+                                .build()
+                            repo.update(jobId) { it.copy(status = DownloadStatus.QUEUED) }
+                            androidx.work.WorkManager.getInstance(applicationContext).enqueue(request)
+                            AppLogger.info(applicationContext, "download.url_refreshed", "job=$jobId reason=http_" + response.code)
+                            return Result.success()
+                        }
+                    }
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return if (response.code in 500..599) Result.retry() else Result.failure()
                 }
@@ -149,6 +194,10 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
 
             if (target.exists()) target.delete()
             if (!part.renameTo(target)) throw IOException("finalize_failed")
+            MediaValidator.validateFile(target, extension).getOrElse {
+                target.delete()
+                throw IOException(it.message ?: "MEDIA_VALIDATION_FAILED")
+            }
             val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension.lowercase())
                 ?: "application/octet-stream"
             val published = StoragePublisher.publish(applicationContext, target, target.name, mime)
