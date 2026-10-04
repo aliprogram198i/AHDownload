@@ -15,6 +15,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -64,59 +65,24 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  }
 }
 @Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){
- NavigationBarItem(
-  selected=route==target,
-  onClick={
-   if(route!=target) nav.navigate(target){
-    launchSingleTop=true
-    restoreState=true
-    popUpTo(nav.graph.startDestinationId){saveState=true}
-   }
-  },
-  icon={
-   val scale by animateFloatAsState(if(route==target)1.12f else 1f,label="navScale")
-   Icon(icon,contentDescription=label,modifier=Modifier.graphicsLayer{scaleX=scale;scaleY=scale})
-  },
-  label={Text(label)},
-  alwaysShowLabel=true
- )
-}
-
-@Composable private fun HomeScreen(openDownloads:()->Unit){
- val context=LocalContext.current;val repository=remember{DownloadRepository(context)};val scope=rememberCoroutineScope()
- var url by remember{mutableStateOf("")};var analyzing by remember{mutableStateOf(false)};var analysis by remember{mutableStateOf<LinkAnalysis?>(null)};var error by remember{mutableStateOf<String?>(null)}
- LaunchedEffect(Unit){val intent=(context as? android.app.Activity)?.intent;if(intent?.action==Intent.ACTION_SEND&&intent.type=="text/plain")url=intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().trim()}
- LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
-  item{HomeHeader()}
-  item{UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
-   val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
-   val host=runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault("")
-   AppLogger.info(context,"analysis.start","platform="+(platform?:"Direct")+" host="+host+" url_hash="+AppLogger.fingerprint(clean))
-   if(host.isBlank()){error="الرابط غير صالح. تحقق من الرابط ثم أعد المحاولة.";return@UrlCard}
-   analyzing=true;error=null;analysis=null
-   scope.launch{
-    if(platform==null){
-     DirectUrlResolver().resolve(clean).onSuccess{resolved->
-      val source=resolved.formats.firstOrNull()
-      if(source==null){error="الرابط المباشر لم يعرض ملفاً قابلاً للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
-      else{
-       val format=ResolvedFormat("direct",source.container?: "bin",null,null,null,source.estimatedSize,source.hasVideo,source.hasAudio,source.url,false,null,null)
-       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",listOf(format),resolved.durationMs?.div(1000.0))
-       AppLogger.info(context,"analysis.success","platform=Direct formats=1")
-      }
-     }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
-    }else{
-     EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
-      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
-      if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
-      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
-     }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
+ Column(
+  Modifier
+   .fillMaxWidth(0.3333f)
+   .clickable{
+    if(route!=target){
+     nav.navigate(target){
+      launchSingleTop=true
+      restoreState=true
+      popUpTo(nav.graph.startDestinationId){saveState=true}
+     }
     }
-    analyzing=false
-   }
-  }}
-  item{AnimatedVisibility(error!=null){InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())}}
-  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext,selected.mergeRequired,selected.audioUrl,selected.audioExt);url="";analysis=null;openDownloads()}}}
+   },
+  horizontalAlignment=Alignment.CenterHorizontally,
+  verticalArrangement=Arrangement.Center
+ ){
+  val scale by animateFloatAsState(if(route==target)1.12f else 1f,label="navScale")
+  Icon(icon,contentDescription=label,modifier=Modifier.graphicsLayer{scaleX=scale;scaleY=scale},tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+  Text(label,style=MaterialTheme.typography.labelSmall,color=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
  }
 }
 
