@@ -61,7 +61,10 @@ class EmbeddedPlatformResolver(
                                     f.optString("audioUrl").takeIf { it.isNotBlank() },
                                     f.optString("audioExt").takeIf { it.isNotBlank() },
                                     parseHeaders(f.optJSONObject("httpHeaders")),
-                                    parseHeaders(f.optJSONObject("audioHeaders"))
+                                    parseHeaders(f.optJSONObject("audioHeaders")),
+                                    fps = f.optDouble("fps").takeIf { f.has("fps") },
+                                    tbr = f.optDouble("tbr").takeIf { f.has("tbr") },
+                                    codec = f.optString("codec").takeIf { it.isNotBlank() }
                                 )
                             )
                         }
