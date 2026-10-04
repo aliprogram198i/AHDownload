@@ -2,6 +2,7 @@ package com.ahdownload.app.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.ahdownload.app.domain.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -23,7 +24,15 @@ data class ResolvedFormat(
     val audioUrl: String? = null,
     val audioExt: String? = null,
     val httpHeaders: Map<String, String> = emptyMap(),
-    val audioHeaders: Map<String, String> = emptyMap()
+    val audioHeaders: Map<String, String> = emptyMap(),
+    val fps: Double? = null,
+    val tbr: Double? = null,
+    val codec: String? = null,
+    val mediaType: MediaType = when {
+        hasVideo -> MediaType.VIDEO
+        hasAudio -> MediaType.AUDIO
+        else -> MediaType.FILE
+    }
 )
 
 data class ResolvedMedia(
@@ -77,7 +86,10 @@ class PlatformResolverClient(
                                 audioUrl = f.optString("audioUrl").takeIf { it.isNotBlank() },
                                 audioExt = f.optString("audioExt").takeIf { it.isNotBlank() },
                                 httpHeaders = parseHeaders(f.optJSONObject("httpHeaders")),
-                                audioHeaders = parseHeaders(f.optJSONObject("audioHeaders"))
+                                audioHeaders = parseHeaders(f.optJSONObject("audioHeaders")),
+                                fps = f.optDouble("fps").takeIf { f.has("fps") },
+                                tbr = f.optDouble("tbr").takeIf { f.has("tbr") },
+                                codec = f.optString("codec").takeIf { it.isNotBlank() }
                             )
                         )
                     }
