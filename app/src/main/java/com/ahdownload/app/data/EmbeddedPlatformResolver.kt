@@ -208,10 +208,16 @@ class EmbeddedPlatformResolver(
                     if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegurl") return@use
                     val path = candidate.substringBefore("?").substringBefore("#").lowercase()
                     val extensionLooksMedia = path.let { it.endsWith(".mp4") || it.endsWith(".m4v") || it.endsWith(".webm") || it.endsWith(".mov") || it.endsWith(".m4a") || it.endsWith(".mp3") }
-                    val dispositionLooksMedia = response.header("Content-Disposition")
+                    val dispositionHeader = response.header("Content-Disposition")
                         ?.lowercase()
-                        ?.let { it.contains(".mp4") || it.contains(".m4v") || it.contains(".webm") || it.contains(".mov") || it.contains(".m4a") || it.contains(".mp3") }
-                        == true
+                        .orEmpty()
+                    val dispositionLooksMedia =
+                        dispositionHeader.contains(".mp4") ||
+                            dispositionHeader.contains(".m4v") ||
+                            dispositionHeader.contains(".webm") ||
+                            dispositionHeader.contains(".mov") ||
+                            dispositionHeader.contains(".m4a") ||
+                            dispositionHeader.contains(".mp3")
                     val cdnLooksMedia = isInstagram && (
                         candidate.contains("cdninstagram", ignoreCase = true) ||
                             candidate.contains("scontent", ignoreCase = true)
