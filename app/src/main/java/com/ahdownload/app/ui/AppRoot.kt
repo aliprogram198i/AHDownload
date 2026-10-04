@@ -299,9 +299,35 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
   if(value && Build.VERSION.SDK_INT>=33) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
   else {notifications=value;prefs.edit().putBoolean("notifications",value).apply()}
 };ListItem(leadingContent={Icon(Icons.Default.Security,null)},headlineContent={Text("فحص الوسائط")},supportingContent={Text("يرفض HTML وصفحات الويب قبل حفظها كفيديو أو صوت.")})}}
-  item{SettingsSection("الحسابات"){ListItem(leadingContent={Icon(Icons.Default.AccountCircle,null)},headlineContent={Text("ربط الحسابات")},supportingContent={Text("YouTube وInstagram وFacebook — جلسة محلية على الجهاز.")},trailingContent={TextButton(onClick=openAccounts){Text("فتح")})}}}
-  item{SettingsSection("التشخيص"){ListItem(leadingContent={Icon(Icons.Default.BugReport,null)},headlineContent={Text("سجل التطبيق")},supportingContent={Text("سجل حقيقي محفوظ محلياً ويمكن نسخه وإرساله للتحليل.")},trailingContent={TextButton(onClick=openDiagnostics){Text("فتح")}})}}
-  item{SettingsSection("الخصوصية"){ListItem(leadingContent={Icon(Icons.Default.Lock,null)},headlineContent={Text("التحليل محلي")},supportingContent={Text("لا يوجد حساب أو اشتراك مفروض لتنزيل الفيديو والصوت الأساسي.")})}}
+  item {
+   SettingsSection("الحسابات") {
+    ListItem(
+     leadingContent={Icon(Icons.Default.AccountCircle,null)},
+     headlineContent={Text("ربط الحسابات")},
+     supportingContent={Text("YouTube وInstagram وFacebook — جلسة محلية على الجهاز.")},
+     trailingContent={TextButton(onClick=openAccounts){Text("فتح")}}
+    )
+   }
+  }
+  item {
+   SettingsSection("التشخيص") {
+    ListItem(
+     leadingContent={Icon(Icons.Default.BugReport,null)},
+     headlineContent={Text("سجل التطبيق")},
+     supportingContent={Text("سجل حقيقي محفوظ محلياً ويمكن نسخه وإرساله للتحليل.")},
+     trailingContent={TextButton(onClick=openDiagnostics){Text("فتح")}}
+    )
+   }
+  }
+  item {
+   SettingsSection("الخصوصية") {
+    ListItem(
+     leadingContent={Icon(Icons.Default.Lock,null)},
+     headlineContent={Text("التحليل محلي")},
+     supportingContent={Text("لا يوجد حساب أو اشتراك مفروض لتنزيل الفيديو والصوت الأساسي.")}
+    )
+   }
+  }
  }}
 @Composable private fun SettingsSection(title:String,content:@Composable ColumnScope.()->Unit){Card(shape=RoundedCornerShape(20.dp)){Column{Text(title,Modifier.padding(start=16.dp,top=15.dp),fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary);content()}}}
 @Composable private fun Setting(title:String,checked:Boolean,onChange:(Boolean)->Unit){ListItem(headlineContent={Text(title)},trailingContent={Switch(checked,onChange)})}
