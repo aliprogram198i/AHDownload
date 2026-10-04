@@ -92,7 +92,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
         }
     }
 }
-  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")},themeMode){mode->themeMode=mode;prefs.edit().putString("theme_mode",mode.name).apply()}};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
+  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen{nav.navigate("studio")}};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")},themeMode){mode->themeMode=mode;prefs.edit().putString("theme_mode",mode.name).apply()}};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
  }
 }
 @Composable
@@ -420,21 +420,139 @@ private fun formatDetails(format:ResolvedFormat):String{
  return listOfNotNull(dimensions,codec,fps,bitrate,audio,format.ext.uppercase(Locale.US).takeIf{it.isNotBlank()},size).joinToString(" • ")
 }
 
-@Composable private fun DownloadsScreen(){
- val context=LocalContext.current;val repository=remember{DownloadRepository.get(context)};val vm:DownloadsViewModel=viewModel();val jobs by vm.state.collectAsStateWithLifecycle();val allJobs by repository.jobs.collectAsStateWithLifecycle()
+@Composable private fun DownloadsScreen(openStudio:()->Unit){
+ val context=LocalContext.current
+ val repository=remember{DownloadRepository.get(context)}
+ val vm:DownloadsViewModel=viewModel()
+ val jobs by vm.state.collectAsStateWithLifecycle()
+ val allJobs by repository.jobs.collectAsStateWithLifecycle()
  var filter by remember{mutableStateOf(DownloadsViewModel.Filter.ALL)}
+ var storage by remember{mutableStateOf(StorageIntelligence.read(context))}
  LaunchedEffect(filter){vm.setFilter(filter)}
+ LaunchedEffect(Unit){storage=StorageIntelligence.read(context)}
  Column(Modifier.fillMaxSize().padding(horizontal=16.dp)){
-  Row(Modifier.fillMaxWidth().padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatPill(Modifier.weight(1f),"قيد التنفيذ",allJobs.count{it.status==DownloadStatus.DOWNLOADING||it.status==DownloadStatus.QUEUED||it.status==DownloadStatus.RETRYING}.toString());StatPill(Modifier.weight(1f),"مكتمل",allJobs.count{it.status==DownloadStatus.COMPLETED}.toString())}
-  SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top=12.dp)){listOf(DownloadsViewModel.Filter.ALL to "الكل",DownloadsViewModel.Filter.ACTIVE to "جارية",DownloadsViewModel.Filter.COMPLETED to "مكتملة",DownloadsViewModel.Filter.FAILED to "فاشلة").forEachIndexed{index,(key,label)->SegmentedButton(filter==key,{filter=key},shape=SegmentedButtonDefaults.itemShape(index,3)){Text(label)}}}
-  if(jobs.isEmpty())EmptyState(Icons.Default.Download,"لا توجد تنزيلات","ابدأ من الرئيسية بتحليل رابط فيديو.")else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(jobs,key={it.id}){job->DownloadCard(job,{vm.cancel(job.id)},{vm.delete(job.id)},{vm.retry(job.id)},{job.outputUri?.let{uri->openOutput(context,uri)}},{job.outputUri?.let{uri->shareOutput(context,uri)}})}}
- }}
-@Composable private fun StatPill(modifier:Modifier,title:String,value:String){Surface(modifier,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant){Column(Modifier.padding(14.dp)){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text(title,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
-@Composable private fun DownloadCard(job:DownloadJob,onCancel:()->Unit,onDelete:()->Unit,onRetry:()->Unit,onOpen:()->Unit,onShare:()->Unit){Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){
-    if(!job.thumbnailUrl.isNullOrBlank()) AsyncImage(model=job.thumbnailUrl,contentDescription="صورة مصغرة",modifier=Modifier.fillMaxSize()) else Icon(if(job.title.contains("kbps",true))Icons.Default.Audiotrack else Icons.Default.Movie,null)
-   };Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f)){Text(job.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(statusLabel(job.status) + (job.durationMs?.let { " • " + formatDuration(it / 1000.0) } ?: ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
-   if(job.status==DownloadStatus.DOWNLOADING || job.status==DownloadStatus.RETRYING) Text((if(job.speedBytesPerSec>0) formatBytes(job.speedBytesPerSec)+"/s" else "جارٍ الحساب") + (job.etaSeconds?.let{" • متبقٍ "+formatDuration(it.toDouble())} ?: ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)};Text(job.progress.toString()+"%",fontWeight=FontWeight.Bold)};LinearProgressIndicator(progress={job.progress.coerceIn(0,100)/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant);Text(job.totalBytes?.let{formatBytes(job.downloadedBytes)+" / "+formatBytes(it)}?:formatBytes(job.downloadedBytes),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){when{job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.QUEUED||job.status==DownloadStatus.RETRYING->TextButton(onClick=onCancel){Text("إلغاء")};job.status==DownloadStatus.COMPLETED&&job.outputUri!=null->{TextButton(onClick=onShare){Text("مشاركة")};TextButton(onClick=onOpen){Text("فتح")};TextButton(onClick=onDelete){Text("حذف")}};job.status==DownloadStatus.FAILED->{TextButton(onClick=onRetry){Text("إعادة المحاولة")};TextButton(onClick=onDelete){Text("حذف")}};else->TextButton(onClick=onDelete){Text("حذف السجل")}}}}}
+  Row(Modifier.fillMaxWidth().padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){
+   StatPill(Modifier.weight(1f),"قيد التنفيذ",allJobs.count{it.status==DownloadStatus.DOWNLOADING||it.status==DownloadStatus.QUEUED||it.status==DownloadStatus.RETRYING}.toString())
+   StatPill(Modifier.weight(1f),"مكتمل",allJobs.count{it.status==DownloadStatus.COMPLETED}.toString())
+   StatPill(Modifier.weight(1f),"المفضلة",allJobs.count{it.favorite}.toString())
+  }
+  Card(Modifier.fillMaxWidth().padding(top=10.dp),shape=RoundedCornerShape(18.dp)){
+   Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){
+    Row(verticalAlignment=Alignment.CenterVertically){
+     Icon(Icons.Default.Storage,null,tint=MaterialTheme.colorScheme.primary)
+     Spacer(Modifier.width(8.dp))
+     Text("التخزين",fontWeight=FontWeight.SemiBold,modifier=Modifier.weight(1f))
+     Text("${storage.usedPercent}%",color=MaterialTheme.colorScheme.primary,fontWeight=FontWeight.Bold)
+    }
+    LinearProgressIndicator(progress={storage.usedPercent/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant)
+    Text("متاح ${StorageIntelligence.format(storage.availableBytes)} من ${StorageIntelligence.format(storage.totalBytes)}",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   }
+  }
+  SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top=12.dp)){
+   val filters=listOf(
+    DownloadsViewModel.Filter.ALL to "الكل",
+    DownloadsViewModel.Filter.ACTIVE to "جارية",
+    DownloadsViewModel.Filter.COMPLETED to "مكتملة",
+    DownloadsViewModel.Filter.FAILED to "فاشلة",
+    DownloadsViewModel.Filter.FAVORITES to "مفضلة"
+   )
+   filters.forEachIndexed{index,(key,label)->SegmentedButton(filter==key,{filter=key},shape=SegmentedButtonDefaults.itemShape(index,filters.size)){Text(label)}}
+  }
+  if(jobs.isEmpty()) EmptyState(
+   if(filter==DownloadsViewModel.Filter.FAVORITES) Icons.Default.StarBorder else Icons.Default.Download,
+   if(filter==DownloadsViewModel.Filter.FAVORITES) "لا توجد مفضلة" else "لا توجد تنزيلات",
+   if(filter==DownloadsViewModel.Filter.FAVORITES) "اضغط النجمة على أي تنزيل للاحتفاظ به هنا." else "ابدأ من الرئيسية بتحليل رابط وسائط."
+  ) else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+   items(jobs,key={it.id}){job->
+    DownloadCard(
+     job,
+     {vm.cancel(job.id)},
+     {vm.delete(job.id)},
+     {vm.retry(job.id)},
+     {vm.refreshAndRetry(job.id)},
+     {vm.toggleFavorite(job.id)},
+     {job.outputUri?.let{uri->openOutput(context,uri)}},
+     {job.outputUri?.let{uri->shareOutput(context,uri)}},
+     {job.outputUri?.let{uri->StudioBridge.pendingUri=Uri.parse(uri);openStudio()}}
+    )
+   }
+  }
+ }
+}
 
+@Composable private fun StatPill(modifier:Modifier,title:String,value:String){Surface(modifier,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant){Column(Modifier.padding(12.dp)){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text(title,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
+
+@Composable private fun DownloadCard(
+ job:DownloadJob,
+ onCancel:()->Unit,
+ onDelete:()->Unit,
+ onRetry:()->Unit,
+ onSmartRetry:()->Unit,
+ onToggleFavorite:()->Unit,
+ onOpen:()->Unit,
+ onShare:()->Unit,
+ onStudio:()->Unit
+){
+ val ext=job.extension.orEmpty().lowercase()
+ val icon=when{
+  ext in setOf("mp3","m4a","aac","opus","ogg","wav") -> Icons.Default.Audiotrack
+  ext in setOf("jpg","jpeg","png","webp") -> Icons.Default.Image
+  ext in setOf("pdf","zip","rar","7z","txt","doc","docx") -> Icons.Default.InsertDriveFile
+  else -> Icons.Default.Movie
+ }
+ Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){
+  Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
+   Row(verticalAlignment=Alignment.CenterVertically){
+    Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){
+     if(!job.thumbnailUrl.isNullOrBlank()) AsyncImage(model=job.thumbnailUrl,contentDescription="صورة مصغرة",modifier=Modifier.fillMaxSize())
+     else Icon(icon,null,Modifier.size(30.dp),tint=MaterialTheme.colorScheme.primary)
+    }
+    Spacer(Modifier.width(11.dp))
+    Column(Modifier.weight(1f)){
+     Row(verticalAlignment=Alignment.CenterVertically){
+      Text(job.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis,modifier=Modifier.weight(1f))
+      IconButton(onClick=onToggleFavorite){
+       Icon(if(job.favorite)Icons.Default.Star else Icons.Default.StarBorder,contentDescription=if(job.favorite)"إزالة من المفضلة" else "إضافة للمفضلة",tint=if(job.favorite)MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+     }
+     Text(statusLabel(job.status)+(job.durationMs?.let{" • "+formatDuration(it/1000.0)}?:""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     if(job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.RETRYING)
+      Text((if(job.speedBytesPerSec>0)formatBytes(job.speedBytesPerSec)+"/s" else "جارٍ الحساب")+(job.etaSeconds?.let{" • متبقٍ "+formatDuration(it.toDouble())}?:""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.primary)
+     if(job.status==DownloadStatus.FAILED)
+      Text(errorLabel(job.errorCode),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+    }
+    Text(job.progress.toString()+"%",fontWeight=FontWeight.Bold)
+   }
+   LinearProgressIndicator(progress={job.progress.coerceIn(0,100)/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant)
+   Text(job.totalBytes?.let{formatBytes(job.downloadedBytes)+" / "+formatBytes(it)}?:formatBytes(job.downloadedBytes),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+   Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){
+    when{
+     job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.QUEUED||job.status==DownloadStatus.RETRYING->TextButton(onClick=onCancel){Text("إلغاء")}
+     job.status==DownloadStatus.COMPLETED&&job.outputUri!=null->{
+      TextButton(onClick=onStudio){Icon(Icons.Default.AutoFixHigh,null,Modifier.size(18.dp));Spacer(Modifier.width(3.dp));Text("استديو")}
+      TextButton(onClick=onShare){Text("مشاركة")}
+      TextButton(onClick=onOpen){Text("فتح")}
+      TextButton(onClick=onDelete){Text("حذف")}
+     }
+     job.status==DownloadStatus.FAILED->{
+      if(job.errorCode=="MEDIA_SOURCE_REFRESH_FAILED") TextButton(onClick=onSmartRetry){Text("إعادة تحليل المصدر")}
+      else TextButton(onClick=onRetry){Text("إعادة المحاولة")}
+      TextButton(onClick=onDelete){Text("حذف")}
+     }
+     else->TextButton(onClick=onDelete){Text("حذف السجل")}
+    }
+   }
+  }
+ }
+}
+
+private fun errorLabel(code:String?):String=when(code){
+ "MEDIA_SOURCE_REFRESH_FAILED"->"انتهت صلاحية المصدر؛ يحتاج تنزيلًا جديدًا من الصفحة الأصلية."
+ "HTML_RESPONSE","MEDIA_HTML_OR_ERROR_RESPONSE"->"المصدر أعاد صفحة ويب بدل ملف وسائط."
+ "IO_RETRY_EXHAUSTED"->"تعذر الاتصال بعد عدة محاولات."
+ "AUTH_SESSION_MISSING"->"يحتاج المصدر إلى جلسة حساب صالحة."
+ null->"تعذر إكمال التنزيل."
+ else->"تعذر إكمال التنزيل ($code)."
 }
 
 @Composable
