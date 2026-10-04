@@ -190,7 +190,7 @@ private fun NavItem(
        video + audio
       }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
-      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds,resolved.thumbnail,MediaType.VIDEO,profile.value);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
+      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds,resolved.thumbnail,MediaType.VIDEO,selectedProfile);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
      }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
     }
     analyzing=false
@@ -357,7 +357,8 @@ private fun AnalysisSkeleton() {
    } else {
     Text("اختيار ذكي",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
     selected?.let{format->
-     RecommendedFormatCard(format,selected.id==format.id){selected=format}
+     val isSelected = selected?.id == format.id
+     RecommendedFormatCard(format,isSelected){selected=format}
     }
     list.filter{it.id!=recommendedVideo?.id && it.id!=recommendedAudio?.id}.take(if(showMore) list.size else 4).forEach{format->
      SimpleFormatRow(format,selected?.id==format.id){selected=format}
@@ -574,6 +575,7 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
         context.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
     }
     val downloadRepository = remember { DownloadRepository.get(context) }
+    var profile by remember { mutableStateOf(DownloadProfile.from(prefs.getString("download_profile", DownloadProfile.BALANCED.name))) }
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
     var notifications by remember {
         mutableStateOf(
