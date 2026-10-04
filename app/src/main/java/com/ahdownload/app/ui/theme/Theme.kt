@@ -6,6 +6,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
+import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
@@ -106,7 +107,7 @@ fun AHDownloadTheme(
 @Composable
 fun AHGradientButton(
     onClick: () -> Unit,
-    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    modifier: Modifier = Modifier,
     enabled: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
