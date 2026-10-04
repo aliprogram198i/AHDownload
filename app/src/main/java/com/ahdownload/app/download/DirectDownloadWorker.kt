@@ -126,10 +126,10 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     }
                     if (response.code in setOf(401, 403, 410) && sourceUrl.isNotBlank()) {
                         val fresh = MediaUrlRefresher(applicationContext)
-                            .refresh(sourceUrl, extension, false)
+                            .refresh(sourceUrl, extension, mergeRequired)
                             .getOrNull()
                         if (fresh != null && fresh.url.isNotBlank() && fresh.url != url) {
-                            if (repo.requeueWithRefreshedUrl(jobId, fresh.url)) {
+                            if (repo.requeueWithRefreshedFormat(jobId, fresh)) {
                                 AppLogger.info(
                                     applicationContext,
                                     "download.url_refreshed",
