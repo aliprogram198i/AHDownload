@@ -1,4 +1,5 @@
 package com.ahdownload.app.ui
+import com.ahdownload.app.ui.theme.AHGradientButton
 
 import android.content.ContentValues
 import android.content.Context
@@ -93,7 +94,7 @@ fun StudioScreen() {
             }
         }
         item {
-            Button(
+            AHGradientButton(
                 onClick = { picker.launch(arrayOf("video/*", "audio/*")) },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth().height(52.dp)

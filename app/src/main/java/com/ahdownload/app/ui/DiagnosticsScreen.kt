@@ -1,4 +1,5 @@
 package com.ahdownload.app.ui
+import com.ahdownload.app.ui.theme.AHGradientButton
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -19,26 +20,43 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.ui.DesignAudit
+
+private fun buildDesignSnapshot(context: Context): String {
+    return DesignAudit.snapshot(context) + "\n" + buildString {
+        appendLine("AHDownload UI DESIGN SNAPSHOT")
+        appendLine("generated_at=" + System.currentTimeMillis())
+        appendLine("theme=AHDownloadTheme")
+        appendLine("system=unified-gradient-interaction")
+        appendLine("button.primary=AHGradientButton")
+        appendLine("button.secondary=AHGradientOutlinedButton")
+        appendLine("shape.primary=16dp")
+        appendLine("shape.card=20-28dp")
+        appendLine("screens=الرئيسية;التنزيلات;Smart Studio;الإعدادات;الحسابات;سجل التطبيق")
+        appendLine("sensitive_data=excluded")
+    }
+}
 
 @Composable
 fun DiagnosticsScreen() {
     val context = LocalContext.current
     var log by remember { mutableStateOf(AppLogger.copyText(context)) }
-    fun refreshLog() { log = AppLogger.copyText(context) }
+    var designSnapshot by remember { mutableStateOf(buildDesignSnapshot(context)) }
+    fun refreshLog() { log = AppLogger.copyText(context); designSnapshot = buildDesignSnapshot(context) }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("سجل التطبيق", style = MaterialTheme.typography.headlineMedium)
         Text("سجل تشخيص حقيقي محفوظ محلياً. لا يتم إرسال السجل إلى خادم.", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { refreshLog() }, modifier = Modifier.weight(1f)) {
+                AHGradientButton(onClick = { refreshLog() }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.Refresh, null)
                     Spacer(Modifier.width(6.dp))
                     Text("تحديث")
                 }
-                Button(onClick = {
+                AHGradientButton(onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", log))
+                    clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", designSnapshot + "\n--- RUNTIME DIAGNOSTICS ---\n" + log))
                 }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.ContentCopy, null)
                     Spacer(Modifier.width(6.dp))
@@ -47,7 +65,7 @@ fun DiagnosticsScreen() {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
-                    val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log) }
+                    val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, designSnapshot + "\n--- RUNTIME DIAGNOSTICS ---\n" + log) }
                     context.startActivity(Intent.createChooser(share, "مشاركة سجل AHDownload"))
                 }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.Share, null)
@@ -74,7 +92,7 @@ fun DiagnosticsScreen() {
         Spacer(Modifier.height(12.dp))
         Surface(Modifier.fillMaxSize(), tonalElevation = 1.dp) {
             LazyColumn(contentPadding = PaddingValues(12.dp)) {
-                item { Text(log, style = MaterialTheme.typography.bodySmall) }
+                item { Text(designSnapshot + "\n--- RUNTIME DIAGNOSTICS ---\n" + log, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }

@@ -48,6 +48,7 @@ import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
 import com.ahdownload.app.ui.theme.AHBrandGradient
+import com.ahdownload.app.ui.theme.AHGradientButton
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -58,6 +59,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
 @Composable fun AppRoot(){
  AHDownloadTheme{
   val nav=rememberNavController();val entry by nav.currentBackStackEntryAsState();val route=entry?.destination?.route?:"home"
+  LaunchedEffect(route){ DesignAudit.recordScreen(route) }
   Scaffold(
    containerColor=MaterialTheme.colorScheme.background,
    topBar={if(route=="downloads"||route=="studio"||route=="settings")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="studio")"Smart Studio" else "الإعدادات",fontWeight=FontWeight.SemiBold)}) else if(route=="accounts"||route=="diagnostics")TopAppBar(title={Text(if(route=="accounts")"الحسابات" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
@@ -166,7 +168,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  Card(shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
   Text("رابط الفيديو",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
   OutlinedTextField(value=url,onValueChange=onUrlChange,Modifier.fillMaxWidth(),placeholder={Text("الصق رابط الفيديو هنا")},singleLine=true,shape=RoundedCornerShape(16.dp),leadingIcon={Icon(Icons.Default.Link,null)},trailingIcon={if(url.isBlank())IconButton(onPaste){Icon(Icons.Default.ContentPaste,"لصق")}else IconButton({onUrlChange("")}){Icon(Icons.Default.Clear,"مسح")}})
-  Button(onClick=onAnalyze,enabled=url.trim().startsWith("http")&&!analyzing,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(16.dp)){if(analyzing){CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp);Spacer(Modifier.width(9.dp));Text("جاري استخراج الصيغ…")}else{Icon(Icons.Default.Search,null);Spacer(Modifier.width(8.dp));Text("تحليل الرابط")}}
+  AHGradientButton(onClick=onAnalyze,enabled=url.trim().startsWith("http")&&!analyzing,modifier=Modifier.fillMaxWidth().height(52.dp),shape=RoundedCornerShape(16.dp)){if(analyzing){CircularProgressIndicator(Modifier.size(20.dp),strokeWidth=2.dp);Spacer(Modifier.width(9.dp));Text("جاري استخراج الصيغ…")}else{Icon(Icons.Default.Search,null);Spacer(Modifier.width(8.dp));Text("تحليل الرابط")}}
  }}
 }
 @Composable private fun InfoCard(icon:ImageVector,title:String,text:String){Card(colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.errorContainer),shape=RoundedCornerShape(20.dp)){Row(Modifier.padding(16.dp),verticalAlignment=Alignment.Top){Icon(icon,null,tint=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.width(12.dp));Column{Text(title,fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.onErrorContainer);Spacer(Modifier.height(4.dp));Text(text,color=MaterialTheme.colorScheme.onErrorContainer)}}}}
@@ -239,7 +241,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
       Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
      }
     }
-    Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
+    AHGradientButton({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
      Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text("تنزيل الفيديو")
     }
    } else {
@@ -256,7 +258,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
       Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
      }
     }
-    Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
+    AHGradientButton({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
      Icon(Icons.Default.Download,null);Spacer(Modifier.width(8.dp));Text("تنزيل الصوت")
     }
    }

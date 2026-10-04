@@ -1,8 +1,15 @@
 package com.ahdownload.app.ui.theme
 
+import com.ahdownload.app.ui.DesignAudit
+
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -93,4 +100,57 @@ fun AHDownloadTheme(
         ),
         content = content
     )
+}
+
+
+@Composable
+fun AHGradientButton(
+    onClick: () -> Unit,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    DesignAudit.recordComponent("AHGradientButton")
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .clip(shape)
+            .background(if (enabled) AHBrandGradient else AHBrandGradientSoft)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        CompositionLocalProvider(LocalContentColor provides Color.White) {
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                content = content
+            )
+        }
+    }
+}
+
+@Composable
+fun AHGradientOutlinedButton(
+    onClick: () -> Unit,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    enabled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    DesignAudit.recordComponent("AHGradientOutlinedButton")
+    val shape = RoundedCornerShape(14.dp)
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .clip(shape)
+            .background(AHBrandGradientSoft)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            content = content
+        )
+    }
 }

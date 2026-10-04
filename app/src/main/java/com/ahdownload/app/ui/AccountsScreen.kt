@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.animation.core.animateFloatAsState
 import kotlinx.coroutines.launch
 import com.ahdownload.app.data.WebViewSessionBridge
+import com.ahdownload.app.data.WebViewMediaSnapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.ui.theme.AHGradientButton
 
 private data class PlatformAccount(val key:String,val name:String,val url:String)
 
@@ -63,7 +65,12 @@ fun AccountsScreen() {
                             loginError = null
                             runCatching {
                                 CookieManager.getInstance().flush()
-                                WebViewSessionBridge(context).snapshotFor(account.url, timeoutMs = 15_000L)
+                                val cookies = CookieManager.getInstance().getCookie(account.url).orEmpty()
+                                if (hasAuthenticatedSession(account.key, cookies)) {
+                                    WebViewMediaSnapshot(cookies, null, emptyList(), true)
+                                } else {
+                                    WebViewSessionBridge(context).snapshotFor(account.url, timeoutMs = 15_000L)
+                                }
                             }.onSuccess { snapshot ->
                                 if (snapshot.authenticated) {
                                     AppLogger.info(context, "account.session_saved", "platform=" + account.key)
@@ -177,7 +184,7 @@ fun AccountsScreen() {
                                         scaleY = scale
                                     })
                             } else {
-                                FilledTonalButton(onClick = {
+                                AHGradientButton(onClick = {
                                     AppLogger.info(context, "account.login_start", "platform=" + account.key)
                                     selected = account
                                 }) {
@@ -212,7 +219,7 @@ private fun hasAuthenticatedSession(platform: String, cookies: String): Boolean 
     return when (platform) {
         "instagram" -> "sessionid" in names
         "facebook" -> "c_user" in names && "xs" in names
-        "youtube" -> setOf("SID", "SAPISID", "APISID").any(names::contains)
+        "youtube" -> setOf("SID", "SAPISID", "APISID", "__Secure-3PSID", "LOGIN_INFO").any(names::contains)
         else -> false
     }
 }
