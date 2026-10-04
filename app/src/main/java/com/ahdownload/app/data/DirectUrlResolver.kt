@@ -80,7 +80,7 @@ class DirectUrlResolver {
     private fun titleFromUrl(url: String): String =
         runCatching { URI(url).path.substringAfterLast('/').ifBlank { "AHDownload file" } }
             .getOrDefault("AHDownload file")
-            .replace(Regex("[\\/:*?"<>|]"), "_")
+            .replace(Regex("[\\\\/:*?\\"<>|]"), "_")
             .take(120)
 
     companion object {
