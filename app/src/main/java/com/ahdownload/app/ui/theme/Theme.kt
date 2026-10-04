@@ -115,9 +115,9 @@ fun AHGradientButton(
     androidx.compose.foundation.layout.Box(
         modifier = modifier
             .clip(shape)
-            .background(if (enabled) AHBrandGradient else AHBrandGradientSoft)
+            .background(if (enabled) AHBrandGradient else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 13.dp),
         contentAlignment = androidx.compose.ui.Alignment.Center
     ) {
         CompositionLocalProvider(LocalContentColor provides Color.White) {
