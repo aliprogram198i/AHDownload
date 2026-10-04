@@ -112,7 +112,7 @@ jobs:
           tag_name: v1.6.0
           name: AHDownload v1.6.0
           body: |
-            AHDownload v1.5.0
+            AHDownload v1.6.0
 
             Production release APK.
 
