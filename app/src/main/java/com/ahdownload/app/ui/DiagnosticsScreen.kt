@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,7 +28,8 @@ fun DiagnosticsScreen() {
         Text("سجل التطبيق", style = MaterialTheme.typography.headlineMedium)
         Text("سجل تشخيص حقيقي محفوظ محلياً. لا يتم إرسال السجل إلى خادم.", style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { refreshLog() }) {
                 Icon(Icons.Default.Refresh, null)
                 Spacer(Modifier.width(6.dp))
@@ -44,7 +47,7 @@ fun DiagnosticsScreen() {
                 val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log) }
                 context.startActivity(Intent.createChooser(share, "مشاركة سجل AHDownload"))
             }) {
-                Icon(Icons.Default.ContentCopy, null)
+                Icon(Icons.Default.Share, null)
                 Spacer(Modifier.width(6.dp))
                 Text("مشاركة")
             }
@@ -55,6 +58,14 @@ fun DiagnosticsScreen() {
                 Icon(Icons.Default.DeleteSweep, null)
                 Spacer(Modifier.width(6.dp))
                 Text("مسح")
+            }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(
+                    onClick = { refreshLog() },
+                    label = { Text(if (log.isBlank()) "السجل فارغ" else "السجل متاح للتحليل") },
+                    leadingIcon = { Icon(if (log.isBlank()) Icons.Default.ErrorOutline else Icons.Default.CheckCircle, null) }
+                )
             }
         }
         Spacer(Modifier.height(12.dp))
