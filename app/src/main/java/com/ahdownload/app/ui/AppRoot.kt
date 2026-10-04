@@ -621,8 +621,25 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
                 ListItem(
                     leadingContent = { SettingsIcon(Icons.Default.Security) },
                     headlineContent = { Text("فحص الوسائط") },
-                    supportingContent = { Text("رفض صفحات HTML قبل حفظها كملف وسائط.") }
+                    supportingContent = { Text("رفض صفحات HTML والتوقيعات غير الصالحة قبل نشر الملف.") }
                 )
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.AutoAwesome) },
+                    headlineContent = { Text("ملف التنزيل الذكي") },
+                    supportingContent = {
+                        Text(
+                            when (profile) {
+                                DownloadProfile.BALANCED -> "وازن بين الجودة والتوافق والحجم."
+                                DownloadProfile.COMPATIBILITY -> "يفضل MP4/H.264 عندما تتوفر صيغة مناسبة."
+                                DownloadProfile.HIGHEST_QUALITY -> "يفضل أعلى دقة ومعدل جودة متاح."
+                            }
+                        )
+                    }
+                )
+                DownloadProfileSelector(profile) {
+                    profile = it
+                    prefs.edit().putString("download_profile", it.name).apply()
+                }
             }
         }
 
@@ -805,6 +822,25 @@ private fun ThemeModeSelector(themeMode: AHThemeMode, onChange: (AHThemeMode) ->
                 onClick = { onChange(mode) },
                 shape = SegmentedButtonDefaults.itemShape(index, options.size),
                 icon = { if (themeMode == mode) Icon(Icons.Default.Check, contentDescription = null) }
+            ) { Text(label) }
+        }
+    }
+}
+
+@Composable
+private fun DownloadProfileSelector(profile: DownloadProfile, onChange: (DownloadProfile) -> Unit) {
+    val options = listOf(
+        DownloadProfile.BALANCED to "متوازن",
+        DownloadProfile.COMPATIBILITY to "أفضل توافق",
+        DownloadProfile.HIGHEST_QUALITY to "أعلى جودة"
+    )
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        options.forEachIndexed { index, (value, label) ->
+            SegmentedButton(
+                selected = profile == value,
+                onClick = { onChange(value) },
+                shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                icon = { if (profile == value) Icon(Icons.Default.Check, contentDescription = null) }
             ) { Text(label) }
         }
     }
