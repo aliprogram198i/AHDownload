@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ahdownload.app.BuildConfig
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
@@ -66,30 +67,80 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   Scaffold(
    containerColor=MaterialTheme.colorScheme.background,
    topBar={if(route=="downloads"||route=="studio"||route=="settings")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="studio")"Smart Studio" else "الإعدادات",fontWeight=FontWeight.SemiBold)}) else if(route=="accounts"||route=="diagnostics")TopAppBar(title={Text(if(route=="accounts")"الحسابات" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
-   bottomBar={NavigationBar{NavItem(nav,route,"home","الرئيسية",Icons.Default.Home);NavItem(nav,route,"downloads","التنزيلات",Icons.Default.Download);NavItem(nav,route,"studio","الاستوديو",Icons.Default.AutoFixHigh);NavItem(nav,route,"settings","الإعدادات",Icons.Default.Settings)}}
+   bottomBar = {
+    NavigationBar(
+        tonalElevation = 3.dp,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            NavItem(nav, route, "home", "الرئيسية", Icons.Default.Home, Modifier.weight(1f))
+            NavItem(nav, route, "downloads", "التنزيلات", Icons.Default.Download, Modifier.weight(1f))
+            NavItem(nav, route, "studio", "الاستوديو", Icons.Default.AutoFixHigh, Modifier.weight(1f))
+            NavItem(nav, route, "settings", "الإعدادات", Icons.Default.Settings, Modifier.weight(1f))
+        }
+    }
+}
   ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")})};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
  }
 }
-@Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){
- Column(
-  Modifier
-   .fillMaxWidth(0.25f)
-   .clickable{
-    if(route!=target){
-     nav.navigate(target){
-      launchSingleTop=true
-      restoreState=true
-      popUpTo(nav.graph.startDestinationId){saveState=true}
-     }
+@Composable
+private fun NavItem(
+    nav: androidx.navigation.NavHostController,
+    route: String,
+    target: String,
+    label: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier
+) {
+    val selected = route == target
+    val iconContainer by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer
+        else Color.Transparent,
+        label = "navIndicator"
+    )
+    Column(
+        modifier = modifier
+            .clickable {
+                if (!selected) {
+                    nav.navigate(target) {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(nav.graph.startDestinationId) { saveState = true }
+                    }
+                }
+            }
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        val scale by animateFloatAsState(
+            targetValue = if (selected) 1.08f else 1f,
+            label = "navScale"
+        )
+        Box(
+            modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(14.dp))
+                .background(iconContainer)
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(23.dp)
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
     }
-   },
-  horizontalAlignment=Alignment.CenterHorizontally,
-  verticalArrangement=Arrangement.Center
- ){
-  val scale by animateFloatAsState(if(route==target)1.12f else 1f,label="navScale")
-  Icon(icon,contentDescription=label,modifier=Modifier.graphicsLayer{scaleX=scale;scaleY=scale},tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-  Text(label,style=MaterialTheme.typography.labelSmall,color=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
- }
 }
 
 @Composable private fun HomeScreen(openDownloads:()->Unit){
@@ -398,50 +449,240 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
 
 }
 
-@Composable private fun SettingsScreen(openDiagnostics:()->Unit,openAccounts:()->Unit){
- val context=LocalContext.current;val prefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)};var wifiOnly by remember{mutableStateOf(prefs.getBoolean("wifi_only",false))};var notifications by remember{mutableStateOf(prefs.getBoolean("notifications",true) && (Build.VERSION.SDK_INT<33 || androidx.core.content.ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED))}
- val notificationPermissionLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->
-  notifications=granted
-  prefs.edit().putBoolean("notifications",granted).apply()
- }
- LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-  item{Text("إعدادات التنزيل والتشخيص فقط، بدون ميزات جانبية غير مطلوبة.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)}
-  item{SettingsSection("التنزيل"){Setting("التنزيل عبر Wi‑Fi فقط",wifiOnly){wifiOnly=it;prefs.edit().putBoolean("wifi_only",it).apply()};Setting("إشعارات اكتمال التنزيل",notifications){value->
-  if(value && Build.VERSION.SDK_INT>=33) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-  else {notifications=value;prefs.edit().putBoolean("notifications",value).apply()}
-};ListItem(leadingContent={Icon(Icons.Default.Security,null)},headlineContent={Text("فحص الوسائط")},supportingContent={Text("يرفض HTML وصفحات الويب قبل حفظها كفيديو أو صوت.")})}}
-  item {
-   SettingsSection("الحسابات") {
+@Composable
+private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember {
+        context.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+    }
+    var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
+    var notifications by remember {
+        mutableStateOf(
+            prefs.getBoolean("notifications", true) &&
+                (Build.VERSION.SDK_INT < 33 ||
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        )
+    }
+
+    val notificationPermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            notifications = granted
+            prefs.edit().putBoolean("notifications", granted).apply()
+        }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item { SettingsHeader() }
+
+        item {
+            SettingsSection(title = "التنزيل", icon = Icons.Default.Download) {
+                SettingSwitch(
+                    title = "التنزيل عبر Wi‑Fi فقط",
+                    supporting = "لا يبدأ التنزيل إلا عند توفر اتصال Wi‑Fi.",
+                    checked = wifiOnly,
+                    icon = Icons.Default.Wifi,
+                    onChange = {
+                        wifiOnly = it
+                        prefs.edit().putBoolean("wifi_only", it).apply()
+                    }
+                )
+                SettingSwitch(
+                    title = "إشعارات التنزيل",
+                    supporting = "تنبيه عند اكتمال التنزيل أو فشله.",
+                    checked = notifications,
+                    icon = Icons.Default.Notifications,
+                    onChange = { value ->
+                        if (value && Build.VERSION.SDK_INT >= 33) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            notifications = value
+                            prefs.edit().putBoolean("notifications", value).apply()
+                        }
+                    }
+                )
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.Security) },
+                    headlineContent = { Text("فحص الوسائط") },
+                    supportingContent = { Text("رفض صفحات HTML قبل حفظها كملف وسائط.") }
+                )
+            }
+        }
+
+        item {
+            SettingsSection(title = "الحسابات", icon = Icons.Default.AccountCircle) {
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.Link) },
+                    headlineContent = { Text("الحسابات المرتبطة") },
+                    supportingContent = { Text("YouTube وInstagram وFacebook — جلسات محلية على الجهاز.") },
+                    trailingContent = { SettingsActionButton("فتح", openAccounts) }
+                )
+            }
+        }
+
+        item {
+            SettingsSection(title = "التشخيص", icon = Icons.Default.BugReport) {
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.Terminal) },
+                    headlineContent = { Text("سجل التطبيق") },
+                    supportingContent = { Text("سجل تشغيل حقيقي مع استبعاد البيانات الحساسة.") },
+                    trailingContent = { SettingsActionButton("فتح", openDiagnostics) }
+                )
+            }
+        }
+
+        item {
+            SettingsSection(title = "الخصوصية", icon = Icons.Default.Lock) {
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.Security) },
+                    headlineContent = { Text("الخصوصية أولاً") },
+                    supportingContent = {
+                        Text("سجلات التشخيص لا تتضمن كلمات المرور أو الرموز أو ملفات تعريف الارتباط أو بيانات الاعتماد.")
+                    }
+                )
+            }
+        }
+
+        item {
+            SettingsSection(title = "حول التطبيق", icon = Icons.Default.Info) {
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.Download) },
+                    headlineContent = { Text("AHDownload") },
+                    supportingContent = {
+                        Text("الإصدار " + BuildConfig.VERSION_NAME + " • تنزيل وسائط ذكي")
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsHeader() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .background(AHBrandGradient, RoundedCornerShape(26.dp))
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(27.dp)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        "إعدادات AHDownload",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        "خصص التنزيلات والحسابات والتشخيص من مكان واحد",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.86f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    icon: ImageVector,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp)
+    ) {
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SettingsIcon(icon)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SettingsIcon(icon: ImageVector) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun SettingSwitch(
+    title: String,
+    supporting: String,
+    checked: Boolean,
+    icon: ImageVector,
+    onChange: (Boolean) -> Unit
+) {
     ListItem(
-     leadingContent={Icon(Icons.Default.AccountCircle,null)},
-     headlineContent={Text("ربط الحسابات")},
-     supportingContent={Text("YouTube وInstagram وFacebook — جلسة محلية على الجهاز.")},
-     trailingContent={TextButton(onClick=openAccounts){Text("فتح")}}
+        leadingContent = { SettingsIcon(icon) },
+        headlineContent = { Text(title) },
+        supportingContent = { Text(supporting) },
+        trailingContent = {
+            Switch(checked = checked, onCheckedChange = onChange)
+        }
     )
-   }
-  }
-  item {
-   SettingsSection("التشخيص") {
-    ListItem(
-     leadingContent={Icon(Icons.Default.BugReport,null)},
-     headlineContent={Text("سجل التطبيق")},
-     supportingContent={Text("سجل حقيقي محفوظ محلياً ويمكن نسخه وإرساله للتحليل.")},
-     trailingContent={TextButton(onClick=openDiagnostics){Text("فتح")}}
-    )
-   }
-  }
-  item {
-   SettingsSection("الخصوصية") {
-    ListItem(
-     leadingContent={Icon(Icons.Default.Lock,null)},
-     headlineContent={Text("التحليل محلي")},
-     supportingContent={Text("لا يوجد حساب أو اشتراك مفروض لتنزيل الفيديو والصوت الأساسي.")}
-    )
-   }
-  }
- }}
-@Composable private fun SettingsSection(title:String,content:@Composable ColumnScope.()->Unit){Card(shape=RoundedCornerShape(20.dp)){Column{Text(title,Modifier.padding(start=16.dp,top=15.dp),fontWeight=FontWeight.SemiBold,color=MaterialTheme.colorScheme.primary);content()}}}
-@Composable private fun Setting(title:String,checked:Boolean,onChange:(Boolean)->Unit){ListItem(headlineContent={Text(title)},trailingContent={Switch(checked,onChange)})}
+}
+
+@Composable
+private fun SettingsActionButton(label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Text(label, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.width(2.dp))
+        Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp))
+    }
+}
+
 @Composable private fun EmptyState(icon:ImageVector,title:String,subtitle:String){Box(Modifier.fillMaxSize().padding(24.dp),contentAlignment=Alignment.Center){Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(8.dp)){Box(Modifier.size(76.dp).clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){Icon(icon,null,Modifier.size(38.dp),tint=MaterialTheme.colorScheme.primary)};Text(title,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold);Text(subtitle,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
 private fun openOutput(context:Context,uriString:String){
  val uri=runCatching{Uri.parse(uriString)}.getOrNull()?:return
