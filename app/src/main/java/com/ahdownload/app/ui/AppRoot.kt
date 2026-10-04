@@ -161,12 +161,12 @@ private fun NavItem(
  val context=LocalContext.current;val repository=remember{DownloadRepository.get(context)};val scope=rememberCoroutineScope()
  var url by remember{mutableStateOf("")};var analyzing by remember{mutableStateOf(false)};var analysis by remember{mutableStateOf<LinkAnalysis?>(null)};var error by remember{mutableStateOf<String?>(null)}
  val settingsPrefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)}
- val selectedProfile=DownloadProfile.from(settingsPrefs.getString("download_profile",DownloadProfile.BALANCED.name))
  LaunchedEffect(Unit){val intent=(context as? android.app.Activity)?.intent;if(intent?.action==Intent.ACTION_SEND&&intent.type=="text/plain")url=intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().trim()}
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
   item{HomeHeader()}
   item{LaunchedEffect(Unit){DesignAudit.recordComponent("HomeScreen")}; UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
    DesignAudit.recordInteraction("home", "url_input", "analyze")
+   val selectedProfile=DownloadProfile.from(settingsPrefs.getString("download_profile",DownloadProfile.BALANCED.name))
    val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
    val host=runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault("")
    AppLogger.info(context,"analysis.start","platform="+(platform?:"Direct")+" host="+host+" url_hash="+AppLogger.fingerprint(clean))
@@ -576,6 +576,7 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
     }
     val downloadRepository = remember { DownloadRepository.get(context) }
     var profile by remember { mutableStateOf(DownloadProfile.from(prefs.getString("download_profile", DownloadProfile.BALANCED.name))) }
+    var tempMessage by remember { mutableStateOf<String?>(null) }
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
     var notifications by remember {
         mutableStateOf(
