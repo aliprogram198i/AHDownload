@@ -5,7 +5,11 @@ plugins {
 
 android {
     namespace = "com.ahdownload.core.designsystem"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
     defaultConfig { minSdk = 26 }
 
     compileOptions {
