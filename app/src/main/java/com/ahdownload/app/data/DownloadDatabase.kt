@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    3
+    4
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -41,6 +41,12 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
             db.execSQL("ALTER TABLE downloads ADD COLUMN speed_bps INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE downloads ADD COLUMN eta_seconds INTEGER")
             db.execSQL("ALTER TABLE downloads ADD COLUMN error_code TEXT")
+        }
+        if (oldVersion < 4) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN extension TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN merge_required INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN audio_url TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN audio_extension TEXT")
         }
     }
 }
