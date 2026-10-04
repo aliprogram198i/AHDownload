@@ -100,7 +100,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+                if (!response.isSuccessful) {\n                    if (response.code == 416 && existing > 0L) {\n                        part.delete()\n                        repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, downloadedBytes = 0L, progress = 0) }\n                        AppLogger.info(applicationContext, "download.range_reset", "job=$jobId")\n                        return Result.retry()\n                    }
                     repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
                     return if (response.code in 500..599) Result.retry() else Result.failure()
                 }
