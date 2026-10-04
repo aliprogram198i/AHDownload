@@ -3,6 +3,7 @@ package com.ahdownload.app.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -31,6 +32,14 @@ fun DiagnosticsScreen() {
                 Icon(Icons.Default.ContentCopy, null)
                 Spacer(Modifier.width(6.dp))
                 Text("نسخ السجل")
+            }
+            OutlinedButton(onClick = {
+                val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log) }
+                context.startActivity(Intent.createChooser(share, "مشاركة سجل AHDownload"))
+            }) {
+                Icon(Icons.Default.ContentCopy, null)
+                Spacer(Modifier.width(6.dp))
+                Text("مشاركة")
             }
             OutlinedButton(onClick = {
                 AppLogger.clear(context)
