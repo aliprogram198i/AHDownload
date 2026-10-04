@@ -117,9 +117,9 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "*/*")
                 .header("Accept-Language", "en-US,en;q=0.9")
+            val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
             if (sourceUrl.isNotBlank()) {
                 requestBuilder.header("Referer", sourceUrl)
-                val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
                 when {
                     sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ->
                         requestBuilder.header("Origin", "https://www.instagram.com")
