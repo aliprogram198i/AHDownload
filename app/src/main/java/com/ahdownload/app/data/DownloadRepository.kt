@@ -14,9 +14,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.Duration
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class DownloadRepository private constructor(context: Context) {
     private val app = context.applicationContext
+    private val maxHistory = 100
     private val db = DownloadDatabase(app)
     private val lock = Any()
     private val _jobs = MutableStateFlow<List<DownloadJob>>(emptyList())
@@ -94,6 +97,9 @@ class DownloadRepository private constructor(context: Context) {
                 put("downloaded_bytes", next.downloadedBytes.coerceAtLeast(0L))
                 if (next.totalBytes != null) put("total_bytes", next.totalBytes) else putNull("total_bytes")
                 if (next.outputUri != null) put("output_uri", next.outputUri) else putNull("output_uri")
+                put("speed_bps", next.speedBytesPerSec.coerceAtLeast(0L))
+                if (next.etaSeconds != null) put("eta_seconds", next.etaSeconds) else putNull("eta_seconds")
+                if (next.errorCode != null) put("error_code", next.errorCode) else putNull("error_code")
                 if (next.thumbnailUrl != null) put("thumbnail_url", next.thumbnailUrl) else putNull("thumbnail_url")
                 if (next.durationMs != null) put("duration_ms", next.durationMs) else putNull("duration_ms")
             }
@@ -114,6 +120,45 @@ class DownloadRepository private constructor(context: Context) {
     }
 
     private fun refresh() { _jobs.value = all() }
+
+    fun retry(jobId: String): Boolean {
+        val job = synchronized(lock) { find(jobId) } ?: return false
+        if (job.status != DownloadStatus.FAILED) return false
+        val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(if (settings.getBoolean("wifi_only", false)) NetworkType.UNMETERED else NetworkType.CONNECTED)
+            .build()
+        val request = OneTimeWorkRequestBuilder<DirectDownloadWorker>()
+            .setInputData(workDataOf(
+                DirectDownloadWorker.KEY_JOB_ID to job.id,
+                DirectDownloadWorker.KEY_URL to job.formatUrl,
+                DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
+                DirectDownloadWorker.KEY_TITLE to job.title,
+                DirectDownloadWorker.KEY_EXTENSION to job.title.substringAfterLast('.', "").takeIf { it.length in 1..8 }.orEmpty(),
+                DirectDownloadWorker.KEY_MERGE_REQUIRED to false,
+                DirectDownloadWorker.KEY_AUDIO_URL to "",
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to ""
+            ))
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
+            .addTag("ahdownload:" + job.id)
+            .build()
+        update(job.id) { it.copy(status = DownloadStatus.QUEUED, progress = 0, downloadedBytes = 0L, totalBytes = null, outputUri = null, errorCode = null, speedBytesPerSec = 0L, etaSeconds = null) }
+        WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + job.id)
+        WorkManager.getInstance(app).enqueue(request)
+        return true
+    }
+
+    private fun trimHistory() {
+        synchronized(lock) {
+            db.writableDatabase.delete(
+                "downloads",
+                "id IN (SELECT id FROM downloads WHERE status IN ('COMPLETED','FAILED','CANCELLED') ORDER BY rowid DESC LIMIT -1 OFFSET ?)",
+                arrayOf(maxHistory.toString())
+            )
+        }
+        refresh()
+    }
 
     private fun queryAll(): List<DownloadJob> {
         val result = mutableListOf<DownloadJob>()
@@ -139,6 +184,9 @@ class DownloadRepository private constructor(context: Context) {
             put("downloaded_bytes", job.downloadedBytes)
             if (job.totalBytes != null) put("total_bytes", job.totalBytes)
             if (job.outputUri != null) put("output_uri", job.outputUri)
+            put("speed_bps", job.speedBytesPerSec.coerceAtLeast(0L))
+            if (job.etaSeconds != null) put("eta_seconds", job.etaSeconds)
+            if (job.errorCode != null) put("error_code", job.errorCode)
             if (job.thumbnailUrl != null) put("thumbnail_url", job.thumbnailUrl)
             if (job.durationMs != null) put("duration_ms", job.durationMs)
         }
@@ -196,7 +244,10 @@ class DownloadRepository private constructor(context: Context) {
             totalBytes = getLong(getColumnIndexOrThrow("total_bytes")).takeIf { !isNull(getColumnIndexOrThrow("total_bytes")) },
             outputUri = nullableText("output_uri"),
             thumbnailUrl = nullableText("thumbnail_url"),
-            durationMs = getLong(getColumnIndexOrThrow("duration_ms")).takeIf { !isNull(getColumnIndexOrThrow("duration_ms")) }
+            durationMs = getLong(getColumnIndexOrThrow("duration_ms")).takeIf { !isNull(getColumnIndexOrThrow("duration_ms")) },
+            speedBytesPerSec = getLong(getColumnIndexOrThrow("speed_bps")),
+            etaSeconds = getLong(getColumnIndexOrThrow("eta_seconds")).takeIf { !isNull(getColumnIndexOrThrow("eta_seconds")) },
+            errorCode = nullableText("error_code")
         )
     }
 
