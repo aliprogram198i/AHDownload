@@ -135,3 +135,5 @@ jobs:
             SHA-256: ${{ steps.checksum.outputs.sha256 }}
           files: app/build/outputs/apk/release/app-release.apk
           fail_on_unmatched_files: true
+
+# Release branch verification trigger
