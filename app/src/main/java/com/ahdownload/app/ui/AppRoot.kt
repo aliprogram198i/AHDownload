@@ -51,6 +51,7 @@ import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
+import com.ahdownload.app.ui.theme.AHThemeMode
 import com.ahdownload.app.ui.theme.AHBrandGradient
 import com.ahdownload.app.ui.theme.AHGradientButton
 import kotlinx.coroutines.delay
@@ -61,12 +62,21 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun AppRoot(){
- AHDownloadTheme{
+ val context=LocalContext.current
+ val prefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)}
+ var themeMode by remember{mutableStateOf(runCatching{AHThemeMode.valueOf(prefs.getString("theme_mode",AHThemeMode.SYSTEM.name)?:AHThemeMode.SYSTEM.name)}.getOrDefault(AHThemeMode.SYSTEM))}
+ AHDownloadTheme(themeMode=themeMode){
   val nav=rememberNavController();val entry by nav.currentBackStackEntryAsState();val route=entry?.destination?.route?:"home"
   LaunchedEffect(route){ DesignAudit.recordScreen(route) }
   Scaffold(
    containerColor=MaterialTheme.colorScheme.background,
-   topBar={if(route=="downloads"||route=="studio"||route=="settings")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="studio")"Smart Studio" else "الإعدادات",fontWeight=FontWeight.SemiBold)}) else if(route=="accounts"||route=="diagnostics")TopAppBar(title={Text(if(route=="accounts")"الحسابات" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
+   topBar={when(route){
+       "downloads"->AHTopBar("التنزيلات")
+       "studio"->AHTopBar("Smart Studio")
+       "settings"->AHTopBar("الإعدادات")
+       "accounts"->AHTopBar("الحسابات",onBack={nav.popBackStack()})
+       "diagnostics"->AHTopBar("سجل التطبيق",onBack={nav.popBackStack()})
+      }},
    bottomBar = {
     NavigationBar(
         tonalElevation = 3.dp,
@@ -80,7 +90,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
         }
     }
 }
-  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")})};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
+  ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")},themeMode){mode->themeMode=mode;prefs.edit().putString("theme_mode",mode.name).apply()}};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
  }
 }
 @Composable
@@ -450,7 +460,7 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
 }
 
 @Composable
-private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit) {
+private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit, themeMode: AHThemeMode, onThemeModeChange: (AHThemeMode) -> Unit) {
     val context = LocalContext.current
     val prefs = remember {
         context.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
@@ -479,6 +489,12 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { SettingsHeader() }
+
+        item {
+            SettingsSection(title = "المظهر", icon = Icons.Default.Palette) {
+                ThemeModeSelector(themeMode = themeMode, onChange = onThemeModeChange)
+            }
+        }
 
         item {
             SettingsSection(title = "التنزيل", icon = Icons.Default.Download) {
@@ -680,6 +696,21 @@ private fun SettingsActionButton(label: String, onClick: () -> Unit) {
         Text(label, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.width(2.dp))
         Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp))
+    }
+}
+
+@Composable
+private fun ThemeModeSelector(themeMode: AHThemeMode, onChange: (AHThemeMode) -> Unit) {
+    val options = listOf(AHThemeMode.SYSTEM to "النظام", AHThemeMode.LIGHT to "فاتح", AHThemeMode.DARK to "داكن")
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        options.forEachIndexed { index, (mode, label) ->
+            SegmentedButton(
+                selected = themeMode == mode,
+                onClick = { onChange(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                icon = { if (themeMode == mode) Icon(Icons.Default.Check, contentDescription = null) }
+            ) { Text(label) }
+        }
     }
 }
 
