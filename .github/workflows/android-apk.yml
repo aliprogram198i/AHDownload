@@ -121,14 +121,14 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: github.ref == 'refs/heads/release/v1.9.1-runtime-fix' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/release/v1.9.1-final' || startsWith(github.ref, 'refs/tags/v')) && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.9.1-runtime-fix
+          tag_name: v1.9.1-final
           target_commitish: ${{ github.sha }}
-          name: AHDownload v1.9.1-runtime-fix
+          name: AHDownload v1.9.1-final
           body: |
-            AHDownload v1.9.1-runtime-fix
+            AHDownload v1.9.1-final
 
             Production release APK containing the verified media validation and direct-download hardening fixes.
 
@@ -136,5 +136,5 @@ jobs:
           files: app/build/outputs/apk/release/app-release.apk
           fail_on_unmatched_files: true
 
-# Release branch verification trigger
+# Release branch/tag verification trigger
 # CI verification marker: keep workflow_dispatch available for release validation.
