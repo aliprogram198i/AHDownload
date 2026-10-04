@@ -47,35 +47,13 @@ fun StudioScreen() {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        selectedUri = uri
-        message = null
-        error = null
-        scope.launch {
-            busy = true
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        context.contentResolver.takePersistableUriPermission(
-                            uri,
-                            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    }
-                    val meta = readMediaMeta(context, uri)
-                    Triple(meta, queryName(context, uri), querySize(context, uri))
-                }
-            }.onSuccess { result ->
-                durationMs = result.first.durationMs
-                dimensions = result.first.dimensions
-                mime = result.first.mime
-                name = result.second
-                size = result.third
-                AppLogger.info(context, "studio.file_selected", "mime=" + result.first.mime + " size=" + (result.third ?: 0L))
-            }.onFailure {
-                selectedUri = null
-                error = "تعذر قراءة الملف. اختر ملف فيديو أو صوت صالحاً."
-                AppLogger.error(context, "studio.file_read_failed", it)
-            }
-            busy = false
+        inspectUri(uri)
+    }
+
+    LaunchedEffect(Unit) {
+        StudioBridge.pendingUri?.let { uri ->
+            StudioBridge.pendingUri = null
+            inspectUri(uri)
         }
     }
 
