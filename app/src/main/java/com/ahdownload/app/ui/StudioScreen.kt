@@ -122,7 +122,7 @@ fun StudioScreen() {
                         Text(
                             listOfNotNull(
                                 mime.takeIf { it.isNotBlank() },
-                                size?.let(::formatBytes),
+                                size?.let(::studioFormatBytes),
                                 durationMs?.takeIf { it > 0 }?.let(::formatDuration),
                                 dimensions
                             ).joinToString(" • "),
@@ -357,7 +357,7 @@ private fun extractAudioToLegacyExternalFiles(context: Context, uri: Uri, safeBa
     return output.name
 }
 
-private fun formatDuration(ms: Long): String {
+private fun studioFormatDuration(ms: Long): String {
     val total = (ms / 1000L).coerceAtLeast(0)
     val h = total / 3600
     val m = (total % 3600) / 60
@@ -366,7 +366,7 @@ private fun formatDuration(ms: Long): String {
     else String.format(Locale.US, "%d:%02d", m, s)
 }
 
-private fun formatBytes(value: Long): String {
+private fun studioFormatBytes(value: Long): String {
     if (value < 1024) return "$value B"
     val units = arrayOf("KB", "MB", "GB", "TB")
     var n = value.toDouble()
