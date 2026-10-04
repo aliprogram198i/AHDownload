@@ -113,6 +113,14 @@ class EmbeddedPlatformResolver(
 
                     if (!sessionEligible || context == null) throw first
 
+                    if (host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be") {
+                        AppLogger.info(
+                            context,
+                            "resolver.youtube_extraction_failure",
+                            "reason=" + youtubeFailureClass(first)
+                        )
+                    }
+
                     val bridge = WebViewSessionBridge(context)
                     val snapshot = bridge.snapshotFor(cleanUrl)
                     if (!snapshot.cookies.isNullOrBlank()) {
@@ -219,6 +227,23 @@ class EmbeddedPlatformResolver(
             }
         }
         return null
+    }
+
+    private fun youtubeFailureClass(error: Throwable): String {
+        val message = error.message.orEmpty().lowercase()
+        return when {
+            "sign in" in message || "login" in message || "age-restricted" in message ->
+                "AUTH_REQUIRED"
+            "po token" in message || "proof of origin" in message ->
+                "PO_TOKEN_REQUIRED"
+            "bot" in message || "captcha" in message || "challenge" in message ->
+                "BOT_CHECK"
+            "403" in message || "forbidden" in message ->
+                "HTTP_403"
+            "429" in message || "too many requests" in message ->
+                "RATE_LIMITED"
+            else -> "EXTRACTION_FAILED"
+        }
     }
 
     private fun isInstagramHost(host: String): Boolean =
