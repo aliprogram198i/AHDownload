@@ -91,33 +91,13 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
           script: |
-            set -u
-            APK=app/build/outputs/apk/release/app-release.apk
-            echo "APK size: $(stat -c%s "$APK")"
-            echo "APK SHA-256: $(sha256sum "$APK" | cut -d ' ' -f1)"
-            echo "== adb install =="
-            if ! adb install -r "$APK"; then
-              echo "INSTALL_FAILED"
-              adb logcat -d -t 400 || true
-              exit 1
-            fi
-            echo "== package path =="
+            echo "APK size: $(stat -c%s app/build/outputs/apk/release/app-release.apk)"
+            echo "APK SHA-256: $(sha256sum app/build/outputs/apk/release/app-release.apk | cut -d ' ' -f1)"
+            adb install -r app/build/outputs/apk/release/app-release.apk || (adb logcat -d -t 400; exit 1)
             adb shell pm path com.ahdownload.app
-            echo "== launch =="
-            if ! adb shell monkey -p com.ahdownload.app 1; then
-              echo "MONKEY_FAILED"
-              adb logcat -d -t 400 || true
-              exit 1
-            fi
+            adb shell monkey -p com.ahdownload.app 1 || (adb logcat -d -t 400; exit 1)
             sleep 5
-            echo "== package version =="
-            if ! adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.6.0'; then
-              echo "VERSION_CHECK_FAILED"
-              adb shell dumpsys package com.ahdownload.app || true
-              adb logcat -d -t 600 || true
-              exit 1
-            fi
-            echo "== launch verification passed =="
+            adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.6.0' || (adb shell dumpsys package com.ahdownload.app; adb logcat -d -t 600; exit 1)
             adb shell dumpsys package com.ahdownload.app | grep 'versionName=1.6.0'
 
       - name: Calculate SHA-256
