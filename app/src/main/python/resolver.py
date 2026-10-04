@@ -66,6 +66,13 @@ def _format(item):
     if mime in HTML_TYPES:
         return None
 
+    raw_headers = item.get("http_headers") or {}
+    safe_headers = {
+        str(k): str(v) for k, v in raw_headers.items()
+        if str(k).lower() not in {"cookie", "authorization", "proxy-authorization"}
+        and str(v).strip()
+    }
+
     return {
         "id": str(item.get("format_id") or ""),
         "ext": ext,
@@ -81,6 +88,7 @@ def _format(item):
         "hasAudio": has_audio,
         "codec": vcodec if has_video else acodec,
         "url": media_url,
+        "httpHeaders": safe_headers,
     }
 
 
@@ -218,6 +226,7 @@ def _youtube_merged_formats(formats):
             "audioUrl": audio["url"],
             "audioExt": audio["ext"],
             "audioSizeBytes": audio.get("sizeBytes"),
+            "audioHeaders": audio.get("httpHeaders") or {},
             "sizeBytes": (
                 (video.get("sizeBytes") or 0) + (audio.get("sizeBytes") or 0)
                 if video.get("sizeBytes") or audio.get("sizeBytes") else None
