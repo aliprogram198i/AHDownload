@@ -2,6 +2,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
+import time
 from html import unescape
 import yt_dlp
 
@@ -101,13 +102,78 @@ def _decode_url(value):
     return value
 
 
+def _instagram_candidates(html):
+    candidates = []
+    patterns = (
+        r"<meta[^>]+property=[\"']og:video(?::secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']",
+        r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:video(?::secure_url)?[\"']",
+        r"<meta[^>]+name=[\"']twitter:player:stream[\"'][^>]+content=[\"']([^\"']+)[\"']",
+        r'"(?:video_url|playback_url|contentUrl)"\s*:\s*"([^"]+)"',
+        r'"video_versions"\s*:\s*\[[^]]{0,12000}?"url"\s*:\s*"([^"]+)"',
+    )
+    for pattern in patterns:
+        candidates.extend(re.findall(pattern, html, re.I | re.S))
+
+    # Instagram frequently embeds the media URL in serialized JSON with
+    # escaped slashes/query separators. Capture CDN URLs as a last resort.
+    for raw in re.findall(
+        r'https?:\\/\\/(?:[^"\\<>\s]|\\/)+',
+        html,
+        re.I,
+    ):
+        candidates.append(raw)
+
+    seen = set()
+    result = []
+    for raw in candidates:
+        media_url = _decode_url(raw)
+        media_url = media_url.replace("\\u0026", "&").replace("\\u003d", "=")
+        if not media_url.startswith(("http://", "https://")):
+            continue
+        lower = media_url.lower()
+        if any(ext in lower.split("?", 1)[0] for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")):
+            continue
+        if media_url not in seen:
+            seen.add(media_url)
+            result.append(media_url)
+    return result[:64]
+
+
+def _probe_instagram_media(media_url, source_url, cookies, user_agent):
+    probe = urllib.request.Request(
+        media_url,
+        headers={
+            "User-Agent": user_agent,
+            "Accept": "*/*",
+            "Range": "bytes=0-1023",
+            "Referer": source_url,
+            "Origin": "https://www.instagram.com",
+        },
+    )
+    if cookies:
+        probe.add_header("Cookie", cookies)
+    with urllib.request.urlopen(probe, timeout=15) as response:
+        content_type = (response.headers.get("Content-Type") or "").split(";")[0].lower()
+        if content_type in HTML_TYPES:
+            return None
+        path = urllib.parse.urlparse(media_url).path.lower()
+        ext = path.rsplit(".", 1)[-1] if "." in path else "mp4"
+        if ext not in {"mp4", "webm", "mov", "m4v"}:
+            ext = "mp4" if content_type.startswith("video/") else ext
+        if not content_type.startswith("video/") and ext not in {"mp4", "webm", "mov", "m4v"}:
+            return None
+        size = response.headers.get("Content-Length")
+        return ext, content_type, int(size) if size and size.isdigit() else None
+
+
 def _instagram_page_fallback(url, cookies=None):
+    user_agent = (
+        "Mozilla/5.0 (Linux; Android 15; Mobile) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/140.0 Mobile Safari/537.36"
+    )
     headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Linux; Android 15; Mobile) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/140.0 Mobile Safari/537.36"
-        ),
+        "User-Agent": user_agent,
         "Accept-Language": "en-US,en;q=0.9",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Referer": "https://www.instagram.com/",
@@ -116,75 +182,44 @@ def _instagram_page_fallback(url, cookies=None):
         headers["Cookie"] = cookies
     request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=20) as response:
-        html = response.read(3 * 1024 * 1024).decode("utf-8", "ignore")
+        html = response.read(4 * 1024 * 1024).decode("utf-8", "ignore")
 
-    candidates = []
-    patterns = (
-        r'<meta[^>]+property=["\']og:video(?::secure_url)?["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:video(?::secure_url)?["\']',
-        r'<meta[^>]+name=["\']twitter:player:stream["\'][^>]+content=["\']([^"\']+)["\']',
-        r'"video_url"\s*:\s*"([^"]+)"',
-        r'"video_versions"\s*:\s*\[\s*\{.*?"url"\s*:\s*"([^"]+)"',
+    candidates = _instagram_candidates(html)
+    title_match = re.search(
+        r"<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']",
+        html, re.I
     )
-    for pattern in patterns:
-        candidates.extend(re.findall(pattern, html, re.I | re.S))
+    title = unescape(title_match.group(1)).strip() if title_match else "Instagram video"
 
-    seen = set()
-    for raw in candidates:
-        media_url = _decode_url(raw)
-        if media_url in seen or not media_url.startswith(("http://", "https://")):
-            continue
-        seen.add(media_url)
+    for media_url in candidates:
         try:
-            probe = urllib.request.Request(
-                media_url,
-                headers={
-                    "User-Agent": headers["User-Agent"],
-                    "Accept": "*/*",
-                    "Range": "bytes=0-1023",
-                    "Referer": url,
-                },
-            )
-            if cookies:
-                probe.add_header("Cookie", cookies)
-            with urllib.request.urlopen(probe, timeout=20) as response:
-                content_type = (response.headers.get("Content-Type") or "").split(";")[0].lower()
-                if content_type in HTML_TYPES:
-                    continue
-                path = urllib.parse.urlparse(media_url).path
-                ext = path.rsplit(".", 1)[-1].lower() if "." in path else "mp4"
-                if ext not in {"mp4", "webm", "mov", "m4v"}:
-                    ext = "mp4" if content_type.startswith("video/") else ext
-                if not content_type.startswith("video/") and ext not in {"mp4", "webm", "mov", "m4v"}:
-                    continue
-                title_match = re.search(
-                    r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']',
-                    html, re.I
-                )
-                title = unescape(title_match.group(1)).strip() if title_match else "Instagram video"
-                return {
-                    "title": title,
-                    "thumbnail": None,
-                    "duration": None,
-                    "extractor": "InstagramPageFallback",
-                    "source": url,
-                    "formats": [{
-                        "id": "instagram-page",
-                        "ext": ext,
-                        "mime": content_type or _mime(ext),
-                        "protocol": "https",
-                        "width": None,
-                        "height": None,
-                        "fps": None,
-                        "abr": None,
-                        "tbr": None,
-                        "sizeBytes": None,
-                        "hasVideo": True,
-                        "hasAudio": True,
-                        "codec": "unknown",
-                        "url": media_url,
-                    }],
-                }
+            probed = _probe_instagram_media(media_url, url, cookies, user_agent)
+            if probed is None:
+                continue
+            ext, content_type, size = probed
+            return {
+                "title": title,
+                "thumbnail": None,
+                "duration": None,
+                "extractor": "InstagramPageFallback",
+                "source": url,
+                "formats": [{
+                    "id": "instagram-page",
+                    "ext": ext,
+                    "mime": content_type or _mime(ext),
+                    "protocol": "https",
+                    "width": None,
+                    "height": None,
+                    "fps": None,
+                    "abr": None,
+                    "tbr": None,
+                    "sizeBytes": size,
+                    "hasVideo": True,
+                    "hasAudio": True,
+                    "codec": "unknown",
+                    "url": media_url,
+                }],
+            }
         except Exception:
             continue
     raise RuntimeError("INSTAGRAM_PAGE_MEDIA_NOT_FOUND")
@@ -249,10 +284,29 @@ def resolve(url, cookies=None):
         },
     }
 
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-    except Exception as exc:
+    info = None
+    last_error = None
+    attempts = 3 if _host(url) in {"youtube.com", "youtu.be"} else 1
+    for attempt in range(attempts):
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            break
+        except Exception as exc:
+            last_error = exc
+            message = str(exc)
+            network_error = bool(re.search(
+                r"No address associated with hostname|Temporary failure in name resolution|Name or service not known|timed out|Connection reset|Network is unreachable",
+                message,
+                re.I,
+            ))
+            if attempt + 1 < attempts and network_error:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
+
+    if info is None:
+        exc = last_error or RuntimeError("EXTRACTION_FAILED")
         if _host(url) == "instagram.com":
             try:
                 return _instagram_page_fallback(url, cookies)
