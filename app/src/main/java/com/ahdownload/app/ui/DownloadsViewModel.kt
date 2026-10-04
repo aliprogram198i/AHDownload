@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
+import com.ahdownload.app.domain.DownloadLifecyclePolicy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
