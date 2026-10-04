@@ -242,9 +242,18 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             notifyCompleted(jobId, title)
             Result.success()
         } catch (e: IOException) {
-            repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING) }
-            AppLogger.error(applicationContext, "download.io_retry", e, "job=$jobId")
-            Result.retry()
+            val attempt = runAttemptCount + 1
+            if (attempt < MAX_RETRY_ATTEMPTS) {
+                repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, errorCode = "IO_RETRY_$attempt") }
+                AppLogger.error(applicationContext, "download.io_retry", e, "job=$jobId attempt=$attempt")
+                notifyFailed(jobId, title, "تعذر الاتصال مؤقتاً؛ ستتم إعادة المحاولة تلقائياً")
+                Result.retry()
+            } else {
+                markFailed(repo, jobId, "IO_RETRY_EXHAUSTED")
+                AppLogger.error(applicationContext, "download.io_retry_exhausted", e, "job=$jobId attempts=$attempt")
+                notifyFailed(jobId, title, "تعذر إكمال التنزيل بعد عدة محاولات")
+                Result.failure()
+            }
         } catch (e: Throwable) {
             repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
             AppLogger.error(applicationContext, "download.failed", e, "job=$jobId")
