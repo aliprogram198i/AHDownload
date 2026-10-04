@@ -44,6 +44,11 @@ object DesignAudit {
         }
     }
 
+    internal fun contractNames(): Set<String> = synchronized(lock) { screenContracts.keys.toSet() }
+
+    internal fun expectedElements(screen: String): String? =
+        synchronized(lock) { screenContracts[screen]?.expectedElements }
+
     fun recordInteraction(screen: String, component: String, action: String) {
         if (screen.isBlank() || component.isBlank() || action.isBlank()) return
         recordComponent("interaction:" + component + ":" + action)
