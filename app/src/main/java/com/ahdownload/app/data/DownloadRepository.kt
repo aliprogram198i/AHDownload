@@ -176,7 +176,7 @@ class DownloadRepository private constructor(context: Context) {
     }
 
     /** Enqueue one refreshed format as the single authoritative worker for this job. */
-    fun requeueWithRefreshedFormat(jobId: String, format: ResolvedFormat): Boolean {
+    fun requeueWithRefreshedFormat(jobId: String, format: ResolvedFormat, mediaRefreshed: Boolean = false): Boolean {
         val job = synchronized(lock) { find(jobId) } ?: return false
         if (format.url.isBlank()) return false
         val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
@@ -194,7 +194,8 @@ class DownloadRepository private constructor(context: Context) {
                 DirectDownloadWorker.KEY_AUDIO_URL to format.audioUrl.orEmpty(),
                 DirectDownloadWorker.KEY_AUDIO_EXTENSION to format.audioExt.orEmpty(),
                 DirectDownloadWorker.KEY_HTTP_HEADERS to encodeHeaders(format.httpHeaders),
-                DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(format.audioHeaders)
+                DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(format.audioHeaders),
+                DirectDownloadWorker.KEY_MEDIA_REFRESHED to mediaRefreshed
             ))
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
