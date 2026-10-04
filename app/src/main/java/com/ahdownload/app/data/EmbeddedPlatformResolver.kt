@@ -64,7 +64,9 @@ class EmbeddedPlatformResolver(
                                     parseHeaders(f.optJSONObject("audioHeaders")),
                                     fps = f.optDouble("fps").takeIf { f.has("fps") },
                                     tbr = f.optDouble("tbr").takeIf { f.has("tbr") },
-                                    codec = f.optString("codec").takeIf { it.isNotBlank() }
+                                    codec = f.optString("codec").takeIf { it.isNotBlank() },
+                                    itemIndex = f.optInt("itemIndex", 0),
+                                    itemLabel = f.optString("itemLabel").takeIf { it.isNotBlank() }
                                 )
                             )
                         }
@@ -195,8 +197,14 @@ class EmbeddedPlatformResolver(
         } else {
             "https://www.instagram.com"
         }
+        val validatedFormats = mutableListOf<ResolvedFormat>()
+        val candidates = snapshot.mediaUrls
+            .distinct()
+            .filterNot { it in excludedUrls }
+            .sortedByDescending(::mediaCandidateScore)
+            .take(12)
 
-        for (candidate in snapshot.mediaUrls.distinct().filterNot { it in excludedUrls }.sortedByDescending(::mediaCandidateScore)) {
+        for (candidate in candidates) {
             val path = candidate.substringBefore("?").substringBefore("#").lowercase()
             val extensionLooksMedia = path.endsWith(".mp4") || path.endsWith(".m4v") ||
                 path.endsWith(".webm") || path.endsWith(".mov") || path.endsWith(".m4a") || path.endsWith(".mp3")
@@ -205,6 +213,7 @@ class EmbeddedPlatformResolver(
                 true to "video/avc,video/mp4,video/*;q=0.9,*/*;q=0.8",
                 false to "*/*"
             )
+            var validated: ResolvedFormat? = null
             for ((withCookie, accept) in variants) {
                 val builder = Request.Builder()
                     .url(candidate)
@@ -221,7 +230,7 @@ class EmbeddedPlatformResolver(
                     snapshot.cookies?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
                 }
 
-                val validated = runCatching {
+                validated = runCatching {
                     probeClient.newCall(builder.build()).execute().use { response ->
                         if (!response.isSuccessful && response.code != 206) return@use null
 
@@ -245,9 +254,6 @@ class EmbeddedPlatformResolver(
                         val dispositionLooksMedia = listOf(".mp4", ".m4v", ".webm", ".mov", ".m4a", ".mp3")
                             .any(dispositionHeader::contains)
 
-                        // A CDN hostname or a media-looking path is not proof that the response is media.
-                        // Instagram can return a small signed-error/XML/HTML payload from the same CDN URL.
-                        // Require an actual media Content-Type/signature before exposing a candidate to analysis.
                         val contentTypeLooksVideo = contentType.startsWith("video/")
                         val contentTypeLooksAudio = contentType.startsWith("audio/")
                         val extensionLooksVideo = extensionLooksMedia &&
@@ -267,34 +273,37 @@ class EmbeddedPlatformResolver(
                             response.header("Content-Disposition").orEmpty().ifBlank { candidate }
                         )
                         val size = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
-                        ResolvedMedia(
-                            title = snapshot.title?.takeIf { it.isNotBlank() }
-                                ?: if (sourceUrl.contains("facebook.", true) || sourceUrl.contains("fb.watch", true)) "Facebook video" else "Instagram video",
-                            thumbnail = null,
-                            durationSeconds = null,
-                            extractor = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "FacebookWebView" else "InstagramWebView",
-                            source = sourceUrl,
-                            formats = listOf(
-                                ResolvedFormat(
-                                    id = if (isInstagram) "instagram-webview" else "facebook-webview",
-                                    ext = ext,
-                                    width = null,
-                                    height = null,
-                                    abr = null,
-                                    sizeBytes = size,
-                                    hasVideo = looksVideo,
-                                    hasAudio = looksAudio || looksVideo,
-                                    url = candidate
-                                )
-                            )
+                        ResolvedFormat(
+                            id = (if (isInstagram) "instagram-webview-" else "facebook-webview-") + validatedFormats.size,
+                            ext = ext,
+                            width = null,
+                            height = null,
+                            abr = null,
+                            sizeBytes = size,
+                            hasVideo = looksVideo,
+                            hasAudio = looksAudio || looksVideo,
+                            url = candidate,
+                            itemIndex = validatedFormats.size + 1,
+                            itemLabel = "العنصر " + (validatedFormats.size + 1)
                         )
                     }
                 }.getOrNull()
-
-                if (validated != null) return validated
+                if (validated != null) break
             }
+            if (validated != null) validatedFormats += validated
+            if (validatedFormats.size >= 10) break
         }
-        return null
+
+        if (validatedFormats.isEmpty()) return null
+        return ResolvedMedia(
+            title = snapshot.title?.takeIf { it.isNotBlank() }
+                ?: if (isInstagram) "Instagram media" else "Facebook media",
+            thumbnail = null,
+            durationSeconds = null,
+            extractor = if (isInstagram) "InstagramWebView" else "FacebookWebView",
+            source = sourceUrl,
+            formats = validatedFormats
+        )
     }
 
     private fun parseHeaders(json: JSONObject?): Map<String, String> {
