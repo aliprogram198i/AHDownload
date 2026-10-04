@@ -1,1 +1,0 @@
-<resources><style name="Theme.AHDownload" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:windowLightStatusBar">true</item><item name="android:navigationBarColor">@android:color/transparent</item></style></resources>
