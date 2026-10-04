@@ -10,6 +10,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
@@ -23,6 +28,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -37,6 +44,7 @@ import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
+import com.ahdownload.app.ui.theme.AHBrandGradient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -55,24 +63,22 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  }
 }
 @Composable private fun NavItem(nav:androidx.navigation.NavHostController,route:String,target:String,label:String,icon:ImageVector){
- Column(
-  Modifier
-   .fillMaxWidth(0.3333f)
-   .clickable{
-    if(route!=target){
-     nav.navigate(target){
-      launchSingleTop=true
-      restoreState=true
-      popUpTo(nav.graph.startDestinationId){saveState=true}
-     }
-    }
-   },
-  horizontalAlignment=Alignment.CenterHorizontally,
-  verticalArrangement=Arrangement.Center
- ){
-  Icon(icon,contentDescription=label,tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-  Text(label,style=MaterialTheme.typography.labelSmall,color=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
- }
+ NavigationBarItem(
+  selected=route==target,
+  onClick={
+   if(route!=target) nav.navigate(target){
+    launchSingleTop=true
+    restoreState=true
+    popUpTo(nav.graph.startDestinationId){saveState=true}
+   }
+  },
+  icon={
+   val scale by animateFloatAsState(if(route==target)1.12f else 1f,label="navScale")
+   Icon(icon,contentDescription=label,modifier=Modifier.graphicsLayer{scaleX=scale;scaleY=scale})
+  },
+  label={Text(label)},
+  alwaysShowLabel=true
+ )
 }
 
 @Composable private fun HomeScreen(openDownloads:()->Unit){
@@ -114,12 +120,36 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
 }
 
 @Composable private fun HomeHeader(){
- Surface(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.surfaceVariant,shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
-  Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.primary),contentAlignment=Alignment.Center){Icon(Icons.Default.Download,null,tint=MaterialTheme.colorScheme.onPrimary)};Spacer(Modifier.width(12.dp));Text("AHDownload",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
-  Text("تنزيل الفيديو والصوت",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
-  Text("حلّل الرابط أولاً، ثم اختر الجودة الحقيقية المتاحة من المصدر.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){AssistChip(onClick={},enabled=false,leadingIcon={Icon(Icons.Default.Verified,null)},label={Text("جودة حقيقية")});AssistChip(onClick={},enabled=false,leadingIcon={Icon(Icons.Default.Security,null)},label={Text("فحص الوسائط")})}
- }}
+ val transition=rememberInfiniteTransition(label="brandPulse")
+ val pulse by transition.animateFloat(initialValue=1f,targetValue=1.045f,animationSpec=infiniteRepeatable(tween(1800),RepeatMode.Reverse),label="brandPulseScale")
+ Surface(Modifier.fillMaxWidth(),shape=RoundedCornerShape(28.dp),shadowElevation=2.dp){
+  Column(Modifier.background(AHBrandGradient,RoundedCornerShape(28.dp)).padding(22.dp),verticalArrangement=Arrangement.spacedBy(11.dp)){
+   Row(verticalAlignment=Alignment.CenterVertically){
+    Box(Modifier.size(54.dp).graphicsLayer{scaleX=pulse;scaleY=pulse}.clip(RoundedCornerShape(17.dp)).background(Color.White.copy(alpha=.18f)),contentAlignment=Alignment.Center){
+     Icon(Icons.Default.Download,null,tint=Color.White,modifier=Modifier.size(30.dp))
+    }
+    Spacer(Modifier.width(13.dp))
+    Column{
+     Text("AHDownload",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,color=Color.White)
+     Text("Smart media downloader",style=MaterialTheme.typography.labelMedium,color=Color.White.copy(alpha=.84f))
+    }
+   }
+   Text("نزّل بذكاء. اختر الأفضل.",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,color=Color.White)
+   Text("حلّل الرابط أولاً، ثم اختر الجودة الحقيقية المتاحة من المصدر.",color=Color.White.copy(alpha=.9f))
+   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+    BrandChip(Icons.Default.AutoAwesome,"اختيار ذكي")
+    BrandChip(Icons.Default.Verified,"جودة حقيقية")
+    BrandChip(Icons.Default.Security,"فحص آمن")
+   }
+  }
+ }
+}
+@Composable private fun BrandChip(icon:ImageVector,label:String){
+ Surface(color=Color.White.copy(alpha=.14f),contentColor=Color.White,shape=RoundedCornerShape(50.dp)){
+  Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically){
+   Icon(icon,null,Modifier.size(16.dp));Spacer(Modifier.width(5.dp));Text(label,style=MaterialTheme.typography.labelMedium)
+  }
+ }
 }
 @Composable private fun UrlCard(url:String,analyzing:Boolean,onUrlChange:(String)->Unit,onPaste:()->Unit,onAnalyze:()->Unit){
  Card(shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
