@@ -179,7 +179,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
      SimpleFormatRow(format,selected?.id==format.id){selected=format}
     }
     if(videoFormats.size>4){
-     TextButton(onClick={showMore},modifier=Modifier.fillMaxWidth()){
+     TextButton(onClick={showMore=!showMore},modifier=Modifier.fillMaxWidth()){
       Text(if(showMore)"إخفاء الخيارات الإضافية" else "عرض كل الجودات المتاحة ("+videoFormats.size+")")
       Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
      }
@@ -202,7 +202,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
      SimpleFormatRow(format,selected?.id==format.id){selected=format}
     }
     if(audioFormats.size>4){
-     TextButton(onClick={showMore},modifier=Modifier.fillMaxWidth()){
+     TextButton(onClick={showMore=!showMore},modifier=Modifier.fillMaxWidth()){
       Text(if(showMore)"إخفاء الخيارات الإضافية" else "عرض كل الجودات المتاحة ("+audioFormats.size+")")
       Icon(if(showMore)Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)
      }
@@ -294,7 +294,7 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
   prefs.edit().putBoolean("notifications",granted).apply()
  }
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
-  item{Text("الإعدادات",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold);Text("إعدادات التنزيل والتشخيص فقط، بدون ميزات جانبية غير مطلوبة.")}
+  item{Text("إعدادات التنزيل والتشخيص فقط، بدون ميزات جانبية غير مطلوبة.",style=MaterialTheme.typography.bodyLarge,color=MaterialTheme.colorScheme.onSurfaceVariant)}
   item{SettingsSection("التنزيل"){Setting("التنزيل عبر Wi‑Fi فقط",wifiOnly){wifiOnly=it;prefs.edit().putBoolean("wifi_only",it).apply()};Setting("إشعارات اكتمال التنزيل",notifications){value->
   if(value && Build.VERSION.SDK_INT>=33) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
   else {notifications=value;prefs.edit().putBoolean("notifications",value).apply()}
