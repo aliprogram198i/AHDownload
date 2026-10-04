@@ -48,7 +48,7 @@ fun DiagnosticsScreen() {
         Spacer(Modifier.height(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { refreshLog() }, modifier = Modifier.weight(1f)) {
+                AHGradientButton(onClick = { refreshLog() }, modifier = Modifier.weight(1f)) {
                     Icon(Icons.Default.Refresh, null)
                     Spacer(Modifier.width(6.dp))
                     Text("تحديث")
