@@ -120,8 +120,8 @@ def _instagram_page_fallback(url, cookies=None):
 
     candidates = []
     patterns = (
-        r'<meta[^>]+property=["\']og:video(?::secure_url)?["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:video(?::secure_url)?["\']',
+        r'<meta[^>]+property=["\']og:video(?::secure_url)?["\'][^>]*content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:video(?::secure_url)?["\']',
         r'<meta[^>]+name=["\']twitter:player:stream["\'][^>]+content=["\']([^"\']+)["\']',
         r'"video_url"\s*:\s*"([^"]+)"',
         r'"video_versions"\s*:\s*\[\s*\{.*?"url"\s*:\s*"([^"]+)"',
