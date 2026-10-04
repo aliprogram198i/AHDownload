@@ -38,6 +38,11 @@ jobs:
           test -s "$RUNNER_TEMP/AHDownload-release.keystore"
           keytool -list -keystore "$RUNNER_TEMP/AHDownload-release.keystore" -storepass "${{ secrets.AH_KEYSTORE_PASSWORD }}" -alias "${{ secrets.AH_KEY_ALIAS }}" >/dev/null
 
+      - name: Validate Python resolver syntax
+        run: python3 -m py_compile app/src/main/python/resolver.py
+      - name: Run JVM unit tests
+        run: gradle --no-daemon test
+
       - name: Build release APK
         if: github.event_name != 'pull_request'
         env:
@@ -66,7 +71,7 @@ jobs:
           test -x "$BUILD_TOOLS/apksigner"
           test -x "$BUILD_TOOLS/zipalign"
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | tee "$RUNNER_TEMP/badging.txt"
-          grep -q "package: name='com.ahdownload.app' versionCode='12' versionName='1.9.0'" "$RUNNER_TEMP/badging.txt"
+          grep -q "package: name='com.ahdownload.app' versionCode='13' versionName='1.9.1'" "$RUNNER_TEMP/badging.txt"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
           "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK"
 
@@ -97,7 +102,7 @@ jobs:
             adb shell pm path com.ahdownload.app
             adb shell monkey -p com.ahdownload.app 1 || (adb logcat -d -t 400; exit 1)
             sleep 5
-            adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.9.0' || (adb shell dumpsys package com.ahdownload.app; adb logcat -d -t 600; exit 1)
+            adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.9.1' || (adb shell dumpsys package com.ahdownload.app; adb logcat -d -t 600; exit 1)
             adb shell dumpsys package com.ahdownload.app | grep 'versionName=1.9.0'
 
       - name: Calculate SHA-256
@@ -109,10 +114,10 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.9.0
-          name: AHDownload v1.9.0
+          tag_name: v1.9.1
+          name: AHDownload v1.9.1
           body: |
-            AHDownload v1.9.0
+            AHDownload v1.9.1
 
             Production release APK.
 
