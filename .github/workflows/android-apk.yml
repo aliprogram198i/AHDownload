@@ -66,10 +66,10 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.3.0
-          name: AHDownload v1.3.0
+          tag_name: v1.4.0
+          name: AHDownload v1.4.0
           body: |
-            AHDownload v1.3.0
+            AHDownload v1.4.0
 
             Production release APK.
 
