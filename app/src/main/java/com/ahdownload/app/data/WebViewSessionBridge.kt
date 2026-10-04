@@ -54,7 +54,7 @@ class WebViewSessionBridge(private val context: Context) {
             fun fallbackSnapshot(): WebViewMediaSnapshot =
                 WebViewMediaSnapshot(currentCookies(), null, emptyList())
 
-            fun inspect(view: WebView) {
+            fun inspect(view: WebView, attempt: Int = 1) {
                 val script = """
                     (function() {
                       const urls = new Set();
@@ -73,12 +73,19 @@ class WebViewSessionBridge(private val context: Context) {
                       try {
                         performance.getEntriesByType('resource').forEach(e => {
                           const n = e.name || '';
-                          if (/\.(?:mp4|m4v|webm|mov)(?:[?#]|$)/i.test(n) || /\/(?:video|playback|stream)(?:[/?]|$)/i.test(n)) add(n);
+                          if (/\.(?:mp4|m4v|webm|mov|m3u8)(?:[?#]|$)/i.test(n) ||
+                              /\/(?:video|playback|stream)(?:[/?]|$)/i.test(n) ||
+                              /(cdninstagram|fbcdn|scontent)/i.test(n)) add(n);
                         });
+                      } catch (_) {}
+                      try {
+                        const html = document.documentElement ? (document.documentElement.outerHTML || '') : '';
+                        const matches = html.match(/https?:\\/\\/[^"'<\\s]+/gi) || [];
+                        matches.forEach(add);
                       } catch (_) {}
                       return JSON.stringify({
                         title: document.title || null,
-                        urls: Array.from(urls).slice(0, 12)
+                        urls: Array.from(urls).slice(0, 24)
                       });
                     })();
                 """.trimIndent()
@@ -100,7 +107,11 @@ class WebViewSessionBridge(private val context: Context) {
                             }
                         }
                     }
-                    finish(WebViewMediaSnapshot(currentCookies(), title, urls))
+                    if (urls.isNotEmpty() || attempt >= 3) {
+                        finish(WebViewMediaSnapshot(currentCookies(), title, urls))
+                    } else {
+                        main.postDelayed({ inspect(view, attempt + 1) }, 2500L)
+                    }
                 }
             }
 
@@ -126,7 +137,7 @@ class WebViewSessionBridge(private val context: Context) {
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
-                        main.postDelayed({ inspect(view) }, 1_500L)
+                        main.postDelayed({ inspect(view, 1) }, 1_500L)
                     }
 
                     @Deprecated("Deprecated in API 23")
