@@ -16,7 +16,7 @@ val hasReleaseSigning = listOf(
     signingStorePassword,
     signingAlias,
     signingKeyPassword
-).all { !it.isNullOrBlank() && File(it!!).exists() }
+).all { !it.isNullOrBlank() }
 val isPullRequestBuild = System.getenv("GITHUB_EVENT_NAME").equals("pull_request", ignoreCase = true)
 
 android {
