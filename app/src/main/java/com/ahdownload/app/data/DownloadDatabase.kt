@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    4
+    5
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -28,6 +28,8 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
                 merge_required INTEGER NOT NULL DEFAULT 0,
                 audio_url TEXT,
                 audio_extension TEXT,
+                http_headers TEXT,
+                audio_headers TEXT,
                 speed_bps INTEGER NOT NULL DEFAULT 0,
                 eta_seconds INTEGER,
                 error_code TEXT
@@ -51,6 +53,10 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
             db.execSQL("ALTER TABLE downloads ADD COLUMN merge_required INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE downloads ADD COLUMN audio_url TEXT")
             db.execSQL("ALTER TABLE downloads ADD COLUMN audio_extension TEXT")
+        }
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN http_headers TEXT")
+            db.execSQL("ALTER TABLE downloads ADD COLUMN audio_headers TEXT")
         }
     }
 }
