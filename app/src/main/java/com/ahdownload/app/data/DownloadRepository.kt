@@ -61,7 +61,7 @@ class DownloadRepository private constructor(context: Context) {
             audioExtension = audioExtension
         )
         synchronized(lock) { insert(job) }
-        refresh()
+        trimHistory()
 
         val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
         val constraints = Constraints.Builder()
