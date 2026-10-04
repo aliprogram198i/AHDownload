@@ -227,6 +227,9 @@ class WebViewSessionBridge(private val context: Context) {
                 view.settings.userAgentString =
                     "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
                         "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
+                if (forceFresh) {
+                    view.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                }
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
