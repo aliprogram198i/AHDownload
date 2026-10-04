@@ -98,7 +98,7 @@ object MediaValidator {
             .trimStart()
             .lowercase(Locale.US)
         return text.startsWith("<!doctype") || text.startsWith("<html") ||
-            text.startsWith("<?xml") || text.startsWith("{"error")
+            text.startsWith("<?xml") || text.startsWith("""{"error""")
     }
 
     private fun hasAsciiPrefix(bytes: ByteArray, value: String): Boolean =
