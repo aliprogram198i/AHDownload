@@ -1,15 +1,24 @@
 package com.ahdownload.app.data
 
 import android.content.Context
-import com.ahdownload.app.diagnostics.AppLogger
 import android.webkit.CookieManager
+import com.ahdownload.app.diagnostics.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONObject
+import java.net.URLConnection
+import java.util.concurrent.TimeUnit
 
 class EmbeddedPlatformResolver(
     private val context: Context? = null
 ) {
+    private val probeClient = OkHttpClient.Builder()
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
     suspend fun resolve(url: String): Result<ResolvedMedia> {
         val cleanUrl = url
             .replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"), "")
@@ -62,25 +71,133 @@ class EmbeddedPlatformResolver(
                     )
                 }
 
+                val host = android.net.Uri.parse(cleanUrl).host.orEmpty().lowercase()
                 try {
-                    context?.let { AppLogger.info(it, "resolver.start", "host=" + android.net.Uri.parse(cleanUrl).host.orEmpty()) }
+                    context?.let { AppLogger.info(it, "resolver.start", "host=" + host) }
                     call(CookieManager.getInstance().getCookie(cleanUrl))
                 } catch (first: Throwable) {
-                    val host = android.net.Uri.parse(cleanUrl).host.orEmpty().lowercase()
                     val sessionEligible =
                         host == "youtube.com" || host.endsWith(".youtube.com") ||
-                        host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") || host == "facebook.com" || host.endsWith(".facebook.com")
+                        host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") ||
+                        host == "facebook.com" || host.endsWith(".facebook.com")
 
                     if (!sessionEligible || context == null) throw first
 
-                    val cookies = WebViewSessionBridge(context).cookiesFor(cleanUrl)
-                    if (cookies.isNullOrBlank()) throw first
-                    AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true")
-                    call(cookies)
+                    val bridge = WebViewSessionBridge(context)
+                    val snapshot = bridge.snapshotFor(cleanUrl)
+                    if (!snapshot.cookies.isNullOrBlank()) {
+                        AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true")
+                        try {
+                            return@runCatching call(snapshot.cookies)
+                        } catch (sessionFailure: Throwable) {
+                            if (host == "instagram.com" || host.endsWith(".instagram.com")) {
+                                val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
+                                if (webViewMedia != null) {
+                                    AppLogger.info(
+                                        context,
+                                        "resolver.webview_media_fallback",
+                                        "candidates=" + snapshot.mediaUrls.size
+                                    )
+                                    return@runCatching webViewMedia
+                                }
+                            }
+                            throw sessionFailure
+                        }
+                    }
+
+                    if (host == "instagram.com" || host.endsWith(".instagram.com")) {
+                        val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
+                        if (webViewMedia != null) {
+                            AppLogger.info(
+                                context,
+                                "resolver.webview_media_fallback",
+                                "candidates=" + snapshot.mediaUrls.size
+                            )
+                            return@runCatching webViewMedia
+                        }
+                    }
+
+                    throw first
                 }
             }.onFailure { failure ->
-                context?.let { AppLogger.error(it, "resolver.failed", failure, "host=" + android.net.Uri.parse(cleanUrl).host.orEmpty()) }
+                context?.let {
+                    AppLogger.error(
+                        it,
+                        "resolver.failed",
+                        failure,
+                        "host=" + android.net.Uri.parse(cleanUrl).host.orEmpty()
+                    )
+                }
             }
         }
+    }
+
+    private fun probeWebViewMedia(sourceUrl: String, snapshot: WebViewMediaSnapshot): ResolvedMedia? {
+        for (candidate in snapshot.mediaUrls.distinct()) {
+            runCatching {
+                val builder = Request.Builder()
+                    .url(candidate)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "*/*")
+                    .header("Referer", sourceUrl)
+                    .header("Range", "bytes=0-1023")
+                snapshot.cookies?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
+
+                probeClient.newCall(builder.build()).execute().use { response ->
+                    if (!response.isSuccessful && response.code != 206) return@use
+                    val contentType = response.header("Content-Type")
+                        ?.substringBefore(";")
+                        ?.trim()
+                        ?.lowercase()
+                        .orEmpty()
+                    if (contentType.startsWith("text/") || contentType == "application/xhtml+xml") return@use
+                    if (!contentType.startsWith("video/") && !contentType.startsWith("audio/")) return@use
+
+                    val isVideo = contentType.startsWith("video/")
+                    val ext = extensionFor(contentType, candidate)
+                    val size = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
+                    return ResolvedMedia(
+                        title = snapshot.title?.takeIf { it.isNotBlank() } ?: "Instagram video",
+                        thumbnail = null,
+                        durationSeconds = null,
+                        extractor = "InstagramWebView",
+                        source = sourceUrl,
+                        formats = listOf(
+                            ResolvedFormat(
+                                id = "instagram-webview",
+                                ext = ext,
+                                width = null,
+                                height = null,
+                                abr = null,
+                                sizeBytes = size,
+                                hasVideo = isVideo,
+                                hasAudio = !isVideo,
+                                url = candidate
+                            )
+                        )
+                    )
+                }
+            }
+        }
+        return null
+    }
+
+    private fun extensionFor(contentType: String, url: String): String {
+        val guessed = URLConnection.guessContentTypeFromName(url.substringBefore('?').substringBefore('#'))
+        return when {
+            contentType == "video/mp4" || guessed == "video/mp4" -> "mp4"
+            contentType == "video/webm" || guessed == "video/webm" -> "webm"
+            contentType == "video/quicktime" -> "mov"
+            contentType == "audio/mp4" -> "m4a"
+            contentType == "audio/mpeg" -> "mp3"
+            contentType == "audio/webm" -> "webm"
+            else -> "mp4"
+        }
+    }
+
+    private companion object {
+        const val USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
+                "Chrome/140.0 Mobile Safari/537.36"
     }
 }
