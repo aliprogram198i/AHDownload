@@ -19,7 +19,11 @@ class EmbeddedPlatformResolver(
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    suspend fun resolve(\n        url: String,\n        excludedUrls: Set<String> = emptySet(),\n        forceFresh: Boolean = false\n    ): Result<ResolvedMedia> {
+    suspend fun resolve(
+        url: String,
+        excludedUrls: Set<String> = emptySet(),
+        forceFresh: Boolean = false
+    ): Result<ResolvedMedia> {
         val cleanUrl = url
             .replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"), "")
             .trim()
@@ -177,7 +181,11 @@ class EmbeddedPlatformResolver(
         }
     }
 
-    private fun probeWebViewMedia(\n        sourceUrl: String,\n        snapshot: WebViewMediaSnapshot,\n        excludedUrls: Set<String> = emptySet()\n    ): ResolvedMedia? {
+    private fun probeWebViewMedia(
+        sourceUrl: String,
+        snapshot: WebViewMediaSnapshot,
+        excludedUrls: Set<String> = emptySet()
+    ): ResolvedMedia? {
         val isInstagram = sourceUrl.contains("instagram.", ignoreCase = true)
         val origin = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) {
             "https://www.facebook.com"
