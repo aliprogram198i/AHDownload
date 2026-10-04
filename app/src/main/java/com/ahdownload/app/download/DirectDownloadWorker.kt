@@ -17,6 +17,10 @@ import java.io.File
 import java.io.RandomAccessFile
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import android.media.MediaExtractor
+import android.media.MediaMuxer
+import android.media.MediaFormat
+import java.nio.ByteBuffer
 
 class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     companion object {
@@ -25,6 +29,9 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         const val KEY_TITLE = "title"
         const val KEY_EXTENSION = "extension"
         const val KEY_SOURCE_URL = "source_url"
+        const val KEY_MERGE_REQUIRED = "merge_required"
+        const val KEY_AUDIO_URL = "audio_url"
+        const val KEY_AUDIO_EXTENSION = "audio_extension"
         private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
     }
 
@@ -39,6 +46,9 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val title = inputData.getString(KEY_TITLE) ?: "download"
         val requestedExtension = inputData.getString(KEY_EXTENSION).orEmpty()
         val sourceUrl = inputData.getString(KEY_SOURCE_URL).orEmpty()
+        val mergeRequired = inputData.getBoolean(KEY_MERGE_REQUIRED, false)
+        val audioUrl = inputData.getString(KEY_AUDIO_URL).orEmpty()
+        val audioExtension = inputData.getString(KEY_AUDIO_EXTENSION).orEmpty()
         val repo = DownloadRepository(applicationContext)
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
@@ -54,6 +64,23 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val target = File(dir, "$safeTitle.$extension")
             val part = File(dir, "$safeTitle.$extension.part")
             var existing = if (part.exists()) part.length() else 0L
+
+            if (mergeRequired && audioUrl.isNotBlank()) {
+                AppLogger.info(applicationContext, "download.merge_start", "job=$jobId")
+                downloadMergedMedia(jobId, title, url, audioUrl, sourceUrl,
+                    File(dir, "$safeTitle.video.part"),
+                    File(dir, "$safeTitle." + audioExtension.ifBlank { "m4a" } + ".part"),
+                    target, repo)
+                val published = StoragePublisher.publish(applicationContext, target, target.name, "video/mp4")
+                if (published?.startsWith("content://") == true) target.delete()
+                repo.update(jobId) { it.copy(status = DownloadStatus.COMPLETED, progress = 100,
+                    downloadedBytes = if (target.exists()) target.length() else it.downloadedBytes,
+                    totalBytes = if (target.exists()) target.length() else it.totalBytes,
+                    outputUri = published) }
+                AppLogger.info(applicationContext, "download.completed", "job=$jobId mode=mux")
+                notifyCompleted(jobId, title)
+                return Result.success()
+            }
 
             val requestBuilder = Request.Builder().url(url)
                 .header("User-Agent", USER_AGENT)
@@ -147,6 +174,52 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         }
     }
 
+    private fun downloadMergedMedia(jobId: String, title: String, videoUrl: String, audioUrl: String, sourceUrl: String, videoFile: File, audioFile: File, target: File, repo: DownloadRepository) {
+        downloadStream(videoUrl, sourceUrl, videoFile)
+        repo.update(jobId) { it.copy(progress = 50, downloadedBytes = videoFile.length()) }
+        downloadStream(audioUrl, sourceUrl, audioFile)
+        repo.update(jobId) { it.copy(progress = 80, downloadedBytes = videoFile.length() + audioFile.length()) }
+        muxMp4(videoFile, audioFile, target)
+        videoFile.delete(); audioFile.delete()
+        repo.update(jobId) { it.copy(progress = 100, downloadedBytes = target.length()) }
+        AppLogger.info(applicationContext, "download.merge_completed", "job=$jobId bytes=${target.length()}")
+    }
+
+    private fun downloadStream(url: String, sourceUrl: String, target: File) {
+        val b = Request.Builder().url(url).header("User-Agent", USER_AGENT).header("Accept", "*/*")
+        if (sourceUrl.isNotBlank()) b.header("Referer", sourceUrl)
+        runCatching { CookieManager.getInstance().getCookie(sourceUrl) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { b.header("Cookie", it) }
+        client.newCall(b.build()).execute().use { response ->
+            if (!response.isSuccessful) error("MEDIA_DOWNLOAD_HTTP_${response.code}")
+            val type = response.header("Content-Type").orEmpty().substringBefore(";").lowercase()
+            if (type == "text/html" || type == "application/xhtml+xml") error("MEDIA_DOWNLOAD_HTML")
+            val body = response.body ?: error("MEDIA_DOWNLOAD_EMPTY")
+            target.parentFile?.mkdirs(); target.outputStream().use { output -> body.byteStream().use { input -> input.copyTo(output, 64 * 1024) } }
+        }
+    }
+
+    private fun muxMp4(videoFile: File, audioFile: File, target: File) {
+        val ve = MediaExtractor(); val ae = MediaExtractor(); var muxer: MediaMuxer? = null
+        try {
+            ve.setDataSource(videoFile.absolutePath); ae.setDataSource(audioFile.absolutePath)
+            val vt = findTrack(ve, true); val at = findTrack(ae, false)
+            require(vt >= 0) { "MUX_VIDEO_TRACK_NOT_FOUND" }; require(at >= 0) { "MUX_AUDIO_TRACK_NOT_FOUND" }
+            target.parentFile?.mkdirs(); if (target.exists()) target.delete()
+            muxer = MediaMuxer(target.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val ov = muxer.addTrack(ve.getTrackFormat(vt)); val oa = muxer.addTrack(ae.getTrackFormat(at)); muxer.start()
+            copyTrack(ve, vt, muxer, ov); copyTrack(ae, at, muxer, oa)
+        } finally { runCatching { muxer?.stop() }; runCatching { muxer?.release() }; ve.release(); ae.release() }
+    }
+
+    private fun findTrack(extractor: MediaExtractor, video: Boolean): Int {
+        for (i in 0 until extractor.trackCount) { val mime = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME).orEmpty(); if (if (video) mime.startsWith("video/") else mime.startsWith("audio/")) return i }
+        return -1
+    }
+
+    private fun copyTrack(extractor: MediaExtractor, track: Int, muxer: MediaMuxer, outputTrack: Int) {
+        extractor.selectTrack(track); val buffer = ByteBuffer.allocate(1024 * 1024); val info = android.media.MediaCodec.BufferInfo()
+        while (true) { val size = extractor.readSampleData(buffer, 0); if (size < 0) break; info.offset = 0; info.size = size; info.presentationTimeUs = extractor.sampleTime; info.flags = extractor.sampleFlags; muxer.writeSampleData(outputTrack, buffer, info); extractor.advance(); buffer.clear() }
+    }
     private fun notifyCompleted(jobId: String, title: String) {
         val prefs = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("notifications", true)) return
