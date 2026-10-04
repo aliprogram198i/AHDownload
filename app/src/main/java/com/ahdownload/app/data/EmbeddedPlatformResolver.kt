@@ -176,82 +176,107 @@ class EmbeddedPlatformResolver(
     }
 
     private fun probeWebViewMedia(sourceUrl: String, snapshot: WebViewMediaSnapshot): ResolvedMedia? {
+        val isInstagram = sourceUrl.contains("instagram.", ignoreCase = true)
+        val origin = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) {
+            "https://www.facebook.com"
+        } else {
+            "https://www.instagram.com"
+        }
+
         for (candidate in snapshot.mediaUrls.distinct().sortedByDescending(::mediaCandidateScore)) {
-            runCatching {
-                val isInstagram = sourceUrl.contains("instagram.", ignoreCase = true)
-                val origin = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) {
-                    "https://www.facebook.com"
-                } else {
-                    "https://www.instagram.com"
-                }
-                val builder = Request.Builder()
-                    .url(candidate)
-                    .header("User-Agent", USER_AGENT)
-                    .header("Accept", if (isInstagram) "video/avc,video/mp4,video/*;q=0.9,*/*;q=0.8" else "*/*")
-                    .header("Accept-Language", "en-US,en;q=0.9")
-                    .header("Referer", sourceUrl)
-                    .header("Origin", origin)
-                    .header("Sec-Fetch-Dest", if (isInstagram) "video" else "empty")
-                    .header("Sec-Fetch-Mode", "cors")
-                    .header("Sec-Fetch-Site", "cross-site")
-                    .header("Range", "bytes=0-1023")
-                snapshot.cookies?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
+            val result = runCatching {
+                val path = candidate.substringBefore("?").substringBefore("#").lowercase()
+                val extensionLooksMedia = path.endsWith(".mp4") || path.endsWith(".m4v") ||
+                    path.endsWith(".webm") || path.endsWith(".mov") || path.endsWith(".m4a") || path.endsWith(".mp3")
 
-                probeClient.newCall(builder.build()).execute().use { response ->
-                    if (!response.isSuccessful && response.code != 206) return@use
-                    val contentType = response.header("Content-Type")
-                        ?.substringBefore(";")
-                        ?.trim()
-                        ?.lowercase()
-                        .orEmpty()
-                    if (contentType.startsWith("text/") || contentType == "application/xhtml+xml") return@use
-                    if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegurl") return@use
-                    val path = candidate.substringBefore("?").substringBefore("#").lowercase()
-                    val extensionLooksMedia = path.let { it.endsWith(".mp4") || it.endsWith(".m4v") || it.endsWith(".webm") || it.endsWith(".mov") || it.endsWith(".m4a") || it.endsWith(".mp3") }
-                    val dispositionHeader = response.header("Content-Disposition")
-                        ?.lowercase()
-                        .orEmpty()
-                    val dispositionLooksMedia =
-                        dispositionHeader.contains(".mp4") ||
-                            dispositionHeader.contains(".m4v") ||
-                            dispositionHeader.contains(".webm") ||
-                            dispositionHeader.contains(".mov") ||
-                            dispositionHeader.contains(".m4a") ||
-                            dispositionHeader.contains(".mp3")
-                    val cdnLooksMedia = isInstagram && (
-                        candidate.contains("cdninstagram", ignoreCase = true) ||
-                            candidate.contains("scontent", ignoreCase = true)
-                        ) && (candidate.contains("video", ignoreCase = true) || dispositionLooksMedia)
-                    if (!contentType.startsWith("video/") && !contentType.startsWith("audio/") &&
-                        !(contentType == "application/octet-stream" && (extensionLooksMedia || dispositionLooksMedia || cdnLooksMedia))
-                    ) return@use
+                val variants = listOf(
+                    true to "video/avc,video/mp4,video/*;q=0.9,*/*;q=0.8",
+                    false to "*/*"
+                )
+                for ((withCookie, accept) in variants) {
+                    val builder = Request.Builder()
+                        .url(candidate)
+                        .header("User-Agent", USER_AGENT)
+                        .header("Accept", accept)
+                        .header("Accept-Language", "en-US,en;q=0.9")
+                        .header("Referer", sourceUrl)
+                        .header("Origin", origin)
+                        .header("Sec-Fetch-Dest", if (isInstagram) "video" else "empty")
+                        .header("Sec-Fetch-Mode", "cors")
+                        .header("Sec-Fetch-Site", "cross-site")
+                        .header("Range", "bytes=0-4095")
+                    if (withCookie) {
+                        snapshot.cookies?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
+                    }
 
-                    val isVideo = contentType.startsWith("video/") || extensionLooksMedia && path.let { it.endsWith(".mp4") || it.endsWith(".m4v") || it.endsWith(".webm") || it.endsWith(".mov") } ||
-                        dispositionLooksMedia && !path.endsWith(".m4a") && !path.endsWith(".mp3")
-                    val ext = extensionFor(contentType, response.header("Content-Disposition").orEmpty().ifBlank { candidate })
-                    val size = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
-                    return ResolvedMedia(
-                        title = snapshot.title?.takeIf { it.isNotBlank() } ?: if (sourceUrl.contains("facebook.", true) || sourceUrl.contains("fb.watch", true)) "Facebook video" else "Instagram video",
-                        thumbnail = null,
-                        durationSeconds = null,
-                        extractor = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "FacebookWebView" else "InstagramWebView",
-                        source = sourceUrl,
-                        formats = listOf(
-                            ResolvedFormat(
-                                id = "instagram-webview",
-                                ext = ext,
-                                width = null,
-                                height = null,
-                                abr = null,
-                                sizeBytes = size,
-                                hasVideo = isVideo,
-                                hasAudio = !isVideo,
-                                url = candidate
+                    runCatching {
+                        probeClient.newCall(builder.build()).execute().use { response ->
+                            if (!response.isSuccessful && response.code != 206) return@use null
+                            val contentType = response.header("Content-Type")
+                                ?.substringBefore(";")
+                                ?.trim()
+                                ?.lowercase()
+                                .orEmpty()
+                            if (contentType.startsWith("text/") || contentType == "application/xhtml+xml" ||
+                                contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegurl"
+                            ) return@use null
+
+                            val sample = response.body?.byteStream()?.use { it.readNBytes(4096) } ?: ByteArray(0)
+                            val signatureLooksMedia =
+                                sample.size >= 8 && (
+                                    String(sample, 4, 4, Charsets.US_ASCII) == "ftyp" ||
+                                        (sample.size >= 4 && sample[0] == 0x1A.toByte() && sample[1] == 0x45.toByte() &&
+                                            sample[2] == 0xDF.toByte() && sample[3] == 0xA3.toByte())
+                                    )
+                            val dispositionHeader = response.header("Content-Disposition").orEmpty().lowercase()
+                            val dispositionLooksMedia = listOf(".mp4", ".m4v", ".webm", ".mov", ".m4a", ".mp3")
+                                .any(dispositionHeader::contains)
+                            val cdnLooksMedia = isInstagram && (
+                                candidate.contains("cdninstagram", ignoreCase = true) ||
+                                    candidate.contains("scontent", ignoreCase = true)
+                                )
+
+                            val looksVideo = contentType.startsWith("video/") ||
+                                (extensionLooksMedia && !path.endsWith(".m4a") && !path.endsWith(".mp3")) ||
+                                signatureLooksMedia || (cdnLooksMedia && !contentType.startsWith("audio/"))
+                            val looksAudio = contentType.startsWith("audio/") ||
+                                path.endsWith(".m4a") || path.endsWith(".mp3")
+
+                            if (!looksVideo && !looksAudio && !dispositionLooksMedia) return@use null
+
+                            val ext = extensionFor(
+                                contentType,
+                                response.header("Content-Disposition").orEmpty().ifBlank { candidate }
                             )
-                        )
-                    )
+                            val size = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
+                            ResolvedMedia(
+                                title = snapshot.title?.takeIf { it.isNotBlank() }
+                                    ?: if (sourceUrl.contains("facebook.", true) || sourceUrl.contains("fb.watch", true)) "Facebook video" else "Instagram video",
+                                thumbnail = null,
+                                durationSeconds = null,
+                                extractor = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "FacebookWebView" else "InstagramWebView",
+                                source = sourceUrl,
+                                formats = listOf(
+                                    ResolvedFormat(
+                                        id = if (isInstagram) "instagram-webview" else "facebook-webview",
+                                        ext = ext,
+                                        width = null,
+                                        height = null,
+                                        abr = null,
+                                        sizeBytes = size,
+                                        hasVideo = looksVideo,
+                                        hasAudio = looksAudio || looksVideo,
+                                        url = candidate
+                                    )
+                                )
+                            )
+                        }
+                    }.getOrNull()?.let { return@runCatching it }
                 }
-            }
+                null
+            }.getOrNull()
+
+            if (result != null) return result
         }
         return null
     }
