@@ -162,10 +162,10 @@ class DownloadRepository private constructor(context: Context) {
         return true
     }
 
-    /** Enqueue a refreshed media URL as the single authoritative worker for this job. */
-    fun requeueWithRefreshedUrl(jobId: String, refreshedUrl: String): Boolean {
+    /** Enqueue one refreshed format as the single authoritative worker for this job. */
+    fun requeueWithRefreshedFormat(jobId: String, format: ResolvedFormat): Boolean {
         val job = synchronized(lock) { find(jobId) } ?: return false
-        if (refreshedUrl.isBlank()) return false
+        if (format.url.isBlank()) return false
         val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(if (settings.getBoolean("wifi_only", false)) NetworkType.UNMETERED else NetworkType.CONNECTED)
@@ -173,13 +173,13 @@ class DownloadRepository private constructor(context: Context) {
         val request = OneTimeWorkRequestBuilder<DirectDownloadWorker>()
             .setInputData(workDataOf(
                 DirectDownloadWorker.KEY_JOB_ID to job.id,
-                DirectDownloadWorker.KEY_URL to refreshedUrl,
+                DirectDownloadWorker.KEY_URL to format.url,
                 DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
                 DirectDownloadWorker.KEY_TITLE to job.title,
-                DirectDownloadWorker.KEY_EXTENSION to job.extension.orEmpty(),
-                DirectDownloadWorker.KEY_MERGE_REQUIRED to job.mergeRequired,
-                DirectDownloadWorker.KEY_AUDIO_URL to job.audioUrl.orEmpty(),
-                DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty()
+                DirectDownloadWorker.KEY_EXTENSION to format.ext,
+                DirectDownloadWorker.KEY_MERGE_REQUIRED to format.mergeRequired,
+                DirectDownloadWorker.KEY_AUDIO_URL to format.audioUrl.orEmpty(),
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to format.audioExt.orEmpty()
             ))
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
@@ -187,7 +187,11 @@ class DownloadRepository private constructor(context: Context) {
             .build()
         update(job.id) {
             it.copy(
-                formatUrl = refreshedUrl,
+                formatUrl = format.url,
+                extension = format.ext,
+                mergeRequired = format.mergeRequired,
+                audioUrl = format.audioUrl,
+                audioExtension = format.audioExt,
                 status = DownloadStatus.QUEUED,
                 progress = 0,
                 downloadedBytes = 0L,
