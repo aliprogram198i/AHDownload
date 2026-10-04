@@ -79,7 +79,7 @@ class EmbeddedPlatformResolver(
                     val sessionEligible =
                         host == "youtube.com" || host.endsWith(".youtube.com") ||
                         host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") ||
-                        host == "facebook.com" || host.endsWith(".facebook.com")
+                        host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch"
 
                     if (!sessionEligible || context == null) throw first
 
@@ -90,7 +90,8 @@ class EmbeddedPlatformResolver(
                         try {
                             return@runCatching call(snapshot.cookies)
                         } catch (sessionFailure: Throwable) {
-                            if (host == "instagram.com" || host.endsWith(".instagram.com")) {
+                            if (host == "instagram.com" || host.endsWith(".instagram.com") ||
+                                host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch") {
                                 val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
                                 if (webViewMedia != null) {
                                     AppLogger.info(
@@ -105,7 +106,8 @@ class EmbeddedPlatformResolver(
                         }
                     }
 
-                    if (host == "instagram.com" || host.endsWith(".instagram.com")) {
+                    if (host == "instagram.com" || host.endsWith(".instagram.com") ||
+                        host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch") {
                         val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
                         if (webViewMedia != null) {
                             AppLogger.info(
@@ -140,6 +142,7 @@ class EmbeddedPlatformResolver(
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "*/*")
                     .header("Referer", sourceUrl)
+                    .header("Origin", "https://www.instagram.com")
                     .header("Range", "bytes=0-1023")
                 snapshot.cookies?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
 
@@ -162,7 +165,7 @@ class EmbeddedPlatformResolver(
                         title = snapshot.title?.takeIf { it.isNotBlank() } ?: "Instagram video",
                         thumbnail = null,
                         durationSeconds = null,
-                        extractor = "InstagramWebView",
+                        extractor = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "FacebookWebView" else "InstagramWebView",
                         source = sourceUrl,
                         formats = listOf(
                             ResolvedFormat(
