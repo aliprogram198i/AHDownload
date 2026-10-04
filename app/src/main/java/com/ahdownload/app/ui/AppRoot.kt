@@ -10,6 +10,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
@@ -23,6 +30,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -32,11 +41,13 @@ import androidx.navigation.compose.*
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
+import com.ahdownload.app.data.FormatRanker
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.ui.theme.AHDownloadTheme
+import com.ahdownload.app.ui.theme.AHBrandGradient
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -70,7 +81,8 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   horizontalAlignment=Alignment.CenterHorizontally,
   verticalArrangement=Arrangement.Center
  ){
-  Icon(icon,contentDescription=label,tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+  val scale by animateFloatAsState(if(route==target)1.12f else 1f,label="navScale")
+  Icon(icon,contentDescription=label,modifier=Modifier.graphicsLayer{scaleX=scale;scaleY=scale},tint=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
   Text(label,style=MaterialTheme.typography.labelSmall,color=if(route==target)MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
  }
 }
@@ -100,7 +112,11 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
      }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
     }else{
      EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
-      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
+      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.let { raw ->
+       val video=FormatRanker.rankVideo(raw.filter{it.hasVideo})
+       val audio=FormatRanker.rankAudio(raw.filter{it.hasAudio&&!it.hasVideo})
+       video + audio
+      }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
       else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
      }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
@@ -113,13 +129,38 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  }
 }
 
+
 @Composable private fun HomeHeader(){
- Surface(Modifier.fillMaxWidth(),color=MaterialTheme.colorScheme.surfaceVariant,shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(22.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){
-  Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(48.dp).clip(RoundedCornerShape(15.dp)).background(MaterialTheme.colorScheme.primary),contentAlignment=Alignment.Center){Icon(Icons.Default.Download,null,tint=MaterialTheme.colorScheme.onPrimary)};Spacer(Modifier.width(12.dp));Text("AHDownload",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold)}
-  Text("تنزيل الفيديو والصوت",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.SemiBold)
-  Text("حلّل الرابط أولاً، ثم اختر الجودة الحقيقية المتاحة من المصدر.",color=MaterialTheme.colorScheme.onSurfaceVariant)
-  Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){AssistChip(onClick={},enabled=false,leadingIcon={Icon(Icons.Default.Verified,null)},label={Text("جودة حقيقية")});AssistChip(onClick={},enabled=false,leadingIcon={Icon(Icons.Default.Security,null)},label={Text("فحص الوسائط")})}
- }}
+ val transition=rememberInfiniteTransition(label="brandPulse")
+ val pulse by transition.animateFloat(initialValue=1f,targetValue=1.045f,animationSpec=infiniteRepeatable(tween(1800),RepeatMode.Reverse),label="brandPulseScale")
+ Surface(Modifier.fillMaxWidth(),shape=RoundedCornerShape(28.dp),shadowElevation=2.dp){
+  Column(Modifier.background(AHBrandGradient,RoundedCornerShape(28.dp)).padding(22.dp),verticalArrangement=Arrangement.spacedBy(11.dp)){
+   Row(verticalAlignment=Alignment.CenterVertically){
+    Box(Modifier.size(54.dp).graphicsLayer{scaleX=pulse;scaleY=pulse}.clip(RoundedCornerShape(17.dp)).background(Color.White.copy(alpha=.18f)),contentAlignment=Alignment.Center){
+     Icon(Icons.Default.Download,null,tint=Color.White,modifier=Modifier.size(30.dp))
+    }
+    Spacer(Modifier.width(13.dp))
+    Column{
+     Text("AHDownload",style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold,color=Color.White)
+     Text("Smart media downloader",style=MaterialTheme.typography.labelMedium,color=Color.White.copy(alpha=.84f))
+    }
+   }
+   Text("نزّل بذكاء. اختر الأفضل.",style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold,color=Color.White)
+   Text("حلّل الرابط أولاً، ثم اختر الجودة الحقيقية المتاحة من المصدر.",color=Color.White.copy(alpha=.9f))
+   Row(horizontalArrangement=Arrangement.spacedBy(8.dp)){
+    BrandChip(Icons.Default.AutoAwesome,"اختيار ذكي")
+    BrandChip(Icons.Default.Verified,"جودة حقيقية")
+    BrandChip(Icons.Default.Security,"فحص آمن")
+   }
+  }
+ }
+}
+@Composable private fun BrandChip(icon:ImageVector,label:String){
+ Surface(color=Color.White.copy(alpha=.14f),contentColor=Color.White,shape=RoundedCornerShape(50.dp)){
+  Row(Modifier.padding(horizontal=10.dp,vertical=7.dp),verticalAlignment=Alignment.CenterVertically){
+   Icon(icon,null,Modifier.size(16.dp));Spacer(Modifier.width(5.dp));Text(label,style=MaterialTheme.typography.labelMedium)
+  }
+ }
 }
 @Composable private fun UrlCard(url:String,analyzing:Boolean,onUrlChange:(String)->Unit,onPaste:()->Unit,onAnalyze:()->Unit){
  Card(shape=RoundedCornerShape(24.dp)){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){
@@ -228,7 +269,10 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  Card(
   onClick=onClick,
   modifier=Modifier.fillMaxWidth(),
-  colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.primaryContainer),
+  colors=CardDefaults.cardColors(containerColor=animateColorAsState(
+   if(selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+   label="recommendedColor"
+  ).value),
   shape=RoundedCornerShape(18.dp)
  ){
   Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)){
@@ -237,7 +281,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
      Text("موصى بها",Modifier.padding(horizontal=9.dp,vertical=5.dp),color=MaterialTheme.colorScheme.onPrimary,style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold)
     }
     Spacer(Modifier.weight(1f))
-    if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary)
+    if(selected)Icon(Icons.Default.CheckCircle,null,tint=MaterialTheme.colorScheme.primary,modifier=Modifier.graphicsLayer{scaleX=1.08f;scaleY=1.08f})
    }
    Text(formatQuality(format),style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold)
    Text(formatDetails(format),style=MaterialTheme.typography.bodyMedium,color=MaterialTheme.colorScheme.onSurfaceVariant)
@@ -277,20 +321,16 @@ private fun formatDetails(format:ResolvedFormat):String{
  return listOfNotNull(dimensions,audio,format.ext.takeIf{it.isNotBlank()}?.uppercase(Locale.US),size.removePrefix(" • ").takeIf{it.isNotBlank()}).joinToString(" • ")
 }
 
-private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?{
- if(formats.isEmpty())return null
- val underOrEqual1080=formats.filter{(it.height?:0)<=1080}
- return (underOrEqual1080.maxByOrNull{it.height?:0}?:formats.maxByOrNull{it.height?:0})
-}
+private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat? = FormatRanker.recommendedVideo(formats)
 
 @Composable private fun DownloadsScreen(){
- val context=LocalContext.current;val repository=remember{DownloadRepository(context)};var jobs by remember{mutableStateOf(repository.all())};LaunchedEffect(Unit){while(true){jobs=repository.all();delay(700)}}
+ val context=LocalContext.current;val repository=remember{DownloadRepository(context)};var jobs by remember{mutableStateOf(repository.all())};LaunchedEffect(Unit){while(true){jobs=repository.all();delay(1000)}}
  Column(Modifier.fillMaxSize().padding(horizontal=16.dp)){
   Row(Modifier.fillMaxWidth().padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatPill(Modifier.weight(1f),"قيد التنفيذ",jobs.count{it.status==DownloadStatus.DOWNLOADING||it.status==DownloadStatus.QUEUED||it.status==DownloadStatus.RETRYING}.toString());StatPill(Modifier.weight(1f),"مكتمل",jobs.count{it.status==DownloadStatus.COMPLETED}.toString())}
-  if(jobs.isEmpty())EmptyState(Icons.Default.Download,"لا توجد تنزيلات","ابدأ من الرئيسية بتحليل رابط فيديو.")else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(jobs,key={it.id}){job->DownloadCard(job){repository.cancel(job.id)}}}
+  if(jobs.isEmpty())EmptyState(Icons.Default.Download,"لا توجد تنزيلات","ابدأ من الرئيسية بتحليل رابط فيديو.")else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(jobs,key={it.id}){job->DownloadCard(job,{repository.cancel(job.id)},{repository.delete(job.id);jobs=repository.all()})}}
  }}
 @Composable private fun StatPill(modifier:Modifier,title:String,value:String){Surface(modifier,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant){Column(Modifier.padding(14.dp)){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text(title,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
-@Composable private fun DownloadCard(job:DownloadJob,onCancel:()->Unit){Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){Icon(if(job.title.contains("kbps",true))Icons.Default.Audiotrack else Icons.Default.Movie,null)};Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f)){Text(job.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(statusLabel(job.status),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(job.progress.toString()+"%",fontWeight=FontWeight.Bold)};LinearProgressIndicator(progress={job.progress.coerceIn(0,100)/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(job.totalBytes?.let{formatBytes(job.downloadedBytes)+" / "+formatBytes(it)}?:formatBytes(job.downloadedBytes),style=MaterialTheme.typography.bodySmall);if(job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.QUEUED||job.status==DownloadStatus.RETRYING)TextButton(onClick=onCancel){Text("إلغاء")}}}}}
+@Composable private fun DownloadCard(job:DownloadJob,onCancel:()->Unit,onDelete:()->Unit){Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(46.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){Icon(if(job.title.contains("kbps",true))Icons.Default.Audiotrack else Icons.Default.Movie,null)};Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f)){Text(job.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(statusLabel(job.status),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(job.progress.toString()+"%",fontWeight=FontWeight.Bold)};LinearProgressIndicator(progress={job.progress.coerceIn(0,100)/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(job.totalBytes?.let{formatBytes(job.downloadedBytes)+" / "+formatBytes(it)}?:formatBytes(job.downloadedBytes),style=MaterialTheme.typography.bodySmall);if(job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.QUEUED||job.status==DownloadStatus.RETRYING)TextButton(onClick=onCancel){Text("إلغاء")}else TextButton(onClick=onDelete){Text("حذف السجل")}}}}}
 
 @Composable private fun SettingsScreen(openDiagnostics:()->Unit,openAccounts:()->Unit){
  val context=LocalContext.current;val prefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)};var wifiOnly by remember{mutableStateOf(prefs.getBoolean("wifi_only",false))};var notifications by remember{mutableStateOf(prefs.getBoolean("notifications",true) && (Build.VERSION.SDK_INT<33 || androidx.core.content.ContextCompat.checkSelfPermission(context,Manifest.permission.POST_NOTIFICATIONS)==android.content.pm.PackageManager.PERMISSION_GRANTED))}

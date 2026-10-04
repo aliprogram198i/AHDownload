@@ -98,6 +98,13 @@ class DownloadRepository(context: Context) {
         update(jobId) { it.copy(status = DownloadStatus.CANCELLED) }
     }
 
+    fun delete(jobId: String) {
+        WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + jobId)
+        synchronized(lock) {
+            db.writableDatabase.delete("downloads", "id=?", arrayOf(jobId))
+        }
+    }
+
     private fun find(id: String): DownloadJob? =
         db.readableDatabase.query("downloads", null, "id=?", arrayOf(id), null, null, null, "1").use { cursor ->
             if (cursor.moveToFirst()) cursor.toJob() else null

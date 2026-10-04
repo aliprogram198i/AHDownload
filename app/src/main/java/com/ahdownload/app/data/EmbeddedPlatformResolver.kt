@@ -215,3 +215,4 @@ class EmbeddedPlatformResolver(
                 "Chrome/140.0 Mobile Safari/537.36"
     }
 }
+

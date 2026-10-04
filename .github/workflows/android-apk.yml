@@ -59,16 +59,17 @@ jobs:
         run: test -s app/build/outputs/apk/release/app-release-unsigned.apk
       - name: Calculate SHA-256
         id: checksum
+        if: github.event_name != 'pull_request'
         run: echo "sha256=$(sha256sum app/build/outputs/apk/release/app-release.apk | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.1
-          name: AHDownload v1.1.1
+          tag_name: v1.2.0
+          name: AHDownload v1.2.0
           body: |
-            AHDownload v1.1.1
+            AHDownload v1.2.0
 
             Production release APK.
 
