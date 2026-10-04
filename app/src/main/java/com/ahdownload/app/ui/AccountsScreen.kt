@@ -106,7 +106,6 @@ fun AccountsScreen() {
                     WebView(context).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
-                        settings.databaseEnabled = true
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.userAgentString =
                             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
@@ -131,7 +130,7 @@ fun AccountsScreen() {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Text("الحسابات", style = MaterialTheme.typography.headlineMedium)
+            Text("الحسابات", style = MaterialTheme.typography.headlineMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
             Text(
                 "اربط جلسة تسجيل الدخول المحلية لمساعدة المحلل في الوصول إلى المحتوى الذي يسمح به حسابك. " +
                     "بيانات الدخول لا تغادر الجهاز ولا يتم إرسالها إلى خادم AHDownload.",
@@ -151,7 +150,7 @@ fun AccountsScreen() {
                         leadingContent = { Icon(Icons.Default.AccountCircle, null) },
                         headlineContent = { Text(account.name) },
                         supportingContent = {
-                            Text(if (connected) "جلسة موجودة على الجهاز" else "غير متصل")
+                            Text(if (connected) "متصل — الجلسة محفوظة محلياً" else "غير متصل — سجّل الدخول من داخل التطبيق")
                         },
                         trailingContent = {
                             if (connected) {
