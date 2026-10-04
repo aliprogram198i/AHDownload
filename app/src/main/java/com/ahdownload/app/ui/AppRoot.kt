@@ -26,8 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import coil3.compose.AsyncImage
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -74,10 +72,12 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
         tonalElevation = 3.dp,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        NavItem(nav, route, "home", "الرئيسية", Icons.Default.Home)
-        NavItem(nav, route, "downloads", "التنزيلات", Icons.Default.Download)
-        NavItem(nav, route, "studio", "الاستوديو", Icons.Default.AutoFixHigh)
-        NavItem(nav, route, "settings", "الإعدادات", Icons.Default.Settings)
+        Row(Modifier.fillMaxWidth()) {
+            NavItem(nav, route, "home", "الرئيسية", Icons.Default.Home, Modifier.weight(1f))
+            NavItem(nav, route, "downloads", "التنزيلات", Icons.Default.Download, Modifier.weight(1f))
+            NavItem(nav, route, "studio", "الاستوديو", Icons.Default.AutoFixHigh, Modifier.weight(1f))
+            NavItem(nav, route, "settings", "الإعدادات", Icons.Default.Settings, Modifier.weight(1f))
+        }
     }
 }
   ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")})};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
@@ -89,29 +89,58 @@ private fun NavItem(
     route: String,
     target: String,
     label: String,
-    icon: ImageVector
+    icon: ImageVector,
+    modifier: Modifier = Modifier
 ) {
-    NavigationBarItem(
-        selected = route == target,
-        onClick = {
-            if (route != target) {
-                nav.navigate(target) {
-                    launchSingleTop = true
-                    restoreState = true
-                    popUpTo(nav.graph.startDestinationId) { saveState = true }
+    val selected = route == target
+    val iconContainer by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer
+        else Color.Transparent,
+        label = "navIndicator"
+    )
+    Column(
+        modifier = modifier
+            .clickable {
+                if (!selected) {
+                    nav.navigate(target) {
+                        launchSingleTop = true
+                        restoreState = true
+                        popUpTo(nav.graph.startDestinationId) { saveState = true }
+                    }
                 }
             }
-        },
-        icon = { Icon(imageVector = icon, contentDescription = label) },
-        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        colors = NavigationBarItemDefaults.colors(
-            selectedIconColor = MaterialTheme.colorScheme.primary,
-            selectedTextColor = MaterialTheme.colorScheme.primary,
-            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            indicatorColor = MaterialTheme.colorScheme.primaryContainer
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        val scale by animateFloatAsState(
+            targetValue = if (selected) 1.08f else 1f,
+            label = "navScale"
         )
-    )
+        Box(
+            modifier = Modifier
+                .graphicsLayer { scaleX = scale; scaleY = scale }
+                .clip(RoundedCornerShape(14.dp))
+                .background(iconContainer)
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+        ) {
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(23.dp)
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+        )
+    }
 }
 
 @Composable private fun HomeScreen(openDownloads:()->Unit){
