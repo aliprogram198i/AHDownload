@@ -79,10 +79,24 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
 
             if (mergeRequired && audioUrl.isNotBlank()) {
                 AppLogger.info(applicationContext, "download.merge_start", "job=$jobId")
-                downloadMergedMedia(jobId, title, url, audioUrl, sourceUrl,
-                    File(dir, "$safeTitle.video.part"),
-                    File(dir, "$safeTitle." + audioExtension.ifBlank { "m4a" } + ".part"),
-                    target, repo)
+                val videoPart = File(dir, "$safeTitle.video.part")
+                val audioPart = File(dir, "$safeTitle." + audioExtension.ifBlank { "m4a" } + ".part")
+                try {
+                    downloadMergedMedia(jobId, title, url, audioUrl, sourceUrl, extension,
+                        videoPart, audioPart, target, repo)
+                } catch (refresh: RefreshRequired) {
+                    videoPart.delete()
+                    audioPart.delete()
+                    if (repo.requeueWithRefreshedFormat(jobId, refresh.format)) {
+                        AppLogger.info(
+                            applicationContext,
+                            "download.merge_url_refreshed",
+                            "job=$jobId reason=http_expired"
+                        )
+                        return Result.success()
+                    }
+                    throw IOException("MERGE_URL_REFRESH_REQUEUE_FAILED")
+                }
                 MediaValidator.validateFile(target, "mp4").getOrElse {
                     target.delete()
                     throw IOException(it.message ?: "MEDIA_VALIDATION_FAILED")
@@ -246,11 +260,34 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         }
     }
 
-    private fun downloadMergedMedia(jobId: String, title: String, videoUrl: String, audioUrl: String, sourceUrl: String, videoFile: File, audioFile: File, target: File, repo: DownloadRepository) {
-        downloadStream(videoUrl, sourceUrl, videoFile)
-        repo.update(jobId) { it.copy(progress = 50, downloadedBytes = videoFile.length()) }
-        downloadStream(audioUrl, sourceUrl, audioFile)
-        repo.update(jobId) { it.copy(progress = 80, downloadedBytes = videoFile.length() + audioFile.length()) }
+    private suspend fun downloadMergedMedia(
+        jobId: String,
+        title: String,
+        videoUrl: String,
+        audioUrl: String,
+        sourceUrl: String,
+        extension: String,
+        videoFile: File,
+        audioFile: File,
+        target: File,
+        repo: DownloadRepository
+    ) {
+        try {
+            downloadStream(videoUrl, sourceUrl, videoFile)
+            repo.update(jobId) { it.copy(progress = 50, downloadedBytes = videoFile.length()) }
+            downloadStream(audioUrl, sourceUrl, audioFile)
+            repo.update(jobId) { it.copy(progress = 80, downloadedBytes = videoFile.length() + audioFile.length()) }
+        } catch (e: HttpMediaException) {
+            if (e.code in setOf(401, 403, 410) && sourceUrl.isNotBlank()) {
+                val fresh = MediaUrlRefresher(applicationContext)
+                    .refresh(sourceUrl, extension, true)
+                    .getOrNull()
+                if (fresh != null && fresh.url.isNotBlank()) {
+                    throw RefreshRequired(fresh)
+                }
+            }
+            throw IOException("MEDIA_DOWNLOAD_HTTP_${e.code}", e)
+        }
         try {
             muxMp4(videoFile, audioFile, target)
         } catch (e: Throwable) {
@@ -265,17 +302,46 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
     }
 
     private fun downloadStream(url: String, sourceUrl: String, target: File) {
+        val existing = if (target.exists()) target.length() else 0L
         val b = Request.Builder().url(url).header("User-Agent", USER_AGENT).header("Accept", "*/*")
         if (sourceUrl.isNotBlank()) b.header("Referer", sourceUrl)
         runCatching { CookieManager.getInstance().getCookie(sourceUrl) }.getOrNull()?.takeIf { it.isNotBlank() }?.let { b.header("Cookie", it) }
+        if (existing > 0L) b.header("Range", "bytes=$existing-")
         client.newCall(b.build()).execute().use { response ->
-            if (!response.isSuccessful) error("MEDIA_DOWNLOAD_HTTP_${response.code}")
+            if (!response.isSuccessful) {
+                if (response.code == 416 && existing > 0L) {
+                    target.delete()
+                    throw HttpMediaException(416)
+                }
+                throw HttpMediaException(response.code)
+            }
             val type = response.header("Content-Type").orEmpty().substringBefore(";").lowercase()
             if (type == "text/html" || type == "application/xhtml+xml") error("MEDIA_DOWNLOAD_HTML")
             val body = response.body ?: error("MEDIA_DOWNLOAD_EMPTY")
-            target.parentFile?.mkdirs(); target.outputStream().use { output -> body.byteStream().use { input -> input.copyTo(output, 64 * 1024) } }
+            val append = if (existing > 0L && response.code == 206) {
+                val rangeStart = response.header("Content-Range")
+                    ?.substringAfter("bytes ", "")
+                    ?.substringBefore("-")
+                    ?.toLongOrNull()
+                rangeStart == existing
+            } else false
+            val offset = if (append) existing else 0L
+            target.parentFile?.mkdirs()
+            RandomAccessFile(target, "rw").use { raf ->
+                raf.setLength(offset)
+                raf.seek(offset)
+                body.byteStream().use { input ->
+                    input.copyTo(object : java.io.OutputStream() {
+                        override fun write(b: Int) = raf.write(b)
+                        override fun write(b: ByteArray, off: Int, len: Int) = raf.write(b, off, len)
+                    }, 64 * 1024)
+                }
+            }
         }
     }
+
+    private class HttpMediaException(val code: Int) : IOException("MEDIA_DOWNLOAD_HTTP_$code")
+    private class RefreshRequired(val format: ResolvedFormat) : IOException("MEDIA_DOWNLOAD_URL_REFRESHED")
 
     private fun muxMp4(videoFile: File, audioFile: File, target: File) {
         val ve = MediaExtractor(); val ae = MediaExtractor(); var muxer: MediaMuxer? = null
