@@ -20,51 +20,81 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ahdownload.app.data.WebViewSessionBridge
 import com.ahdownload.app.diagnostics.AppLogger
+import kotlinx.coroutines.launch
 
-private data class PlatformAccount(val key:String,val name:String,val url:String)
+private data class PlatformAccount(val key: String, val name: String, val url: String)
 
 private val accounts = listOf(
-    PlatformAccount("youtube","YouTube","https://www.youtube.com/"),
-    PlatformAccount("instagram","Instagram","https://www.instagram.com/"),
-    PlatformAccount("facebook","Facebook","https://www.facebook.com/")
+    PlatformAccount("youtube", "YouTube", "https://www.youtube.com/"),
+    PlatformAccount("instagram", "Instagram", "https://www.instagram.com/"),
+    PlatformAccount("facebook", "Facebook", "https://www.facebook.com/")
 )
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun AccountsScreen() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var selected by remember { mutableStateOf<PlatformAccount?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var loginError by remember { mutableStateOf<String?>(null) }
+    var verifying by remember { mutableStateOf(false) }
 
     if (selected != null) {
+        val account = selected!!
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(selected!!.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = {
-                    CookieManager.getInstance().flush()
-                    val cookies = CookieManager.getInstance().getCookie(selected!!.url).orEmpty()
-                    val authenticated = hasAuthenticatedSession(selected!!.key, cookies)
-                    if (authenticated) {
-                        AppLogger.info(context, "account.session_saved", "platform=" + selected!!.key)
+                Text(account.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                TextButton(
+                    enabled = !verifying,
+                    onClick = {
+                        verifying = true
                         loginError = null
-                        selected = null
-                        refresh++
-                    } else {
-                        AppLogger.error(
-                            context,
-                            "account.session_not_verified",
-                            IllegalStateException("AUTH_SESSION_NOT_VERIFIED"),
-                            "platform=" + selected!!.key
-                        )
-                        loginError = "لم يتم التحقق من جلسة تسجيل الدخول. أكمل تسجيل الدخول داخل الصفحة ثم اضغط تم."
+                        scope.launch {
+                            try {
+                                CookieManager.getInstance().flush()
+                                val snapshot = WebViewSessionBridge(context).snapshotFor(account.url, 20_000L)
+                                if (snapshot.authenticated) {
+                                    AppLogger.info(
+                                        context,
+                                        "account.session_verified",
+                                        "platform=" + account.key + " candidates=" + snapshot.mediaUrls.size
+                                    )
+                                    selected = null
+                                    refresh++
+                                } else {
+                                    AppLogger.error(
+                                        context,
+                                        "account.session_not_verified",
+                                        IllegalStateException("AUTH_SESSION_NOT_VERIFIED"),
+                                        "platform=" + account.key
+                                    )
+                                    loginError =
+                                        "لم يتم التحقق من الجلسة. أكمل تسجيل الدخول داخل الصفحة ثم اضغط تم مرة أخرى."
+                                }
+                            } catch (failure: Throwable) {
+                                AppLogger.error(
+                                    context,
+                                    "account.session_verification_failed",
+                                    failure,
+                                    "platform=" + account.key
+                                )
+                                loginError = "تعذر إكمال التحقق الآن. أعد المحاولة بعد اكتمال تحميل الصفحة."
+                            } finally {
+                                verifying = false
+                            }
+                        }
                     }
-                }) { Text("تم") }
+                ) {
+                    Text(if (verifying) "جارٍ التحقق..." else "تم")
+                }
             }
+
             loginError?.let {
                 Card(
                     colors = CardDefaults.cardColors(
@@ -79,6 +109,7 @@ fun AccountsScreen() {
                     )
                 }
             }
+
             AndroidView(
                 factory = {
                     WebView(context).apply {
@@ -88,12 +119,12 @@ fun AccountsScreen() {
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.userAgentString =
                             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
-                            "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
+                                "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                         webChromeClient = WebChromeClient()
                         webViewClient = WebViewClient()
-                        loadUrl(selected!!.url)
+                        loadUrl(account.url)
                     }
                 },
                 update = { },
@@ -116,6 +147,7 @@ fun AccountsScreen() {
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+
         accounts.forEach { account ->
             item(key = account.key) {
                 val connected = remember(refresh) {
@@ -129,15 +161,19 @@ fun AccountsScreen() {
                         leadingContent = { Icon(Icons.Default.AccountCircle, null) },
                         headlineContent = { Text(account.name) },
                         supportingContent = {
-                            Text(if (connected) "جلسة موجودة على الجهاز" else "غير متصل")
+                            Text(if (connected) "جلسة محلية محفوظة" else "غير متصل")
                         },
                         trailingContent = {
                             if (connected) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = "متصل",
-                                    tint = MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "جلسة محفوظة",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             } else {
                                 FilledTonalButton(onClick = {
                                     AppLogger.info(context, "account.login_start", "platform=" + account.key)
+                                    loginError = null
                                     selected = account
                                 }) {
                                     Icon(Icons.Default.Login, null)
@@ -150,6 +186,7 @@ fun AccountsScreen() {
                 }
             }
         }
+
         item {
             Text(
                 "مهم: هذا ليس تجاوزاً للحماية. يجب أن يكون المحتوى متاحاً لحسابك وبما يتوافق مع شروط المنصة.",
@@ -159,7 +196,6 @@ fun AccountsScreen() {
         }
     }
 }
-
 
 private fun hasAuthenticatedSession(platform: String, cookies: String): Boolean {
     val names = cookies.split(';')

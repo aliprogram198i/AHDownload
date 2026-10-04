@@ -15,12 +15,14 @@ import kotlin.coroutines.resume
 data class WebViewMediaSnapshot(
     val cookies: String?,
     val title: String?,
-    val mediaUrls: List<String>
+    val mediaUrls: List<String>,
+    val authenticated: Boolean = false
 )
 
 /**
- * Loads a platform page in Android WebView and captures both session cookies
- * and media resource URLs. No cookie value is logged or returned to telemetry.
+ * Loads a first-party platform page in Android WebView and captures the
+ * authenticated session plus media resource URLs. Cookie values never enter
+ * telemetry.
  */
 class WebViewSessionBridge(private val context: Context) {
     @SuppressLint("SetJavaScriptEnabled")
@@ -35,6 +37,9 @@ class WebViewSessionBridge(private val context: Context) {
             var finished = false
             var timeoutRunnable: Runnable? = null
             val capturedUrls = linkedSetOf<String>()
+            var lastTitle: String? = null
+            var authenticated = false
+            var inspectionCount = 0
 
             fun addCandidate(raw: String?) {
                 val value = raw?.trim().orEmpty()
@@ -64,17 +69,41 @@ class WebViewSessionBridge(private val context: Context) {
             fun currentCookies(): String? =
                 CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }
 
+            fun cookieSessionPresent(): Boolean {
+                val names = currentCookies().orEmpty()
+                    .split(';')
+                    .mapNotNull { it.trim().substringBefore('=').takeIf(String::isNotBlank) }
+                    .toSet()
+                val host = runCatching { java.net.URI(url).host.orEmpty().lowercase() }.getOrDefault("")
+                    .removePrefix("www.")
+                return when {
+                    host == "instagram.com" || host.endsWith(".instagram.com") ->
+                        "sessionid" in names
+                    host == "facebook.com" || host.endsWith(".facebook.com") ->
+                        "c_user" in names && "xs" in names
+                    host == "youtube.com" || host.endsWith(".youtube.com") ->
+                        setOf("SID", "SAPISID", "APISID").any(names::contains)
+                    else -> false
+                }
+            }
+
             fun fallbackSnapshot(): WebViewMediaSnapshot =
-                WebViewMediaSnapshot(currentCookies(), null, capturedUrls.take(32))
+                WebViewMediaSnapshot(
+                    currentCookies(),
+                    lastTitle,
+                    capturedUrls.take(64),
+                    authenticated || cookieSessionPresent()
+                )
 
             fun inspect(view: WebView, attempt: Int = 1) {
+                inspectionCount = attempt
                 val script = """
                     (function() {
                       const urls = new Set();
                       const add = (v) => {
                         if (!v) return;
                         try { v = new URL(v, location.href).href; } catch (_) {}
-                        if (/^https?:\/\//i.test(v)) urls.add(v);
+                        if (/^https?:///i.test(v)) urls.add(v);
                       };
                       document.querySelectorAll('video').forEach(v => {
                         add(v.currentSrc);
@@ -99,9 +128,17 @@ class WebViewSessionBridge(private val context: Context) {
                         const matches = html.match(/https?:\/\/[^"'<>\s]+/gi) || [];
                         matches.forEach(add);
                       } catch (_) {}
+
+                      const path = (location.pathname || '').toLowerCase();
+                      const loginPage =
+                        /\/accounts\/(?:login|signup|checkpoint)/.test(path) ||
+                        /\/login(?:\/|$)/.test(path) ||
+                        /checkpoint/.test(path);
+
                       return JSON.stringify({
                         title: document.title || null,
-                        urls: Array.from(urls).slice(0, 32)
+                        loginPage: loginPage,
+                        urls: Array.from(urls).slice(0, 64)
                       });
                     })();
                 """.trimIndent()
@@ -113,15 +150,28 @@ class WebViewSessionBridge(private val context: Context) {
                         org.json.JSONObject(decoded)
                     }.getOrNull()
 
-                    val title = parsed?.optString("title")?.takeIf { it.isNotBlank() }
+                    parsed?.optString("title")?.takeIf { it.isNotBlank() }?.let { lastTitle = it }
                     parsed?.optJSONArray("urls")?.let { array ->
                         for (i in 0 until array.length()) addCandidate(array.optString(i))
                     }
 
-                    if (capturedUrls.isNotEmpty() || attempt >= 3) {
-                        finish(WebViewMediaSnapshot(currentCookies(), title, capturedUrls.take(32)))
+                    val loginPage = parsed?.optBoolean("loginPage", false) ?: false
+                    authenticated = !loginPage && cookieSessionPresent()
+
+                    // Do not stop after the first arbitrary network resource.
+                    // Instagram often exposes CDN resources before the final
+                    // playable URL is attached to <video>.
+                    if ((authenticated && capturedUrls.isNotEmpty() && attempt >= 2) || attempt >= 4) {
+                        finish(
+                            WebViewMediaSnapshot(
+                                currentCookies(),
+                                lastTitle,
+                                capturedUrls.take(64),
+                                authenticated
+                            )
+                        )
                     } else {
-                        main.postDelayed({ inspect(view, attempt + 1) }, 2_000L)
+                        main.postDelayed({ inspect(view, attempt + 1) }, 1_500L)
                     }
                 }
             }
@@ -143,12 +193,12 @@ class WebViewSessionBridge(private val context: Context) {
                 view.settings.databaseEnabled = true
                 view.settings.mediaPlaybackRequiresUserGesture = false
                 view.settings.userAgentString =
-                    "Mozilla/5.0 (Linux; Android 15; Mobile) " +
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
+                    "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
+                        "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
-                        main.postDelayed({ inspect(view, 1) }, 1_500L)
+                        main.postDelayed({ inspect(view, 1) }, 1_000L)
                     }
 
                     override fun onLoadResource(view: WebView, resourceUrl: String) {

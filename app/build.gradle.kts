@@ -16,7 +16,7 @@ val hasReleaseSigning = listOf(
     signingStorePassword,
     signingAlias,
     signingKeyPassword
-).all { !it.isNullOrBlank() && File(it!!).exists() }
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.ahdownload.app"
