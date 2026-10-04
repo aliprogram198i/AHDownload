@@ -94,7 +94,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
    }
   }}
   item{AnimatedVisibility(error!=null){InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())}}
-  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext);url="";analysis=null;openDownloads()}}}
+  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext,selected.mergeRequired,selected.audioUrl,selected.audioExt);url="";analysis=null;openDownloads()}}}
  }
 }
 
@@ -186,7 +186,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
     if(videoOnlyFormats.isNotEmpty()&&showMore){
      HorizontalDivider()
      Text("صيغ فيديو بدون صوت",style=MaterialTheme.typography.titleSmall,fontWeight=FontWeight.SemiBold)
-     Text("هذه الصيغ لا تُعرض كخيار أساسي لأنها لا تحتوي على صوت مدمج.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+     Text("تم استخدامها داخلياً لبناء جودة فيديو بصوت مدمج عند توفر مسار H.264 + AAC.",style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
      videoOnlyFormats.take(8).forEach{format->SimpleFormatRow(format,false,enabled=false){}}
     }
     Button({selected?.let(onDownload)},enabled=selected!=null,modifier=Modifier.fillMaxWidth().height(50.dp),shape=RoundedCornerShape(16.dp)){
