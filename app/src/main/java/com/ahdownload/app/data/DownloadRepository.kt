@@ -54,7 +54,11 @@ class DownloadRepository private constructor(context: Context) {
             downloadedBytes = 0L,
             totalBytes = null,
             thumbnailUrl = thumbnailUrl,
-            durationMs = durationMs
+            durationMs = durationMs,
+            extension = extension,
+            mergeRequired = mergeRequired,
+            audioUrl = audioUrl,
+            audioExtension = audioExtension
         )
         synchronized(lock) { insert(job) }
         refresh()
@@ -100,6 +104,10 @@ class DownloadRepository private constructor(context: Context) {
                 put("speed_bps", next.speedBytesPerSec.coerceAtLeast(0L))
                 if (next.etaSeconds != null) put("eta_seconds", next.etaSeconds) else putNull("eta_seconds")
                 if (next.errorCode != null) put("error_code", next.errorCode) else putNull("error_code")
+                if (next.extension != null) put("extension", next.extension) else putNull("extension")
+                put("merge_required", if (next.mergeRequired) 1 else 0)
+                if (next.audioUrl != null) put("audio_url", next.audioUrl) else putNull("audio_url")
+                if (next.audioExtension != null) put("audio_extension", next.audioExtension) else putNull("audio_extension")
                 if (next.thumbnailUrl != null) put("thumbnail_url", next.thumbnailUrl) else putNull("thumbnail_url")
                 if (next.durationMs != null) put("duration_ms", next.durationMs) else putNull("duration_ms")
             }
@@ -134,10 +142,10 @@ class DownloadRepository private constructor(context: Context) {
                 DirectDownloadWorker.KEY_URL to job.formatUrl,
                 DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
                 DirectDownloadWorker.KEY_TITLE to job.title,
-                DirectDownloadWorker.KEY_EXTENSION to job.title.substringAfterLast('.', "").takeIf { it.length in 1..8 }.orEmpty(),
-                DirectDownloadWorker.KEY_MERGE_REQUIRED to false,
-                DirectDownloadWorker.KEY_AUDIO_URL to "",
-                DirectDownloadWorker.KEY_AUDIO_EXTENSION to ""
+                DirectDownloadWorker.KEY_EXTENSION to job.extension.orEmpty(),
+                DirectDownloadWorker.KEY_MERGE_REQUIRED to job.mergeRequired,
+                DirectDownloadWorker.KEY_AUDIO_URL to job.audioUrl.orEmpty(),
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty()
             ))
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
@@ -187,6 +195,10 @@ class DownloadRepository private constructor(context: Context) {
             put("speed_bps", job.speedBytesPerSec.coerceAtLeast(0L))
             if (job.etaSeconds != null) put("eta_seconds", job.etaSeconds)
             if (job.errorCode != null) put("error_code", job.errorCode)
+            if (job.extension != null) put("extension", job.extension)
+            put("merge_required", if (job.mergeRequired) 1 else 0)
+            if (job.audioUrl != null) put("audio_url", job.audioUrl)
+            if (job.audioExtension != null) put("audio_extension", job.audioExtension)
             if (job.thumbnailUrl != null) put("thumbnail_url", job.thumbnailUrl)
             if (job.durationMs != null) put("duration_ms", job.durationMs)
         }
@@ -247,7 +259,11 @@ class DownloadRepository private constructor(context: Context) {
             durationMs = getLong(getColumnIndexOrThrow("duration_ms")).takeIf { !isNull(getColumnIndexOrThrow("duration_ms")) },
             speedBytesPerSec = getLong(getColumnIndexOrThrow("speed_bps")),
             etaSeconds = getLong(getColumnIndexOrThrow("eta_seconds")).takeIf { !isNull(getColumnIndexOrThrow("eta_seconds")) },
-            errorCode = nullableText("error_code")
+            errorCode = nullableText("error_code"),
+            extension = nullableText("extension"),
+            mergeRequired = getInt(getColumnIndexOrThrow("merge_required")) != 0,
+            audioUrl = nullableText("audio_url"),
+            audioExtension = nullableText("audio_extension")
         )
     }
 
