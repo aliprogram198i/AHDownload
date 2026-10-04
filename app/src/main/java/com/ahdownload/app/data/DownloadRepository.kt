@@ -45,11 +45,13 @@ class DownloadRepository private constructor(context: Context) {
         httpHeaders: Map<String, String> = emptyMap(),
         audioHeaders: Map<String, String> = emptyMap(),
         thumbnailUrl: String? = null,
-        durationMs: Long? = null
+        durationMs: Long? = null,
+        sourcePageUrl: String? = null
     ): DownloadJob {
+        val resolvedSourceUrl = sourcePageUrl?.takeIf { it.isNotBlank() } ?: url
         val job = DownloadJob(
             id = UUID.randomUUID().toString(),
-            sourceUrl = url,
+            sourceUrl = resolvedSourceUrl,
             title = title.ifBlank { "AHDownload file" },
             formatUrl = url,
             status = DownloadStatus.QUEUED,
