@@ -241,18 +241,23 @@ class EmbeddedPlatformResolver(
                         val dispositionHeader = response.header("Content-Disposition").orEmpty().lowercase()
                         val dispositionLooksMedia = listOf(".mp4", ".m4v", ".webm", ".mov", ".m4a", ".mp3")
                             .any(dispositionHeader::contains)
-                        val cdnLooksMedia = isInstagram && (
-                            candidate.contains("cdninstagram", ignoreCase = true) ||
-                                candidate.contains("scontent", ignoreCase = true)
-                            )
 
-                        val looksVideo = contentType.startsWith("video/") ||
-                            (extensionLooksMedia && !path.endsWith(".m4a") && !path.endsWith(".mp3")) ||
-                            signatureLooksMedia || (cdnLooksMedia && !contentType.startsWith("audio/"))
-                        val looksAudio = contentType.startsWith("audio/") ||
-                            path.endsWith(".m4a") || path.endsWith(".mp3")
+                        // A CDN hostname or a media-looking path is not proof that the response is media.
+                        // Instagram can return a small signed-error/XML/HTML payload from the same CDN URL.
+                        // Require an actual media Content-Type/signature before exposing a candidate to analysis.
+                        val contentTypeLooksVideo = contentType.startsWith("video/")
+                        val contentTypeLooksAudio = contentType.startsWith("audio/")
+                        val extensionLooksVideo = extensionLooksMedia &&
+                            !path.endsWith(".m4a") && !path.endsWith(".mp3")
+                        val extensionLooksAudio = path.endsWith(".m4a") || path.endsWith(".mp3")
+                        val looksVideo = contentTypeLooksVideo || signatureLooksMedia ||
+                            (extensionLooksVideo && signatureLooksMedia)
+                        val looksAudio = contentTypeLooksAudio ||
+                            (extensionLooksAudio && signatureLooksMedia)
 
                         if (!looksVideo && !looksAudio && !dispositionLooksMedia) return@use null
+                        if (dispositionLooksMedia && !signatureLooksMedia &&
+                            !contentTypeLooksVideo && !contentTypeLooksAudio) return@use null
 
                         val ext = extensionFor(
                             contentType,
