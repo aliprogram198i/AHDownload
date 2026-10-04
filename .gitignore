@@ -1,5 +1,0 @@
-# Android signing material
-*.keystore
-*.jks
-*.p12
-keystore.properties
