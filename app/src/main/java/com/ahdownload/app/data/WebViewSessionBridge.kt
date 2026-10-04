@@ -19,11 +19,8 @@ data class WebViewMediaSnapshot(
 )
 
 /**
- * Loads a platform page in the Android WebView so the platform can execute
- * its normal client-side page logic. Cookies stay on-device.
- *
- * This is a compatibility fallback for pages where yt-dlp cannot obtain
- * media metadata even though the same page is accessible in the WebView.
+ * Loads a platform page in Android WebView and captures both session cookies
+ * and media resource URLs. No cookie value is logged or returned to telemetry.
  */
 class WebViewSessionBridge(private val context: Context) {
     @SuppressLint("SetJavaScriptEnabled")
@@ -37,6 +34,22 @@ class WebViewSessionBridge(private val context: Context) {
             var webView: WebView? = null
             var finished = false
             var timeoutRunnable: Runnable? = null
+            val capturedUrls = linkedSetOf<String>()
+
+            fun addCandidate(raw: String?) {
+                val value = raw?.trim().orEmpty()
+                if (value.isBlank()) return
+                val normalized = runCatching {
+                    if (value.startsWith("http://") || value.startsWith("https://")) {
+                        value
+                    } else {
+                        java.net.URI(url).resolve(value).toString()
+                    }
+                }.getOrNull() ?: return
+                if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+                    capturedUrls.add(normalized)
+                }
+            }
 
             fun finish(value: WebViewMediaSnapshot) {
                 if (finished) return
@@ -52,7 +65,7 @@ class WebViewSessionBridge(private val context: Context) {
                 CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }
 
             fun fallbackSnapshot(): WebViewMediaSnapshot =
-                WebViewMediaSnapshot(currentCookies(), null, emptyList())
+                WebViewMediaSnapshot(currentCookies(), null, capturedUrls.take(32))
 
             fun inspect(view: WebView, attempt: Int = 1) {
                 val script = """
@@ -61,15 +74,17 @@ class WebViewSessionBridge(private val context: Context) {
                       const add = (v) => {
                         if (!v) return;
                         try { v = new URL(v, location.href).href; } catch (_) {}
-                        if (/^https?:///i.test(v)) urls.add(v);
+                        if (/^https?:\/\//i.test(v)) urls.add(v);
                       };
                       document.querySelectorAll('video').forEach(v => {
                         add(v.currentSrc);
                         add(v.src);
                       });
                       document.querySelectorAll('video source, source').forEach(s => add(s.src));
-                      document.querySelectorAll('meta[property="og:video"], meta[property="og:video:secure_url"], meta[name="twitter:player:stream"]')
-                        .forEach(m => add(m.content));
+                      document.querySelectorAll(
+                        'meta[property="og:video"], meta[property="og:video:secure_url"], ' +
+                        'meta[name="twitter:player:stream"]'
+                      ).forEach(m => add(m.content));
                       try {
                         performance.getEntriesByType('resource').forEach(e => {
                           const n = e.name || '';
@@ -79,13 +94,14 @@ class WebViewSessionBridge(private val context: Context) {
                         });
                       } catch (_) {}
                       try {
-                        const html = document.documentElement ? (document.documentElement.outerHTML || '') : '';
-                        const matches = html.match(/https?:\\/\\/[^"'<\\s]+/gi) || [];
+                        const html = document.documentElement
+                          ? (document.documentElement.outerHTML || '') : '';
+                        const matches = html.match(/https?:\/\/[^"'<>\s]+/gi) || [];
                         matches.forEach(add);
                       } catch (_) {}
                       return JSON.stringify({
                         title: document.title || null,
-                        urls: Array.from(urls).slice(0, 24)
+                        urls: Array.from(urls).slice(0, 32)
                       });
                     })();
                 """.trimIndent()
@@ -98,19 +114,14 @@ class WebViewSessionBridge(private val context: Context) {
                     }.getOrNull()
 
                     val title = parsed?.optString("title")?.takeIf { it.isNotBlank() }
-                    val array = parsed?.optJSONArray("urls")
-                    val urls = buildList {
-                        if (array != null) {
-                            for (i in 0 until array.length()) {
-                                val candidate = array.optString(i).trim()
-                                if (candidate.startsWith("http://") || candidate.startsWith("https://")) add(candidate)
-                            }
-                        }
+                    parsed?.optJSONArray("urls")?.let { array ->
+                        for (i in 0 until array.length()) addCandidate(array.optString(i))
                     }
-                    if (urls.isNotEmpty() || attempt >= 3) {
-                        finish(WebViewMediaSnapshot(currentCookies(), title, urls))
+
+                    if (capturedUrls.isNotEmpty() || attempt >= 3) {
+                        finish(WebViewMediaSnapshot(currentCookies(), title, capturedUrls.take(32)))
                     } else {
-                        main.postDelayed({ inspect(view, attempt + 1) }, 2500L)
+                        main.postDelayed({ inspect(view, attempt + 1) }, 2_000L)
                     }
                 }
             }
@@ -140,6 +151,10 @@ class WebViewSessionBridge(private val context: Context) {
                         main.postDelayed({ inspect(view, 1) }, 1_500L)
                     }
 
+                    override fun onLoadResource(view: WebView, resourceUrl: String) {
+                        addCandidate(resourceUrl)
+                    }
+
                     @Deprecated("Deprecated in API 23")
                     override fun onReceivedError(
                         view: WebView?,
@@ -147,7 +162,7 @@ class WebViewSessionBridge(private val context: Context) {
                         description: String?,
                         failingUrl: String?
                     ) {
-                        finish(fallbackSnapshot())
+                        if (failingUrl == url) finish(fallbackSnapshot())
                     }
 
                     override fun onReceivedError(

@@ -86,7 +86,7 @@ class EmbeddedPlatformResolver(
                     val bridge = WebViewSessionBridge(context)
                     val snapshot = bridge.snapshotFor(cleanUrl)
                     if (!snapshot.cookies.isNullOrBlank()) {
-                        AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true")
+                        AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true candidates=" + snapshot.mediaUrls.size)
                         try {
                             return@runCatching call(snapshot.cookies)
                         } catch (sessionFailure: Throwable) {
@@ -151,6 +151,7 @@ class EmbeddedPlatformResolver(
                         ?.lowercase()
                         .orEmpty()
                     if (contentType.startsWith("text/") || contentType == "application/xhtml+xml") return@use
+                    if (contentType == "application/vnd.apple.mpegurl" || contentType == "application/x-mpegurl") return@use
                     if (!contentType.startsWith("video/") && !contentType.startsWith("audio/")) return@use
 
                     val isVideo = contentType.startsWith("video/")
