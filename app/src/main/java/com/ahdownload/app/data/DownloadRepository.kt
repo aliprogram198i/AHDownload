@@ -240,6 +240,45 @@ class DownloadRepository private constructor(context: Context) {
         update(jobId) { it.copy(favorite = !it.favorite) }
     }
 
+    fun applyNetworkPolicy() {
+        val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(
+                if (settings.getBoolean("wifi_only", false)) NetworkType.UNMETERED
+                else NetworkType.CONNECTED
+            )
+            .build()
+        all()
+            .filter { it.status == DownloadStatus.QUEUED || it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.RETRYING }
+            .forEach { job ->
+                WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + job.id)
+                val request = OneTimeWorkRequestBuilder<DirectDownloadWorker>()
+                    .setInputData(
+                        workDataOf(
+                            DirectDownloadWorker.KEY_JOB_ID to job.id,
+                            DirectDownloadWorker.KEY_URL to job.formatUrl,
+                            DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
+                            DirectDownloadWorker.KEY_TITLE to job.title,
+                            DirectDownloadWorker.KEY_EXTENSION to job.extension.orEmpty(),
+                            DirectDownloadWorker.KEY_MERGE_REQUIRED to job.mergeRequired,
+                            DirectDownloadWorker.KEY_AUDIO_URL to job.audioUrl.orEmpty(),
+                            DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty(),
+                            DirectDownloadWorker.KEY_HTTP_HEADERS to encodeHeaders(job.httpHeaders),
+                            DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(job.audioHeaders)
+                        )
+                    )
+                    .setConstraints(constraints)
+                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
+                    .addTag("ahdownload:" + job.id)
+                    .build()
+                WorkManager.getInstance(app).enqueueUniqueWork(
+                    workName(job.id),
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
+            }
+    }
+
     suspend fun refreshAndRetry(jobId: String): Boolean = withContext(Dispatchers.IO) {
         val job = synchronized(lock) { find(jobId) } ?: return@withContext false
         if (job.sourceUrl.isBlank()) return@withContext false
