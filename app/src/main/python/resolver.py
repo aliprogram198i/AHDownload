@@ -229,7 +229,11 @@ def resolve(url, cookies=None):
     if not _allowed(url):
         raise ValueError("UNSUPPORTED_PLATFORM")
 
-    opts = {
+    host = _host(url)
+    is_youtube = host in {"youtube.com", "youtu.be"}
+
+    def build_opts(extractor_args=None):
+        opts = {
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -248,11 +252,35 @@ def resolve(url, cookies=None):
             **({"Cookie": cookies} if cookies else {}),
         },
     }
+        if extractor_args:
+            opts["extractor_args"] = extractor_args
+        return opts
 
+    extraction_errors = []
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with yt_dlp.YoutubeDL(build_opts()) as ydl:
             info = ydl.extract_info(url, download=False)
     except Exception as exc:
+        extraction_errors.append(str(exc))
+        if is_youtube:
+            # YouTube is progressively enforcing PO Tokens on some clients.
+            # Try a client that currently does not require a PO Token before
+            # falling back to the authenticated WebView path on Android.
+            fallback_clients = (
+                {"youtube": {"player_client": ["android_vr"]}},
+                {"youtube": {"player_client": ["web_safari"]}},
+            )
+            info = None
+            for extractor_args in fallback_clients:
+                try:
+                    with yt_dlp.YoutubeDL(build_opts(extractor_args)) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                    if info:
+                        break
+                except Exception as fallback_exc:
+                    extraction_errors.append(str(fallback_exc))
+            if info is None:
+                exc = RuntimeError(" | ".join(extraction_errors)[-700:])
         if _host(url) == "instagram.com":
             try:
                 return _instagram_page_fallback(url, cookies)
@@ -261,7 +289,8 @@ def resolve(url, cookies=None):
                     "EXTRACTION_FAILED:" + str(exc)[:180] +
                     "|INSTAGRAM_FALLBACK:" + str(fallback_exc)[:120]
                 )
-        raise RuntimeError("EXTRACTION_FAILED:" + str(exc)[:240])
+        if info is None:
+            raise RuntimeError("EXTRACTION_FAILED:" + str(exc)[:240])
 
     if not info:
         raise RuntimeError("NO_MEDIA")
