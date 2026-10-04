@@ -38,12 +38,10 @@ jobs:
           printf '%s' "$AH_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/AHDownload-release.keystore"
           test -s "$RUNNER_TEMP/AHDownload-release.keystore"
           keytool -list -keystore "$RUNNER_TEMP/AHDownload-release.keystore" -storepass "${{ secrets.AH_KEYSTORE_PASSWORD }}" -alias "${{ secrets.AH_KEY_ALIAS }}" >/dev/null
-
       - name: Validate Python resolver syntax
         run: python3 -m py_compile app/src/main/python/resolver.py
       - name: Run JVM unit tests
         run: gradle --no-daemon test
-
       - name: Build release APK
         if: github.event_name != 'pull_request'
         env:
@@ -52,15 +50,12 @@ jobs:
           AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
           AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
         run: gradle --no-daemon assembleRelease
-
       - name: Build unsigned release APK for pull request validation
         if: github.event_name == 'pull_request'
         run: gradle --no-daemon assembleRelease
-
       - name: Verify signed APK exists
         if: github.event_name != 'pull_request'
         run: test -s app/build/outputs/apk/release/app-release.apk
-
       - name: Verify production APK integrity and package metadata
         if: github.event_name != 'pull_request'
         run: |
@@ -76,18 +71,15 @@ jobs:
           grep -q "package: name='com.ahdownload.app' versionCode='13' versionName='1.9.1'" "$RUNNER_TEMP/badging.txt"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
           "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK"
-
       - name: Verify unsigned PR APK exists
         if: github.event_name == 'pull_request'
         run: test -s app/build/outputs/apk/release/app-release-unsigned.apk
-
       - name: Enable KVM
         if: github.event_name != 'pull_request'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-
       - name: Install and launch APK on Android 15 emulator
         if: github.event_name != 'pull_request'
         uses: reactivecircus/android-emulator-runner@v2
@@ -106,12 +98,10 @@ jobs:
             adb shell monkey -p com.ahdownload.app 1 || (adb logcat -d -t 400; exit 1)
             sleep 5
             adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.9.1' || (adb shell dumpsys package com.ahdownload.app; adb logcat -d -t 600; exit 1)
-
       - name: Calculate SHA-256
         id: checksum
         if: github.event_name != 'pull_request'
         run: echo "sha256=$(sha256sum app/build/outputs/apk/release/app-release.apk | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
-
       - name: Upload APK artifact for main and release branches
         if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/v1.9.1-runtime-fix' || github.ref == 'refs/heads/fix/platform-download-v2') && github.event_name == 'push'
         uses: actions/upload-artifact@v4
@@ -119,7 +109,6 @@ jobs:
           name: AHDownload-release-${{ github.sha }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-
       - name: Publish GitHub Release
         if: github.ref == 'refs/heads/release/v1.9.1-runtime-fix' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
@@ -137,3 +126,4 @@ jobs:
           fail_on_unmatched_files: true
 
 # Release branch verification trigger
+# release rebuild trigger 2026-10-04
