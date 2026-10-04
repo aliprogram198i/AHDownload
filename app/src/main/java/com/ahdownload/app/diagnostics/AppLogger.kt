@@ -6,6 +6,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.security.MessageDigest
 
 object AppLogger {
     private const val FILE_NAME = "ahdownload.log"
@@ -41,6 +42,11 @@ object AppLogger {
             appendLine("----")
         }
         return header + read(context)
+    }
+
+    fun fingerprint(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(value.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }.take(16)
     }
 
     private fun write(context: Context, level: String, event: String, details: String) {
