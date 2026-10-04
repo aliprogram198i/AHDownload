@@ -60,7 +60,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   val nav=rememberNavController();val entry by nav.currentBackStackEntryAsState();val route=entry?.destination?.route?:"home"
   Scaffold(
    containerColor=MaterialTheme.colorScheme.background,
-   topBar={if(route!="home")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="settings")"الإعدادات" else if(route=="accounts")"الحسابات" else if(route=="studio")"Smart Studio" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
+   topBar={if(route=="downloads"||route=="studio"||route=="settings")TopAppBar(title={Text(if(route=="downloads")"التنزيلات" else if(route=="studio")"Smart Studio" else "الإعدادات",fontWeight=FontWeight.SemiBold)}) else if(route=="accounts"||route=="diagnostics")TopAppBar(title={Text(if(route=="accounts")"الحسابات" else "سجل التطبيق",fontWeight=FontWeight.SemiBold)},navigationIcon={IconButton({nav.popBackStack()}){Icon(Icons.Default.ArrowBack,"رجوع")}})},
    bottomBar={NavigationBar{NavItem(nav,route,"home","الرئيسية",Icons.Default.Home);NavItem(nav,route,"downloads","التنزيلات",Icons.Default.Download);NavItem(nav,route,"studio","الاستوديو",Icons.Default.AutoFixHigh);NavItem(nav,route,"settings","الإعدادات",Icons.Default.Settings)}}
   ){padding->NavHost(nav,"home",Modifier.padding(padding)){composable("home"){HomeScreen{nav.navigate("downloads")}};composable("downloads"){DownloadsScreen()};composable("studio"){StudioScreen()};composable("settings"){SettingsScreen({nav.navigate("diagnostics")},{nav.navigate("accounts")})};composable("accounts"){AccountsScreen()};composable("diagnostics"){DiagnosticsScreen()}}}
  }
