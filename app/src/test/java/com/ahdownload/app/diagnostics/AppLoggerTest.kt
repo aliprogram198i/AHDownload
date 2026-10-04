@@ -40,3 +40,4 @@ class AppLoggerTest {
         assertTrue(output.contains("[SENSITIVE_REDACTED]"))
         assertTrue(output.contains("[URL_REDACTED]"))
     }
+}
