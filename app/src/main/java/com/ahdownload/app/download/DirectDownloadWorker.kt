@@ -367,12 +367,13 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
     }
     private fun uniqueTarget(dir: File, safeTitle: String, extension: String): File {
         val first = File(dir, "$safeTitle.$extension")
-        if (!first.exists() && !File(dir, "$safeTitle.$extension.part").exists()) return first
+        // Reuse an existing partial target so a WorkManager retry can resume
+        // instead of creating an orphaned .part file under a new name.
+        if (!first.exists()) return first
         var index = 2
         while (true) {
             val candidate = File(dir, "$safeTitle ($index).$extension")
-            val part = File(dir, "$safeTitle ($index).$extension.part")
-            if (!candidate.exists() && !part.exists()) return candidate
+            if (!candidate.exists()) return candidate
             index++
         }
     }
