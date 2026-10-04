@@ -2,6 +2,7 @@ package com.ahdownload.app.data
 
 import android.content.Context
 import com.ahdownload.app.diagnostics.AppLogger
+import android.webkit.CookieManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -42,7 +43,10 @@ class EmbeddedPlatformResolver(
                                     f.optLong("sizeBytes").takeIf { f.has("sizeBytes") && it > 0 },
                                     f.optBoolean("hasVideo"),
                                     f.optBoolean("hasAudio"),
-                                    mediaUrl
+                                    mediaUrl,
+                                    f.optBoolean("mergeRequired"),
+                                    f.optString("audioUrl").takeIf { it.isNotBlank() },
+                                    f.optString("audioExt").takeIf { it.isNotBlank() }
                                 )
                             )
                         }
@@ -60,7 +64,7 @@ class EmbeddedPlatformResolver(
 
                 try {
                     context?.let { AppLogger.info(it, "resolver.start", "host=" + android.net.Uri.parse(cleanUrl).host.orEmpty()) }
-                    call(null)
+                    call(CookieManager.getInstance().getCookie(cleanUrl))
                 } catch (first: Throwable) {
                     val host = android.net.Uri.parse(cleanUrl).host.orEmpty().lowercase()
                     val sessionEligible =
