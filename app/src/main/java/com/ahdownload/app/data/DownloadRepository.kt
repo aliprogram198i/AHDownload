@@ -118,37 +118,43 @@ class DownloadRepository(context: Context) {
         db.writableDatabase.insertOrThrow("downloads", null, values)
     }
 
-    private fun migrateLegacyPreferencesIfNeeded() = synchronized(lock) {
-        val count = db.readableDatabase.rawQuery("SELECT COUNT(*) FROM downloads", null).use {
-            if (it.moveToFirst()) it.getLong(0) else 0L
-        }
-        if (count > 0L) return
-        val prefs = app.getSharedPreferences("ahdownload_downloads", Context.MODE_PRIVATE)
-        val raw = prefs.getString("jobs", null).orEmpty()
-        if (raw.isBlank()) return
-
-        runCatching {
-            val array = org.json.JSONArray(raw)
-            db.writableDatabase.beginTransaction()
-            try {
-                for (i in 0 until array.length()) {
-                    val o = array.getJSONObject(i)
-                    insert(DownloadJob(
-                        id = o.getString("id"),
-                        sourceUrl = o.getString("sourceUrl"),
-                        title = o.getString("title"),
-                        formatUrl = o.getString("formatUrl"),
-                        status = runCatching { DownloadStatus.valueOf(o.getString("status")) }.getOrDefault(DownloadStatus.FAILED),
-                        progress = o.optInt("progress"),
-                        downloadedBytes = o.optLong("downloadedBytes"),
-                        totalBytes = o.optLong("totalBytes").takeIf { it > 0L },
-                        outputUri = o.optString("outputUri").takeIf { it.isNotBlank() }
-                    ))
+    private fun migrateLegacyPreferencesIfNeeded() {
+        synchronized(lock) {
+            val count = db.readableDatabase.rawQuery("SELECT COUNT(*) FROM downloads", null).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+            }
+            if (count == 0L) {
+                val prefs = app.getSharedPreferences("ahdownload_downloads", Context.MODE_PRIVATE)
+                val raw = prefs.getString("jobs", null).orEmpty()
+                if (raw.isNotBlank()) {
+                    runCatching {
+                        val array = org.json.JSONArray(raw)
+                        db.writableDatabase.beginTransaction()
+                        try {
+                            for (i in 0 until array.length()) {
+                                val o = array.getJSONObject(i)
+                                insert(DownloadJob(
+                                    id = o.getString("id"),
+                                    sourceUrl = o.getString("sourceUrl"),
+                                    title = o.getString("title"),
+                                    formatUrl = o.getString("formatUrl"),
+                                    status = runCatching { DownloadStatus.valueOf(o.getString("status")) }
+                                        .getOrDefault(DownloadStatus.FAILED),
+                                    progress = o.optInt("progress"),
+                                    downloadedBytes = o.optLong("downloadedBytes"),
+                                    totalBytes = o.optLong("totalBytes").takeIf { it > 0L },
+                                    outputUri = o.optString("outputUri").takeIf { it.isNotBlank() }
+                                ))
+                            }
+                            db.writableDatabase.setTransactionSuccessful()
+                            prefs.edit().remove("jobs").apply()
+                        } finally {
+                            db.writableDatabase.endTransaction()
+                        }
+                    }.onFailure { error ->
+                        android.util.Log.e("AHDownload", "Legacy download migration failed", error)
+                    }
                 }
-                db.writableDatabase.setTransactionSuccessful()
-                prefs.edit().remove("jobs").apply()
-            } finally {
-                db.writableDatabase.endTransaction()
             }
         }
     }
