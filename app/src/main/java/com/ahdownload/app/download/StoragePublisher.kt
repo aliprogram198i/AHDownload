@@ -5,12 +5,15 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileInputStream
 
 object StoragePublisher {
     fun publish(context: Context, source: File, displayName: String, mimeType: String): String? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return source.absolutePath
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return FileProvider.getUriForFile(context, context.packageName + ".fileprovider", source).toString()
+        }
 
         val resolver = context.contentResolver
         val collection = when {
