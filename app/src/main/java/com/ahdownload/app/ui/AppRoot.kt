@@ -47,6 +47,7 @@ import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
 import com.ahdownload.app.data.FormatRanker
 import com.ahdownload.app.data.ResolvedFormat
+import com.ahdownload.app.download.DownloadTempStore
 import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
@@ -653,6 +654,27 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
                     profile = it
                     prefs.edit().putString("download_profile", it.name).apply()
                 }
+                ListItem(
+                    leadingContent = { SettingsIcon(Icons.Default.CleaningServices) },
+                    headlineContent = { Text("تنظيف الملفات المؤقتة القديمة") },
+                    supportingContent = {
+                        Text(tempMessage ?: "يحذف فقط مساحات التنزيل غير المرتبطة بمهام نشطة.")
+                    },
+                    trailingContent = {
+                        TextButton(onClick = {
+                            val active = downloadRepository.all()
+                                .filter {
+                                    it.status == DownloadStatus.QUEUED ||
+                                        it.status == DownloadStatus.DOWNLOADING ||
+                                        it.status == DownloadStatus.RETRYING
+                                }
+                                .map { it.id }
+                                .toSet()
+                            val removed = DownloadTempStore.clearStale(context, active)
+                            tempMessage = if (removed == 0) "لا توجد ملفات مؤقتة قديمة." else "تم تنظيف $removed مساحة مؤقتة."
+                        }) { Text("تنظيف") }
+                    }
+                )
             }
         }
 
