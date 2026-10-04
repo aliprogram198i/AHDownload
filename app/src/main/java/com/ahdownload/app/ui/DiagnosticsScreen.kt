@@ -1,4 +1,5 @@
 package com.ahdownload.app.ui
+import com.ahdownload.app.ui.theme.AHGradientButton
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -36,7 +37,7 @@ fun DiagnosticsScreen() {
                     Spacer(Modifier.width(6.dp))
                     Text("تحديث")
                 }
-                Button(onClick = {
+                AHGradientButton(onClick = {
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", log))
                 }, modifier = Modifier.weight(1f)) {
