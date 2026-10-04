@@ -1,4 +1,8 @@
 package com.ahdownload.app.ui
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -77,8 +81,8 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
   item{HomeHeader()}
   item{UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
-   val clean=url.trim();val platform=detectPlatform(clean)
-   if(platform==null){error="الرابط غير مدعوم حالياً. استخدم YouTube أو Instagram أو Facebook أو TikTok أو X أو Vimeo أو Reddit.";return@UrlCard}
+   val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
+   if(platform==null||Uri.parse(clean).host.isNullOrBlank()){error="الرابط غير صالح أو غير مدعوم. تحقق من الرابط ثم أعد المحاولة.";return@UrlCard}
    analyzing=true;error=null;analysis=null
    scope.launch{
     EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
@@ -284,9 +288,16 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
 
 @Composable private fun SettingsScreen(openDiagnostics:()->Unit){
  val context=LocalContext.current;val prefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)};var wifiOnly by remember{mutableStateOf(prefs.getBoolean("wifi_only",false))};var notifications by remember{mutableStateOf(prefs.getBoolean("notifications",true))}
+ val notificationPermissionLauncher=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()){granted->
+  notifications=granted
+  prefs.edit().putBoolean("notifications",granted).apply()
+ }
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(14.dp)){
   item{Text("الإعدادات",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold);Text("إعدادات التنزيل والتشخيص فقط، بدون ميزات جانبية غير مطلوبة.")}
-  item{SettingsSection("التنزيل"){Setting("التنزيل عبر Wi‑Fi فقط",wifiOnly){wifiOnly=it;prefs.edit().putBoolean("wifi_only",it).apply()};Setting("إشعارات اكتمال التنزيل",notifications){notifications=it;prefs.edit().putBoolean("notifications",it).apply()};ListItem(leadingContent={Icon(Icons.Default.Security,null)},headlineContent={Text("فحص الوسائط")},supportingContent={Text("يرفض HTML وصفحات الويب قبل حفظها كفيديو أو صوت.")})}}
+  item{SettingsSection("التنزيل"){Setting("التنزيل عبر Wi‑Fi فقط",wifiOnly){wifiOnly=it;prefs.edit().putBoolean("wifi_only",it).apply()};Setting("إشعارات اكتمال التنزيل",notifications){value->
+  if(value && Build.VERSION.SDK_INT>=33) notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+  else {notifications=value;prefs.edit().putBoolean("notifications",value).apply()}
+};ListItem(leadingContent={Icon(Icons.Default.Security,null)},headlineContent={Text("فحص الوسائط")},supportingContent={Text("يرفض HTML وصفحات الويب قبل حفظها كفيديو أو صوت.")})}}
   item{SettingsSection("التشخيص"){ListItem(leadingContent={Icon(Icons.Default.BugReport,null)},headlineContent={Text("سجل التطبيق")},supportingContent={Text("سجل حقيقي محفوظ محلياً ويمكن نسخه وإرساله للتحليل.")},trailingContent={TextButton(onClick=openDiagnostics){Text("فتح")}})}}
   item{SettingsSection("الخصوصية"){ListItem(leadingContent={Icon(Icons.Default.Lock,null)},headlineContent={Text("التحليل محلي")},supportingContent={Text("لا يوجد حساب أو اشتراك مفروض لتنزيل الفيديو والصوت الأساسي.")})}}
  }}
@@ -296,5 +307,10 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
 private fun formatLabel(format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+" kbps"}?:"جودة غير محددة";val dimensions=if((format.width?:0)>0&&(format.height?:0)>0)format.width.toString()+"×"+format.height else null;val size=format.sizeBytes?.let{" • "+formatBytes(it)}?:"";return quality+(dimensions?.let{" • "+it}?:"")+(if(format.hasAudio)" • صوت" else "")+" • "+format.ext.uppercase(Locale.US)+size}
 private fun buildDownloadTitle(title:String,format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+"kbps"}?:format.ext;return title.take(90)+" • "+quality}
 private fun statusLabel(status:DownloadStatus)=when(status){DownloadStatus.COMPLETED->"مكتمل";DownloadStatus.DOWNLOADING->"جارٍ التنزيل";DownloadStatus.QUEUED->"في الانتظار";DownloadStatus.RETRYING->"إعادة المحاولة";DownloadStatus.FAILED->"فشل";DownloadStatus.CANCELLED->"ملغى";else->status.name}
+private fun normalizeInputUrl(raw:String):String{
+ var value=raw.replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"),"").trim()
+ if(!value.startsWith("http://",true)&&!value.startsWith("https://",true)) value="https://"+value
+ return value
+}
 private fun detectPlatform(url:String):String?{val host=runCatching{Uri.parse(url).host.orEmpty().lowercase(Locale.US).removePrefix("www.")}.getOrDefault("");return when{host=="youtube.com"||host.endsWith(".youtube.com")||host=="youtu.be"->"YouTube";host=="instagram.com"||host.endsWith(".instagram.com")->"Instagram";host=="facebook.com"||host.endsWith(".facebook.com")||host=="fb.watch"->"Facebook";host=="tiktok.com"||host.endsWith(".tiktok.com")->"TikTok";host=="twitter.com"||host.endsWith(".twitter.com")||host=="x.com"||host.endsWith(".x.com")->"X";host=="vimeo.com"||host.endsWith(".vimeo.com")->"Vimeo";host=="reddit.com"||host.endsWith(".reddit.com")->"Reddit";else->null}}
 private fun formatBytes(value:Long):String{if(value<1024)return value.toString()+" B";val units=listOf("KB","MB","GB","TB");var n=value.toDouble();var index=-1;while(n>=1024&&index<units.lastIndex){n/=1024;index++};return String.format(Locale.US,"%.1f %s",n,units[index])}
