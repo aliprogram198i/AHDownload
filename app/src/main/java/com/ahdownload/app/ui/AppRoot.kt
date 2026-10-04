@@ -82,13 +82,14 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
   item{HomeHeader()}
   item{UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
    val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
+   AppLogger.info(context,"analysis.start","platform="+(platform?:"unknown")+" host="+(runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault(""))+" url_hash="+AppLogger.fingerprint(clean))
    if(platform==null||Uri.parse(clean).host.isNullOrBlank()){error="الرابط غير صالح أو غير مدعوم. تحقق من الرابط ثم أعد المحاولة.";return@UrlCard}
    analyzing=true;error=null;analysis=null
    scope.launch{
     EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.sortedWith(compareByDescending<ResolvedFormat>{it.hasVideo&&it.hasAudio}.thenByDescending{it.height?:0}.thenByDescending{it.abr?:0.0})
      if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
-     else{analysis=LinkAnalysis(clean,resolved.title,platform,formats);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size)}
+     else{analysis=LinkAnalysis(clean,resolved.title,platform,formats);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
     }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
     analyzing=false
    }
