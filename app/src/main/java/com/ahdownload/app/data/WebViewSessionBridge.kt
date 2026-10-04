@@ -42,6 +42,7 @@ class WebViewSessionBridge(private val context: Context) {
             val capturedUrls = linkedSetOf<String>()
             var pageAuthenticated = false
             var pageTitle: String? = null
+            var inspectionGeneration = 0
 
             fun addCandidate(raw: String?) {
                 val value = raw?.trim().orEmpty()
@@ -63,6 +64,7 @@ class WebViewSessionBridge(private val context: Context) {
                 finished = true
                 timeoutRunnable?.let(main::removeCallbacks)
                 webView?.stopLoading()
+                webView?.webViewClient = null
                 webView?.destroy()
                 webView = null
                 if (continuation.isActive) continuation.resume(value)
@@ -93,7 +95,8 @@ class WebViewSessionBridge(private val context: Context) {
             fun fallbackSnapshot(): WebViewMediaSnapshot =
                 WebViewMediaSnapshot(currentCookies(), pageTitle, capturedUrls.take(64), pageAuthenticated || cookieAuthenticated(currentCookies()))
 
-            fun inspect(view: WebView, attempt: Int = 1) {
+            fun inspect(view: WebView, attempt: Int = 1, generation: Int = inspectionGeneration) {
+                if (generation != inspectionGeneration || finished) return
                 val script = """
                     (function() {
                       const urls = new Set();
@@ -204,7 +207,7 @@ class WebViewSessionBridge(private val context: Context) {
                         val cookies = currentCookies()
                         finish(WebViewMediaSnapshot(cookies, pageTitle, capturedUrls.take(64), pageAuthenticated || cookieAuthenticated(cookies)))
                     } else {
-                        main.postDelayed({ inspect(view, attempt + 1) }, 1_000L)
+                        main.postDelayed({ inspect(view, attempt + 1, generation) }, 1_000L)
                     }
                 }
             }
@@ -233,7 +236,9 @@ class WebViewSessionBridge(private val context: Context) {
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
-                        main.postDelayed({ inspect(view, 1) }, 1_200L)
+                        inspectionGeneration += 1
+                        val generation = inspectionGeneration
+                        main.postDelayed({ inspect(view, 1, generation) }, 1_200L)
                     }
 
                     override fun onLoadResource(view: WebView, resourceUrl: String) {

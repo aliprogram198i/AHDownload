@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.animation.core.animateFloatAsState
 import kotlinx.coroutines.launch
 import com.ahdownload.app.data.WebViewSessionBridge
 import com.ahdownload.app.data.WebViewMediaSnapshot
@@ -120,7 +119,7 @@ fun AccountsScreen() {
     }
 
     LaunchedEffect(Unit) {
-        val youtube = accounts.first()
+        val youtube = accounts.firstOrNull { it.key == "youtube" } ?: return@LaunchedEffect
         if (localSessionExists(youtube) &&
             System.currentTimeMillis() - lastVerified(youtube) > VERIFY_INTERVAL_MS
         ) {
