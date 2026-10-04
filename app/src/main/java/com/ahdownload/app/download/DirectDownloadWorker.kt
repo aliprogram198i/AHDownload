@@ -145,6 +145,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             AppLogger.error(applicationContext, "download.failed", e, "job=$jobId")
             Result.failure()
         }
+    }
+
     private fun notifyCompleted(jobId: String, title: String) {
         val prefs = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("notifications", true)) return
