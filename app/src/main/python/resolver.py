@@ -105,9 +105,9 @@ def _decode_url(value):
 def _instagram_candidates(html):
     candidates = []
     patterns = (
-        r'<meta[^>]+property=["\\']og:video(?::secure_url)?["\\'][^>]+content=["\\']([^"\\']+)["\\']',
-        r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+property=["\\']og:video(?::secure_url)?["\\']',
-        r'<meta[^>]+name=["\\']twitter:player:stream["\\'][^>]+content=["\\']([^"\\']+)["\\']',
+        r"<meta[^>]+property=[\"']og:video(?::secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']",
+        r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:video(?::secure_url)?[\"']",
+        r"<meta[^>]+name=[\"']twitter:player:stream[\"'][^>]+content=[\"']([^\"']+)[\"']",
         r'"(?:video_url|playback_url|contentUrl)"\\s*:\\s*"([^"]+)"',
         r'"video_versions"\\s*:\\s*\\[[^]]{0,12000}?"url"\\s*:\\s*"([^"]+)"',
     )
@@ -186,7 +186,7 @@ def _instagram_page_fallback(url, cookies=None):
 
     candidates = _instagram_candidates(html)
     title_match = re.search(
-        r'<meta[^>]+property=["\\']og:title["\\'][^>]+content=["\\']([^"\\']+)["\\']',
+        r"<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']",
         html, re.I
     )
     title = unescape(title_match.group(1)).strip() if title_match else "Instagram video"
