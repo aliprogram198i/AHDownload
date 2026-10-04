@@ -402,7 +402,10 @@ private fun AnalysisSkeleton() {
 }
 
 private fun formatQuality(format:ResolvedFormat):String{
- return format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+" kbps"}?:"ملف"
+ return format.itemLabel?.let { it + (format.height?.let { h -> " • " + h + "p" } ?: "") }
+  ?: format.height?.let{it.toString()+"p"}
+  ?: format.abr?.let{it.toInt().toString()+" kbps"}
+  ?: "ملف"
 }
 
 private fun ResolvedFormat.formatDisplayDetails():String{
@@ -859,7 +862,7 @@ private fun shareOutput(context:Context,uriString:String){
 }
 
 private fun formatLabel(format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+" kbps"}?:"جودة غير محددة";val dimensions=if((format.width?:0)>0&&(format.height?:0)>0)format.width.toString()+"×"+format.height else null;val size=format.sizeBytes?.let{" • "+formatBytes(it)}?:"";return quality+(dimensions?.let{" • "+it}?:"")+(if(format.hasAudio)" • صوت" else "")+" • "+format.ext.uppercase(Locale.US)+size}
-private fun buildDownloadTitle(title:String,format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+"kbps"}?:format.ext;return title.take(90)+" • "+quality}
+private fun buildDownloadTitle(title:String,format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+"kbps"}?:format.ext;val item=format.itemLabel?.let{" • "+it} ?: "";return title.take(82)+item+" • "+quality}
 private fun statusLabel(status:DownloadStatus)=when(status){DownloadStatus.COMPLETED->"مكتمل";DownloadStatus.DOWNLOADING->"جارٍ التنزيل";DownloadStatus.QUEUED->"في الانتظار";DownloadStatus.RETRYING->"إعادة المحاولة";DownloadStatus.FAILED->"فشل";DownloadStatus.CANCELLED->"ملغى";else->status.name}
 private fun normalizeInputUrl(raw:String):String{
  var value=raw.replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"),"").trim()
