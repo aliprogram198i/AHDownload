@@ -6,6 +6,7 @@ import androidx.work.Constraints
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
 import androidx.work.workDataOf
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
@@ -84,7 +85,11 @@ class DownloadRepository private constructor(context: Context) {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
             .addTag("ahdownload:" + job.id)
             .build()
-        WorkManager.getInstance(app).enqueue(request)
+        WorkManager.getInstance(app).enqueueUniqueWork(
+            workName(job.id),
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
         return job
     }
 
@@ -156,6 +161,52 @@ class DownloadRepository private constructor(context: Context) {
         WorkManager.getInstance(app).enqueue(request)
         return true
     }
+
+    /** Enqueue a refreshed media URL as the single authoritative worker for this job. */
+    fun requeueWithRefreshedUrl(jobId: String, refreshedUrl: String): Boolean {
+        val job = synchronized(lock) { find(jobId) } ?: return false
+        if (refreshedUrl.isBlank()) return false
+        val settings = app.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(if (settings.getBoolean("wifi_only", false)) NetworkType.UNMETERED else NetworkType.CONNECTED)
+            .build()
+        val request = OneTimeWorkRequestBuilder<DirectDownloadWorker>()
+            .setInputData(workDataOf(
+                DirectDownloadWorker.KEY_JOB_ID to job.id,
+                DirectDownloadWorker.KEY_URL to refreshedUrl,
+                DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
+                DirectDownloadWorker.KEY_TITLE to job.title,
+                DirectDownloadWorker.KEY_EXTENSION to job.extension.orEmpty(),
+                DirectDownloadWorker.KEY_MERGE_REQUIRED to job.mergeRequired,
+                DirectDownloadWorker.KEY_AUDIO_URL to job.audioUrl.orEmpty(),
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty()
+            ))
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
+            .addTag("ahdownload:" + job.id)
+            .build()
+        update(job.id) {
+            it.copy(
+                formatUrl = refreshedUrl,
+                status = DownloadStatus.QUEUED,
+                progress = 0,
+                downloadedBytes = 0L,
+                totalBytes = null,
+                outputUri = null,
+                errorCode = null,
+                speedBytesPerSec = 0L,
+                etaSeconds = null
+            )
+        }
+        WorkManager.getInstance(app).enqueueUniqueWork(
+            workName(job.id),
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+        return true
+    }
+
+    private fun workName(jobId: String): String = "ahdownload-job:$jobId"
 
     private fun trimHistory() {
         synchronized(lock) {
