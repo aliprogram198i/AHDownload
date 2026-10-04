@@ -18,7 +18,10 @@ data class ResolvedFormat(
     val sizeBytes: Long?,
     val hasVideo: Boolean,
     val hasAudio: Boolean,
-    val url: String
+    val url: String,
+    val mergeRequired: Boolean = false,
+    val audioUrl: String? = null,
+    val audioExt: String? = null
 )
 
 data class ResolvedMedia(
@@ -67,7 +70,10 @@ class PlatformResolverClient(
                                 sizeBytes = f.optLong("sizeBytes").takeIf { f.has("sizeBytes") && it > 0 },
                                 hasVideo = f.optBoolean("hasVideo"),
                                 hasAudio = f.optBoolean("hasAudio"),
-                                url = mediaUrl
+                                url = mediaUrl,
+                                mergeRequired = f.optBoolean("mergeRequired"),
+                                audioUrl = f.optString("audioUrl").takeIf { it.isNotBlank() },
+                                audioExt = f.optString("audioExt").takeIf { it.isNotBlank() }
                             )
                         )
                     }
