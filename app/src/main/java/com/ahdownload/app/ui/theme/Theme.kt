@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -115,11 +116,13 @@ fun AHGradientButton(
             .padding(horizontal = 18.dp, vertical = 14.dp),
         contentAlignment = androidx.compose.ui.Alignment.Center
     ) {
-        androidx.compose.foundation.layout.Row(
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-            content = content
-        )
+        CompositionLocalProvider(LocalContentColor provides Color.White) {
+            androidx.compose.foundation.layout.Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                content = content
+            )
+        }
     }
 }
 
