@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ahdownload.app.diagnostics.AppLogger
+import com.ahdownload.app.ui.theme.AHGradientButton
 
 private data class PlatformAccount(val key:String,val name:String,val url:String)
 
@@ -183,7 +184,7 @@ fun AccountsScreen() {
                                         scaleY = scale
                                     })
                             } else {
-                                FilledTonalButton(onClick = {
+                                AHGradientButton(onClick = {
                                     AppLogger.info(context, "account.login_start", "platform=" + account.key)
                                     selected = account
                                 }) {
