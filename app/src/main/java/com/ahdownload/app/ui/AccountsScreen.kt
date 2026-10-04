@@ -53,7 +53,7 @@ fun AccountsScreen() {
     var refresh by remember { mutableIntStateOf(0) }
     var loginError by remember { mutableStateOf<String?>(null) }
     var verifying by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    val verificationScope = rememberCoroutineScope()
     val prefs = remember {
         context.getSharedPreferences("ahdownload_accounts", android.content.Context.MODE_PRIVATE)
     }
@@ -73,7 +73,7 @@ fun AccountsScreen() {
 
     fun verifyInBackground(account: PlatformAccount) {
         if (verifying != null) return
-        scope.launch {
+        verificationScope.launch {
             verifying = account.key
             loginError = null
             AppLogger.info(context, "account.verify_start", "platform=" + account.key)
@@ -103,16 +103,20 @@ fun AccountsScreen() {
                 }
                 refresh++
             }.onFailure { failure ->
-                AppLogger.error(
-                    context,
-                    "account.verify_failed",
-                    failure,
-                    "platform=" + account.key
-                )
-                if (!localSessionExists(account)) {
-                    loginError = "انتهت الجلسة أو لم تعد متاحة. أعد تسجيل الدخول."
+                if (failure is kotlinx.coroutines.CancellationException) {
+                    AppLogger.info(context, "account.verify_cancelled", "platform=" + account.key)
+                } else {
+                    AppLogger.error(
+                        context,
+                        "account.verify_failed",
+                        failure,
+                        "platform=" + account.key
+                    )
+                    if (!localSessionExists(account)) {
+                        loginError = "انتهت الجلسة أو لم تعد متاحة. أعد تسجيل الدخول."
+                    }
+                    refresh++
                 }
-                refresh++
             }
             verifying = null
         }
@@ -138,7 +142,7 @@ fun AccountsScreen() {
                 TextButton(
                     enabled = verifying == null,
                     onClick = {
-                        scope.launch {
+                        verificationScope.launch {
                             verifying = account.key
                             loginError = null
                             AppLogger.info(context, "account.session_verify_start", "platform=" + account.key)
@@ -170,13 +174,21 @@ fun AccountsScreen() {
                                     loginError = "لم يتم التحقق من جلسة تسجيل الدخول. أكمل تسجيل الدخول داخل الصفحة ثم اضغط تم مرة أخرى."
                                 }
                             }.onFailure { failure ->
-                                AppLogger.error(
-                                    context,
-                                    "account.session_verification_failed",
-                                    failure,
-                                    "platform=" + account.key
-                                )
-                                loginError = "تعذر فحص جلسة الحساب. أعد المحاولة."
+                                if (failure is kotlinx.coroutines.CancellationException) {
+                                    AppLogger.info(
+                                        context,
+                                        "account.session_verification_cancelled",
+                                        "platform=" + account.key
+                                    )
+                                } else {
+                                    AppLogger.error(
+                                        context,
+                                        "account.session_verification_failed",
+                                        failure,
+                                        "platform=" + account.key
+                                    )
+                                    loginError = "تعذر فحص جلسة الحساب. أعد المحاولة."
+                                }
                             }
                             verifying = null
                         }
