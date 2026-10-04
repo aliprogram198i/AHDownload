@@ -204,7 +204,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
    } else {
     Text("اختيار سريع",style=MaterialTheme.typography.titleMedium,fontWeight=FontWeight.SemiBold)
     recommendedAudio?.let{format->
-     RecommendedFormatCard(format,selected?.id==format.id,onClick={selected=format},onDownload={onDownload(format)})
+     RecommendedFormatCard(format,selected?.id==format.id,onClick={selected=format})
     }
     audioFormats.filter{it.id!=recommendedAudio?.id}.take(if(showMore) audioFormats.size else 3).forEach{format->
      SimpleFormatRow(format,selected?.id==format.id){selected=format}
