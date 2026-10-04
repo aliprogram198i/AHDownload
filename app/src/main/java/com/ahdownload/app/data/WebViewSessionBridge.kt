@@ -64,7 +64,6 @@ class WebViewSessionBridge(private val context: Context) {
                 finished = true
                 timeoutRunnable?.let(main::removeCallbacks)
                 webView?.stopLoading()
-                webView?.webViewClient = null
                 webView?.destroy()
                 webView = null
                 if (continuation.isActive) continuation.resume(value)
