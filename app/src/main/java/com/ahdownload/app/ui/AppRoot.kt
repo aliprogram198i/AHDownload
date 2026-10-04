@@ -114,6 +114,7 @@ private fun NavItem(
         modifier = modifier
             .clickable {
                 if (!selected) {
+                    DesignAudit.recordInteraction(route, "bottom_nav", "navigate_$target")
                     nav.navigate(target) {
                         launchSingleTop = true
                         restoreState = true
@@ -163,7 +164,8 @@ private fun NavItem(
  LaunchedEffect(Unit){val intent=(context as? android.app.Activity)?.intent;if(intent?.action==Intent.ACTION_SEND&&intent.type=="text/plain")url=intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().trim()}
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
   item{HomeHeader()}
-  item{UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
+  item{LaunchedEffect(Unit){DesignAudit.recordComponent("HomeScreen")}; UrlCard(url,analyzing,{url=it;error=null;analysis=null},{val clipboard=context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager;url=clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty().trim()}){
+   DesignAudit.recordInteraction("home", "url_input", "analyze")
    val clean=normalizeInputUrl(url);val platform=detectPlatform(clean)
    val host=runCatching{Uri.parse(clean).host.orEmpty()}.getOrDefault("")
    AppLogger.info(context,"analysis.start","platform="+(platform?:"Direct")+" host="+host+" url_hash="+AppLogger.fingerprint(clean))
