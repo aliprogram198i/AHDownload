@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ahdownload.app.BuildConfig
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
@@ -567,7 +568,7 @@ private fun SettingsHeader() {
                         color = Color.White
                     )
                     Text(
-                        "تحكم واضح بدون خيارات وهمية أو زائدة",
+                        "خصص التنزيلات والحسابات والتشخيص من مكان واحد",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.86f)
                     )
