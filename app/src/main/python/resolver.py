@@ -296,6 +296,11 @@ def resolve(url, cookies=None):
             unique = merged + unique
 
     if not unique:
+        if _host(url) == "instagram.com":
+            try:
+                return _instagram_page_fallback(url, cookies)
+            except Exception as fallback_exc:
+                raise RuntimeError("INSTAGRAM_PAGE_MEDIA_NOT_FOUND:" + str(fallback_exc)[:180])
         raise RuntimeError("NO_DIRECT_MEDIA_FORMATS")
 
     return {
