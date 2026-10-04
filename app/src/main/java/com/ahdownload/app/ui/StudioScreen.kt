@@ -2,6 +2,7 @@ package com.ahdownload.app.ui
 
 import android.content.ContentValues
 import android.content.Context
+import java.io.File
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -121,8 +122,8 @@ fun StudioScreen() {
                         Text(
                             listOfNotNull(
                                 mime.takeIf { it.isNotBlank() },
-                                size?.let(::formatBytes),
-                                durationMs?.takeIf { it > 0 }?.let(::formatDuration),
+                                size?.let(::studioFormatBytes),
+                                durationMs?.takeIf { it > 0 }?.let(::studioFormatDuration),
                                 dimensions
                             ).joinToString(" • "),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -248,10 +249,13 @@ private fun extractAudioToDownloads(context: Context, uri: Uri, sourceName: Stri
         .replace(Regex("[\\\\/:*?\"<>|]"), "_")
         .take(80)
         .ifBlank { "AHDownload_audio" }
+    if (Build.VERSION.SDK_INT < 29) {
+        return extractAudioToLegacyExternalFiles(context, uri, safeBase)
+    }
     val values = ContentValues().apply {
         put(MediaStore.Downloads.DISPLAY_NAME, safeBase + "_audio.m4a")
         put(MediaStore.Downloads.MIME_TYPE, "audio/mp4")
-        if (Build.VERSION.SDK_INT >= 29) put(MediaStore.Downloads.IS_PENDING, 1)
+        put(MediaStore.Downloads.IS_PENDING, 1)
     }
     val outputUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
         ?: error("Unable to create output file")
@@ -303,10 +307,8 @@ private fun extractAudioToDownloads(context: Context, uri: Uri, sourceName: Stri
                 }
             }
         }
-        if (Build.VERSION.SDK_INT >= 29) {
-            val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
-            resolver.update(outputUri, done, null, null)
-        }
+        val done = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+        resolver.update(outputUri, done, null, null)
         committed = true
         return safeBase + "_audio.m4a"
     } finally {
@@ -314,7 +316,48 @@ private fun extractAudioToDownloads(context: Context, uri: Uri, sourceName: Stri
     }
 }
 
-private fun formatDuration(ms: Long): String {
+private fun extractAudioToLegacyExternalFiles(context: Context, uri: Uri, safeBase: String): String {
+    val outputDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC)
+        ?: error("External files directory unavailable")
+    outputDir.mkdirs()
+    val output = File(outputDir, safeBase + "_audio.m4a")
+    if (output.exists()) output.delete()
+    context.contentResolver.openFileDescriptor(uri, "r").use { inputPfd ->
+        requireNotNull(inputPfd)
+        val extractor = MediaExtractor()
+        try {
+            extractor.setDataSource(inputPfd.fileDescriptor)
+            var audioTrack = -1
+            for (i in 0 until extractor.trackCount) {
+                val type = extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME).orEmpty()
+                if (type.startsWith("audio/")) { audioTrack = i; break }
+            }
+            require(audioTrack >= 0) { "No audio track" }
+            val format = extractor.getTrackFormat(audioTrack)
+            extractor.selectTrack(audioTrack)
+            val muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            try {
+                val outTrack = muxer.addTrack(format)
+                muxer.start()
+                val buffer = java.nio.ByteBuffer.allocate(1024 * 1024)
+                val info = android.media.MediaCodec.BufferInfo()
+                while (true) {
+                    info.offset = 0
+                    info.size = extractor.readSampleData(buffer, 0)
+                    if (info.size < 0) break
+                    info.presentationTimeUs = extractor.sampleTime
+                    info.flags = extractor.sampleFlags
+                    muxer.writeSampleData(outTrack, buffer, info)
+                    extractor.advance()
+                }
+                muxer.stop()
+            } finally { muxer.release() }
+        } finally { extractor.release() }
+    }
+    return output.name
+}
+
+private fun studioFormatDuration(ms: Long): String {
     val total = (ms / 1000L).coerceAtLeast(0)
     val h = total / 3600
     val m = (total % 3600) / 60
@@ -323,7 +366,7 @@ private fun formatDuration(ms: Long): String {
     else String.format(Locale.US, "%d:%02d", m, s)
 }
 
-private fun formatBytes(value: Long): String {
+private fun studioFormatBytes(value: Long): String {
     if (value < 1024) return "$value B"
     val units = arrayOf("KB", "MB", "GB", "TB")
     var n = value.toDouble()
