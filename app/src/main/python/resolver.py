@@ -108,8 +108,8 @@ def _instagram_candidates(html):
         r"<meta[^>]+property=[\"']og:video(?::secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']",
         r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:video(?::secure_url)?[\"']",
         r"<meta[^>]+name=[\"']twitter:player:stream[\"'][^>]+content=[\"']([^\"']+)[\"']",
-        r'"(?:video_url|playback_url|contentUrl)"\\s*:\\s*"([^"]+)"',
-        r'"video_versions"\\s*:\\s*\\[[^]]{0,12000}?"url"\\s*:\\s*"([^"]+)"',
+        r'"(?:video_url|playback_url|contentUrl)"\s*:\s*"([^"]+)"',
+        r'"video_versions"\s*:\s*\[[^]]{0,12000}?"url"\s*:\s*"([^"]+)"',
     )
     for pattern in patterns:
         candidates.extend(re.findall(pattern, html, re.I | re.S))
@@ -117,7 +117,7 @@ def _instagram_candidates(html):
     # Instagram frequently embeds the media URL in serialized JSON with
     # escaped slashes/query separators. Capture CDN URLs as a last resort.
     for raw in re.findall(
-        r'https?:\\/\\/(?:[^"\\\\<>\\s]|\\\\/)+',
+        r'https?:\\/\\/(?:[^"\\<>\s]|\\/)+',
         html,
         re.I,
     ):
@@ -127,7 +127,7 @@ def _instagram_candidates(html):
     result = []
     for raw in candidates:
         media_url = _decode_url(raw)
-        media_url = media_url.replace("\\\\u0026", "&").replace("\\\\u003d", "=")
+        media_url = media_url.replace("\\u0026", "&").replace("\\u003d", "=")
         if not media_url.startswith(("http://", "https://")):
             continue
         lower = media_url.lower()
