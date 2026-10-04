@@ -106,12 +106,11 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
    scope.launch{
     if(platform==null){
      DirectUrlResolver().resolve(clean).onSuccess{resolved->
-      val source=resolved.formats.firstOrNull()
-      if(source==null){error="الرابط المباشر لم يعرض ملفاً قابلاً للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
+      val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}
+      if(formats.isEmpty()){error="الرابط المباشر لم يعرض ملف وسائط قابلًا للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
       else{
-       val format=ResolvedFormat("direct",source.container?: "bin",null,null,null,source.estimatedSize,source.hasVideo,source.hasAudio,source.url,false,null,null)
-       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",listOf(format),resolved.durationMs?.div(1000.0))
-       AppLogger.info(context,"analysis.success","platform=Direct formats=1")
+       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds)
+       AppLogger.info(context,"analysis.success","platform=Direct formats="+formats.size)
       }
      }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
     }else{
