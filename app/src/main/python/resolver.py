@@ -190,6 +190,40 @@ def _instagram_page_fallback(url, cookies=None):
     raise RuntimeError("INSTAGRAM_PAGE_MEDIA_NOT_FOUND")
 
 
+def _youtube_merged_formats(formats):
+    videos = [
+        f for f in formats
+        if f["hasVideo"] and not f["hasAudio"]
+        and f["ext"] == "mp4"
+        and str(f.get("codec") or "").startswith("avc")
+    ]
+    audios = [
+        f for f in formats
+        if f["hasAudio"] and not f["hasVideo"]
+        and f["ext"] in {"m4a", "mp4"}
+        and str(f.get("codec") or "").startswith(("mp4a", "aac"))
+    ]
+    if not videos or not audios:
+        return []
+    audio = max(audios, key=lambda f: (f.get("abr") or 0, -(f.get("sizeBytes") or 0)))
+    merged = []
+    for video in sorted(videos, key=lambda f: (f.get("height") or 0), reverse=True):
+        merged.append({
+            **video,
+            "id": f"mux-{video['id']}-{audio['id']}",
+            "hasAudio": True,
+            "mergeRequired": True,
+            "audioUrl": audio["url"],
+            "audioExt": audio["ext"],
+            "audioSizeBytes": audio.get("sizeBytes"),
+            "sizeBytes": (
+                (video.get("sizeBytes") or 0) + (audio.get("sizeBytes") or 0)
+                if video.get("sizeBytes") or audio.get("sizeBytes") else None
+            ),
+        })
+    return merged
+
+
 def resolve(url, cookies=None):
     url = _normalize_url(url)
     if not _allowed(url):
@@ -253,6 +287,14 @@ def resolve(url, cookies=None):
         unique.append(f)
 
     unique.sort(key=_format_score, reverse=True)
+
+    if _host(url) == "youtube.com" or _host(url) == "youtu.be":
+        merged = _youtube_merged_formats(unique)
+        if merged:
+            # Put merged MP4/H.264 + AAC choices first. They are directly
+            # downloadable by the Android worker and do not require ffmpeg.
+            unique = merged + unique
+
     if not unique:
         raise RuntimeError("NO_DIRECT_MEDIA_FORMATS")
 
