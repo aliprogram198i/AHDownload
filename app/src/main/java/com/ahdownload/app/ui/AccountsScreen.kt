@@ -49,6 +49,7 @@ private const val VERIFY_INTERVAL_MS = 15 * 60 * 1000L
 @Composable
 fun AccountsScreen() {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { DesignAudit.recordComponent("AccountsScreen") }
     var selected by remember { mutableStateOf<PlatformAccount?>(null) }
     var refresh by remember { mutableIntStateOf(0) }
     var loginError by remember { mutableStateOf<String?>(null) }
