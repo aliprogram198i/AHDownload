@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowForward
+import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.Icon
@@ -75,7 +75,7 @@ fun AHGradientPrimaryButton(
             ) {
                 Text(text = text, style = MaterialTheme.typography.titleLarge, color = Color.White)
                 Icon(
-                    imageVector = Icons.Rounded.ArrowForward,
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                     contentDescription = null,
                     tint = Color.White,
                 )
