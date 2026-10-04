@@ -3,7 +3,7 @@ name: AHDownload Android APK
 on:
   pull_request:
   push:
-    branches: [main, release/v1.9.1-runtime-fix, fix/platform-download-v2, feature/v1.10-smart-media-manager]
+    branches: [main, release/v1.9.1-runtime-fix, fix/platform-download-v2]
     tags: ["v*"]
   workflow_dispatch:
 
