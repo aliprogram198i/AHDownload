@@ -94,3 +94,52 @@ fun AHDownloadTheme(
         content = content
     )
 }
+
+
+@Composable
+fun AHGradientButton(
+    onClick: () -> Unit,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    enabled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(16.dp)
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .clip(shape)
+            .background(if (enabled) AHBrandGradient else AHBrandGradientSoft)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            content = content
+        )
+    }
+}
+
+@Composable
+fun AHGradientOutlinedButton(
+    onClick: () -> Unit,
+    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    enabled: Boolean = true,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(14.dp)
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .clip(shape)
+            .background(AHBrandGradientSoft)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        contentAlignment = androidx.compose.ui.Alignment.Center
+    ) {
+        androidx.compose.foundation.layout.Row(
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+            content = content
+        )
+    }
+}
