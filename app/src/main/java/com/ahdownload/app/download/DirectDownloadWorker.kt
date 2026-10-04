@@ -51,7 +51,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         val mergeRequired = inputData.getBoolean(KEY_MERGE_REQUIRED, false)
         val audioUrl = inputData.getString(KEY_AUDIO_URL).orEmpty()
         val audioExtension = inputData.getString(KEY_AUDIO_EXTENSION).orEmpty()
-        val repo = DownloadRepository(applicationContext)
+        val repo = DownloadRepository.get(applicationContext)
         return try {
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             AppLogger.info(applicationContext, "download.start", "job=$jobId")
