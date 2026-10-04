@@ -156,7 +156,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     }
                     if (response.code in setOf(401, 403, 410) && sourceUrl.isNotBlank()) {
                         val fresh = MediaUrlRefresher(applicationContext)
-                            .refresh(sourceUrl, extension, mergeRequired)
+                            .refresh(sourceUrl, requestedExtension.ifBlank { "mp4" }, mergeRequired)
                             .getOrNull()
                         if (fresh != null && fresh.url.isNotBlank() && fresh.url != url) {
                             if (repo.requeueWithRefreshedFormat(jobId, fresh)) {
