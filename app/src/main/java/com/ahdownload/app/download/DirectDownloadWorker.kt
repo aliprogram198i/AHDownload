@@ -15,6 +15,7 @@ import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.data.MediaUrlRefresher
 import com.ahdownload.app.data.MediaValidator
 import com.ahdownload.app.domain.DownloadStatus
+import com.ahdownload.app.domain.DownloadProgress
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -198,9 +199,9 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                             if (done - checkpoint >= 256 * 1024L) {
                                 val progress = total?.let { ((done * 100L) / it).toInt().coerceIn(0, 100) } ?: 0
                                 val now = System.nanoTime()
-                                val elapsedSec = ((now - startedNanos) / 1_000_000_000L).coerceAtLeast(1L)
-                                val speed = ((done - existing) / elapsedSec).coerceAtLeast(0L)
-                                val eta = if (speed > 0L && total != null) ((total - done).coerceAtLeast(0L) / speed) else null
+                                val snapshot = DownloadProgress.calculate(done, total, startedNanos, now, existing)
+                                val speed = snapshot.speedBytesPerSecond
+                                val eta = snapshot.etaSeconds
                                 repo.update(jobId) { it.copy(progress = progress, downloadedBytes = done, speedBytesPerSec = speed, etaSeconds = eta) }
                                 if (done - lastNotifyBytes >= 512 * 1024L || now - lastNotifyNanos >= 2_000_000_000L) {
                                     notifyProgress(jobId, title, progress, eta, speed)
@@ -210,8 +211,8 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                                 checkpoint = done
                             }
                         }
-                        val elapsedSec = ((System.nanoTime() - startedNanos) / 1_000_000_000L).coerceAtLeast(1L)
-                        val speed = ((done - existing) / elapsedSec).coerceAtLeast(0L)
+                        val snapshot = DownloadProgress.calculate(done, total, startedNanos, System.nanoTime(), existing)
+                        val speed = snapshot.speedBytesPerSecond
                         repo.update(jobId) { it.copy(progress = 100, downloadedBytes = done, speedBytesPerSec = speed, etaSeconds = 0L) }
                         notifyProgress(jobId, title, 100, 0L, speed)
                     }
