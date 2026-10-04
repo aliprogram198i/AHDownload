@@ -219,7 +219,7 @@ private fun hasAuthenticatedSession(platform: String, cookies: String): Boolean 
     return when (platform) {
         "instagram" -> "sessionid" in names
         "facebook" -> "c_user" in names && "xs" in names
-        "youtube" -> setOf("SID", "SAPISID", "APISID").any(names::contains)
+        "youtube" -> setOf("SID", "SAPISID", "APISID", "__Secure-3PSID", "LOGIN_INFO").any(names::contains)
         else -> false
     }
 }
