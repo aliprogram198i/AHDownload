@@ -59,21 +59,20 @@ android {
                 signingConfig = signingConfigs.getByName("releaseOfficial")
             }
         }
-    }
-
-    tasks.matching {
-        it.name == "assembleRelease" || it.name == "bundleRelease"
-    }.configureEach {
-        doFirst {
-            check(hasReleaseSigning) {
-                "Release signing is required. Configure AH_KEYSTORE_FILE, AH_KEYSTORE_PASSWORD, AH_KEY_ALIAS, and AH_KEY_PASSWORD."
-            }
-        }
-        }
         debug { applicationIdSuffix = ".debug" }
     }
 
     buildFeatures { compose = true; buildConfig = true }
+}
+
+tasks.matching {
+    it.name == "assembleRelease" || it.name == "bundleRelease"
+}.configureEach {
+    doFirst {
+        check(hasReleaseSigning) {
+            "Release signing is required. Configure AH_KEYSTORE_FILE, AH_KEYSTORE_PASSWORD, AH_KEY_ALIAS, and AH_KEY_PASSWORD."
+        }
+    }
 }
 
 kotlin {
