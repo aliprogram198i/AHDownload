@@ -71,7 +71,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             clearFailureState(repo, jobId)
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             notifyProgress(jobId, title, 0, null, 0L)
-            val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
+            val dir = DownloadTempStore.jobDir(applicationContext, jobId)
             val extension = requestedExtension
                 .lowercase()
                 .replace(Regex("[^a-z0-9]"), "")
@@ -80,7 +80,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 ?: "bin"
             val safeTitle = title.replace(Regex("[\\/:*?\"<>|]"), "_").take(120)
             val target = uniqueTarget(dir, safeTitle, extension)
-            val part = File(dir, "$safeTitle.${target.name.substringAfterLast(".")}.part")
+            val part = File(dir, "${safeTitle}.${target.name.substringAfterLast(".")}.part")
             var existing = if (part.exists()) part.length() else 0L
             AppLogger.info(
                 applicationContext,
@@ -119,6 +119,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     downloadedBytes = if (target.exists()) target.length() else it.downloadedBytes,
                     totalBytes = if (target.exists()) target.length() else it.totalBytes,
                     outputUri = published) }
+                DownloadTempStore.clear(applicationContext, jobId)
                 AppLogger.info(applicationContext, "download.completed", "job=$jobId mode=mux")
                 notifyCompleted(jobId, title)
                 return Result.success()
@@ -286,6 +287,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     outputUri = published
                 )
             }
+            DownloadTempStore.clear(applicationContext, jobId)
             AppLogger.info(applicationContext, "download.completed", "job=$jobId")
             notifyCompleted(jobId, title)
             Result.success()
@@ -338,12 +340,14 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 Result.retry()
             } else {
                 markFailed(repo, jobId, "IO_RETRY_EXHAUSTED")
+                DownloadTempStore.clear(applicationContext, jobId)
                 AppLogger.error(applicationContext, "download.io_retry_exhausted", e, "job=$jobId attempts=$attempt")
                 notifyFailed(jobId, title, "تعذر إكمال التنزيل بعد عدة محاولات")
                 Result.failure()
             }
         } catch (e: Throwable) {
             repo.update(jobId) { it.copy(status = DownloadStatus.FAILED) }
+            DownloadTempStore.clear(applicationContext, jobId)
             AppLogger.error(applicationContext, "download.failed", e, "job=$jobId")
             Result.failure()
             }
