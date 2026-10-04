@@ -55,7 +55,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private data class LinkAnalysis(val url:String,val title:String,val platform:String,val formats:List<ResolvedFormat>,val durationSeconds:Double? = null)
+private data class LinkAnalysis(val url:String,val title:String,val platform:String,val formats:List<ResolvedFormat>,val durationSeconds:Double? = null,val thumbnailUrl:String? = null)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun AppRoot(){
@@ -109,7 +109,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
       val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}
       if(formats.isEmpty()){error="الرابط المباشر لم يعرض ملف وسائط قابلًا للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
       else{
-       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds)
+       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds,resolved.thumbnail)
        AppLogger.info(context,"analysis.success","platform=Direct formats="+formats.size)
       }
      }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
@@ -121,7 +121,7 @@ private data class LinkAnalysis(val url:String,val title:String,val platform:Str
        video + audio
       }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
-      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
+      else{analysis=LinkAnalysis(clean,resolved.title,platform,formats,resolved.durationSeconds,resolved.thumbnail);AppLogger.info(context,"analysis.success","platform="+platform+" formats="+formats.size+" video="+formats.count{it.hasVideo}+" audio="+formats.count{it.hasAudio}+" merged="+formats.count{it.mergeRequired})}
      }.onFailure{failure->error="تعذر استخراج وسائط حقيقية من "+platform+". لن يتم حفظ صفحة HTML كفيديو.";AppLogger.error(context,"analysis.failed",failure,"platform="+platform)}
     }
     analyzing=false
@@ -333,7 +333,8 @@ private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat?
   if(jobs.isEmpty())EmptyState(Icons.Default.Download,"لا توجد تنزيلات","ابدأ من الرئيسية بتحليل رابط فيديو.")else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(jobs,key={it.id}){job->DownloadCard(job,{repository.cancel(job.id)},{repository.delete(job.id)},{job.outputUri?.let{uri->openOutput(context,uri)}},{job.outputUri?.let{uri->shareOutput(context,uri)}})}}
  }}
 @Composable private fun StatPill(modifier:Modifier,title:String,value:String){Surface(modifier,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant){Column(Modifier.padding(14.dp)){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text(title,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
-@Composable private fun DownloadCard(job:DownloadJob,onCancel:()->Unit,onDelete:()->Unit,onOpen:()->Unit,onShare:()->Unit){Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){\n    if(!job.thumbnailUrl.isNullOrBlank()) AsyncImage(model=job.thumbnailUrl,contentDescription="صورة مصغرة",modifier=Modifier.fillMaxSize()) else Icon(if(job.title.contains("kbps",true))Icons.Default.Audiotrack else Icons.Default.Movie,null)\n   };Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f)){Text(job.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(statusLabel(job.status) + (job.durationMs?.let { " • " + formatDuration(it / 1000.0) } ?: ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(job.progress.toString()+"%",fontWeight=FontWeight.Bold)};LinearProgressIndicator(progress={job.progress.coerceIn(0,100)/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant);Text(job.totalBytes?.let{formatBytes(job.downloadedBytes)+" / "+formatBytes(it)}?:formatBytes(job.downloadedBytes),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){when{job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.QUEUED||job.status==DownloadStatus.RETRYING->TextButton(onClick=onCancel){Text("إلغاء")};job.status==DownloadStatus.COMPLETED&&job.outputUri!=null->{TextButton(onClick=onShare){Text("مشاركة")};TextButton(onClick=onOpen){Text("فتح")};TextButton(onClick=onDelete){Text("حذف")}};else->TextButton(onClick=onDelete){Text("حذف السجل")}}}}}
+@Composable private fun DownloadCard(job:DownloadJob,onCancel:()->Unit,onDelete:()->Unit,onOpen:()->Unit,onShare:()->Unit){Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){
+    if(!job.thumbnailUrl.isNullOrBlank()) AsyncImage(model=job.thumbnailUrl,contentDescription="صورة مصغرة",modifier=Modifier.fillMaxSize()) else Icon(if(job.title.contains("kbps",true))Icons.Default.Audiotrack else Icons.Default.Movie,null)\n   };Spacer(Modifier.width(11.dp));Column(Modifier.weight(1f)){Text(job.title,fontWeight=FontWeight.SemiBold,maxLines=2,overflow=TextOverflow.Ellipsis);Text(statusLabel(job.status) + (job.durationMs?.let { " • " + formatDuration(it / 1000.0) } ?: ""),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)};Text(job.progress.toString()+"%",fontWeight=FontWeight.Bold)};LinearProgressIndicator(progress={job.progress.coerceIn(0,100)/100f},modifier=Modifier.fillMaxWidth(),trackColor=MaterialTheme.colorScheme.surfaceVariant);Text(job.totalBytes?.let{formatBytes(job.downloadedBytes)+" / "+formatBytes(it)}?:formatBytes(job.downloadedBytes),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant);Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){when{job.status==DownloadStatus.DOWNLOADING||job.status==DownloadStatus.QUEUED||job.status==DownloadStatus.RETRYING->TextButton(onClick=onCancel){Text("إلغاء")};job.status==DownloadStatus.COMPLETED&&job.outputUri!=null->{TextButton(onClick=onShare){Text("مشاركة")};TextButton(onClick=onOpen){Text("فتح")};TextButton(onClick=onDelete){Text("حذف")}};else->TextButton(onClick=onDelete){Text("حذف السجل")}}}}}
 
 }
 
