@@ -64,8 +64,10 @@ class WebViewSessionBridge(private val context: Context) {
                 if (continuation.isActive) continuation.resume(value)
             }
 
-            fun currentCookies(): String? =
-                CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }
+            fun currentCookies(): String? {
+                CookieManager.getInstance().flush()
+                return CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }
+            }
 
             fun cookieAuthenticated(cookies: String?): Boolean {
                 val names = cookies.orEmpty()
@@ -102,6 +104,12 @@ class WebViewSessionBridge(private val context: Context) {
                       document.querySelectorAll('video').forEach(v => {
                         add(v.currentSrc);
                         add(v.src);
+                        try {
+                          v.muted = true;
+                          v.setAttribute('muted', '');
+                          v.playsInline = true;
+                          v.play().catch(() => {});
+                        } catch (_) {}
                       });
                       document.querySelectorAll('video source, source').forEach(s => add(s.src));
                       document.querySelectorAll('link[rel="preload"][as="video"], link[as="video"]').forEach(l => add(l.href));
@@ -188,11 +196,11 @@ class WebViewSessionBridge(private val context: Context) {
                         for (i in 0 until array.length()) addCandidate(array.optString(i))
                     }
 
-                    if (attempt >= 4 || capturedUrls.any { isLikelyMediaUrl(it) }) {
+                    if (attempt >= 8) {
                         val cookies = currentCookies()
                         finish(WebViewMediaSnapshot(cookies, pageTitle, capturedUrls.take(64), pageAuthenticated || cookieAuthenticated(cookies)))
                     } else {
-                        main.postDelayed({ inspect(view, attempt + 1) }, 1_500L)
+                        main.postDelayed({ inspect(view, attempt + 1) }, 1_000L)
                     }
                 }
             }
