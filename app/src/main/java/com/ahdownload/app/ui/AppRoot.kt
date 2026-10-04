@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.data.DirectUrlResolver
 import com.ahdownload.app.data.EmbeddedPlatformResolver
@@ -328,12 +329,13 @@ private fun formatDetails(format:ResolvedFormat):String{
 private fun chooseRecommendedVideo(formats:List<ResolvedFormat>):ResolvedFormat? = FormatRanker.recommendedVideo(formats)
 
 @Composable private fun DownloadsScreen(){
- val context=LocalContext.current;val repository=remember{DownloadRepository.get(context)};val jobs by repository.jobs.collectAsStateWithLifecycle();var filter by remember{mutableStateOf("all")}
- val visible=jobs.filter{when(filter){"active"->it.status in setOf(DownloadStatus.QUEUED,DownloadStatus.DOWNLOADING,DownloadStatus.RETRYING);"completed"->it.status==DownloadStatus.COMPLETED;"failed"->it.status==DownloadStatus.FAILED;else->true}}
+ val context=LocalContext.current;val repository=remember{DownloadRepository.get(context)};val vm:DownloadsViewModel=viewModel();val jobs by vm.state.collectAsStateWithLifecycle();val allJobs by repository.jobs.collectAsStateWithLifecycle()
+ var filter by remember{mutableStateOf(DownloadsViewModel.Filter.ALL)}
+ LaunchedEffect(filter){vm.setFilter(filter)}
  Column(Modifier.fillMaxSize().padding(horizontal=16.dp)){
-  Row(Modifier.fillMaxWidth().padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatPill(Modifier.weight(1f),"قيد التنفيذ",jobs.count{it.status==DownloadStatus.DOWNLOADING||it.status==DownloadStatus.QUEUED||it.status==DownloadStatus.RETRYING}.toString());StatPill(Modifier.weight(1f),"مكتمل",jobs.count{it.status==DownloadStatus.COMPLETED}.toString())}
-  SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top=12.dp)){listOf("all" to "الكل","active" to "جارية","completed" to "مكتملة","failed" to "فاشلة").forEachIndexed{index,(key,label)->SegmentedButton(filter==key,{filter=key},shape=SegmentedButtonDefaults.itemShape(index,3)){Text(label)}}}
-  if(visible.isEmpty())EmptyState(Icons.Default.Download,"لا توجد تنزيلات","ابدأ من الرئيسية بتحليل رابط فيديو.")else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(visible,key={it.id}){job->DownloadCard(job,{repository.cancel(job.id)},{repository.delete(job.id)},{repository.retry(job.id)},{job.outputUri?.let{uri->openOutput(context,uri)}},{job.outputUri?.let{uri->shareOutput(context,uri)}})}}
+  Row(Modifier.fillMaxWidth().padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(10.dp)){StatPill(Modifier.weight(1f),"قيد التنفيذ",allJobs.count{it.status==DownloadStatus.DOWNLOADING||it.status==DownloadStatus.QUEUED||it.status==DownloadStatus.RETRYING}.toString());StatPill(Modifier.weight(1f),"مكتمل",allJobs.count{it.status==DownloadStatus.COMPLETED}.toString())}
+  SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top=12.dp)){listOf(DownloadsViewModel.Filter.ALL to "الكل",DownloadsViewModel.Filter.ACTIVE to "جارية",DownloadsViewModel.Filter.COMPLETED to "مكتملة",DownloadsViewModel.Filter.FAILED to "فاشلة").forEachIndexed{index,(key,label)->SegmentedButton(filter==key,{filter=key},shape=SegmentedButtonDefaults.itemShape(index,3)){Text(label)}}}
+  if(jobs.isEmpty())EmptyState(Icons.Default.Download,"لا توجد تنزيلات","ابدأ من الرئيسية بتحليل رابط فيديو.")else LazyColumn(contentPadding=PaddingValues(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){items(jobs,key={it.id}){job->DownloadCard(job,{vm.cancel(job.id)},{vm.delete(job.id)},{vm.retry(job.id)},{job.outputUri?.let{uri->openOutput(context,uri)}},{job.outputUri?.let{uri->shareOutput(context,uri)}})}}
  }}
 @Composable private fun StatPill(modifier:Modifier,title:String,value:String){Surface(modifier,shape=RoundedCornerShape(18.dp),color=MaterialTheme.colorScheme.surfaceVariant){Column(Modifier.padding(14.dp)){Text(value,style=MaterialTheme.typography.titleLarge,fontWeight=FontWeight.Bold);Text(title,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}}}
 @Composable private fun DownloadCard(job:DownloadJob,onCancel:()->Unit,onDelete:()->Unit,onRetry:()->Unit,onOpen:()->Unit,onShare:()->Unit){Card(shape=RoundedCornerShape(20.dp),modifier=Modifier.animateContentSize()){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(9.dp)){Row(verticalAlignment=Alignment.CenterVertically){Box(Modifier.size(64.dp).clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.primaryContainer),contentAlignment=Alignment.Center){
