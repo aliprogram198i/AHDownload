@@ -8,6 +8,7 @@ import okhttp3.Request
 import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import com.ahdownload.app.domain.MediaType
 
 /**
  * Resolves a URL that already points to a media resource into the same
@@ -37,7 +38,6 @@ class DirectUrlResolver {
                 val length = response.header("Content-Range")?.substringAfter("/")?.toLongOrNull()
                     ?: response.header("Content-Length")?.toLongOrNull()
                 val mediaType = mediaTypeFrom(type, finalUrl)
-                if (mediaType == "file") error("DIRECT_URL_NOT_MEDIA")
                 val extension = extensionFrom(type, finalUrl) ?: "bin"
                 ResolvedMedia(
                     title = titleFromUrl(finalUrl),
@@ -53,9 +53,10 @@ class DirectUrlResolver {
                             height = null,
                             abr = null,
                             sizeBytes = length,
-                            hasVideo = mediaType == "video",
-                            hasAudio = mediaType == "audio",
-                            url = finalUrl
+                            hasVideo = mediaType == MediaType.VIDEO,
+                            hasAudio = mediaType == MediaType.AUDIO,
+                            url = finalUrl,
+                            mediaType = mediaType
                         )
                     )
                 )
@@ -63,13 +64,14 @@ class DirectUrlResolver {
         }
     }
 
-    private fun mediaTypeFrom(type: String?, url: String): String = when {
-        type?.startsWith("video/") == true -> "video"
-        type?.startsWith("audio/") == true -> "audio"
+    private fun mediaTypeFrom(type: String?, url: String): MediaType = when {
+        type?.startsWith("video/") == true -> MediaType.VIDEO
+        type?.startsWith("audio/") == true -> MediaType.AUDIO
+        type?.startsWith("image/") == true -> MediaType.FILE
         else -> when (extensionFrom(type, url)) {
-            "mp4", "webm", "mkv", "mov", "m4v", "avi" -> "video"
-            "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus" -> "audio"
-            else -> "file"
+            "mp4", "webm", "mkv", "mov", "m4v", "avi" -> MediaType.VIDEO
+            "mp3", "m4a", "aac", "wav", "flac", "ogg", "opus" -> MediaType.AUDIO
+            else -> MediaType.FILE
         }
     }
 
