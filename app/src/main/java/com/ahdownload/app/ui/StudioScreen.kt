@@ -123,7 +123,7 @@ fun StudioScreen() {
                             listOfNotNull(
                                 mime.takeIf { it.isNotBlank() },
                                 size?.let(::studioFormatBytes),
-                                durationMs?.takeIf { it > 0 }?.let(::formatDuration),
+                                durationMs?.takeIf { it > 0 }?.let(::studioFormatDuration),
                                 dimensions
                             ).joinToString(" • "),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
