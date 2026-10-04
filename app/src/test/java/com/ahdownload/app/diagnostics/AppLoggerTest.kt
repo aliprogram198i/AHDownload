@@ -39,5 +39,6 @@ class AppLoggerTest {
         assertFalse(output.contains("private"))
         assertTrue(output.contains("[SENSITIVE_REDACTED]"))
         assertTrue(output.contains("[URL_REDACTED]"))
+        assertTrue(output.contains("safe=yes"))
     }
 }
