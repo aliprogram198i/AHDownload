@@ -75,7 +75,7 @@ class DownloadRepository(context: Context) {
         return job
     }
 
-    fun update(id: String, change: (DownloadJob) -> DownloadJob) = synchronized(lock) {
+    fun update(id: String, change: (DownloadJob) -> DownloadJob) {\n        synchronized(lock) {
         val current = find(id) ?: return
         val next = change(current)
         val values = android.content.ContentValues().apply {
@@ -127,7 +127,7 @@ class DownloadRepository(context: Context) {
 
         runCatching {
             val array = org.json.JSONArray(raw)
-            db.beginTransaction()
+            db.writableDatabase.beginTransaction()
             try {
                 for (i in 0 until array.length()) {
                     val o = array.getJSONObject(i)
@@ -143,10 +143,10 @@ class DownloadRepository(context: Context) {
                         outputUri = o.optString("outputUri").takeIf { it.isNotBlank() }
                     ))
                 }
-                db.setTransactionSuccessful()
+                db.writableDatabase.setTransactionSuccessful()
                 prefs.edit().remove("jobs").apply()
             } finally {
-                db.endTransaction()
+                db.writableDatabase.endTransaction()
             }
         }
     }
@@ -173,5 +173,5 @@ class DownloadRepository(context: Context) {
 
     private fun titleFromUrl(url: String): String =
         url.substringAfterLast('/').substringBefore('?').ifBlank { "AHDownload file" }
-            .replace(Regex("[\\\\/:*?\\"<>|]"), "_").take(120)
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_").take(120)
 }
