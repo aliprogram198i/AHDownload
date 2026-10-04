@@ -19,13 +19,13 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
-    companion object { private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36" }
     companion object {
         const val KEY_JOB_ID = "job_id"
         const val KEY_URL = "url"
         const val KEY_TITLE = "title"
         const val KEY_EXTENSION = "extension"
         const val KEY_SOURCE_URL = "source_url"
+        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36"
     }
 
     private val client = OkHttpClient.Builder()
@@ -59,7 +59,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "*/*")
             if (sourceUrl.isNotBlank()) requestBuilder.header("Referer", sourceUrl)
-            val sourceHost = runCatching { okhttp3.HttpUrl.parse(sourceUrl)?.host?.lowercase() }.getOrNull().orEmpty()
+            val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
             if (sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ||
                 sourceHost == "youtube.com" || sourceHost.endsWith(".youtube.com")) {
                 runCatching { CookieManager.getInstance().getCookie(sourceUrl) }
