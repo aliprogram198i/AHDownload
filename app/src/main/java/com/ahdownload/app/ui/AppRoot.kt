@@ -874,6 +874,19 @@ private fun shareOutput(context:Context,uriString:String){
 private fun formatLabel(format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+" kbps"}?:"جودة غير محددة";val dimensions=if((format.width?:0)>0&&(format.height?:0)>0)format.width.toString()+"×"+format.height else null;val size=format.sizeBytes?.let{" • "+formatBytes(it)}?:"";return quality+(dimensions?.let{" • "+it}?:"")+(if(format.hasAudio)" • صوت" else "")+" • "+format.ext.uppercase(Locale.US)+size}
 private fun buildDownloadTitle(title:String,format:ResolvedFormat):String{val quality=format.height?.let{it.toString()+"p"}?:format.abr?.let{it.toInt().toString()+"kbps"}?:format.ext;val item=format.itemLabel?.let{" • "+it} ?: "";return title.take(82)+item+" • "+quality}
 private fun statusLabel(status:DownloadStatus)=when(status){DownloadStatus.COMPLETED->"مكتمل";DownloadStatus.DOWNLOADING->"جارٍ التنزيل";DownloadStatus.QUEUED->"في الانتظار";DownloadStatus.RETRYING->"إعادة المحاولة";DownloadStatus.FAILED->"فشل";DownloadStatus.CANCELLED->"ملغى";else->status.name}
+private fun friendlyResolverError(platform:String,failure:Throwable):String{
+ val message=failure.message.orEmpty().lowercase(Locale.US)
+ return when{
+  platform=="Instagram" && ("empty media response" in message || "instagr" in message && "not found" in message) ->
+   "Instagram لم يعرض وسائط قابلة للاستخراج من هذه الصفحة. إذا كان المحتوى خاصاً، سجّل الدخول من الحسابات ثم أعد التحليل."
+  message.contains("sign in") || message.contains("login") || message.contains("auth_session") ->
+   "هذا المصدر يحتاج جلسة حساب صالحة. افتح الحسابات، أكمل تسجيل الدخول ثم أعد التحليل."
+  message.contains("bot") || message.contains("captcha") || message.contains("challenge") ->
+   "المصدر يطلب تحققاً إضافياً الآن. أعد المحاولة لاحقاً أو استخدم جلسة حساب صالحة."
+  else -> "تعذر استخراج وسائط حقيقية من "+platform+". لم يتم حفظ صفحة الويب كملف."
+ }
+}
+
 private fun normalizeInputUrl(raw:String):String{
  var value=raw.replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"),"").trim()
  if(!value.startsWith("http://",true)&&!value.startsWith("https://",true)) value="https://"+value
