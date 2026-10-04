@@ -173,5 +173,5 @@ class DownloadRepository(context: Context) {
 
     private fun titleFromUrl(url: String): String =
         url.substringAfterLast('/').substringBefore('?').ifBlank { "AHDownload file" }
-            .replace(Regex("[\\/:*?"<>|]"), "_").take(120)
+            .replace(Regex("[\\\\/:*?\\"<>|]"), "_").take(120)
 }
