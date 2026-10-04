@@ -31,35 +31,37 @@ fun DiagnosticsScreen() {
         Spacer(Modifier.height(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { refreshLog() }) {
-                Icon(Icons.Default.Refresh, null)
-                Spacer(Modifier.width(6.dp))
-                Text("تحديث")
+                OutlinedButton(onClick = { refreshLog() }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Refresh, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("تحديث")
+                }
+                Button(onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", log))
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.ContentCopy, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("نسخ السجل")
+                }
             }
-            Button(onClick = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(ClipData.newPlainText("AHDownload diagnostic log", log))
-            }) {
-                Icon(Icons.Default.ContentCopy, null)
-                Spacer(Modifier.width(6.dp))
-                Text("نسخ السجل")
-            }
-            OutlinedButton(onClick = {
-                val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log) }
-                context.startActivity(Intent.createChooser(share, "مشاركة سجل AHDownload"))
-            }) {
-                Icon(Icons.Default.Share, null)
-                Spacer(Modifier.width(6.dp))
-                Text("مشاركة")
-            }
-            OutlinedButton(onClick = {
-                AppLogger.clear(context)
-                refreshLog()
-            }) {
-                Icon(Icons.Default.DeleteSweep, null)
-                Spacer(Modifier.width(6.dp))
-                Text("مسح")
-            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = {
+                    val share = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, log) }
+                    context.startActivity(Intent.createChooser(share, "مشاركة سجل AHDownload"))
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Share, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("مشاركة")
+                }
+                OutlinedButton(onClick = {
+                    AppLogger.clear(context)
+                    refreshLog()
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.DeleteSweep, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("مسح")
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(
