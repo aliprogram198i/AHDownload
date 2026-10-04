@@ -3,7 +3,6 @@ package com.ahdownload.app
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -21,25 +20,25 @@ class VisualSmokeTest {
 
     @Test
     fun primaryScreensRenderAndProduceEvidence() {
-        composeRule.onNodeWithText("AHDownload").assertExists()
+        composeRule.onNodeWithText("AHDownload").fetchSemanticsNode()
         capture("home")
 
         composeRule.onNodeWithText("التنزيلات").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("التنزيلات").assertExists()
+        composeRule.onNodeWithText("التنزيلات").fetchSemanticsNode()
         capture("downloads")
 
         composeRule.onNodeWithText("الاستوديو").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Smart Studio").assertExists()
+        composeRule.onNodeWithText("Smart Studio").fetchSemanticsNode()
         capture("studio")
 
         composeRule.onNodeWithText("الإعدادات").performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("إعدادات AHDownload").assertExists()
+        composeRule.onNodeWithText("إعدادات AHDownload").fetchSemanticsNode()
         capture("settings")
 
-        composeRule.onNodeWithText("سجل التطبيق").assertExists()
+        composeRule.onNodeWithText("سجل التطبيق").fetchSemanticsNode()
     }
 
     private fun capture(name: String) {
@@ -60,7 +59,7 @@ class VisualSmokeTest {
                     Context.MODE_PRIVATE
                 )
                 val outputFile = File(directory, "$name.png")
-                FileOutputStream(outputFile).use { output: FileOutputStream ->
+                FileOutputStream(outputFile).use { output ->
                     check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                         "VISUAL_CAPTURE_WRITE_FAILED"
                     }
