@@ -69,7 +69,7 @@ class EmbeddedPlatformResolver(
                     val host = android.net.Uri.parse(cleanUrl).host.orEmpty().lowercase()
                     val sessionEligible =
                         host == "youtube.com" || host.endsWith(".youtube.com") ||
-                        host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com")
+                        host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") || host == "facebook.com" || host.endsWith(".facebook.com")
 
                     if (!sessionEligible || context == null) throw first
 
