@@ -160,7 +160,7 @@ private fun NavItem(
  val context=LocalContext.current;val repository=remember{DownloadRepository.get(context)};val scope=rememberCoroutineScope()
  var url by remember{mutableStateOf("")};var analyzing by remember{mutableStateOf(false)};var analysis by remember{mutableStateOf<LinkAnalysis?>(null)};var error by remember{mutableStateOf<String?>(null)}
  val settingsPrefs=remember{context.getSharedPreferences("ahdownload_settings",Context.MODE_PRIVATE)}
- val profile=remember{mutableStateOf(DownloadProfile.from(settingsPrefs.getString("download_profile",DownloadProfile.BALANCED.name)))}
+ val selectedProfile=DownloadProfile.from(settingsPrefs.getString("download_profile",DownloadProfile.BALANCED.name))
  LaunchedEffect(Unit){val intent=(context as? android.app.Activity)?.intent;if(intent?.action==Intent.ACTION_SEND&&intent.type=="text/plain")url=intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty().trim()}
  LazyColumn(Modifier.fillMaxSize(),contentPadding=PaddingValues(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)){
   item{HomeHeader()}
@@ -177,15 +177,15 @@ private fun NavItem(
       val formats=resolved.formats
       if(formats.isEmpty()){error="الرابط المباشر لم يعرض ملفًا قابلاً للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
       else{
-       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds,resolved.thumbnail,formats.firstOrNull()?.mediaType ?: MediaType.FILE, profile.value)
+       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds,resolved.thumbnail,formats.firstOrNull()?.mediaType ?: MediaType.FILE, selectedProfile)
        AppLogger.info(context,"analysis.success","platform=Direct formats="+formats.size)
       }
      }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
     }else{
      EmbeddedPlatformResolver(context).resolve(clean).onSuccess{resolved->
       val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}.let { raw ->
-       val video=FormatRanker.rankVideo(raw.filter{it.hasVideo},profile.value)
-       val audio=FormatRanker.rankAudio(raw.filter{it.hasAudio&&!it.hasVideo},profile.value)
+       val video=FormatRanker.rankVideo(raw.filter{it.hasVideo},selectedProfile)
+       val audio=FormatRanker.rankAudio(raw.filter{it.hasAudio&&!it.hasVideo},selectedProfile)
        video + audio
       }
       if(formats.isEmpty()){error="تم الوصول إلى المصدر، لكن لم يتم العثور على صيغ فيديو أو صوت حقيقية.";AppLogger.error(context,"analysis.no_formats",details="platform="+platform)}
