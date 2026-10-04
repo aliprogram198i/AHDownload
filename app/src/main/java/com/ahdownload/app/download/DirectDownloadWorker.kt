@@ -17,6 +17,7 @@ import com.ahdownload.app.data.MediaValidator
 import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.domain.DownloadProgress
+import com.ahdownload.app.domain.DownloadLifecyclePolicy
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -333,7 +334,7 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                 notifyFailed(jobId, title, "انتهت صلاحية مصدر الوسائط؛ أعد المحاولة")
                 return Result.failure()
             }
-            if (attempt < MAX_RETRY_ATTEMPTS) {
+            if (DownloadLifecyclePolicy.shouldRetryIo(attempt, MAX_RETRY_ATTEMPTS)) {
                 repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, errorCode = "IO_RETRY_$attempt") }
                 AppLogger.error(applicationContext, "download.io_retry", e, "job=$jobId attempt=$attempt")
                 notifyFailed(jobId, title, "تعذر الاتصال مؤقتاً؛ ستتم إعادة المحاولة تلقائياً")
