@@ -50,8 +50,13 @@ jobs:
       - name: Build unsigned release APK for pull request validation
         if: github.event_name == 'pull_request'
         run: gradle --no-daemon assembleRelease
-      - name: Verify APK exists
+      - name: Verify signed APK exists
+        if: github.event_name != 'pull_request'
         run: test -s app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify unsigned PR APK exists
+        if: github.event_name == 'pull_request'
+        run: test -s app/build/outputs/apk/release/app-release-unsigned.apk
       - name: Calculate SHA-256
         id: checksum
         run: echo "sha256=$(sha256sum app/build/outputs/apk/release/app-release.apk | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
