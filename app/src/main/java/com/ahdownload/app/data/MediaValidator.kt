@@ -17,7 +17,7 @@ object MediaValidator {
         }
 
         val textPrefix = sample.copyOf(minOf(sample.size, 64))
-            .toString(Charsets.UTF_8)
+            .let { String(it, Charsets.UTF_8) }
             .trimStart('﻿', ' ', '\t', '\r', '\n')
             .lowercase(Locale.US)
         require(
