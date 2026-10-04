@@ -1,6 +1,7 @@
 package com.ahdownload.app.ui
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.domain.DownloadJob
@@ -11,7 +12,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
-class DownloadsViewModel(private val repository: DownloadRepository) : ViewModel() {
+class DownloadsViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = DownloadRepository.get(application)
     private val filter = MutableStateFlow(Filter.ALL)
 
     val state: StateFlow<List<DownloadJob>> = combine(repository.jobs, filter) { jobs, selected ->
