@@ -6,6 +6,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
+import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
@@ -16,8 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-val AHBrandGradient = Brush.linearGradient(listOf(Color(0xFF315BFF), Color(0xFF7B4DFF), Color(0xFF16B8B1)))
-val AHBrandGradientSoft = Brush.linearGradient(listOf(Color(0xFFE7ECFF), Color(0xFFF0E9FF), Color(0xFFE2F8F6)))
+val AHBrandGradient = Brush.linearGradient(listOf(Color(0xFF4C6FFF), Color(0xFF8B5CF6), Color(0xFF20C7B7)))
+val AHBrandGradientSoft = Brush.linearGradient(listOf(Color(0xFF18203A), Color(0xFF211A35), Color(0xFF122C2B)))
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF315BFF),
@@ -46,29 +47,29 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFB9C7FF),
-    onPrimary = Color(0xFF002D6E),
-    primaryContainer = Color(0xFF243F99),
-    onPrimaryContainer = Color(0xFFDCE7FF),
-    secondary = Color(0xFF7BE0DB),
-    onSecondary = Color(0xFF003735),
-    secondaryContainer = Color(0xFF07504D),
-    onSecondaryContainer = Color(0xFFA3ECE7),
-    tertiary = Color(0xFFD0BFFF),
-    onTertiary = Color(0xFF39205F),
-    tertiaryContainer = Color(0xFF503782),
-    onTertiaryContainer = Color(0xFFEADDFF),
-    background = Color(0xFF0D1015),
-    onBackground = Color(0xFFE4E7ED),
-    surface = Color(0xFF0D1015),
-    onSurface = Color(0xFFE4E7ED),
-    surfaceVariant = Color(0xFF20252D),
-    onSurfaceVariant = Color(0xFFC3C7D0),
-    outline = Color(0xFF8D929D),
-    outlineVariant = Color(0xFF424750),
-    error = Color(0xFFFFB4AB),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6)
+    primary = Color(0xFF6E8BFF),
+    onPrimary = Color(0xFF07102C),
+    primaryContainer = Color(0xFF1B2858),
+    onPrimaryContainer = Color(0xFFDDE4FF),
+    secondary = Color(0xFF32D6C5),
+    onSecondary = Color(0xFF06201D),
+    secondaryContainer = Color(0xFF123E3A),
+    onSecondaryContainer = Color(0xFFB8FFF7),
+    tertiary = Color(0xFFAA83FF),
+    onTertiary = Color(0xFF1B0D36),
+    tertiaryContainer = Color(0xFF35205F),
+    onTertiaryContainer = Color(0xFFEBDDFF),
+    background = Color(0xFF080A10),
+    onBackground = Color(0xFFF4F7FF),
+    surface = Color(0xFF10131B),
+    onSurface = Color(0xFFF4F7FF),
+    surfaceVariant = Color(0xFF161A24),
+    onSurfaceVariant = Color(0xFF9AA3B5),
+    outline = Color(0xFF303746),
+    outlineVariant = Color(0xFF252B38),
+    error = Color(0xFFFF8A9B),
+    errorContainer = Color(0xFF3A1720),
+    onErrorContainer = Color(0xFFFFD9DF)
 )
 
 private val AppTypography = Typography().run {
@@ -85,7 +86,7 @@ private val AppTypography = Typography().run {
 
 @Composable
 fun AHDownloadTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
@@ -106,7 +107,7 @@ fun AHDownloadTheme(
 @Composable
 fun AHGradientButton(
     onClick: () -> Unit,
-    modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
+    modifier: Modifier = Modifier,
     enabled: Boolean = true,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
@@ -115,9 +116,9 @@ fun AHGradientButton(
     androidx.compose.foundation.layout.Box(
         modifier = modifier
             .clip(shape)
-            .background(if (enabled) AHBrandGradient else AHBrandGradientSoft)
+            .background(if (enabled) AHBrandGradient else MaterialTheme.colorScheme.surfaceVariant)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 13.dp),
         contentAlignment = androidx.compose.ui.Alignment.Center
     ) {
         CompositionLocalProvider(LocalContentColor provides Color.White) {

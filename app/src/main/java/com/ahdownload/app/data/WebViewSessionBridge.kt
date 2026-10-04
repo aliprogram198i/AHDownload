@@ -104,6 +104,11 @@ class WebViewSessionBridge(private val context: Context) {
                         add(v.src);
                       });
                       document.querySelectorAll('video source, source').forEach(s => add(s.src));
+                      document.querySelectorAll('link[rel="preload"][as="video"], link[as="video"]').forEach(l => add(l.href));
+                      document.querySelectorAll('[data-video-url], [data-media-url]').forEach(el => {
+                        add(el.getAttribute('data-video-url'));
+                        add(el.getAttribute('data-media-url'));
+                      });
                       document.querySelectorAll(
                         'meta[property="og:video"], meta[property="og:video:secure_url"], ' +
                         'meta[name="twitter:player:stream"]'
@@ -117,15 +122,25 @@ class WebViewSessionBridge(private val context: Context) {
                         .replace(/\\u003A/gi, ':')
                         .replace(/\\u0026/gi, '&');
                       const mediaPatterns = [
-                        /https?:\\/\\/[^"'<>\\s]+?\\.(?:mp4|m4v|webm|mov)(?:[?#][^"'<>\\s]*)?/gi,
-                        /https?:\\/\\/[^"'<>\\s]*(?:cdninstagram|fbcdn|scontent)[^"'<>\\s]*/gi,
-                        /"video_url"\\s*:\\s*"([^"]+)"/gi,
-                        /"playback_url"\\s*:\\s*"([^"]+)"/gi
+                        /https?:\/\/[^"'<>\s]+?\.(?:mp4|m4v|webm|mov)(?:[?#][^"'<>\s]*)?/gi,
+                        /https?:\/\/[^"'<>\s]*(?:cdninstagram|fbcdn|scontent)[^"'<>\s]*/gi,
+                        /"(?:video_url|playback_url|browser_native_hd_url|browser_native_sd_url|contentUrl)"\s*:\s*"([^"]+)"/gi,
+                        /"(?:video_versions|video_versions_2)"\s*:\s*\[(.*?)\]/gi,
+                        /"src"\s*:\s*"(https?:\\/\\/[^"]+)"/gi
                       ];
                       mediaPatterns.forEach(re => {
                         let match;
                         while ((match = re.exec(escaped)) !== null) add(match[1] || match[0]);
                       });
+                      try {
+                        const decodedHtml = decodeURIComponent(escaped);
+                        if (decodedHtml !== escaped) {
+                          mediaPatterns.forEach(re => {
+                            let match;
+                            while ((match = re.exec(decodedHtml)) !== null) add(match[1] || match[0]);
+                          });
+                        }
+                      } catch (_) {}
 
                       try {
                         performance.getEntriesByType('resource').forEach(e => {
