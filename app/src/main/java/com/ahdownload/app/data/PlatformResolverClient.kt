@@ -21,7 +21,9 @@ data class ResolvedFormat(
     val url: String,
     val mergeRequired: Boolean = false,
     val audioUrl: String? = null,
-    val audioExt: String? = null
+    val audioExt: String? = null,
+    val httpHeaders: Map<String, String> = emptyMap(),
+    val audioHeaders: Map<String, String> = emptyMap()
 )
 
 data class ResolvedMedia(
@@ -73,7 +75,9 @@ class PlatformResolverClient(
                                 url = mediaUrl,
                                 mergeRequired = f.optBoolean("mergeRequired"),
                                 audioUrl = f.optString("audioUrl").takeIf { it.isNotBlank() },
-                                audioExt = f.optString("audioExt").takeIf { it.isNotBlank() }
+                                audioExt = f.optString("audioExt").takeIf { it.isNotBlank() },
+                                httpHeaders = parseHeaders(f.optJSONObject("httpHeaders")),
+                                audioHeaders = parseHeaders(f.optJSONObject("audioHeaders"))
                             )
                         )
                     }
@@ -89,5 +93,17 @@ class PlatformResolverClient(
                 )
             }
         }
+    }
+
+    private fun parseHeaders(json: JSONObject?): Map<String, String> {
+        if (json == null) return emptyMap()
+        val result = linkedMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = json.optString(key).trim()
+            if (value.isNotBlank()) result[key] = value
+        }
+        return result
     }
 }

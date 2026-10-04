@@ -181,7 +181,7 @@ private fun NavItem(
   }}
   if(analyzing) item{AnalysisSkeleton()}
   item{AnimatedVisibility(error!=null){InfoCard(Icons.Default.Warning,"تعذر تحليل الرابط",error.orEmpty())}}
-  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext,selected.mergeRequired,selected.audioUrl,selected.audioExt,info.thumbnailUrl,info.durationSeconds?.times(1000L)?.toLong());url="";analysis=null;openDownloads()}}}
+  analysis?.let{info->item{MediaAnalysisCard(info){selected->repository.create(selected.url,buildDownloadTitle(info.title,selected),selected.ext,selected.mergeRequired,selected.audioUrl,selected.audioExt,selected.httpHeaders,selected.audioHeaders,info.thumbnailUrl,info.durationSeconds?.times(1000L)?.toLong());url="";analysis=null;openDownloads()}}}
  }
 }
 

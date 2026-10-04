@@ -42,6 +42,8 @@ class DownloadRepository private constructor(context: Context) {
         mergeRequired: Boolean = false,
         audioUrl: String? = null,
         audioExtension: String? = null,
+        httpHeaders: Map<String, String> = emptyMap(),
+        audioHeaders: Map<String, String> = emptyMap(),
         thumbnailUrl: String? = null,
         durationMs: Long? = null
     ): DownloadJob {
@@ -59,7 +61,9 @@ class DownloadRepository private constructor(context: Context) {
             extension = extension,
             mergeRequired = mergeRequired,
             audioUrl = audioUrl,
-            audioExtension = audioExtension
+            audioExtension = audioExtension,
+            httpHeaders = httpHeaders,
+            audioHeaders = audioHeaders
         )
         synchronized(lock) { insert(job) }
         trimHistory()
@@ -79,7 +83,9 @@ class DownloadRepository private constructor(context: Context) {
                 DirectDownloadWorker.KEY_EXTENSION to extension.orEmpty(),
                 DirectDownloadWorker.KEY_MERGE_REQUIRED to mergeRequired,
                 DirectDownloadWorker.KEY_AUDIO_URL to audioUrl.orEmpty(),
-                DirectDownloadWorker.KEY_AUDIO_EXTENSION to audioExtension.orEmpty()
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to audioExtension.orEmpty(),
+                DirectDownloadWorker.KEY_HTTP_HEADERS to encodeHeaders(httpHeaders),
+                DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(audioHeaders)
             ))
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
@@ -113,6 +119,8 @@ class DownloadRepository private constructor(context: Context) {
                 put("merge_required", if (next.mergeRequired) 1 else 0)
                 if (next.audioUrl != null) put("audio_url", next.audioUrl) else putNull("audio_url")
                 if (next.audioExtension != null) put("audio_extension", next.audioExtension) else putNull("audio_extension")
+                put("http_headers", encodeHeaders(next.httpHeaders))
+                put("audio_headers", encodeHeaders(next.audioHeaders))
                 if (next.thumbnailUrl != null) put("thumbnail_url", next.thumbnailUrl) else putNull("thumbnail_url")
                 if (next.durationMs != null) put("duration_ms", next.durationMs) else putNull("duration_ms")
             }
@@ -150,7 +158,9 @@ class DownloadRepository private constructor(context: Context) {
                 DirectDownloadWorker.KEY_EXTENSION to job.extension.orEmpty(),
                 DirectDownloadWorker.KEY_MERGE_REQUIRED to job.mergeRequired,
                 DirectDownloadWorker.KEY_AUDIO_URL to job.audioUrl.orEmpty(),
-                DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty()
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to job.audioExtension.orEmpty(),
+                DirectDownloadWorker.KEY_HTTP_HEADERS to encodeHeaders(job.httpHeaders),
+                DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(job.audioHeaders)
             ))
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
@@ -182,7 +192,9 @@ class DownloadRepository private constructor(context: Context) {
                 DirectDownloadWorker.KEY_EXTENSION to format.ext,
                 DirectDownloadWorker.KEY_MERGE_REQUIRED to format.mergeRequired,
                 DirectDownloadWorker.KEY_AUDIO_URL to format.audioUrl.orEmpty(),
-                DirectDownloadWorker.KEY_AUDIO_EXTENSION to format.audioExt.orEmpty()
+                DirectDownloadWorker.KEY_AUDIO_EXTENSION to format.audioExt.orEmpty(),
+                DirectDownloadWorker.KEY_HTTP_HEADERS to encodeHeaders(format.httpHeaders),
+                DirectDownloadWorker.KEY_AUDIO_HEADERS to encodeHeaders(format.audioHeaders)
             ))
             .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, Duration.ofSeconds(10))
@@ -195,6 +207,8 @@ class DownloadRepository private constructor(context: Context) {
                 mergeRequired = format.mergeRequired,
                 audioUrl = format.audioUrl,
                 audioExtension = format.audioExt,
+                httpHeaders = format.httpHeaders,
+                audioHeaders = format.audioHeaders,
                 status = DownloadStatus.QUEUED,
                 progress = 0,
                 downloadedBytes = 0L,
@@ -257,6 +271,8 @@ class DownloadRepository private constructor(context: Context) {
             put("merge_required", if (job.mergeRequired) 1 else 0)
             if (job.audioUrl != null) put("audio_url", job.audioUrl)
             if (job.audioExtension != null) put("audio_extension", job.audioExtension)
+            put("http_headers", encodeHeaders(job.httpHeaders))
+            put("audio_headers", encodeHeaders(job.audioHeaders))
             if (job.thumbnailUrl != null) put("thumbnail_url", job.thumbnailUrl)
             if (job.durationMs != null) put("duration_ms", job.durationMs)
         }
@@ -321,8 +337,26 @@ class DownloadRepository private constructor(context: Context) {
             extension = nullableText("extension"),
             mergeRequired = getInt(getColumnIndexOrThrow("merge_required")) != 0,
             audioUrl = nullableText("audio_url"),
-            audioExtension = nullableText("audio_extension")
+            audioExtension = nullableText("audio_extension"),
+            httpHeaders = decodeHeaders(nullableText("http_headers")),
+            audioHeaders = decodeHeaders(nullableText("audio_headers"))
         )
+    }
+
+    private fun encodeHeaders(headers: Map<String, String>): String =
+        org.json.JSONObject(headers).toString()
+
+    private fun decodeHeaders(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val json = runCatching { org.json.JSONObject(raw) }.getOrNull() ?: return emptyMap()
+        val result = linkedMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = json.optString(key).trim()
+            if (value.isNotBlank()) result[key] = value
+        }
+        return result
     }
 
     private fun titleFromUrl(url: String): String =
