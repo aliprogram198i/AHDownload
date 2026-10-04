@@ -17,8 +17,7 @@ class AppLoggerTest {
 
     @Test
     fun redactsCredentialLikeFields() {
-        val input = "Cookie: sessionid=secret-cookie
-Authorization: Bearer top-secret-token"
+        val input = "Cookie: sessionid=secret-cookie\nAuthorization: Bearer top-secret-token"
         val output = AppLogger.sanitizeForTesting(input)
         assertFalse(output.contains("secret-cookie"))
         assertFalse(output.contains("top-secret-token"))
