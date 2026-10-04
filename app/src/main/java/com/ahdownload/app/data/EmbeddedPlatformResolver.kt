@@ -141,6 +141,7 @@ class EmbeddedPlatformResolver(
                     .url(candidate)
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "*/*")
+                    .header("Accept-Language", "en-US,en;q=0.9")
                     .header("Referer", sourceUrl)
                      .header("Origin", if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "https://www.facebook.com" else "https://www.instagram.com")
                     .header("Range", "bytes=0-1023")
@@ -162,7 +163,7 @@ class EmbeddedPlatformResolver(
                     val ext = extensionFor(contentType, candidate)
                     val size = response.header("Content-Length")?.toLongOrNull()?.takeIf { it > 0L }
                     return ResolvedMedia(
-                        title = snapshot.title?.takeIf { it.isNotBlank() } ?: "Instagram video",
+                        title = snapshot.title?.takeIf { it.isNotBlank() } ?: if (sourceUrl.contains("facebook.", true) || sourceUrl.contains("fb.watch", true)) "Facebook video" else "Instagram video",
                         thumbnail = null,
                         durationSeconds = null,
                         extractor = if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "FacebookWebView" else "InstagramWebView",
