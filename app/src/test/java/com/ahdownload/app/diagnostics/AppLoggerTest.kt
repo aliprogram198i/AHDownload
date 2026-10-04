@@ -23,4 +23,21 @@ class AppLoggerTest {
         assertFalse(output.contains("top-secret-token"))
         assertTrue(output.contains("[SENSITIVE_REDACTED]"))
     }
+
+    @Test
+    fun redactsBearerAndAdditionalQuerySecrets() {
+        val input = """
+            Authorization: Bearer super-secret-token
+            refresh_token=refresh-secret
+            https://cdn.example.com/file.mp4?signature=secret-signature&oe=private&safe=yes
+        """.trimIndent()
+        val output = AppLogger.sanitizeForTesting(input)
+
+        assertFalse(output.contains("super-secret-token"))
+        assertFalse(output.contains("refresh-secret"))
+        assertFalse(output.contains("secret-signature"))
+        assertFalse(output.contains("private"))
+        assertTrue(output.contains("[SENSITIVE_REDACTED]"))
+        assertTrue(output.contains("[URL_REDACTED]"))
+    }
 }

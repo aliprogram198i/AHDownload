@@ -10,6 +10,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.workDataOf
 import com.ahdownload.app.domain.DownloadJob
 import com.ahdownload.app.domain.DownloadStatus
+import com.ahdownload.app.domain.MediaType
 import com.ahdownload.app.download.DirectDownloadWorker
 import com.ahdownload.app.download.DownloadTempStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,7 +48,12 @@ class DownloadRepository private constructor(context: Context) {
         audioHeaders: Map<String, String> = emptyMap(),
         thumbnailUrl: String? = null,
         durationMs: Long? = null,
-        sourcePageUrl: String? = null
+        sourcePageUrl: String? = null,
+        mediaType: MediaType = MediaType.UNKNOWN,
+        qualityLabel: String? = null,
+        codec: String? = null,
+        fps: Double? = null,
+        bitrate: Double? = null
     ): DownloadJob {
         val resolvedSourceUrl = sourcePageUrl?.takeIf { it.isNotBlank() } ?: url
         val job = DownloadJob(
@@ -67,7 +73,13 @@ class DownloadRepository private constructor(context: Context) {
             audioExtension = audioExtension,
             httpHeaders = httpHeaders,
             audioHeaders = audioHeaders,
-            favorite = false
+            favorite = false,
+            createdAtMs = System.currentTimeMillis(),
+            mediaType = mediaType,
+            qualityLabel = qualityLabel,
+            codec = codec,
+            fps = fps,
+            bitrate = bitrate
         )
         synchronized(lock) { insert(job) }
         trimHistory()
@@ -217,6 +229,13 @@ class DownloadRepository private constructor(context: Context) {
                 audioExtension = format.audioExt,
                 httpHeaders = format.httpHeaders,
                 audioHeaders = format.audioHeaders,
+                mediaType = format.mediaType,
+                qualityLabel = format.height?.let { it.toString() + "p" }
+                    ?: format.abr?.let { it.toInt().toString() + " kbps" }
+                    ?: format.ext.uppercase(),
+                codec = format.codec,
+                fps = format.fps,
+                bitrate = format.tbr ?: format.abr,
                 status = DownloadStatus.QUEUED,
                 progress = 0,
                 downloadedBytes = 0L,
@@ -346,6 +365,12 @@ class DownloadRepository private constructor(context: Context) {
             put("http_headers", encodeHeaders(job.httpHeaders))
             put("audio_headers", encodeHeaders(job.audioHeaders))
             put("favorite", if (job.favorite) 1 else 0)
+            put("created_at", job.createdAtMs)
+            put("media_type", job.mediaType.name)
+            if (job.qualityLabel != null) put("quality_label", job.qualityLabel)
+            if (job.codec != null) put("codec", job.codec)
+            if (job.fps != null) put("fps", job.fps)
+            if (job.bitrate != null) put("bitrate", job.bitrate)
             if (job.thumbnailUrl != null) put("thumbnail_url", job.thumbnailUrl)
             if (job.durationMs != null) put("duration_ms", job.durationMs)
         }
@@ -413,7 +438,13 @@ class DownloadRepository private constructor(context: Context) {
             audioExtension = nullableText("audio_extension"),
             httpHeaders = decodeHeaders(nullableText("http_headers")),
             audioHeaders = decodeHeaders(nullableText("audio_headers")),
-            favorite = getInt(getColumnIndexOrThrow("favorite")) != 0
+            favorite = getInt(getColumnIndexOrThrow("favorite")) != 0,
+            createdAtMs = getLong(getColumnIndexOrThrow("created_at")),
+            mediaType = runCatching { MediaType.valueOf(text("media_type")) }.getOrDefault(MediaType.UNKNOWN),
+            qualityLabel = nullableText("quality_label"),
+            codec = nullableText("codec"),
+            fps = getDouble(getColumnIndexOrThrow("fps")).takeIf { !isNull(getColumnIndexOrThrow("fps")) },
+            bitrate = getDouble(getColumnIndexOrThrow("bitrate")).takeIf { !isNull(getColumnIndexOrThrow("bitrate")) }
         )
     }
 

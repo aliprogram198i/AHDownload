@@ -30,7 +30,13 @@ data class DownloadJob(
     val audioUrl: String? = null, val audioExtension: String? = null,
     val httpHeaders: Map<String, String> = emptyMap(),
     val audioHeaders: Map<String, String> = emptyMap(),
-    val favorite: Boolean = false
+    val favorite: Boolean = false,
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val mediaType: MediaType = MediaType.UNKNOWN,
+    val qualityLabel: String? = null,
+    val codec: String? = null,
+    val fps: Double? = null,
+    val bitrate: Double? = null
 )
 
 interface SourceResolver {

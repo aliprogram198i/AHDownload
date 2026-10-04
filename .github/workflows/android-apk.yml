@@ -106,6 +106,12 @@ jobs:
             adb shell monkey -p com.ahdownload.app 1 || (adb logcat -d -t 400; exit 1)
             sleep 5
             adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.10.0' || (adb shell dumpsys package com.ahdownload.app; adb logcat -d -t 600; exit 1)
+            gradle --no-daemon connectedDebugAndroidTest --console=plain
+            mkdir -p visual-audit
+            for screen in home downloads studio settings; do
+              adb exec-out run-as com.ahdownload.app.debug cat "files/visual-audit/$screen.png" > "visual-audit/$screen.png"
+              test -s "visual-audit/$screen.png"
+            done
 
       - name: Calculate SHA-256
         id: checksum
@@ -118,6 +124,14 @@ jobs:
         with:
           name: AHDownload-release-${{ github.sha }}
           path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload visual UI evidence
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/v1.10.0-final')
+        uses: actions/upload-artifact@v4
+        with:
+          name: AHDownload-visual-audit-${{ github.sha }}
+          path: visual-audit/*.png
           if-no-files-found: error
 
       - name: Publish GitHub Release
