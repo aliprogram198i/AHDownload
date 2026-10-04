@@ -572,6 +572,7 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
     val prefs = remember {
         context.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
     }
+    val downloadRepository = remember { DownloadRepository.get(context) }
     var wifiOnly by remember { mutableStateOf(prefs.getBoolean("wifi_only", false)) }
     var notifications by remember {
         mutableStateOf(
@@ -613,6 +614,7 @@ private fun SettingsScreen(openDiagnostics: () -> Unit, openAccounts: () -> Unit
                     onChange = {
                         wifiOnly = it
                         prefs.edit().putBoolean("wifi_only", it).apply()
+                        downloadRepository.applyNetworkPolicy()
                     }
                 )
                 SettingSwitch(
