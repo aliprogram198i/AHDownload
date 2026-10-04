@@ -112,11 +112,11 @@ jobs:
         if: github.event_name != 'pull_request'
         run: echo "sha256=$(sha256sum app/build/outputs/apk/release/app-release.apk | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK artifact for release branch
-        if: (github.ref == 'refs/heads/release/v1.9.1-runtime-fix' || github.ref == 'refs/heads/fix/platform-download-v2') && github.event_name == 'push'
+      - name: Upload APK artifact for main and release branches
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/v1.9.1-runtime-fix' || github.ref == 'refs/heads/fix/platform-download-v2') && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
-          name: AHDownload-runtime-fix-${{ github.sha }}
+          name: AHDownload-release-${{ github.sha }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
