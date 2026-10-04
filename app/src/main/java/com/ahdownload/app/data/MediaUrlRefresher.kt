@@ -9,18 +9,20 @@ class MediaUrlRefresher(private val context: Context) {
     suspend fun refresh(
         sourceUrl: String,
         extension: String,
-        mergeRequired: Boolean
+        mergeRequired: Boolean,
+        excludeUrl: String? = null
     ): Result<ResolvedFormat> = withContext(Dispatchers.IO) {
         runCatching {
             val host = Uri.parse(sourceUrl).host.orEmpty().lowercase()
             require(isSupportedPlatform(host)) { "URL_REFRESH_UNSUPPORTED" }
             val media = EmbeddedPlatformResolver(context).resolve(sourceUrl).getOrThrow()
             val formats = media.formats
-            formats.firstOrNull { format ->
+            val candidates = formats.filter { it.url.isNotBlank() && it.url != excludeUrl }
+            candidates.firstOrNull { format ->
                 format.ext.equals(extension, ignoreCase = true) &&
                     format.mergeRequired == mergeRequired
-            } ?: formats.firstOrNull { it.mergeRequired == mergeRequired }
-            ?: formats.firstOrNull()
+            } ?: candidates.firstOrNull { it.mergeRequired == mergeRequired }
+            ?: candidates.firstOrNull()
             ?: error("NO_REFRESHED_FORMAT")
         }
     }
