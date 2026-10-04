@@ -7,6 +7,17 @@ plugins {
     id("com.chaquo.python")
 }
 
+val signingFile = providers.environmentVariable("AH_KEYSTORE_FILE").orNull
+val signingStorePassword = providers.environmentVariable("AH_KEYSTORE_PASSWORD").orNull
+val signingAlias = providers.environmentVariable("AH_KEY_ALIAS").orNull
+val signingKeyPassword = providers.environmentVariable("AH_KEY_PASSWORD").orNull
+val hasReleaseSigning = listOf(
+    signingFile,
+    signingStorePassword,
+    signingAlias,
+    signingKeyPassword
+).all { !it.isNullOrBlank() && File(it!!).exists() }
+
 android {
     namespace = "com.ahdownload.app"
     compileSdk = 36
@@ -24,17 +35,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    val signingFile = providers.environmentVariable("AH_KEYSTORE_FILE").orNull
-    val signingStorePassword = providers.environmentVariable("AH_KEYSTORE_PASSWORD").orNull
-    val signingAlias = providers.environmentVariable("AH_KEY_ALIAS").orNull
-    val signingKeyPassword = providers.environmentVariable("AH_KEY_PASSWORD").orNull
-    val hasReleaseSigning = listOf(
-        signingFile,
-        signingStorePassword,
-        signingAlias,
-        signingKeyPassword
-    ).all { !it.isNullOrBlank() && File(it!!).exists() }
 
     if (hasReleaseSigning) {
         signingConfigs {
