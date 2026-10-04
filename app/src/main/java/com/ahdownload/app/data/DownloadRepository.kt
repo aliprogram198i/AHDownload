@@ -65,6 +65,7 @@ class DownloadRepository(context: Context) {
                 workDataOf(
                     DirectDownloadWorker.KEY_JOB_ID to job.id,
                     DirectDownloadWorker.KEY_URL to url,
+                    DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
                     DirectDownloadWorker.KEY_TITLE to job.title,
                     DirectDownloadWorker.KEY_EXTENSION to extension.orEmpty()
                 )
