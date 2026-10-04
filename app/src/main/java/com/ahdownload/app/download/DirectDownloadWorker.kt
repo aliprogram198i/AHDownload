@@ -129,32 +129,16 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                             .refresh(sourceUrl, extension, false)
                             .getOrNull()
                         if (fresh != null && fresh.url.isNotBlank() && fresh.url != url) {
-                            val settings = applicationContext.getSharedPreferences("ahdownload_settings", Context.MODE_PRIVATE)
-                            val constraints = androidx.work.Constraints.Builder()
-                                .setRequiredNetworkType(
-                                    if (settings.getBoolean("wifi_only", false))
-                                        androidx.work.NetworkType.UNMETERED
-                                    else androidx.work.NetworkType.CONNECTED
+                            if (repo.requeueWithRefreshedUrl(jobId, fresh.url)) {
+                                AppLogger.info(
+                                    applicationContext,
+                                    "download.url_refreshed",
+                                    "job=$jobId reason=http_" + response.code
                                 )
-                                .build()
-                            val request = androidx.work.OneTimeWorkRequestBuilder<DirectDownloadWorker>()
-                                .setInputData(androidx.work.workDataOf(
-                                    KEY_JOB_ID to jobId,
-                                    KEY_URL to fresh.url,
-                                    KEY_TITLE to title,
-                                    KEY_EXTENSION to extension,
-                                    KEY_SOURCE_URL to sourceUrl,
-                                    KEY_MERGE_REQUIRED to false,
-                                    KEY_AUDIO_URL to "",
-                                    KEY_AUDIO_EXTENSION to ""
-                                ))
-                                .setConstraints(constraints)
-                                .addTag("ahdownload:$jobId")
-                                .build()
-                            repo.update(jobId) { it.copy(status = DownloadStatus.QUEUED) }
-                            androidx.work.WorkManager.getInstance(applicationContext).enqueue(request)
-                            AppLogger.info(applicationContext, "download.url_refreshed", "job=$jobId reason=http_" + response.code)
-                            return Result.success()
+                                return Result.success()
+                            }
+                            markFailed(repo, jobId, "URL_REFRESH_REQUEUE_FAILED")
+                            return Result.failure()
                         }
                     }
                     markFailed(repo, jobId, "HTTP_${response.code}")
