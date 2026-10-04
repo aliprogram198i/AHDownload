@@ -138,4 +138,5 @@ jobs:
 
 # Release branch/tag verification trigger
 # CI verification marker: keep workflow_dispatch available for release validation.
+# Final release trigger validation: 2026-10-05.
 # Final release verification branch: v1.9.1-final.
