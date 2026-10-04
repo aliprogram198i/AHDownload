@@ -3,7 +3,7 @@ name: AHDownload Android APK
 on:
   pull_request:
   push:
-    branches: [main, release/v1.9.1-runtime-fix]
+    branches: [main, release/v1.9.1-runtime-fix, fix/platform-download-v2]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -113,7 +113,7 @@ jobs:
         run: echo "sha256=$(sha256sum app/build/outputs/apk/release/app-release.apk | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact for release branch
-        if: github.ref == 'refs/heads/release/v1.9.1-runtime-fix' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/release/v1.9.1-runtime-fix' || github.ref == 'refs/heads/fix/platform-download-v2') && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: AHDownload-runtime-fix-${{ github.sha }}
