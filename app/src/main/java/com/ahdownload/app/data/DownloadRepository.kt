@@ -157,9 +157,12 @@ class DownloadRepository private constructor(context: Context) {
             .addTag("ahdownload:" + job.id)
             .build()
         update(job.id) { it.copy(status = DownloadStatus.QUEUED, progress = 0, downloadedBytes = 0L, totalBytes = null, outputUri = null, errorCode = null, speedBytesPerSec = 0L, etaSeconds = null) }
-        WorkManager.getInstance(app).cancelAllWorkByTag("ahdownload:" + job.id)
-        WorkManager.getInstance(app).enqueue(request)
-        return true
+        WorkManager.getInstance(app).enqueueUniqueWork(
+            workName(job.id),
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+        return truee
     }
 
     /** Enqueue one refreshed format as the single authoritative worker for this job. */
