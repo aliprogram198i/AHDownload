@@ -11,12 +11,16 @@ class EmbeddedPlatformResolver(
 ) {
     suspend fun resolve(url: String): Result<ResolvedMedia> = withContext(Dispatchers.IO) {
         runCatching {
+            val cleanUrl = url
+                .replace(Regex("[\\u0000-\\u001F\\u007F\\u200B-\\u200D\\uFEFF]"), "")
+                .trim()
+            require(cleanUrl.isNotBlank()) { "INVALID_URL" }
             val python = com.chaquo.python.Python.getInstance()
             val module = python.getModule("resolver")
 
             fun call(cookies: String?): ResolvedMedia {
                 val payload = JSONObject()
-                    .put("url", url)
+                    .put("url", cleanUrl)
                     .apply { if (!cookies.isNullOrBlank()) put("cookies", cookies) }
                 val raw = module.callAttr("resolve_json", payload.toString()).toString()
                 val json = JSONObject(raw)
@@ -48,13 +52,13 @@ class EmbeddedPlatformResolver(
                     json.optString("thumbnail").takeIf { it.isNotBlank() },
                     json.optDouble("duration").takeIf { json.has("duration") },
                     json.optString("extractor").takeIf { it.isNotBlank() },
-                    json.optString("source", url),
+                    json.optString("source", cleanUrl),
                     formats
                 )
             }
 
             try {
-                context?.let { AppLogger.info(it, "resolver.start", "host=" + android.net.Uri.parse(url).host.orEmpty()) }
+                context?.let { AppLogger.info(it, "resolver.start", "host=" + android.net.Uri.parse(cleanUrl).host.orEmpty()) }
                 call(null)
             } catch (first: Throwable) {
                 val host = android.net.Uri.parse(url).host.orEmpty().lowercase()
@@ -64,13 +68,13 @@ class EmbeddedPlatformResolver(
 
                 if (!sessionEligible || context == null) throw first
 
-                val cookies = WebViewSessionBridge(context).cookiesFor(url)
+                val cookies = WebViewSessionBridge(context).cookiesFor(cleanUrl)
                 if (cookies.isNullOrBlank()) throw first
                 AppLogger.info(context, "resolver.webview_session", "cookies_obtained=true")
                 call(cookies)
             }
         }.onFailure { failure ->
-            context?.let { AppLogger.error(it, "resolver.failed", failure, "host=" + android.net.Uri.parse(url).host.orEmpty()) }
+            context?.let { AppLogger.error(it, "resolver.failed", failure, "host=" + android.net.Uri.parse(cleanUrl).host.orEmpty()) }
         }
     }
 }
