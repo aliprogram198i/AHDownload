@@ -73,7 +73,7 @@ jobs:
           test -x "$BUILD_TOOLS/apksigner"
           test -x "$BUILD_TOOLS/zipalign"
           "$BUILD_TOOLS/aapt2" dump badging "$APK" | tee "$RUNNER_TEMP/badging.txt"
-          grep -q "package: name='com.ahdownload.app' versionCode='13' versionName='1.9.1'" "$RUNNER_TEMP/badging.txt"
+          grep -q "package: name='com.ahdownload.app' versionCode='14' versionName='1.10.0'" "$RUNNER_TEMP/badging.txt"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
           "$BUILD_TOOLS/zipalign" -c -P 16 -v 4 "$APK"
 
@@ -121,16 +121,16 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: (github.ref == 'refs/heads/release/v1.9.1-final' || startsWith(github.ref, 'refs/tags/v')) && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/release/v1.10.0-final' || startsWith(github.ref, 'refs/tags/v')) && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.9.1-final
+          tag_name: v1.10.0-final
           target_commitish: ${{ github.sha }}
-          name: AHDownload v1.9.1-final
+          name: AHDownload v1.10.0-final
           body: |
-            AHDownload v1.9.1-final
+            AHDownload v1.10.0-final
 
-            Production release APK containing the verified media validation and direct-download hardening fixes.
+            Smart Media Manager release: downloader hardening, generic file support, smart formats, diagnostics, storage intelligence, favorites, profiles and Studio integration.
 
             SHA-256: ${{ steps.checksum.outputs.sha256 }}
           files: app/build/outputs/apk/release/app-release.apk
