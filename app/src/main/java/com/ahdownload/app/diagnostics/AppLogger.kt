@@ -79,11 +79,7 @@ object AppLogger {
                 val text = file.readText()
                 file.writeText(text.takeLast(keep))
             }
-
-            val safeEvent = event
-                .replace(Regex("[^a-zA-Z0-9_.-]"), "_")
-                .take(120)
-                .ifBlank { "unknown_event" }
+            val safeEvent = event.replace(Regex("[^a-zA-Z0-9_.-]"), "_").take(120).ifBlank { "unknown_event" }
             val safeDetails = sanitize(details).take(MAX_EVENT_DETAILS)
             val line = buildString {
                 append("[${now()}] [$level] $safeEvent")
@@ -96,32 +92,18 @@ object AppLogger {
 
     private fun sanitize(value: String): String {
         var result = value
-        // Never persist navigable URLs. Keep only a redacted marker.
         result = result.replace(
-            Regex("""(?i)https?://[^\s"'<>]+"""),
+            Regex("""(?i)https?://[^s"'<>]+"""),
             "[URL_REDACTED]"
         )
-        // Remove sensitive header/cookie/credential values even when they are
-        // not embedded in a URL.
         result = result.replace(
-            Regex("""(?im)^(\s*(?:cookie|authorization|proxy-authorization|set-cookie|x-csrftoken|password|passwd|secret|access_token|refresh_token|sessionid|token)\s*[:=]\s*)[^\n]+"""),
-            "${'
+            Regex("""(?im)^(s*(?:cookie|authorization|proxy-authorization|set-cookie|x-csrftoken|password|passwd|secret|access_token|refresh_token|sessionid|token)s*[:=]s*)[^
+]+"""),
+            "${'$'}1[REDACTED]"
         )
         result = result.replace(
-            Regex("""(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key|oe|igshid)=)[^&\s]+"""),
-            "$1[REDACTED]"
-        )
-        return result
-    }
-
-    private fun now(): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date())
-}
- }1[REDACTED]"
-        )
-        result = result.replace(
-            Regex("""(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key|oe|igshid)=)[^&\s]+"""),
-            "$1[REDACTED]"
+            Regex("""(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key|oe|igshid)=)[^&s]+"""),
+            "${'$'}1[REDACTED]"
         )
         return result
     }
