@@ -168,6 +168,4 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
         androidx.core.app.NotificationManagerCompat.from(applicationContext)
             .notify(jobId.hashCode(), notification)
     }
-
-    }
 }
