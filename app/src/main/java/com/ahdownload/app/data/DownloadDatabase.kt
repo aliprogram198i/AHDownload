@@ -24,6 +24,10 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
                 output_uri TEXT,
                 thumbnail_url TEXT,
                 duration_ms INTEGER,
+                extension TEXT,
+                merge_required INTEGER NOT NULL DEFAULT 0,
+                audio_url TEXT,
+                audio_extension TEXT,
                 speed_bps INTEGER NOT NULL DEFAULT 0,
                 eta_seconds INTEGER,
                 error_code TEXT
