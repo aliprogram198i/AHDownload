@@ -22,7 +22,8 @@ data class MediaInfo(
 data class DownloadJob(
     val id: String, val sourceUrl: String, val title: String, val formatUrl: String,
     val status: DownloadStatus, val progress: Int, val downloadedBytes: Long,
-    val totalBytes: Long?, val outputUri: String? = null
+    val totalBytes: Long?, val outputUri: String? = null,
+    val thumbnailUrl: String? = null, val durationMs: Long? = null
 )
 
 interface SourceResolver {
