@@ -105,9 +105,9 @@ fun AHGradientButton(
     onClick: () -> Unit,
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
     enabled: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
 ) {
-    val shape = RoundedCornerShape(16.dp)
     androidx.compose.foundation.layout.Box(
         modifier = modifier
             .clip(shape)
