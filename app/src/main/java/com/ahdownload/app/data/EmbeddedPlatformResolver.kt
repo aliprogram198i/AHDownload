@@ -72,13 +72,43 @@ class EmbeddedPlatformResolver(
                 }
 
                 val host = android.net.Uri.parse(cleanUrl).host.orEmpty().lowercase()
+                context?.let { AppLogger.info(it, "resolver.start", "host=" + host) }
+
+                // Instagram gets one deterministic session snapshot: use its cookies with yt-dlp,
+                // then probe only the verified media candidates from that same WebView session.
+                if (isInstagramHost(host) && context != null) {
+                    val snapshot = WebViewSessionBridge(context).snapshotFor(cleanUrl)
+                    AppLogger.info(
+                        context,
+                        "resolver.instagram_session",
+                        "cookies_obtained=" + !snapshot.cookies.isNullOrBlank() +
+                            " authenticated=" + snapshot.authenticated +
+                            " candidates=" + snapshot.mediaUrls.size
+                    )
+                    if (!snapshot.cookies.isNullOrBlank()) {
+                        runCatching { call(snapshot.cookies) }.onSuccess {
+                            return@runCatching it
+                        }
+                    }
+                    val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
+                    if (webViewMedia != null) {
+                        AppLogger.info(
+                            context,
+                            "resolver.instagram_media_fallback",
+                            "candidates=" + snapshot.mediaUrls.size
+                        )
+                        return@runCatching webViewMedia
+                    }
+                    // Preserve the original extraction error when the session yielded no usable media.
+                    return@runCatching call(null)
+                }
+
                 try {
-                    context?.let { AppLogger.info(it, "resolver.start", "host=" + host) }
                     call(CookieManager.getInstance().getCookie(cleanUrl))
                 } catch (first: Throwable) {
                     val sessionEligible =
                         host == "youtube.com" || host.endsWith(".youtube.com") ||
-                        host == "youtu.be" || host == "instagram.com" || host.endsWith(".instagram.com") ||
+                        host == "youtu.be" ||
                         host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch"
 
                     if (!sessionEligible || context == null) throw first
@@ -86,12 +116,16 @@ class EmbeddedPlatformResolver(
                     val bridge = WebViewSessionBridge(context)
                     val snapshot = bridge.snapshotFor(cleanUrl)
                     if (!snapshot.cookies.isNullOrBlank()) {
-                        AppLogger.info(context, "resolver.webview_session", "cookies_obtained=" + (!snapshot.cookies.isNullOrBlank()) + " authenticated=" + snapshot.authenticated + " candidates=" + snapshot.mediaUrls.size)
+                        AppLogger.info(
+                            context,
+                            "resolver.webview_session",
+                            "cookies_obtained=true authenticated=" + snapshot.authenticated +
+                                " candidates=" + snapshot.mediaUrls.size
+                        )
                         try {
                             return@runCatching call(snapshot.cookies)
                         } catch (sessionFailure: Throwable) {
-                            if (host == "instagram.com" || host.endsWith(".instagram.com") ||
-                                host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch") {
+                            if (isFacebookHost(host)) {
                                 val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
                                 if (webViewMedia != null) {
                                     AppLogger.info(
@@ -106,8 +140,7 @@ class EmbeddedPlatformResolver(
                         }
                     }
 
-                    if (host == "instagram.com" || host.endsWith(".instagram.com") ||
-                        host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch") {
+                    if (isFacebookHost(host)) {
                         val webViewMedia = probeWebViewMedia(cleanUrl, snapshot)
                         if (webViewMedia != null) {
                             AppLogger.info(
@@ -187,6 +220,12 @@ class EmbeddedPlatformResolver(
         }
         return null
     }
+
+    private fun isInstagramHost(host: String): Boolean =
+        host == "instagram.com" || host.endsWith(".instagram.com")
+
+    private fun isFacebookHost(host: String): Boolean =
+        host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch"
 
     private fun mediaCandidateScore(url: String): Int {
         val lower = url.lowercase()
