@@ -142,7 +142,7 @@ class EmbeddedPlatformResolver(
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "*/*")
                     .header("Referer", sourceUrl)
-                    .header("Origin", "https://www.instagram.com")
+                     .header("Origin", if (sourceUrl.contains("facebook.", ignoreCase = true) || sourceUrl.contains("fb.watch", ignoreCase = true)) "https://www.facebook.com" else "https://www.instagram.com")
                     .header("Range", "bytes=0-1023")
                 snapshot.cookies?.takeIf { it.isNotBlank() }?.let { builder.header("Cookie", it) }
 
