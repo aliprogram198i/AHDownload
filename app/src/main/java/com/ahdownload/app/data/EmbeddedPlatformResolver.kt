@@ -55,7 +55,9 @@ class EmbeddedPlatformResolver(
                                     mediaUrl,
                                     f.optBoolean("mergeRequired"),
                                     f.optString("audioUrl").takeIf { it.isNotBlank() },
-                                    f.optString("audioExt").takeIf { it.isNotBlank() }
+                                    f.optString("audioExt").takeIf { it.isNotBlank() },
+                                    parseHeaders(f.optJSONObject("httpHeaders")),
+                                    parseHeaders(f.optJSONObject("audioHeaders"))
                                 )
                             )
                         }
@@ -277,6 +279,18 @@ class EmbeddedPlatformResolver(
             }
         }
         return null
+    }
+
+    private fun parseHeaders(json: JSONObject?): Map<String, String> {
+        if (json == null) return emptyMap()
+        val result = linkedMapOf<String, String>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = json.optString(key).trim()
+            if (value.isNotBlank()) result[key] = value
+        }
+        return result
     }
 
     private fun youtubeFailureClass(error: Throwable): String {
