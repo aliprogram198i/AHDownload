@@ -3,7 +3,7 @@ name: AHDownload Android APK
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "release/v1.9.1-instagram-fix"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -119,15 +119,15 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.ref == 'refs/heads/release/v1.9.1-instagram-fix' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: AHDownload ${{ github.ref_name }}
+          tag_name: ${{ github.ref == 'refs/heads/release/v1.9.1-instagram-fix' && 'v1.9.1-instagram-fix' || github.ref_name }}
+          name: AHDownload ${{ github.ref == 'refs/heads/release/v1.9.1-instagram-fix' && 'v1.9.1-instagram-fix' || github.ref_name }}
           body: |
-            AHDownload ${{ github.ref_name }}
+            AHDownload ${{ github.ref == 'refs/heads/release/v1.9.1-instagram-fix' && 'v1.9.1-instagram-fix' || github.ref_name }}
 
-            Production release APK.
+            Production release APK from the verified Instagram WebView media-probe fix.
 
             SHA-256: ${{ steps.checksum.outputs.sha256 }}
           files: app/build/outputs/apk/release/app-release.apk
