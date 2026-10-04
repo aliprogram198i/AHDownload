@@ -2,7 +2,6 @@ package com.ahdownload.app.ui.theme
 
 import com.ahdownload.app.ui.DesignAudit
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.background
@@ -84,11 +83,19 @@ private val AppTypography = Typography().run {
     )
 }
 
+enum class AHThemeMode { SYSTEM, LIGHT, DARK }
+
 @Composable
 fun AHDownloadTheme(
-    darkTheme: Boolean = true,
+    themeMode: AHThemeMode = AHThemeMode.SYSTEM,
     content: @Composable () -> Unit
 ) {
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val darkTheme = when (themeMode) {
+        AHThemeMode.SYSTEM -> systemDark
+        AHThemeMode.LIGHT -> false
+        AHThemeMode.DARK -> true
+    }
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = AppTypography,
