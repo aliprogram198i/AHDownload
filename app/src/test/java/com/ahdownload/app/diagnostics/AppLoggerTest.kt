@@ -23,8 +23,6 @@ class AppLoggerTest {
         assertFalse(output.contains("top-secret-token"))
         assertTrue(output.contains("[SENSITIVE_REDACTED]"))
     }
-}
-
 
     @Test
     fun redactsBearerAndAdditionalQuerySecrets() {
