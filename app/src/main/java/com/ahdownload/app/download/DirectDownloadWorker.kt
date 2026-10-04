@@ -71,12 +71,6 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             clearFailureState(repo, jobId)
             repo.update(jobId) { it.copy(status = DownloadStatus.DOWNLOADING) }
             notifyProgress(jobId, title, 0, null, 0L)
-            AppLogger.info(
-                applicationContext,
-                "download.start",
-                "job=" + jobId + " host=" + (android.net.Uri.parse(sourceUrl).host.orEmpty().lowercase()) +
-                    " ext=" + extension + " merge=" + mergeRequired + " resumedBytes=" + existing
-            )
             val dir = File(applicationContext.getExternalFilesDir(null), "downloads").apply { mkdirs() }
             val extension = requestedExtension
                 .lowercase()
@@ -88,6 +82,12 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val target = uniqueTarget(dir, safeTitle, extension)
             val part = File(dir, "$safeTitle.${target.name.substringAfterLast(".")}.part")
             var existing = if (part.exists()) part.length() else 0L
+            AppLogger.info(
+                applicationContext,
+                "download.start",
+                "job=" + jobId + " host=" + (android.net.Uri.parse(sourceUrl).host.orEmpty().lowercase()) +
+                    " ext=" + extension + " merge=" + mergeRequired + " resumedBytes=" + existing
+            )
 
             if (mergeRequired && audioUrl.isNotBlank()) {
                 AppLogger.info(applicationContext, "download.merge_start", "job=$jobId")
