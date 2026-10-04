@@ -8,7 +8,7 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
     context.applicationContext,
     "ahdownload.db",
     null,
-    7
+    8
 ) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("""
@@ -32,46 +32,84 @@ internal class DownloadDatabase(context: Context) : SQLiteOpenHelper(
                 audio_headers TEXT,
                 speed_bps INTEGER NOT NULL DEFAULT 0,
                 eta_seconds INTEGER,
-                error_code TEXT
+                error_code TEXT,
+                favorite INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL DEFAULT 0,
+                media_type TEXT NOT NULL DEFAULT 'UNKNOWN',
+                quality_label TEXT,
+                codec TEXT,
+                fps REAL,
+                bitrate REAL
             )
         """.trimIndent())
-        db.execSQL("CREATE INDEX idx_downloads_status ON downloads(status)")
-        db.execSQL("CREATE INDEX idx_downloads_favorite ON downloads(favorite)")
-        db.execSQL("CREATE INDEX idx_downloads_created_at ON downloads(created_at)")
+        createIndexes(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
-            db.execSQL("ALTER TABLE downloads ADD COLUMN thumbnail_url TEXT")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN duration_ms INTEGER")
+            addColumnIfMissing(db, "thumbnail_url", "TEXT")
+            addColumnIfMissing(db, "duration_ms", "INTEGER")
         }
         if (oldVersion < 3) {
-            db.execSQL("ALTER TABLE downloads ADD COLUMN speed_bps INTEGER NOT NULL DEFAULT 0")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN eta_seconds INTEGER")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN error_code TEXT")
+            addColumnIfMissing(db, "speed_bps", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "eta_seconds", "INTEGER")
+            addColumnIfMissing(db, "error_code", "TEXT")
         }
         if (oldVersion < 4) {
-            db.execSQL("ALTER TABLE downloads ADD COLUMN extension TEXT")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN merge_required INTEGER NOT NULL DEFAULT 0")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN audio_url TEXT")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN audio_extension TEXT")
+            addColumnIfMissing(db, "extension", "TEXT")
+            addColumnIfMissing(db, "merge_required", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "audio_url", "TEXT")
+            addColumnIfMissing(db, "audio_extension", "TEXT")
         }
         if (oldVersion < 5) {
-            db.execSQL("ALTER TABLE downloads ADD COLUMN http_headers TEXT")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN audio_headers TEXT")
+            addColumnIfMissing(db, "http_headers", "TEXT")
+            addColumnIfMissing(db, "audio_headers", "TEXT")
         }
         if (oldVersion < 6) {
-            db.execSQL("ALTER TABLE downloads ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "favorite", "INTEGER NOT NULL DEFAULT 0")
         }
         if (oldVersion < 7) {
-            db.execSQL("ALTER TABLE downloads ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN media_type TEXT NOT NULL DEFAULT 'UNKNOWN'")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN quality_label TEXT")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN codec TEXT")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN fps REAL")
-            db.execSQL("ALTER TABLE downloads ADD COLUMN bitrate REAL")
-            db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_favorite ON downloads(favorite)")
-            db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at)")
+            addColumnIfMissing(db, "created_at", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "media_type", "TEXT NOT NULL DEFAULT 'UNKNOWN'")
+            addColumnIfMissing(db, "quality_label", "TEXT")
+            addColumnIfMissing(db, "codec", "TEXT")
+            addColumnIfMissing(db, "fps", "REAL")
+            addColumnIfMissing(db, "bitrate", "REAL")
+        }
+        if (oldVersion < 8) {
+            // Repair databases created by the v7 onCreate schema, which referenced
+            // favorite/created_at indexes before declaring those columns.
+            addColumnIfMissing(db, "favorite", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "created_at", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "media_type", "TEXT NOT NULL DEFAULT 'UNKNOWN'")
+            addColumnIfMissing(db, "quality_label", "TEXT")
+            addColumnIfMissing(db, "codec", "TEXT")
+            addColumnIfMissing(db, "fps", "REAL")
+            addColumnIfMissing(db, "bitrate", "REAL")
+        }
+        createIndexes(db)
+    }
+
+    private fun createIndexes(db: SQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_favorite ON downloads(favorite)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_downloads_created_at ON downloads(created_at)")
+    }
+
+    private fun addColumnIfMissing(db: SQLiteDatabase, name: String, definition: String) {
+        if (!hasColumn(db, name)) {
+            db.execSQL("ALTER TABLE downloads ADD COLUMN $name $definition")
         }
     }
+
+    private fun hasColumn(db: SQLiteDatabase, name: String): Boolean =
+        db.rawQuery("PRAGMA table_info(downloads)", null).use { cursor ->
+            val nameIndex = cursor.getColumnIndexOrThrow("name")
+            while (cursor.moveToNext()) {
+                if (cursor.getString(nameIndex).equals(name, ignoreCase = true)) {
+                    return@use true
+                }
+            }
+            false
+        }
 }
