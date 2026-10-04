@@ -90,23 +90,28 @@ object AppLogger {
         }
     }
 
-    private fun sanitize(value: String): String {
+    internal fun sanitizeForTesting(value: String): String {
         var result = value
         result = result.replace(
-            Regex("""(?i)https?://[^s"'<>]+"""),
+            Regex("""(?i)https?://[^\s"'<>]+"""),
             "[URL_REDACTED]"
         )
         result = result.replace(
-            Regex("""(?im)^(s*(?:cookie|authorization|proxy-authorization|set-cookie|x-csrftoken|password|passwd|secret|access_token|refresh_token|sessionid|token)s*[:=]s*)[^
-]+"""),
-            "${'$'}1[REDACTED]"
+            Regex("""(?im)^\s*(?:cookie|authorization|proxy-authorization|set-cookie|x-csrftoken|password|passwd|secret|access_token|refresh_token|sessionid|token)\s*[:=]\s*[^\r\n]+"""),
+            "[SENSITIVE_REDACTED]"
         )
         result = result.replace(
-            Regex("""(?i)([?&](?:sig|signature|token|access_token|auth|expire|expires|key|oe|igshid)=)[^&s]+"""),
-            "${'$'}1[REDACTED]"
+            Regex("""(?i)Bearer\s+[^\s]+"""),
+            "Bearer [REDACTED]"
+        )
+        result = result.replace(
+            Regex("""(?i)([?&](?:sig|signature|token|access_token|refresh_token|auth|expire|expires|key|oe|igshid)=)[^&#\s]+"""),
+            "$1[REDACTED]"
         )
         return result
     }
+
+    private fun sanitize(value: String): String = sanitizeForTesting(value)
 
     private fun now(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date())
