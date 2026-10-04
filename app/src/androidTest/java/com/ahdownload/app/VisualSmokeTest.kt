@@ -1,9 +1,10 @@
 package com.ahdownload.app
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.compose.ui.test.assertExists
-import androidx.compose.ui.test.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -56,10 +57,10 @@ class VisualSmokeTest {
                 view.draw(Canvas(bitmap))
                 val directory = composeRule.activity.getDir(
                     "visual-audit",
-                    android.content.Context.MODE_PRIVATE
+                    Context.MODE_PRIVATE
                 )
-                val outputFile = java.io.File(directory, "$name.png")
-                java.io.FileOutputStream(outputFile).use { output: java.io.FileOutputStream ->
+                val outputFile = File(directory, "$name.png")
+                FileOutputStream(outputFile).use { output: FileOutputStream ->
                     check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                         "VISUAL_CAPTURE_WRITE_FAILED"
                     }
