@@ -34,6 +34,7 @@ import java.util.Locale
 @Composable
 fun StudioScreen() {
     val context = LocalContext.current
+    LaunchedEffect(Unit) { DesignAudit.recordComponent("StudioScreen") }
     val scope = rememberCoroutineScope()
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var name by remember { mutableStateOf("") }
