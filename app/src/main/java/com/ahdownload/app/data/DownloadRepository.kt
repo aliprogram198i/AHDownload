@@ -75,7 +75,8 @@ class DownloadRepository(context: Context) {
         return job
     }
 
-    fun update(id: String, change: (DownloadJob) -> DownloadJob) {\n        synchronized(lock) {
+    fun update(id: String, change: (DownloadJob) -> DownloadJob) {
+        synchronized(lock) {
         val current = find(id) ?: return
         val next = change(current)
         val values = android.content.ContentValues().apply {
@@ -88,7 +89,8 @@ class DownloadRepository(context: Context) {
             if (next.totalBytes != null) put("total_bytes", next.totalBytes) else putNull("total_bytes")
             if (next.outputUri != null) put("output_uri", next.outputUri) else putNull("output_uri")
         }
-        db.writableDatabase.update("downloads", values, "id=?", arrayOf(id))
+            db.writableDatabase.update("downloads", values, "id=?", arrayOf(id))
+        }
     }
 
     fun cancel(jobId: String) {
