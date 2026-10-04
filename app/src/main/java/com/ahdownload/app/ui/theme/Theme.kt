@@ -4,20 +4,24 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+val AHBrandGradient = Brush.linearGradient(listOf(Color(0xFF315BFF), Color(0xFF7B4DFF), Color(0xFF16B8B1)))
+val AHBrandGradientSoft = Brush.linearGradient(listOf(Color(0xFFE7ECFF), Color(0xFFF0E9FF), Color(0xFFE2F8F6)))
+
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF1457D9),
+    primary = Color(0xFF315BFF),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCE7FF),
+    primaryContainer = Color(0xFFE7ECFF),
     onPrimaryContainer = Color(0xFF0A2B72),
-    secondary = Color(0xFF0F8A87),
+    secondary = Color(0xFF0B9F9A),
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFD2F2EF),
     onSecondaryContainer = Color(0xFF073B39),
-    tertiary = Color(0xFF6C4BC4),
+    tertiary = Color(0xFF7B4DFF),
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFEADDFF),
     onTertiaryContainer = Color(0xFF28104E),
@@ -35,15 +39,15 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFB5C8FF),
+    primary = Color(0xFFB9C7FF),
     onPrimary = Color(0xFF002D6E),
-    primaryContainer = Color(0xFF17489F),
+    primaryContainer = Color(0xFF243F99),
     onPrimaryContainer = Color(0xFFDCE7FF),
-    secondary = Color(0xFF86D5D1),
+    secondary = Color(0xFF7BE0DB),
     onSecondary = Color(0xFF003735),
     secondaryContainer = Color(0xFF07504D),
     onSecondaryContainer = Color(0xFFA3ECE7),
-    tertiary = Color(0xFFD1BCFF),
+    tertiary = Color(0xFFD0BFFF),
     onTertiary = Color(0xFF39205F),
     tertiaryContainer = Color(0xFF503782),
     onTertiaryContainer = Color(0xFFEADDFF),
