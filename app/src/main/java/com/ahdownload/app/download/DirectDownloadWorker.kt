@@ -116,7 +116,17 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             val requestBuilder = Request.Builder().url(url)
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "*/*")
-            if (sourceUrl.isNotBlank()) requestBuilder.header("Referer", sourceUrl)
+                .header("Accept-Language", "en-US,en;q=0.9")
+            if (sourceUrl.isNotBlank()) {
+                requestBuilder.header("Referer", sourceUrl)
+                val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
+                when {
+                    sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ->
+                        requestBuilder.header("Origin", "https://www.instagram.com")
+                    sourceHost == "facebook.com" || sourceHost.endsWith(".facebook.com") || sourceHost == "fb.watch" ->
+                        requestBuilder.header("Origin", "https://www.facebook.com")
+                }
+            }
             val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host?.lowercase() }.getOrNull().orEmpty()
             if (sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ||
                 sourceHost == "youtube.com" || sourceHost.endsWith(".youtube.com") ||
@@ -128,6 +138,12 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
                     ?.let { requestBuilder.header("Cookie", it) }
             }
             if (existing > 0L) requestBuilder.header("Range", "bytes=$existing-")
+            if (sourceHost == "instagram.com" || sourceHost.endsWith(".instagram.com") ||
+                sourceHost == "facebook.com" || sourceHost.endsWith(".facebook.com") || sourceHost == "fb.watch") {
+                requestBuilder.header("Sec-Fetch-Dest", "video")
+                requestBuilder.header("Sec-Fetch-Mode", "cors")
+                requestBuilder.header("Sec-Fetch-Site", "cross-site")
+            }
             val request = requestBuilder.build()
 
             client.newCall(request).execute().use { response ->
@@ -242,6 +258,22 @@ class DirectDownloadWorker(appContext: Context, params: WorkerParameters) : Coro
             Result.success()
         } catch (e: IOException) {
             val attempt = runAttemptCount + 1
+            if (e.message == "MEDIA_SIGNATURE_MISMATCH" || e.message == "MEDIA_HTML_OR_ERROR_RESPONSE") {
+                if (sourceUrl.isNotBlank()) {
+                    val fresh = MediaUrlRefresher(applicationContext)
+                        .refresh(sourceUrl, extension, mergeRequired)
+                        .getOrNull()
+                    if (fresh != null && fresh.url.isNotBlank() && fresh.url != url &&
+                        repo.requeueWithRefreshedFormat(jobId, fresh)) {
+                        AppLogger.info(
+                            applicationContext,
+                            "download.url_refreshed",
+                            "job=$jobId reason=media_validation"
+                        )
+                        return Result.success()
+                    }
+                }
+            }
             if (attempt < MAX_RETRY_ATTEMPTS) {
                 repo.update(jobId) { it.copy(status = DownloadStatus.RETRYING, errorCode = "IO_RETRY_$attempt") }
                 AppLogger.error(applicationContext, "download.io_retry", e, "job=$jobId attempt=$attempt")
