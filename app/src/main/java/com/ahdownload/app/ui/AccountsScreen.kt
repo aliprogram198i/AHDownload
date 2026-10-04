@@ -119,7 +119,10 @@ fun AccountsScreen() {
         accounts.forEach { account ->
             item(key = account.key) {
                 val connected = remember(refresh) {
-                    !CookieManager.getInstance().getCookie(account.url).isNullOrBlank()
+                    hasAuthenticatedSession(
+                        account.key,
+                        CookieManager.getInstance().getCookie(account.url).orEmpty()
+                    )
                 }
                 Card(shape = RoundedCornerShape(20.dp)) {
                     ListItem(
