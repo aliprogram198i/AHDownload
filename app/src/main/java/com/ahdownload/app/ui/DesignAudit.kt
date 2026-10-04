@@ -7,6 +7,7 @@ import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
 
+// Production verification branch: no runtime behavior change.
 object DesignAudit {
     private val lock = Any()
     private val screenVisits = linkedMapOf<String, Int>()
