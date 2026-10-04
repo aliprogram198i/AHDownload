@@ -14,6 +14,7 @@ import com.ahdownload.app.data.DownloadRepository
 import com.ahdownload.app.diagnostics.AppLogger
 import com.ahdownload.app.data.MediaUrlRefresher
 import com.ahdownload.app.data.MediaValidator
+import com.ahdownload.app.data.ResolvedFormat
 import com.ahdownload.app.domain.DownloadStatus
 import com.ahdownload.app.domain.DownloadProgress
 import okhttp3.OkHttpClient
