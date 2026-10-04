@@ -43,7 +43,7 @@ class DownloadRepository(context: Context) {
         }.reversed()
     }
 
-    fun create(url: String, title: String = titleFromUrl(url), extension: String? = null): DownloadJob {
+    fun create(url: String, title: String = titleFromUrl(url), extension: String? = null, mergeRequired: Boolean = false, audioUrl: String? = null, audioExtension: String? = null): DownloadJob {
         val job = DownloadJob(
             id = UUID.randomUUID().toString(),
             sourceUrl = url,
@@ -67,7 +67,10 @@ class DownloadRepository(context: Context) {
                     DirectDownloadWorker.KEY_URL to url,
                     DirectDownloadWorker.KEY_SOURCE_URL to job.sourceUrl,
                     DirectDownloadWorker.KEY_TITLE to job.title,
-                    DirectDownloadWorker.KEY_EXTENSION to extension.orEmpty()
+                    DirectDownloadWorker.KEY_EXTENSION to extension.orEmpty(),
+                    DirectDownloadWorker.KEY_MERGE_REQUIRED to mergeRequired,
+                    DirectDownloadWorker.KEY_AUDIO_URL to audioUrl.orEmpty(),
+                    DirectDownloadWorker.KEY_AUDIO_EXTENSION to audioExtension.orEmpty()
                 )
             )
             .setConstraints(constraints)
