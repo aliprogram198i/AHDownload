@@ -26,8 +26,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.9.0"
+        versionCode = 13
+        versionName = "1.9.1"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
