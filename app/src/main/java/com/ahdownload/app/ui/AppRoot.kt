@@ -60,7 +60,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-private data class LinkAnalysis(val url:String,val title:String,val platform:String,val formats:List<ResolvedFormat>,val durationSeconds:Double? = null,val thumbnailUrl:String? = null,val mediaType:MediaType = MediaType.UNKNOWN)
+private data class LinkAnalysis(val url:String,val title:String,val platform:String,val formats:List<ResolvedFormat>,val durationSeconds:Double? = null,val thumbnailUrl:String? = null,val mediaType:MediaType = MediaType.UNKNOWN,val profile:DownloadProfile = DownloadProfile.BALANCED)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable fun AppRoot(){
@@ -175,7 +175,7 @@ private fun NavItem(
       val formats=resolved.formats.filter{it.hasVideo||it.hasAudio}
       if(formats.isEmpty()){error="الرابط المباشر لم يعرض ملف وسائط قابلًا للتنزيل.";AppLogger.error(context,"analysis.no_formats",details="platform=Direct")}
       else{
-       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds,resolved.thumbnail,formats.firstOrNull()?.mediaType ?: MediaType.FILE)
+       analysis=LinkAnalysis(clean,resolved.title,"ملف مباشر",formats,resolved.durationSeconds,resolved.thumbnail,formats.firstOrNull()?.mediaType ?: MediaType.FILE, profile.value)
        AppLogger.info(context,"analysis.success","platform=Direct formats="+formats.size)
       }
      }.onFailure{failure->error="الرابط لا يشير إلى ملف وسائط قابل للتنزيل.";AppLogger.error(context,"analysis.failed",failure,"platform=Direct")}
@@ -324,8 +324,8 @@ private fun AnalysisSkeleton() {
   return
  }
 
- val videoFormats=remember(info.formats){FormatRanker.rankVideo(info.formats.filter{it.hasVideo})}
- val audioFormats=remember(info.formats){FormatRanker.rankAudio(info.formats.filter{it.hasAudio&&!it.hasVideo})}
+ val videoFormats=remember(info.formats){FormatRanker.rankVideo(info.formats.filter{it.hasVideo}, info.profile)}
+ val audioFormats=remember(info.formats){FormatRanker.rankAudio(info.formats.filter{it.hasAudio&&!it.hasVideo}, info.profile)}
  val list=if(mode=="video")videoFormats else audioFormats
  val recommendedVideo=remember(videoFormats){videoFormats.firstOrNull()}
  val recommendedAudio=remember(audioFormats){audioFormats.firstOrNull()}
