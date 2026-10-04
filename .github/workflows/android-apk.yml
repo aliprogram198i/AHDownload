@@ -137,3 +137,4 @@ jobs:
           fail_on_unmatched_files: true
 
 # Release branch verification trigger
+# CI verification marker: keep workflow_dispatch available for release validation.
