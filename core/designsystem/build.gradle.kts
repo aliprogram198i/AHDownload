@@ -10,7 +10,7 @@ android {
             minorApiLevel = 1
         }
     }
-    defaultConfig { minSdk = 26 }
+    defaultConfig { minSdk = 24 }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

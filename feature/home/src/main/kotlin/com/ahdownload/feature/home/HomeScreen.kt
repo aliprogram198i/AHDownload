@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -46,6 +47,7 @@ fun HomeRoute(
     onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
     logger: DiagnosticLogger,
     onOpenDiagnostics: () -> Unit,
+    onOpenYouTubeSession: () -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -61,6 +63,7 @@ fun HomeRoute(
         onSelectCandidate = viewModel::selectCandidate,
         onDownload = viewModel::downloadSelected,
         onOpenDiagnostics = onOpenDiagnostics,
+        onOpenYouTubeSession = onOpenYouTubeSession,
     )
 }
 
@@ -73,13 +76,17 @@ private fun HomeScreen(
     onSelectCandidate: (String) -> Unit,
     onDownload: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenYouTubeSession: () -> Unit,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
-                actions = { IconButton(onClick = onOpenDiagnostics) { Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء") } },
+                actions = {
+                    IconButton(onClick = onOpenYouTubeSession) { Icon(Icons.Rounded.AccountCircle, contentDescription = "جلسة YouTube") }
+                    IconButton(onClick = onOpenDiagnostics) { Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء") }
+                },
             )
         },
     ) { padding ->
