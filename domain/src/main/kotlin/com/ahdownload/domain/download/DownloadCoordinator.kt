@@ -37,10 +37,9 @@ class DownloadCoordinator(
                         } else {
                             (now - lastPersistedProgressAt).coerceAtLeast(0L)
                         }
-                        progressPersistIntervalMs == 0L ||
-                            elapsed >= progressPersistIntervalMs ||
-                            state.bytesDownloaded == 0L ||
-                            state.bytesDownloaded > lastPersistedBytes
+                        lastPersistedProgressAt == Long.MIN_VALUE ||
+                            progressPersistIntervalMs == 0L ||
+                            elapsed >= progressPersistIntervalMs
                     }
                 }
 
@@ -65,13 +64,7 @@ class DownloadCoordinator(
     }
 
     private suspend fun queueRecord(taskId: String): DownloadRecord =
-        queueRecordOrThrow(taskId)
-
-    private suspend fun queueRecordOrThrow(taskId: String): DownloadRecord =
-        queueRecordLookup(taskId) ?: error("Download task not found: $taskId")
-
-    private suspend fun queueRecordLookup(taskId: String): DownloadRecord? =
-        queue.repositoryGet(taskId)
+        queue.get(taskId) ?: error("Download task not found: $taskId")
 
     private companion object {
         const val DEFAULT_PROGRESS_PERSIST_INTERVAL_MS = 500L
