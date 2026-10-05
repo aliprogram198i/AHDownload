@@ -13,6 +13,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,14 +52,21 @@ fun DiagnosticsRoute(logger: PersistentDiagnosticLogger, onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiagnosticsScreen(logs: List<DiagnosticLog>, clipboard: ClipboardManager, onBack: () -> Unit, onRefresh: () -> Unit, onClear: () -> Unit) {
+    val exportText = remember(logs) { formatDiagnostics(logs) }
+    val errors = logs.count { it.level == DiagnosticLevel.ERROR }
+    val warnings = logs.count { it.level == DiagnosticLevel.WARNING }
     Scaffold(topBar = {
         TopAppBar(title = { Text("سجل الأخطاء والتشخيص") }, navigationIcon = { IconButton(onClick = onBack) { Text("‹", style = MaterialTheme.typography.headlineMedium) } }, actions = {
+            IconButton(onClick = { clipboard.setText(AnnotatedString(exportText)) }, enabled = logs.isNotEmpty()) { Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل الكامل") }
             IconButton(onClick = onClear, enabled = logs.isNotEmpty()) { Icon(Icons.Rounded.DeleteSweep, contentDescription = "مسح السجل") }
         })
     }) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                Text("السجل محفوظ محليًا ويحتوي على نوع الخطأ وسببه والوقت ومرحلة التنفيذ. لا يتم حفظ الرابط الكامل.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("سجل مركزي واحد لكل عمليات التطبيق. تُحفظ الأحداث محليًا مع إخفاء بيانات الاعتماد وعدم حفظ استعلامات الروابط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (logs.isNotEmpty()) {
+                    Text("الإجمالي: ${logs.size}  •  أخطاء: $errors  •  تحذيرات: $warnings", style = MaterialTheme.typography.labelLarge)
+                }
                 if (logs.isNotEmpty()) Button(onClick = onRefresh, modifier = Modifier.padding(top = 8.dp)) { Text("تحديث") }
             }
             if (logs.isEmpty()) item { Text("لا توجد أخطاء مسجلة حاليًا.", style = MaterialTheme.typography.titleMedium) }
@@ -87,6 +95,8 @@ private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
         }
     }
 }
+
+private fun formatDiagnostics(logs: List<DiagnosticLog>): String = logs.joinToString("\n\n") { formatDiagnostic(it) }
 
 private fun formatDiagnostic(log: DiagnosticLog): String = buildString {
     appendLine("AHDownload Diagnostic Log")
