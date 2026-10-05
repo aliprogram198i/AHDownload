@@ -46,19 +46,8 @@ fun HomeRoute(
     logger: DiagnosticLogger,
     onOpenDiagnostics: () -> Unit,
 ) {
-    val onLogError = remember(logger) {
-        { type: String, reason: String, detail: String? ->
-            logger.log(
-                com.ahdownload.core.common.DiagnosticLevel.ERROR,
-                type,
-                reason,
-                "home",
-                detail?.let { mapOf("detail" to it) } ?: emptyMap(),
-            )
-        }
-    }
     val factory = remember(onDownloadRequested, logger) {
-        HomeViewModel.Factory(onDownloadRequested, onLogError, logger)
+        HomeViewModel.Factory(onDownloadRequested, logger)
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
