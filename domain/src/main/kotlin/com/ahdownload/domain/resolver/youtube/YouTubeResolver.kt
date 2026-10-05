@@ -57,7 +57,7 @@ class YouTubeResolver(
             logger.log(
                 DiagnosticLevel.WARNING,
                 type = "youtube.primary_failed",
-                reason = lastFailure?.message ?: "primary_failed",
+                reason = lastFailure.message ?: "primary_failed",
                 operation = "youtube.resolve",
                 context = diagnosticContext(videoId, request.operationId),
                 throwable = error,
@@ -83,7 +83,7 @@ class YouTubeResolver(
         } ?: return failure(
             lastFailure?.code ?: FailureCode.ResolverUnavailable,
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
-            context = mapOf("video_id" to videoId),
+            context = diagnosticContext(videoId, request.operationId),
         )
 
         logger.log(
@@ -91,8 +91,7 @@ class YouTubeResolver(
             type = "youtube.session_snapshot",
             reason = if (snapshot.authenticated) "authenticated_session" else "session_not_authenticated",
             operation = "youtube.resolve",
-            context = mapOf(
-                "video_id" to videoId,
+            context = diagnosticContext(videoId, request.operationId) + mapOf(
                 "cookies_obtained" to (!snapshot.cookies.isNullOrBlank()).toString(),
                 "video_candidates" to snapshot.videoUrls.size.toString(),
                 "audio_candidates" to snapshot.audioUrls.size.toString(),
