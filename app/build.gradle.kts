@@ -63,5 +63,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
