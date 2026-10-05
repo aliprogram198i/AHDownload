@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipboardManager
@@ -39,7 +40,7 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 fun DiagnosticsRoute(logger: PersistentDiagnosticLogger, onBack: () -> Unit) {
-    var logs by mutableStateOf(logger.list())
+    var logs by remember { mutableStateOf(logger.list()) }
     val clipboard = LocalClipboardManager.current
     LaunchedEffect(Unit) { logs = logger.list() }
     DiagnosticsScreen(logs, clipboard, onBack, { logs = logger.list() }, { logger.clear(); logs = emptyList() })
