@@ -144,6 +144,8 @@ class YouTubeResolver(
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
             context = mapOf("video_id" to videoId),
         )
+    }
+
     private fun logPlayerFailure(videoId: String, result: ResolverResult, fallback: String) {
         if (result is ResolverResult.Failure) {
             logger.log(

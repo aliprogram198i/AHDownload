@@ -148,7 +148,10 @@ class HomeViewModel(
             @Suppress("UNCHECKED_CAST")
             return HomeViewModel(
                 logger = logger,
-                logger = logger,
+                resolver = HomeResolver(
+                    logger = logger,
+                    sessionProvider = AndroidYouTubeSessionProvider(context.applicationContext),
+                ),
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
