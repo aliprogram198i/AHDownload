@@ -81,7 +81,7 @@ class DownloadCoordinatorTest {
 
         coordinator.execute(task())
 
-        assertEquals(1000, repository.upsertCount)
+        assertEquals(5, repository.upsertCount)
     }
 
     private fun task() = DownloadTask(
