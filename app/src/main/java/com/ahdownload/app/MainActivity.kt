@@ -8,48 +8,47 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.ahdownload.app.diagnostics.DiagnosticsRoute
+import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
+import com.ahdownload.app.ui.YouTubeSessionScreen
 
-private enum class RootDestination {
-    Welcome,
-    Home,
-}
+private enum class RootDestination { Welcome, Home, Diagnostics, YouTubeSession }
 
 class MainActivity : ComponentActivity() {
+    private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
+    private val diagnosticLogger by lazy { PersistentDiagnosticLogger(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             AHTheme {
-                AHRoot()
+                AHRoot(
+                    logger = diagnosticLogger,
+                    onDownloadRequested = { candidate, title -> downloadLauncher.enqueue(candidate, title) },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun AHRoot() {
+private fun AHRoot(
+    logger: PersistentDiagnosticLogger,
+    onDownloadRequested: suspend (com.ahdownload.domain.resolver.MediaCandidate, String?) -> Boolean,
+) {
     var destination by rememberSaveable { mutableStateOf(RootDestination.Welcome) }
+    val downloadCallback = remember(onDownloadRequested) { onDownloadRequested }
 
     AnimatedContent(
         targetState = destination,
@@ -57,43 +56,17 @@ private fun AHRoot() {
         label = "rootDestination",
     ) { current ->
         when (current) {
-            RootDestination.Welcome -> WelcomeRoute(
-                onContinue = { destination = RootDestination.Home },
+            RootDestination.Welcome -> WelcomeRoute(onContinue = { destination = RootDestination.Home })
+            RootDestination.Home -> HomeRoute(
+                onDownloadRequested = downloadCallback,
+                logger = logger,
+                onOpenDiagnostics = { destination = RootDestination.Diagnostics },
+                onOpenYouTubeSession = { destination = RootDestination.YouTubeSession },
             )
-            RootDestination.Home -> HomeShell(
-                onBack = { destination = RootDestination.Welcome },
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun HomeShell(onBack: () -> Unit) {
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("AHDownload") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Rounded.ArrowBack,
-                            contentDescription = "رجوع",
-                        )
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 24.dp, vertical = 32.dp),
-        ) {
-            Text(
-                text = "تم تأسيس واجهة التطبيق. طبقة التحميل الذكي ستُبنى فوق العقود المعمارية الحالية.",
-                style = MaterialTheme.typography.headlineMedium,
+            RootDestination.YouTubeSession -> YouTubeSessionScreen(onBack = { destination = RootDestination.Home })
+            RootDestination.Diagnostics -> DiagnosticsRoute(
+                logger = logger,
+                onBack = { destination = RootDestination.Home },
             )
         }
     }

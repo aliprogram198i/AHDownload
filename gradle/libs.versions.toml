@@ -3,6 +3,7 @@ androidxCore = "1.19.0"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 navigation = "2.10.2"
+workManager = "2.12.0"
 composeBom = "2026.09.00"
 junit = "4.13.2"
 androidxTest = "1.7.0"
@@ -14,6 +15,8 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
+androidx-work-testing = { module = "androidx.work:work-testing", version.ref = "workManager" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
