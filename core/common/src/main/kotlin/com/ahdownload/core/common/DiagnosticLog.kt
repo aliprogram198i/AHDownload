@@ -22,7 +22,7 @@ fun interface DiagnosticLogger {
         type: String,
         reason: String,
         operation: String,
-        context: Map<String, String> = emptyMap(),
-        throwable: Throwable? = null,
+        context: Map<String, String>,
+        throwable: Throwable?,
     )
 }
