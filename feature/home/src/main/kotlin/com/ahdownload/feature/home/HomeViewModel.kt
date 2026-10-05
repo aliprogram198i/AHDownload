@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class HomeUiState(
     val url: String = "",
@@ -56,6 +57,9 @@ class HomeViewModel(
             return
         }
 
+        val operationId = UUID.randomUUID().toString()
+        logger.log(com.ahdownload.core.common.DiagnosticLevel.INFO, "ANALYSIS_STARTED", "بدء تحليل الرابط", "home.analyze", mapOf("operation_id" to operationId, "platform" to link.platform.name), null)
+
         _uiState.value = _uiState.value.copy(
             analyzing = true,
             resolving = false,
@@ -68,7 +72,7 @@ class HomeViewModel(
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(analyzing = false, resolving = true)
-            when (val resolution = resolver.resolve(link)) {
+            when (val resolution = resolver.resolve(link, operationId)) {
                 is ResolverResult.Success -> {
                     _uiState.value = _uiState.value.copy(
                         resolving = false,
@@ -78,7 +82,7 @@ class HomeViewModel(
                     )
                 }
                 is ResolverResult.Failure -> {
-                    logger.log(com.ahdownload.core.common.DiagnosticLevel.ERROR, "RESOLVER", resolution.code.name, "home.resolve", mapOf("reason" to (resolution.message ?: "تعذر استخراج الوسائط.")), null)
+                    logger.log(com.ahdownload.core.common.DiagnosticLevel.ERROR, "RESOLVER", resolution.code.name, "home.resolve", mapOf("reason" to (resolution.message ?: "تعذر استخراج الوسائط."), "operation_id" to operationId, "platform" to link.platform.name), null)
                     _uiState.value = _uiState.value.copy(
                         resolving = false,
                         resolution = null,
