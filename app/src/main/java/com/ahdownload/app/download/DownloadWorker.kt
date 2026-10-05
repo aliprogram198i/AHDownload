@@ -13,11 +13,9 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.ahdownload.app.R
 import com.ahdownload.domain.download.DownloadCoordinator
-import com.ahdownload.domain.download.DownloadFailure
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadTask
-import com.ahdownload.domain.download.FileDownloadRepository
 import com.ahdownload.domain.download.LocalAtomicFileSink
 import com.ahdownload.domain.download.OkHttpDownloadByteStream
 import com.ahdownload.domain.download.PersistentDownloadQueue
@@ -57,7 +55,7 @@ class DownloadWorker(
                 ),
             )
             DownloadStatus.CANCELLED -> Result.failure(
-                workDataOf(KEY_FAILURE_CODE to DownloadFailure.Cancelled.code),
+                workDataOf(KEY_FAILURE_CODE to "cancelled"),
             )
             DownloadStatus.QUEUED,
             DownloadStatus.PREPARING,
@@ -87,7 +85,11 @@ class DownloadWorker(
             .setSmallIcon(R.drawable.ic_ahdownload)
             .setContentTitle("AHDownload")
             .setContentText(state.toNotificationText())
-            .setOngoing(state !is DownloadState.Completed && state !is DownloadState.Failed && state !is DownloadState.Cancelled)
+            .setOngoing(
+                state !is DownloadState.Completed &&
+                    state !is DownloadState.Failed &&
+                    state !is DownloadState.Cancelled,
+            )
             .setOnlyAlertOnce(true)
             .setProgress(
                 state.totalBytesOrNull()?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0,
@@ -122,7 +124,7 @@ class DownloadWorker(
                 "تنزيلات AHDownload",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "حالة تنزيلات الملفات والوسائط",
+                description = "حالة تنزيلات الملفات والوسائط"
             },
         )
     }
