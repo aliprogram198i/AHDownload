@@ -12,7 +12,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.ahdownload.app.R
-import com.ahdownload.app.diagnostics.DiagnosticLogStore
+import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.domain.download.DownloadCoordinator
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
@@ -49,15 +50,28 @@ class DownloadWorker(
             setForeground(createForegroundInfo(state))
         }
 
-        val diagnostics = DiagnosticLogStore(applicationContext)
+        val diagnostics = (applicationContext as com.ahdownload.app.AHDownloadApplication).diagnosticLogger
         if (record.status == DownloadStatus.FAILED) {
-            diagnostics.append(
+            diagnostics.log(
+                level = DiagnosticLevel.ERROR,
                 type = "DOWNLOAD",
                 reason = record.failureCode ?: "FAILED",
-                detail = record.failureDetail,
+                operation = "download.worker",
+                context = buildMap {
+                    put("task_id", task.id)
+                    record.failureDetail?.let { put("failure_detail", it) }
+                },
+                throwable = null,
             )
         } else if (record.status == DownloadStatus.CANCELLED) {
-            diagnostics.append("DOWNLOAD", "CANCELLED", "تم إلغاء مهمة التنزيل.")
+            diagnostics.log(
+                level = DiagnosticLevel.WARNING,
+                type = "DOWNLOAD",
+                reason = "CANCELLED",
+                operation = "download.worker",
+                context = mapOf("task_id" to task.id),
+                throwable = null,
+            )
         }
 
         return when (record.status) {
