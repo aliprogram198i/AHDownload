@@ -1,5 +1,6 @@
 package com.ahdownload.feature.home
 
+import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
@@ -16,7 +17,11 @@ import com.ahdownload.domain.validation.CandidateValidator
 import com.ahdownload.domain.validation.OkHttpMediaProbe
 
 class HomeResolver(
-    private val youtubeResolver: YouTubeResolver = YouTubeResolver(OkHttpTextClient()),
+    logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
+    private val youtubeResolver: YouTubeResolver = YouTubeResolver(
+        httpClient = OkHttpTextClient(),
+        logger = logger,
+    ),
     private val candidateValidator: CandidateValidator = CandidateValidator(OkHttpMediaProbe()),
     private val candidateRanker: CandidateRanker = CandidateRanker(),
 ) {
@@ -51,9 +56,7 @@ class HomeResolver(
         }
 
         return when (result) {
-            is ResolverResult.Success -> result.copy(
-                candidates = candidateRanker.rank(result.candidates),
-            )
+            is ResolverResult.Success -> result.copy(candidates = candidateRanker.rank(result.candidates))
             is ResolverResult.Failure -> result
         }
     }
