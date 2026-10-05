@@ -30,6 +30,7 @@ class HomeViewModel(
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
     private val resolver: HomeResolver = HomeResolver(),
     private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean = { _, _ -> false },
+    private val onLogError: (String, String, String?) -> Unit = { _, _, _ -> },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -42,6 +43,7 @@ class HomeViewModel(
         val current = _uiState.value.url
         val link = analyzer.analyze(current)
         if (link == null) {
+            onLogError("INVALID_URL", "الرابط غير صالح أو غير مدعوم", "تم رفض الرابط قبل بدء Resolver.")
             _uiState.value = _uiState.value.copy(
                 analyzing = false,
                 resolving = false,
@@ -74,6 +76,11 @@ class HomeViewModel(
                     )
                 }
                 is ResolverResult.Failure -> {
+                    onLogError(
+                        "RESOLVER",
+                        resolution.code.name,
+                        resolution.message ?: "تعذر استخراج الوسائط.",
+                    )
                     _uiState.value = _uiState.value.copy(
                         resolving = false,
                         resolution = null,
@@ -106,6 +113,9 @@ class HomeViewModel(
                         validation.candidate.copy(sourceUrl = validation.finalUrl),
                         state.resolution.title,
                     )
+                    if (!queued) {
+                        onLogError("QUEUE", "QUEUE_REJECTED", "تعذر إضافة المصدر المتحقق منه إلى قائمة التنزيل.")
+                    }
                     _uiState.value = _uiState.value.copy(
                         validatingCandidateId = null,
                         downloadQueued = queued,
@@ -113,6 +123,7 @@ class HomeViewModel(
                     )
                 }
                 is CandidateValidationResult.Invalid -> {
+                    onLogError("MEDIA_VALIDATION", validation.failure.toString(), "تم رفض المصدر قبل إدخاله إلى WorkManager.")
                     _uiState.value = _uiState.value.copy(
                         validatingCandidateId = null,
                         error = "تم رفض مصدر الوسائط: " + validation.failure,
@@ -132,10 +143,14 @@ class HomeViewModel(
 
     class Factory(
         private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
+        private val onLogError: (String, String, String?) -> Unit,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
-            return HomeViewModel(onDownloadRequested = onDownloadRequested) as T
+            return HomeViewModel(
+                onDownloadRequested = onDownloadRequested,
+                onLogError = onLogError,
+            ) as T
         }
     }
 }
