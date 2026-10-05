@@ -40,8 +40,12 @@ import com.ahdownload.domain.resolver.MediaCandidate
 @Composable
 fun HomeRoute(
     onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
+    onLogError: (String, String, String?) -> Unit,
+    onOpenDiagnostics: () -> Unit,
 ) {
-    val factory = remember(onDownloadRequested) { HomeViewModel.Factory(onDownloadRequested) }
+    val factory = remember(onDownloadRequested, onLogError) {
+        HomeViewModel.Factory(onDownloadRequested, onLogError)
+    }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -51,6 +55,7 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onDownload = viewModel::downloadSelected,
+        onOpenDiagnostics = onOpenDiagnostics,
     )
 }
 
@@ -62,12 +67,16 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownload: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
+                actions = {
+                    Button(onClick = onOpenDiagnostics) { Text("سجل الأخطاء") }
+                },
             )
         },
     ) { padding ->
