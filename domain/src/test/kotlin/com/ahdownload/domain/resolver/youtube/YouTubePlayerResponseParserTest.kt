@@ -29,7 +29,7 @@ class YouTubePlayerResponseParserTest {
                 "formats": [
                   {
                     "itag": "18",
-                    "mimeType": "video/mp4; codecs="avc1.42001E, mp4a.40.2"",
+                    "mimeType": "video/mp4; codecs=\\"avc1.42001E, mp4a.40.2\\"",
                     "width": 640,
                     "height": 360,
                     "fps": 30,
@@ -41,7 +41,7 @@ class YouTubePlayerResponseParserTest {
                 "adaptiveFormats": [
                   {
                     "itag": "140",
-                    "mimeType": "audio/mp4; codecs="mp4a.40.2"",
+                    "mimeType": "audio/mp4; codecs=\\"mp4a.40.2\\"",
                     "bitrate": 128000,
                     "contentLength": "2000",
                     "url": "https://cdn.example.com/140"
@@ -80,7 +80,7 @@ class YouTubePlayerResponseParserTest {
               "videoDetails": {"title":"No Direct URL"},
               "streamingData": {
                 "formats": [
-                  {"itag":"999","mimeType":"video/mp4; codecs="avc1.4D401F"","signatureCipher":"s=abc"}
+                  {"itag":"999","mimeType":"video/mp4; codecs=\\"avc1.4D401F\\"","signatureCipher":"s=abc"}
                 ]
               }
             };
