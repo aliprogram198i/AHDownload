@@ -146,7 +146,6 @@ class HomeViewModel(
             @Suppress("UNCHECKED_CAST")
             return HomeViewModel(
                 logger = logger,
-                logger = logger,
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
