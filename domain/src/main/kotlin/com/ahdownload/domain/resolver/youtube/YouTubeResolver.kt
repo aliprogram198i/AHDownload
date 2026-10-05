@@ -6,6 +6,9 @@ import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.FailureCode
 import com.ahdownload.domain.resolver.HttpTextClient
+import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.domain.resolver.MediaContainer
+import com.ahdownload.domain.resolver.MediaFormat
 import com.ahdownload.domain.resolver.PlatformAdapter
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
