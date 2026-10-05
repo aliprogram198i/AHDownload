@@ -81,7 +81,6 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownload: () -> Unit,
-    onOpenDiagnostics: () -> Unit,
 ) {
     Scaffold(
         topBar = {
