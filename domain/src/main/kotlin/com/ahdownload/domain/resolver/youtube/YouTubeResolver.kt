@@ -20,7 +20,7 @@ class YouTubeResolver(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val sessionProvider: YouTubeSessionProvider? = null,
 ) : PlatformAdapter {
-    private val playerClient = YouTubePlayerClient(httpClient)
+    private val playerClient = YouTubePlayerClient(httpClient, logger)
 
     override val capability = com.ahdownload.domain.resolver.ResolverCapability(
         platform = MediaPlatform.YouTube,
@@ -42,7 +42,7 @@ class YouTubeResolver(
             if (direct is ResolverResult.Success) return filterKind(direct, request)
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
-            val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl) }.getOrNull()
+            val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) return filterKind(apiResult, request)
@@ -110,7 +110,7 @@ class YouTubeResolver(
                 val direct = parser.parse(sessionHtml)
                 if (direct is ResolverResult.Success) return filterKind(direct, request)
                 val api = runCatching {
-                    playerClient.fetchPlayerResponse(sessionHtml, request.link.normalizedUrl, headers)
+                    playerClient.fetchPlayerResponse(sessionHtml, request.link.normalizedUrl, headers, request.operationId)
                 }.getOrNull()
                 if (api != null) {
                     val result = parser.parsePlayerResponse(api)
