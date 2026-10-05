@@ -13,7 +13,7 @@ class PersistentDiagnosticLogger(
 ) : DiagnosticLogger {
     private val preferences = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val gson = Gson()
-    private val type = object : TypeToken<List<DiagnosticLog>>() {}.type
+    private val listType = object : TypeToken<List<DiagnosticLog>>() {}.type
 
     @Synchronized
     override fun log(
@@ -36,7 +36,7 @@ class PersistentDiagnosticLogger(
             throwableMessage = throwable?.message,
         )
         val updated = (read() + record).takeLast(MAX_ENTRIES)
-        preferences.edit().putString(KEY_LOGS, gson.toJson(updated, type)).apply()
+        preferences.edit().putString(KEY_LOGS, gson.toJson(updated, listType)).apply()
     }
 
     @Synchronized
@@ -55,7 +55,7 @@ class PersistentDiagnosticLogger(
 
     private fun read(): List<DiagnosticLog> {
         val json = preferences.getString(KEY_LOGS, null) ?: return emptyList()
-        return runCatching { gson.fromJson<List<DiagnosticLog>>(json, type) ?: emptyList() }
+        return runCatching { gson.fromJson<List<DiagnosticLog>>(json, listType) ?: emptyList() }
             .getOrDefault(emptyList())
     }
 }
