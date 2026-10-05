@@ -33,6 +33,39 @@ class DownloadCoordinatorTest {
     }
 
     @Test
+    fun persistedStateCallbackReceivesOnlyCheckpointedStates() = runTest {
+        val repository = FakeRepository()
+        val queue = PersistentDownloadQueue(repository)
+        val states = mutableListOf<DownloadState>()
+        val coordinator = DownloadCoordinator(
+            engine = FakeEngine(
+                DownloadState.Queued,
+                DownloadState.Preparing,
+                DownloadState.Downloading(0, 1000),
+                DownloadState.Downloading(100, 1000),
+                DownloadState.Downloading(200, 1000),
+                DownloadState.Downloading(300, 1000),
+                DownloadState.Completed,
+            ),
+            queue = queue,
+            clock = StepClock(stepMs = 100),
+            progressPersistIntervalMs = 500,
+        )
+
+        coordinator.execute(task(), states::add)
+
+        assertEquals(
+            listOf(
+                DownloadState.Queued,
+                DownloadState.Preparing,
+                DownloadState.Downloading(0, 1000),
+                DownloadState.Completed,
+            ),
+            states,
+        )
+    }
+
+    @Test
     fun cancellationIsPersistedAndRethrown() = runTest {
         val repository = FakeRepository()
         val queue = PersistentDownloadQueue(repository)
