@@ -3,6 +3,7 @@ package com.ahdownload.domain.download
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.IOException
 
 class StreamingDownloadEngine(
     private val source: DownloadByteStream,
@@ -21,64 +22,114 @@ class StreamingDownloadEngine(
         onState(DownloadState.Queued)
         onState(DownloadState.Preparing)
 
-        var response: DownloadResponse? = null
+        val response = try {
+            source.open(task.sourceUrl)
+        } catch (cancelled: CancellationException) {
+            onState(DownloadState.Cancelled)
+            throw cancelled
+        } catch (_: IOException) {
+            onState(DownloadState.Failed(DownloadFailure.NetworkError))
+            return
+        } catch (_: Throwable) {
+            onState(DownloadState.Failed(DownloadFailure.NetworkError))
+            return
+        }
+
+        if (response.statusCode !in 200..299) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.HttpError(response.statusCode)))
+            return
+        }
+
+        if (response.contentType?.substringBefore(';')?.equals("text/html", ignoreCase = true) == true) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
+            return
+        }
+
+        val output = try {
+            sink.openTemporary(task.destinationPath)
+        } catch (cancelled: CancellationException) {
+            response.body.close()
+            onState(DownloadState.Cancelled)
+            throw cancelled
+        } catch (_: Throwable) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            return
+        }
+
         try {
-            response = source.open(task.sourceUrl)
-
-            if (response.statusCode !in 200..299) {
-                response.body.close()
-                onState(DownloadState.Failed(DownloadFailure.HttpError(response.statusCode)))
-                return
-            }
-
-            if (response.contentType?.substringBefore(';')?.equals("text/html", ignoreCase = true) == true) {
-                response.body.close()
-                onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
-                return
-            }
-
             withContext(Dispatchers.IO) {
                 response.body.use { input ->
-                    val output = sink.openTemporary(task.destinationPath)
-                    try {
+                    output.use { target ->
                         val buffer = ByteArray(bufferSize)
                         var downloaded = 0L
                         onState(DownloadState.Downloading(downloaded, response.contentLengthBytes))
 
                         while (true) {
-                            val read = input.read(buffer)
+                            val read = try {
+                                input.read(buffer)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: IOException) {
+                                throw NetworkReadException()
+                            }
+
                             if (read < 0) break
                             if (read == 0) continue
 
-                            output.write(buffer, 0, read)
+                            try {
+                                target.write(buffer, 0, read)
+                            } catch (_: IOException) {
+                                throw StorageWriteException()
+                            }
+
                             downloaded += read
                             onState(DownloadState.Downloading(downloaded, response.contentLengthBytes))
                         }
 
-                        output.flush()
-                    } catch (t: Throwable) {
-                        output.close()
-                        sink.discard(task.destinationPath)
-                        throw t
+                        target.flush()
                     }
-                    output.close()
                 }
             }
+        } catch (cancelled: CancellationException) {
+            sink.discard(task.destinationPath)
+            onState(DownloadState.Cancelled)
+            throw cancelled
+        } catch (_: NetworkReadException) {
+            sink.discard(task.destinationPath)
+            onState(DownloadState.Failed(DownloadFailure.NetworkError))
+            return
+        } catch (_: StorageWriteException) {
+            sink.discard(task.destinationPath)
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            return
+        } catch (_: IOException) {
+            sink.discard(task.destinationPath)
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            return
+        } catch (_: Throwable) {
+            sink.discard(task.destinationPath)
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            return
+        }
 
+        try {
             sink.commit(task.destinationPath)
             onState(DownloadState.Completed)
         } catch (cancelled: CancellationException) {
             sink.discard(task.destinationPath)
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (t: java.io.IOException) {
-            sink.discard(task.destinationPath)
-            onState(DownloadState.Failed(DownloadFailure.NetworkError))
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             sink.discard(task.destinationPath)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
         }
     }
+
+    private class NetworkReadException : IOException()
+    private class StorageWriteException : IOException()
 
     private companion object {
         const val DEFAULT_BUFFER_SIZE = 64 * 1024
