@@ -89,7 +89,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                       if(!/^https?:\/\//i.test(u)||/.m3u8(?:[?#]|$)/i.test(u))return;
                       if(/(?:[?&](?:mime|type)=audio%2f|[?&](?:mime|type)=audio\/|audio)/i.test(l))a.add(u);
                       else if(/(?:[?&](?:mime|type)=video%2f|[?&](?:mime|type)=video\/|\.mp4|\.webm|\.m4v|\.mov)/i.test(l))v.add(u)
-                    })}catch(_){} 
+                    })}catch(_){}
                     const t=(document.body&&document.body.innerText||'').toLowerCase();
                     const auth=!!document.querySelector('ytd-masthead #avatar-btn,ytd-topbar-menu-button-renderer #avatar-btn')&&!t.includes('sign in');
                     return JSON.stringify({v:Array.from(v).slice(0,24),a:Array.from(a).slice(0,24),auth});
