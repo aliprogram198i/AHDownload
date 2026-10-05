@@ -46,11 +46,15 @@ dependencies {
 
     implementation(project(":core:designsystem"))
     implementation(project(":feature:welcome"))
+    implementation(project(":feature:home"))
+    implementation(project(":domain"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
@@ -59,5 +63,6 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }
