@@ -21,3 +21,5 @@ include(":core:common")
 include(":core:designsystem")
 include(":domain")
 include(":feature:welcome")
+
+include(":feature:home")

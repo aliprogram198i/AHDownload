@@ -46,6 +46,7 @@ dependencies {
 
     implementation(project(":core:designsystem"))
     implementation(project(":feature:welcome"))
+    implementation(project(":feature:home"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
