@@ -18,7 +18,6 @@ class DownloadCoordinator(
         queue.enqueue(task, clock.nowEpochMs())
 
         var lastPersistedProgressAt = Long.MIN_VALUE
-        var lastPersistedBytes = -1L
         var latestRecord = queueRecord(task.id)
 
         try {
@@ -28,7 +27,7 @@ class DownloadCoordinator(
                     DownloadState.Queued,
                     DownloadState.Preparing,
                     DownloadState.Completed,
-                    DownloadState.Failed,
+                    is DownloadState.Failed,
                     DownloadState.Cancelled -> true
 
                     is DownloadState.Downloading -> {
@@ -47,7 +46,6 @@ class DownloadCoordinator(
                     latestRecord = queue.applyState(task.id, state, now)
                     if (state is DownloadState.Downloading) {
                         lastPersistedProgressAt = now
-                        lastPersistedBytes = state.bytesDownloaded
                     }
                 }
             }
