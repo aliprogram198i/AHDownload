@@ -1,6 +1,7 @@
 package com.ahdownload.app.ui
 
 import android.annotation.SuppressLint
+import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -32,9 +33,11 @@ fun YouTubeSessionScreen(onBack: () -> Unit) {
     var checking by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
-    fun cookies(): String = CookieManager.getInstance()
-        .getCookie("https://www.youtube.com/")
-        .orEmpty()
+    fun cookies(): String {
+        val manager = CookieManager.getInstance()
+        manager.flush()
+        return manager.getCookie("https://www.youtube.com/").orEmpty()
+    }
 
     fun hasSession(value: String): Boolean {
         val names = value.split(';')
@@ -43,8 +46,12 @@ fun YouTubeSessionScreen(onBack: () -> Unit) {
         return setOf("SID", "SAPISID", "APISID", "__Secure-3PSID", "LOGIN_INFO").any(names::contains)
     }
 
-    LaunchedEffect(Unit) {
+    fun refreshConnectionStatus() {
         connected = hasSession(cookies())
+    }
+
+    LaunchedEffect(Unit) {
+        refreshConnectionStatus()
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -60,9 +67,12 @@ fun YouTubeSessionScreen(onBack: () -> Unit) {
                     checking = true
                     message = null
                     scope.launch {
-                        CookieManager.getInstance().flush()
-                        connected = hasSession(cookies())
-                        message = if (connected) "تم العثور على جلسة YouTube على الجهاز." else "لم يتم العثور على جلسة مصادق عليها."
+                        refreshConnectionStatus()
+                        message = if (connected) {
+                            "تم العثور على جلسة YouTube محفوظة على الجهاز."
+                        } else {
+                            "لم يتم العثور على جلسة مصادق عليها. سجّل الدخول داخل YouTube ثم اضغط فحص الجلسة."
+                        }
                         checking = false
                     }
                 }) {
@@ -90,8 +100,11 @@ fun YouTubeSessionScreen(onBack: () -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text(if (connected) "YouTube متصل" else "YouTube غير متصل")
                     Text(
-                        if (connected) "سيستخدم المحلل الجلسة المحلية عند الحاجة."
-                        else "سجّل الدخول داخل الصفحة ثم اضغط فحص الجلسة."
+                        if (connected) {
+                            "الجلسة المحلية جاهزة ليستخدمها المحلل."
+                        } else {
+                            "سجّل الدخول داخل صفحة YouTube ثم اضغط فحص الجلسة."
+                        }
                     )
                 }
             }
@@ -108,10 +121,22 @@ fun YouTubeSessionScreen(onBack: () -> Unit) {
                     settings.domStorageEnabled = true
                     settings.databaseEnabled = true
                     settings.mediaPlaybackRequiresUserGesture = false
-                    CookieManager.getInstance().setAcceptCookie(true)
-                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+
+                    val manager = CookieManager.getInstance()
+                    manager.setAcceptCookie(true)
+                    manager.setAcceptThirdPartyCookies(this, true)
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                    }
+
                     webChromeClient = WebChromeClient()
-                    webViewClient = WebViewClient()
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String) {
+                            CookieManager.getInstance().flush()
+                            refreshConnectionStatus()
+                        }
+                    }
                     loadUrl("https://www.youtube.com/")
                 }
             },
@@ -120,12 +145,14 @@ fun YouTubeSessionScreen(onBack: () -> Unit) {
 
         if (!connected) {
             FilledTonalButton(
-                onClick = { message = "سجّل الدخول في صفحة YouTube أعلاه، ثم استخدم زر فحص الجلسة." },
+                onClick = {
+                    message = "أكمل تسجيل الدخول في صفحة YouTube أعلاه، ثم اضغط زر فحص الجلسة."
+                },
                 modifier = Modifier.fillMaxWidth().padding(12.dp)
             ) {
                 Icon(Icons.Default.Login, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("تم تسجيل الدخول")
+                Text("فحص حالة تسجيل الدخول")
             }
         }
     }
