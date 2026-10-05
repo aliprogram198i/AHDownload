@@ -45,6 +45,7 @@ dependencies {
     implementation(composeBom)
 
     implementation(project(":core:designsystem"))
+    implementation(project(":core:common"))
     implementation(project(":feature:welcome"))
     implementation(project(":feature:home"))
     implementation(project(":domain"))
