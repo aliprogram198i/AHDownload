@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 
 private enum class RootDestination {
@@ -60,9 +61,7 @@ private fun AHRoot() {
             RootDestination.Welcome -> WelcomeRoute(
                 onContinue = { destination = RootDestination.Home },
             )
-            RootDestination.Home -> HomeShell(
-                onBack = { destination = RootDestination.Welcome },
-            )
+            RootDestination.Home -> HomeRoute()
         }
     }
 }
