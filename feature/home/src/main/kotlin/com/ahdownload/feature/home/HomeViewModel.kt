@@ -3,6 +3,7 @@ package com.ahdownload.feature.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
@@ -27,8 +28,9 @@ data class HomeUiState(
 )
 
 class HomeViewModel(
+    private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
-    private val resolver: HomeResolver = HomeResolver(),
+    private val resolver: HomeResolver = HomeResolver(logger = logger),
     private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean = { _, _ -> false },
     private val onLogError: (String, String, String?) -> Unit = { _, _, _ -> },
 ) : ViewModel() {
@@ -144,10 +146,12 @@ class HomeViewModel(
     class Factory(
         private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
         private val onLogError: (String, String, String?) -> Unit,
+        private val logger: DiagnosticLogger,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
             return HomeViewModel(
+                logger = logger,
                 onDownloadRequested = onDownloadRequested,
                 onLogError = onLogError,
             ) as T
