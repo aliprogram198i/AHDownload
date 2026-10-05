@@ -48,6 +48,7 @@ class YouTubeResolver(
                     reason = (apiResult as ResolverResult.Failure).message ?: apiResult.code.name,
                     operation = "youtube.resolve",
                     context = mapOf("video_id" to videoId, "fallback" to "youtubei_player"),
+                    throwable = null,
                 )
                 return apiResult
             }
