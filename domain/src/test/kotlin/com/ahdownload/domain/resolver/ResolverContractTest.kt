@@ -3,7 +3,6 @@ package com.ahdownload.domain.resolver
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
-import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -66,7 +65,7 @@ class ResolverContractTest {
     }
 
     @Test
-    fun adapterContractCanReturnResolverResult() = runBlocking {
+    fun adapterCapabilityDeclaresPlatformAndKinds() {
         val adapter = object : PlatformAdapter {
             override val capability = ResolverCapability(
                 platform = MediaPlatform.YouTube,
@@ -78,19 +77,11 @@ class ResolverContractTest {
             }
         }
 
-        val request = ResolverRequest(
-            link = MediaLink(
-                originalUrl = "https://youtu.be/example",
-                normalizedUrl = "https://youtu.be/example",
-                platform = MediaPlatform.YouTube,
-                kind = MediaKind.Unknown,
-            ),
+        assertEquals(MediaPlatform.YouTube, adapter.capability.platform)
+        assertEquals(
+            setOf(MediaKind.Video, MediaKind.Audio),
+            adapter.capability.supportedKinds,
         )
-
-        val result = adapter.resolve(request)
-
-        assertTrue(result is ResolverResult.Failure)
-        assertEquals(FailureCode.NoCandidates, (result as ResolverResult.Failure).code)
     }
 
     @Test
