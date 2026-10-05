@@ -32,7 +32,6 @@ class HomeViewModel(
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
     private val resolver: HomeResolver = HomeResolver(logger = logger),
     private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean = { _, _ -> false },
-    private val onLogError: (String, String, String?) -> Unit = { _, _, _ -> },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -45,7 +44,7 @@ class HomeViewModel(
         val current = _uiState.value.url
         val link = analyzer.analyze(current)
         if (link == null) {
-            onLogError("INVALID_URL", "الرابط غير صالح أو غير مدعوم", "تم رفض الرابط قبل بدء Resolver.")
+            logger.log(com.ahdownload.core.common.DiagnosticLevel.ERROR, "INVALID_URL", "الرابط غير صالح أو غير مدعوم", "home.analyze", emptyMap(), null)
             _uiState.value = _uiState.value.copy(
                 analyzing = false,
                 resolving = false,
@@ -78,11 +77,7 @@ class HomeViewModel(
                     )
                 }
                 is ResolverResult.Failure -> {
-                    onLogError(
-                        "RESOLVER",
-                        resolution.code.name,
-                        resolution.message ?: "تعذر استخراج الوسائط.",
-                    )
+                    logger.log(com.ahdownload.core.common.DiagnosticLevel.ERROR, "RESOLVER", resolution.code.name, "home.resolve", mapOf("reason" to (resolution.message ?: "تعذر استخراج الوسائط.")), null)
                     _uiState.value = _uiState.value.copy(
                         resolving = false,
                         resolution = null,
@@ -116,7 +111,7 @@ class HomeViewModel(
                         state.resolution.title,
                     )
                     if (!queued) {
-                        onLogError("QUEUE", "QUEUE_REJECTED", "تعذر إضافة المصدر المتحقق منه إلى قائمة التنزيل.")
+                        logger.log(com.ahdownload.core.common.DiagnosticLevel.ERROR, "QUEUE", "QUEUE_REJECTED", "download.queue", emptyMap(), null)
                     }
                     _uiState.value = _uiState.value.copy(
                         validatingCandidateId = null,
@@ -125,7 +120,7 @@ class HomeViewModel(
                     )
                 }
                 is CandidateValidationResult.Invalid -> {
-                    onLogError("MEDIA_VALIDATION", validation.failure.toString(), "تم رفض المصدر قبل إدخاله إلى WorkManager.")
+                    logger.log(com.ahdownload.core.common.DiagnosticLevel.ERROR, "MEDIA_VALIDATION", validation.failure.toString(), "download.validate", emptyMap(), null)
                     _uiState.value = _uiState.value.copy(
                         validatingCandidateId = null,
                         error = "تم رفض مصدر الوسائط: " + validation.failure,
@@ -145,15 +140,14 @@ class HomeViewModel(
 
     class Factory(
         private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
-        private val onLogError: (String, String, String?) -> Unit,
         private val logger: DiagnosticLogger,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
             return HomeViewModel(
                 logger = logger,
+                logger = logger,
                 onDownloadRequested = onDownloadRequested,
-                onLogError = onLogError,
             ) as T
         }
     }
