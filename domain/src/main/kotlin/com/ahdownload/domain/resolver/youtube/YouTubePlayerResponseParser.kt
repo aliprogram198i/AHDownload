@@ -19,6 +19,15 @@ class YouTubePlayerResponseParser {
         return runCatching {
             val root = JsonParser.parseString(playerResponse).asJsonObject
             val details = root.obj("videoDetails")
+            val playability = root.obj("playabilityStatus")
+            val playabilityStatus = playability?.string("status")
+            if (playabilityStatus != null && playabilityStatus != "OK") {
+                val reason = playability?.string("reason") ?: "status=$playabilityStatus"
+                return ResolverResult.Failure(
+                    FailureCode.ResolverUnavailable,
+                    "YouTube رفض تشغيل الفيديو: $reason",
+                )
+            }
             val streamingData = root.obj("streamingData")
             val candidates = buildCandidates(streamingData)
 
