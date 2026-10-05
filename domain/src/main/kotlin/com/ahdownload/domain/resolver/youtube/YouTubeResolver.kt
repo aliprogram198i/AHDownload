@@ -184,6 +184,7 @@ class YouTubeResolver(
                     id = "webview-audio-${index}",
                     kind = MediaKind.Audio,
                     container = containerFor(url, MediaKind.Audio),
+                    hasVideo = false,
                     hasAudio = true,
                 ),
             )
