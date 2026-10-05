@@ -26,7 +26,7 @@ private enum class RootDestination { Welcome, Home, Diagnostics, YouTubeSession 
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
-    private val diagnosticLogger by lazy { PersistentDiagnosticLogger(applicationContext) }
+    private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
