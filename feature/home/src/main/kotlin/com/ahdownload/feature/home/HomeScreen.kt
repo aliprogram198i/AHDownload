@@ -70,6 +70,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownload: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -181,7 +182,6 @@ private fun CandidateCard(
     validating: Boolean,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
-    onOpenDiagnostics: () -> Unit,
 ) {
     val format = candidate.format
     Card(
