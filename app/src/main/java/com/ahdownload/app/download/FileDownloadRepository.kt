@@ -18,7 +18,7 @@ class FileDownloadRepository(
         context.applicationContext.filesDir,
         "downloads/downloads.json",
     )
-    private val store = AtomicFile(storeFile, "downloads")
+    private val store = AtomicFile(storeFile)
     private val codec = DownloadRecordJsonCodec()
 
     init {
