@@ -26,6 +26,8 @@ class DownloadWorker(
     workerParams: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParams) {
 
+    private val notificationId = id.hashCode().and(Int.MAX_VALUE).coerceAtLeast(1)
+
     override suspend fun doWork(): Result {
         val task = readTask() ?: return Result.failure()
 
@@ -66,13 +68,13 @@ class DownloadWorker(
     }
 
     private fun readTask(): DownloadTask? {
-        val id = inputData.getString(KEY_TASK_ID)?.takeIf { it.isNotBlank() } ?: return null
+        val taskId = inputData.getString(KEY_TASK_ID)?.takeIf { it.isNotBlank() } ?: return null
         val sourceUrl = inputData.getString(KEY_SOURCE_URL)?.takeIf { it.isNotBlank() } ?: return null
         val destinationPath =
             inputData.getString(KEY_DESTINATION_PATH)?.takeIf { it.isNotBlank() } ?: return null
 
         return DownloadTask(
-            id = id,
+            id = taskId,
             sourceUrl = sourceUrl,
             destinationPath = destinationPath,
         )
@@ -105,12 +107,12 @@ class DownloadWorker(
 
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ForegroundInfo(
-                NOTIFICATION_ID,
+                notificationId,
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
             )
         } else {
-            ForegroundInfo(NOTIFICATION_ID, notification)
+            ForegroundInfo(notificationId, notification)
         }
     }
 
@@ -166,6 +168,5 @@ class DownloadWorker(
         const val TAG = "ahdownload-download-worker"
 
         private const val CHANNEL_ID = "ahdownload_downloads"
-        private const val NOTIFICATION_ID = 4101
     }
 }
