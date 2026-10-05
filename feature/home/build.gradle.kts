@@ -28,6 +28,7 @@ android {
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:common"))
     implementation(project(":domain"))
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
