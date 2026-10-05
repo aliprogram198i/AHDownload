@@ -48,7 +48,6 @@ fun HomeRoute(
     logger: DiagnosticLogger,
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
-    onOpenYouTubeSession: () -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -77,6 +76,7 @@ private fun HomeScreen(
     onSelectCandidate: (String) -> Unit,
     onDownload: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenYouTubeSession: () -> Unit,
 ) {
     Scaffold(
         topBar = {
