@@ -13,19 +13,51 @@ class OkHttpMediaProbe(
 ) : MediaProbe {
 
     override suspend fun probe(url: String): MediaProbeResult = withContext(Dispatchers.IO) {
+        probeHead(url).let { head ->
+            if (head.code in 200..299) {
+                return@withContext head.toResult()
+            }
+
+            if (head.code != 405 && head.code != 501) {
+                return@withContext head.toResult()
+            }
+
+            probeRange(url).toResult()
+        }
+    }
+
+    private fun probeHead(url: String): okhttp3.Response {
+        val request = Request.Builder()
+            .url(url)
+            .head()
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "*/*")
+            .build()
+        return client.newCall(request).execute()
+    }
+
+    private fun probeRange(url: String): okhttp3.Response {
         val request = Request.Builder()
             .url(url)
             .header("Range", "bytes=0-0")
             .header("User-Agent", USER_AGENT)
             .header("Accept", "*/*")
             .build()
+        return client.newCall(request).execute()
+    }
 
-        client.newCall(request).execute().use { response ->
-            MediaProbeResult(
-                statusCode = response.code,
-                contentType = response.header("Content-Type"),
-                contentLengthBytes = response.body.contentLength().takeIf { it >= 0L },
-                finalUrl = response.request.url.toString(),
+    private fun okhttp3.Response.toResult(): MediaProbeResult {
+        use {
+            val totalSize = header("Content-Range")
+                ?.substringAfterLast('/', "")
+                ?.toLongOrNull()
+                ?: body.contentLength().takeIf { it >= 0L }
+
+            return MediaProbeResult(
+                statusCode = code,
+                contentType = header("Content-Type"),
+                contentLengthBytes = totalSize,
+                finalUrl = request.url.toString(),
             )
         }
     }
