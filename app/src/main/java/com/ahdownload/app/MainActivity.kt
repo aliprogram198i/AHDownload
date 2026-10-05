@@ -20,8 +20,9 @@ import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
+import com.ahdownload.app.ui.YouTubeSessionScreen
 
-private enum class RootDestination { Welcome, Home, Diagnostics }
+private enum class RootDestination { Welcome, Home, Diagnostics, YouTubeSession }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
@@ -60,7 +61,9 @@ private fun AHRoot(
                 onDownloadRequested = downloadCallback,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
+                onOpenYouTubeSession = { destination = RootDestination.YouTubeSession },
             )
+            RootDestination.YouTubeSession -> YouTubeSessionScreen(onBack = { destination = RootDestination.Home })
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
                 onBack = { destination = RootDestination.Home },
