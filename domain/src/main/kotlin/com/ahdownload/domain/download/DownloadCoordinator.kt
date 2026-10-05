@@ -14,7 +14,10 @@ class DownloadCoordinator(
         }
     }
 
-    suspend fun execute(task: DownloadTask): DownloadRecord {
+    suspend fun execute(
+        task: DownloadTask,
+        onPersistedState: suspend (DownloadState) -> Unit = {},
+    ): DownloadRecord {
         queue.enqueue(task, clock.nowEpochMs())
 
         var lastPersistedProgressAt = Long.MIN_VALUE
@@ -47,6 +50,7 @@ class DownloadCoordinator(
                     if (state is DownloadState.Downloading) {
                         lastPersistedProgressAt = now
                     }
+                    onPersistedState(state)
                 }
             }
         } catch (cancelled: CancellationException) {
@@ -55,6 +59,7 @@ class DownloadCoordinator(
                 DownloadState.Cancelled,
                 clock.nowEpochMs(),
             )
+            onPersistedState(DownloadState.Cancelled)
             throw cancelled
         }
 
