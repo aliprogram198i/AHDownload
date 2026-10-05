@@ -7,14 +7,14 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import java.util.concurrent.TimeUnit
+import com.ahdownload.domain.download.DownloadTask
 
 class DownloadWorkScheduler(
     context: Context,
 ) {
     private val workManager = WorkManager.getInstance(context.applicationContext)
 
-    fun enqueue(task: com.ahdownload.domain.download.DownloadTask) {
+    fun enqueue(task: DownloadTask) {
         require(task.id.isNotBlank()) { "task.id must not be blank" }
         require(task.sourceUrl.isNotBlank()) { "task.sourceUrl must not be blank" }
         require(task.destinationPath.isNotBlank()) { "task.destinationPath must not be blank" }
@@ -31,11 +31,6 @@ class DownloadWorkScheduler(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build(),
-            )
-            .setBackoffCriteria(
-                androidx.work.BackoffPolicy.EXPONENTIAL,
-                10,
-                TimeUnit.SECONDS,
             )
             .addTag(DownloadWorker.TAG)
             .build()
