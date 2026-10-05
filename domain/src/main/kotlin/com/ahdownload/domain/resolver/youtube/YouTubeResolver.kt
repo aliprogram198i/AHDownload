@@ -41,13 +41,13 @@ class YouTubeResolver(
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) return filterKind(direct, request)
             lastFailure = direct as? ResolverResult.Failure
-            logPlayerFailure(videoId, direct, "page")
+            logPlayerFailure(videoId, direct, "page", request.operationId)
             val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl) }.getOrNull()
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) return filterKind(apiResult, request)
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
-                logPlayerFailure(videoId, apiResult, "youtubei_player")
+                logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
             }
         } catch (error: Exception) {
             lastFailure = ResolverResult.Failure(
@@ -59,7 +59,7 @@ class YouTubeResolver(
                 type = "youtube.primary_failed",
                 reason = lastFailure?.message ?: "primary_failed",
                 operation = "youtube.resolve",
-                context = mapOf("video_id" to videoId),
+                context = diagnosticContext(videoId, request.operationId),
                 throwable = error,
             )
         }
@@ -67,7 +67,7 @@ class YouTubeResolver(
         val provider = sessionProvider ?: return failure(
             lastFailure?.code ?: FailureCode.ResolverUnavailable,
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
-            context = mapOf("video_id" to videoId),
+            context = diagnosticContext(videoId, request.operationId),
         )
 
         val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrElse { error ->
@@ -76,7 +76,7 @@ class YouTubeResolver(
                 type = "youtube.session_unavailable",
                 reason = error.message ?: error::class.simpleName.orEmpty(),
                 operation = "youtube.resolve",
-                context = mapOf("video_id" to videoId),
+                context = diagnosticContext(videoId, request.operationId),
                 throwable = error,
             )
             null
@@ -116,7 +116,7 @@ class YouTubeResolver(
                     val result = parser.parsePlayerResponse(api)
                     if (result is ResolverResult.Success) return filterKind(result, request)
                     lastFailure = result as? ResolverResult.Failure ?: lastFailure
-                    logPlayerFailure(videoId, result, "youtubei_player_session")
+                    logPlayerFailure(videoId, result, "youtubei_player_session", request.operationId)
                 }
             }
         }
@@ -128,7 +128,7 @@ class YouTubeResolver(
                 type = "youtube.webview_candidates",
                 reason = "direct_media_candidates",
                 operation = "youtube.resolve",
-                context = mapOf("video_id" to videoId, "candidates" to webCandidates.size.toString()),
+                context = diagnosticContext(videoId, request.operationId) + mapOf("candidates" to webCandidates.size.toString()),
                 throwable = null,
             )
             return filterKind(ResolverResult.Success(null, null, null, webCandidates), request)
@@ -138,7 +138,7 @@ class YouTubeResolver(
             return failure(
                 FailureCode.ResolverUnavailable,
                 "YouTube يتطلب جلسة WebView صالحة. افتح YouTube داخل التطبيق وسجّل الدخول ثم أعد المحاولة.",
-                context = mapOf("video_id" to videoId, "reason_class" to "AUTH_REQUIRED"),
+                context = diagnosticContext(videoId, request.operationId) + mapOf("reason_class" to "AUTH_REQUIRED"),
             )
         }
 
@@ -149,14 +149,14 @@ class YouTubeResolver(
         )
     }
 
-    private fun logPlayerFailure(videoId: String, result: ResolverResult, fallback: String) {
+    private fun logPlayerFailure(videoId: String, result: ResolverResult, fallback: String, operationId: String?) {
         if (result is ResolverResult.Failure) {
             logger.log(
                 DiagnosticLevel.WARNING,
                 type = "youtube_player_no_candidates",
                 reason = result.message ?: result.code.name,
                 operation = "youtube.resolve",
-                context = mapOf("video_id" to videoId, "fallback" to fallback),
+                context = diagnosticContext(videoId, operationId) + mapOf("fallback" to fallback),
                 throwable = null,
             )
         }
@@ -241,6 +241,11 @@ class YouTubeResolver(
             throwable = error,
         )
         return ResolverResult.Failure(code, reason)
+    }
+
+    private fun diagnosticContext(videoId: String, operationId: String?): Map<String, String> = buildMap {
+        put("video_id", videoId)
+        operationId?.takeIf { it.isNotBlank() }?.let { put("operation_id", it) }
     }
 
     private fun extractVideoId(url: String): String? {
