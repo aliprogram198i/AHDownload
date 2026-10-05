@@ -27,7 +27,7 @@ class HomeResolver(
     private val candidateValidator: CandidateValidator = CandidateValidator(OkHttpMediaProbe()),
     private val candidateRanker: CandidateRanker = CandidateRanker(),
 ) {
-    suspend fun resolve(link: MediaLink): ResolverResult {
+    suspend fun resolve(link: MediaLink, operationId: String? = null): ResolverResult {
         if (link.platform == MediaPlatform.DirectMedia && link.kind != MediaKind.Unknown) {
             return ResolverResult.Success(
                 title = link.normalizedUrl.substringAfterLast('/').substringBefore('?').ifBlank { null },
@@ -50,7 +50,7 @@ class HomeResolver(
         }
 
         val result = when (link.platform) {
-            MediaPlatform.YouTube -> youtubeResolver.resolve(ResolverRequest(link))
+            MediaPlatform.YouTube -> youtubeResolver.resolve(ResolverRequest(link, operationId = operationId))
             else -> ResolverResult.Failure(
                 com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
                 "المنصة غير موصولة بعد.",
