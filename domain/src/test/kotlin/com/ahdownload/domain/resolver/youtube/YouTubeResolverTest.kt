@@ -83,4 +83,39 @@ class YouTubeResolverTest {
             (result as ResolverResult.Failure).code,
         )
     }
+
+    @Test
+    fun fallsBackToYouTubePlayerApiWhenHtmlHasNoPlayerResponse() = runBlocking {
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                {"INNERTUBE_API_KEY":"test-key","INNERTUBE_CONTEXT":{"client":{"clientName":"ANDROID","clientVersion":"19.09.37"}}}
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String): String = """
+                {
+                  "videoDetails":{"title":"Fallback Test","lengthSeconds":"8"},
+                  "playabilityStatus":{"status":"OK"},
+                  "streamingData":{"formats":[
+                    {"itag":"18","mimeType":"video/mp4; codecs=\\"avc1.42001E, mp4a.40.2\\"","width":640,"height":360,"url":"https://cdn.example.com/fallback"}
+                  ]}
+                }
+            """.trimIndent()
+        }
+
+        val resolver = YouTubeResolver(client)
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/fallback1",
+                    normalizedUrl = "https://youtu.be/fallback1",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals("Fallback Test", (result as ResolverResult.Success).title)
+    }
+
 }
