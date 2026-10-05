@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -119,8 +120,8 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 view.settings.databaseEnabled = true
                 view.settings.mediaPlaybackRequiresUserGesture = false
                 view.settings.userAgentString =
-                    "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
-                    "(KHTML, like Gecko) Chrome/140.0 Mobile Safari/537.36"
+                    "Mozilla/5.0 (Linux; Android " + Build.VERSION.RELEASE + "; Mobile) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
