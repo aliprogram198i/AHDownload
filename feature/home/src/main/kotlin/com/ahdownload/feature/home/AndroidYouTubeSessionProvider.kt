@@ -51,7 +51,6 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 finished = true
                 timeout?.let(main::removeCallbacks)
                 webView?.stopLoading()
-                webView?.webViewClient = null
                 webView?.destroy()
                 webView = null
                 if (continuation.isActive) {
