@@ -118,4 +118,41 @@ class YouTubeResolverTest {
         assertEquals("Fallback Test", (result as ResolverResult.Success).title)
     }
 
+    @Test
+    fun fallsBackToWebViewSessionCandidatesAfterBotCheck() = runBlocking {
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                throw IllegalStateException("Sign in to confirm you’re not a bot")
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
+                YouTubeSessionSnapshot(
+                    cookies = "SID=redacted",
+                    videoUrls = listOf("https://cdn.example.com/video.mp4"),
+                    audioUrls = listOf("https://cdn.example.com/audio.m4a"),
+                    authenticated = true,
+                )
+        }
+        val resolver = YouTubeResolver(
+            httpClient = client,
+            sessionProvider = session,
+        )
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/example",
+                    normalizedUrl = "https://youtu.be/example",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        result as ResolverResult.Success
+        assertEquals(2, result.candidates.size)
+        assertTrue(result.candidates.any { it.format.kind == MediaKind.Video })
+        assertTrue(result.candidates.any { it.format.kind == MediaKind.Audio })
+    }
+
 }
