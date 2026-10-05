@@ -31,6 +31,9 @@ class PersistentDownloadQueue(
         return updated
     }
 
+    suspend fun get(taskId: String): DownloadRecord? =
+        repository.get(taskId)
+
     suspend fun recoverInterrupted(nowEpochMs: Long): List<DownloadRecord> =
         repository.recoverInterrupted(nowEpochMs)
 }
