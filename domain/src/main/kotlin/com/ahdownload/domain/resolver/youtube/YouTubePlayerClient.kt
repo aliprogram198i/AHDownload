@@ -1,5 +1,7 @@
 package com.ahdownload.domain.resolver.youtube
 
+import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.resolver.HttpTextClient
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -8,13 +10,23 @@ import java.nio.charset.StandardCharsets
 
 internal class YouTubePlayerClient(
     private val httpClient: HttpTextClient,
+    private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
 ) {
-    suspend fun fetchPlayerResponse(html: String, videoUrl: String, headers: Map<String, String> = emptyMap()): String? {
-        val apiKey = extractQuotedValue(html, "INNERTUBE_API_KEY") ?: return null
-        val videoId = extractVideoId(videoUrl) ?: return null
+    suspend fun fetchPlayerResponse(html: String, videoUrl: String, headers: Map<String, String> = emptyMap(), operationId: String? = null): String? {
+        val videoId = extractVideoId(videoUrl)
+        val apiKey = extractQuotedValue(html, "INNERTUBE_API_KEY") ?: run {
+            logFailure("youtube.player_api_key_missing", "لم يتم العثور على INNERTUBE_API_KEY.", videoId, operationId)
+            return null
+        }
 
-        val contextJson = extractObject(html, "INNERTUBE_CONTEXT") ?: return null
-        val context = JsonParser.parseString(contextJson).asJsonObject
+        val contextJson = extractObject(html, "INNERTUBE_CONTEXT") ?: run {
+            logFailure("youtube.player_context_missing", "لم يتم العثور على INNERTUBE_CONTEXT.", videoId, operationId)
+            return null
+        }
+        val context = runCatching { JsonParser.parseString(contextJson).asJsonObject }.getOrElse { error ->
+            logFailure("youtube.player_context_parse_failed", "تعذر تحليل INNERTUBE_CONTEXT: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
+            return null
+        }
         val payload = JsonObject().apply {
             add("context", context)
             addProperty("videoId", videoId)
@@ -25,7 +37,24 @@ internal class YouTubePlayerClient(
         val endpoint = "https://www.youtube.com/youtubei/v1/player?key=" +
             URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
 
-        return httpClient.postJson(endpoint, payload.toString(), headers)
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), headers) }.getOrElse { error ->
+            logFailure("youtube.player_request_failed", "فشل طلب YouTube Player API: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
+            null
+        }
+    }
+
+    private fun logFailure(type: String, reason: String, videoId: String?, operationId: String?, error: Throwable? = null) {
+        logger.log(
+            DiagnosticLevel.WARNING,
+            type,
+            reason,
+            "youtube.resolve",
+            buildMap {
+                videoId?.let { put("video_id", it) }
+                operationId?.takeIf { it.isNotBlank() }?.let { put("operation_id", it) }
+            },
+            error,
+        )
     }
 
     private fun extractQuotedValue(html: String, name: String): String? {
