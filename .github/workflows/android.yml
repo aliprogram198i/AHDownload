@@ -1,5 +1,7 @@
 name: Android CI
 
+# Verification trigger: keep CI execution on every main push.
+
 on:
   push:
     branches: ["main"]
