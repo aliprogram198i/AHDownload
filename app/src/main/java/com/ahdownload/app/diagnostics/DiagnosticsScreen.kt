@@ -15,6 +15,7 @@ import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiagnosticsRoute(logger: PersistentDiagnosticLogger, onBack: () -> Unit) {
     var logs by remember { mutableStateOf(logger.list()) }
@@ -46,6 +48,7 @@ fun DiagnosticsRoute(logger: PersistentDiagnosticLogger, onBack: () -> Unit) {
     DiagnosticsScreen(logs, clipboard, onBack, { logs = logger.list() }, { logger.clear(); logs = emptyList() })
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiagnosticsScreen(logs: List<DiagnosticLog>, clipboard: ClipboardManager, onBack: () -> Unit, onRefresh: () -> Unit, onClear: () -> Unit) {
     Scaffold(topBar = {
