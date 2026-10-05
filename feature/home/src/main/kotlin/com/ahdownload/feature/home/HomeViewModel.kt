@@ -1,5 +1,6 @@
 package com.ahdownload.feature.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -30,7 +31,7 @@ data class HomeUiState(
 class HomeViewModel(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
-    private val resolver: HomeResolver = HomeResolver(logger = logger),
+    private val resolver: HomeResolver,
     private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean = { _, _ -> false },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -141,6 +142,7 @@ class HomeViewModel(
     class Factory(
         private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
         private val logger: DiagnosticLogger,
+        private val context: Context,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")

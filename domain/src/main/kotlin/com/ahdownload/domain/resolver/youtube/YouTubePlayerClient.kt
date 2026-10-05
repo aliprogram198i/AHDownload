@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets
 internal class YouTubePlayerClient(
     private val httpClient: HttpTextClient,
 ) {
-    suspend fun fetchPlayerResponse(html: String, videoUrl: String): String? {
+    suspend fun fetchPlayerResponse(html: String, videoUrl: String, headers: Map<String, String> = emptyMap()): String? {
         val apiKey = extractQuotedValue(html, "INNERTUBE_API_KEY") ?: return null
         val videoId = extractVideoId(videoUrl) ?: return null
 
@@ -25,7 +25,7 @@ internal class YouTubePlayerClient(
         val endpoint = "https://www.youtube.com/youtubei/v1/player?key=" +
             URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
 
-        return httpClient.postJson(endpoint, payload.toString())
+        return httpClient.postJson(endpoint, payload.toString(), headers)
     }
 
     private fun extractQuotedValue(html: String, name: String): String? {

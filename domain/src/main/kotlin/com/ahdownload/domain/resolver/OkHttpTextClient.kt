@@ -11,11 +11,14 @@ import kotlinx.coroutines.withContext
 class OkHttpTextClient(
     private val client: OkHttpClient = OkHttpClient(),
 ) : HttpTextClient {
-    override suspend fun get(url: String): String = withContext(Dispatchers.IO) {
+    override suspend fun get(url: String): String = get(url, emptyMap())
+
+    override suspend fun get(url: String, headers: Map<String, String>): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept-Language", "en-US,en;q=0.9")
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
             .get()
             .build()
 
@@ -25,12 +28,15 @@ class OkHttpTextClient(
         }
     }
 
-    override suspend fun postJson(url: String, body: String): String = withContext(Dispatchers.IO) {
+    override suspend fun postJson(url: String, body: String): String = postJson(url, body, emptyMap())
+
+    override suspend fun postJson(url: String, body: String, headers: Map<String, String>): String = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept-Language", "en-US,en;q=0.9")
             .header("Content-Type", "application/json")
+            .apply { headers.forEach { (name, value) -> header(name, value) } }
             .post(body.toRequestBody(JSON_MEDIA_TYPE))
             .build()
 

@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,8 +47,9 @@ fun HomeRoute(
     logger: DiagnosticLogger,
     onOpenDiagnostics: () -> Unit,
 ) {
-    val factory = remember(onDownloadRequested, logger) {
-        HomeViewModel.Factory(onDownloadRequested, logger)
+    val context = LocalContext.current
+    val factory = remember(onDownloadRequested, logger, context) {
+        HomeViewModel.Factory(onDownloadRequested, logger, context)
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -70,6 +72,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownload: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -153,6 +156,7 @@ private fun HomeScreen(
                         validating = candidate.id == state.validatingCandidateId,
                         onSelect = { onSelectCandidate(candidate.id) },
                         onDownload = onDownload,
+                        onOpenDiagnostics = onOpenDiagnostics,
                     )
                 }
             }
