@@ -43,7 +43,7 @@ class DownloadLauncher(
 
     private fun sanitize(value: String?): String =
         value.orEmpty()
-            .replace(Regex("[\\/:*?"<>|\r\n]+"), " ")
+            .replace(Regex("""[\\/:*?"<>|\r\n]+"""), " ")
             .trim()
             .take(120)
 
