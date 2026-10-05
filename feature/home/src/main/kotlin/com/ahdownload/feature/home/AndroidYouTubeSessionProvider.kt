@@ -36,8 +36,10 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
             }
 
             fun cookies(): String? {
-                CookieManager.getInstance().flush()
-                return CookieManager.getInstance().getCookie(url)?.takeIf { it.isNotBlank() }
+                val manager = CookieManager.getInstance()
+                manager.setAcceptCookie(true)
+                manager.flush()
+                return manager.getCookie("https://www.youtube.com/")?.takeIf { it.isNotBlank() }
             }
 
             fun cookieAuth(value: String?): Boolean {
@@ -71,7 +73,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 if (finished) return
                 val script = """(function(){
                     const v=new Set(),a=new Set();
-                    const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){}
+                    const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){} 
                       if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
                       add(v,e.currentSrc);add(v,e.src);
@@ -125,6 +127,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
+                        CookieManager.getInstance().flush()
                         main.postDelayed({ inspect(view, 1) }, 1500)
                     }
 
