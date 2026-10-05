@@ -83,9 +83,6 @@ class FileDownloadRepository(
         }
 
     private fun readLocked(): List<DownloadRecord> {
-        if (!store.baseFile.exists() && !store.baseFile.parentFile.orEmpty().exists()) {
-            return emptyList()
-        }
         if (!store.baseFile.exists()) {
             return emptyList()
         }
@@ -106,19 +103,14 @@ class FileDownloadRepository(
 
         val output = store.startWrite()
         try {
-            output.use {
-                it.write(payload)
-                it.flush()
-            }
+            output.write(payload)
+            output.flush()
             store.finishWrite(output)
         } catch (error: Throwable) {
             store.failWrite(output)
             throw error
         }
     }
-
-    private fun File?.orEmpty(): File =
-        this ?: File("")
     
     private companion object {
         val ACTIVE_STATUSES = setOf(
