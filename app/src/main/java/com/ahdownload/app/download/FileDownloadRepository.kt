@@ -14,11 +14,16 @@ class FileDownloadRepository(
     context: Context,
 ) : DownloadRepository {
     private val lock = Any()
-    private val store = AtomicFile(
-        File(context.applicationContext.filesDir, "downloads/downloads.json"),
-        "downloads",
+    private val storeFile = File(
+        context.applicationContext.filesDir,
+        "downloads/downloads.json",
     )
+    private val store = AtomicFile(storeFile, "downloads")
     private val codec = DownloadRecordJsonCodec()
+
+    init {
+        storeFile.parentFile?.mkdirs()
+    }
 
     override suspend fun upsert(record: DownloadRecord) = withContext(Dispatchers.IO) {
         synchronized(lock) {
