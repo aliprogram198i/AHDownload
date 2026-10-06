@@ -74,7 +74,12 @@ private fun AHRoot(
     onDownloadRequested: suspend (com.ahdownload.domain.resolver.MediaCandidate, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
 ) {
-    var destination by rememberSaveable { mutableStateOf(RootDestination.Welcome) }
+    var destination by rememberSaveable {
+        mutableStateOf(
+            if (initialUrl?.isNotBlank() == true) RootDestination.Home
+            else RootDestination.Welcome,
+        )
+    }
 
     AnimatedContent(
         targetState = destination,
