@@ -31,6 +31,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
             val browserRequestHeaders = ConcurrentHashMap<String, Map<String, String>>()
             val observedGoogleVideoUrls = ConcurrentHashMap.newKeySet<String>()
             val browserPoTokenObserved = AtomicBoolean(false)
+            var browserPoToken: String? = null
             var playerResponse: String? = null
             var authenticated = false
 
@@ -62,6 +63,18 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     "LOGIN_INFO",
                 ).any(names::contains)
             }
+
+            fun extractPoToken(resourceUrl: String): String? =
+                runCatching {
+                    java.net.URI(resourceUrl).rawQuery.orEmpty()
+                        .split('&')
+                        .firstNotNullOfOrNull { part ->
+                            val pieces = part.split('=', limit = 2)
+                            if (pieces.size == 2 && pieces[0].equals("pot", ignoreCase = true)) {
+                                pieces[1].takeIf { it.isNotBlank() }
+                            } else null
+                        }
+                }.getOrNull()
 
             fun hasPoToken(resourceUrl: String): Boolean =
                 runCatching {
@@ -96,7 +109,10 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 if (!lower.contains("/videoplayback")) return
 
                 observedGoogleVideoUrls.add(resourceUrl)
-                if (hasPoToken(resourceUrl)) browserPoTokenObserved.set(true)
+                extractPoToken(resourceUrl)?.let {
+                    browserPoToken = it
+                    browserPoTokenObserved.set(true)
+                }
 
                 val safeHeaders = safeBrowserHeaders(requestHeaders)
                 if (safeHeaders.isNotEmpty()) {
@@ -134,6 +150,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                             browserRequestHeaders = browserRequestHeaders.toMap(),
                             browserMediaObservedCount = observedGoogleVideoUrls.size,
                             browserPoTokenObserved = browserPoTokenObserved.get(),
+                            browserPoToken = browserPoToken,
                         ),
                     )
                 }
