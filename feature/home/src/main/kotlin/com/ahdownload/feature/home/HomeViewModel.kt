@@ -228,7 +228,8 @@ class HomeViewModel(
                                 .filter { it.format.kind == candidate.format.kind }
                                 .distinctBy { it.id }
                                 .sortedWith(
-                                    compareByDescending<MediaCandidate> { it.id == candidate.id }
+                                    compareBy<MediaCandidate> { it.id == candidate.id }
+                                        .thenByDescending { it.id.startsWith("embedded-") }
                                         .thenByDescending { it.format.hasVideo }
                                         .thenByDescending { it.format.hasAudio }
                                         .thenByDescending { it.format.height ?: 0 }

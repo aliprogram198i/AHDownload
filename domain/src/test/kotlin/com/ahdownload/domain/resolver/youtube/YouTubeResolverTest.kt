@@ -119,6 +119,58 @@ class YouTubeResolverTest {
     }
 
     @Test
+    fun addsEmbeddableFallbackSourcesEvenWhenPrimaryPlayerSucceeds() = runBlocking {
+        var postCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                {"INNERTUBE_API_KEY":"test-key","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"1"}}}
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String): String {
+                postCount++
+                return if (postCount == 1) {
+                    """
+                    {
+                      "videoDetails":{"title":"Primary","lengthSeconds":"8"},
+                      "playabilityStatus":{"status":"OK"},
+                      "streamingData":{"formats":[
+                        {"itag":"18","mimeType":"video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"","width":640,"height":360,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4&source=primary"}
+                      ]}
+                    }
+                    """.trimIndent()
+                } else {
+                    """
+                    {
+                      "videoDetails":{"title":"Embedded","lengthSeconds":"8"},
+                      "playabilityStatus":{"status":"OK"},
+                      "streamingData":{"formats":[
+                        {"itag":"22","mimeType":"video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"","width":1280,"height":720,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=22&mime=video%2Fmp4&source=embedded"}
+                      ]}
+                    }
+                    """.trimIndent()
+                }
+            }
+        }
+
+        val result = YouTubeResolver(client).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/embedtest",
+                    normalizedUrl = "https://youtu.be/embedtest",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        result as ResolverResult.Success
+        assertTrue(result.candidates.any { it.id == "18" })
+        assertTrue(result.candidates.any { it.id == "embedded-22" })
+        assertEquals(2, postCount)
+    }
+
+    @Test
     fun fallsBackToWebViewSessionCandidatesAfterBotCheck() = runBlocking {
         val client = object : HttpTextClient {
             override suspend fun get(url: String): String =
