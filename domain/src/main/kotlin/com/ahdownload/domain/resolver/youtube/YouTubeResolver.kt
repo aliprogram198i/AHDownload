@@ -281,14 +281,16 @@ class YouTubeResolver(
         var replaced = 0
         val candidates = result.candidates.map { candidate ->
             val browserUrl = browserUrlsByItag[candidate.id]
+            val effectiveUrl = browserUrl ?: candidate.sourceUrl
+            val browserHeaders = snapshot.browserRequestHeaders[effectiveUrl].orEmpty()
             if (browserUrl != null && browserUrl != candidate.sourceUrl) {
                 replaced++
                 candidate.copy(
                     sourceUrl = browserUrl,
-                    requestHeaders = candidate.requestHeaders + headers,
+                    requestHeaders = candidate.requestHeaders + headers + browserHeaders,
                 )
             } else {
-                candidate.copy(requestHeaders = candidate.requestHeaders + headers)
+                candidate.copy(requestHeaders = candidate.requestHeaders + headers + browserHeaders)
             }
         }
 
@@ -348,7 +350,7 @@ class YouTubeResolver(
                     hasVideo = false,
                     hasAudio = true,
                 ),
-                requestHeaders = sessionHeaders(snapshot),
+                requestHeaders = sessionHeaders(snapshot) + snapshot.browserRequestHeaders[url].orEmpty(),
             )
         }
         return videos + audio
