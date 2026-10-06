@@ -138,7 +138,7 @@ object DiagnosticReportFormatter {
                 appendLine("YOUTUBE")
                 appendLine("browser_media_observed=${evidence.context["browser_media_observed"] ?: "unknown"}")
                 appendLine("browser_request_headers_captured=${evidence.context["browser_request_headers_captured"] ?: "unknown"}")
-                appendLine("browser_po_token_observed=${evidence.context["browser_po_token_observed"] ?: "unknown"}")
+                appendLine("browser_po_token_observed=${evidence.context["browser_po_token_observed"] ?: evidence.context["po_token_observed"] ?: "unknown"}")
             }
 
             if (visible > 0 || hidden > 0) {
