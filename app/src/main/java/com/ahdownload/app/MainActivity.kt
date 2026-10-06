@@ -21,7 +21,7 @@ import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 
-private enum class RootDestination { Welcome, Home, Diagnostics, GoogleAccount }
+private enum class RootDestination { Welcome, Home, Diagnostics }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
@@ -57,17 +57,13 @@ private fun AHRoot(
     ) { current ->
         when (current) {
             RootDestination.Welcome -> WelcomeRoute(
-                onContinue = { destination = RootDestination.GoogleAccount },
-            )
-            RootDestination.GoogleAccount -> GoogleAccountScreen(
-                onBack = { destination = RootDestination.Welcome },
-                onAuthenticated = { destination = RootDestination.Home },
+                onContinue = { destination = RootDestination.Home },
             )
             RootDestination.Home -> HomeRoute(
                 onDownloadRequested = onDownloadRequested,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = { destination = RootDestination.GoogleAccount },
+                onOpenYouTubeSession = { destination = RootDestination.Home },
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
