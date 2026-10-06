@@ -9,13 +9,27 @@ import kotlin.io.path.createDirectories
 
 class LocalAtomicFileSink : AtomicFileSink {
 
-    override suspend fun openTemporary(destinationPath: String): OutputStream {
+    override suspend fun openTemporary(destinationPath: String, append: Boolean): OutputStream {
         val destination = Path.of(destinationPath).absolute()
         destination.parent?.createDirectories()
 
         val temporary = temporaryPath(destination)
-        Files.deleteIfExists(temporary)
-        return Files.newOutputStream(temporary)
+        if (!append) {
+            Files.deleteIfExists(temporary)
+        } else if (!Files.exists(temporary)) {
+            throw IllegalStateException("Temporary download file does not exist")
+        }
+
+        return if (append) {
+            Files.newOutputStream(temporary, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)
+        } else {
+            Files.newOutputStream(temporary)
+        }
+    }
+
+    override suspend fun temporarySize(destinationPath: String): Long {
+        val temporary = temporaryPath(Path.of(destinationPath).absolute())
+        return if (Files.exists(temporary)) Files.size(temporary) else 0L
     }
 
     override suspend fun commit(destinationPath: String) {
@@ -43,5 +57,4 @@ class LocalAtomicFileSink : AtomicFileSink {
 
     private fun temporaryPath(destination: Path): Path =
         destination.resolveSibling(destination.fileName.toString() + ".part")
-
 }
