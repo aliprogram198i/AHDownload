@@ -92,4 +92,14 @@ class YouTubePlayerResponseParserTest {
             (result as ResolverResult.Failure).code,
         )
     }
+
+    @Test
+    fun parsesUrlEncodedPlayerResponse() {
+        val json = """{"videoDetails":{"title":"Encoded"},"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[{"itag":"18","mimeType":"video/mp4","url":"https://cdn.example.com/encoded"}]}}"""
+        val encoded = java.net.URLEncoder.encode(json, "UTF-8")
+        val result = parser.parsePlayerResponse(encoded)
+        assertTrue(result is ResolverResult.Success)
+        assertEquals("Encoded", (result as ResolverResult.Success).title)
+    }
+
 }
