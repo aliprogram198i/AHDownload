@@ -250,6 +250,7 @@ class YouTubeResolver(
 
     private fun extractItag(url: String): String? =
         runCatching { URI(url).rawQuery.orEmpty().split('&') }
+            .getOrDefault(emptyList())
             .mapNotNull { part ->
                 val pieces = part.split('=', limit = 2)
                 if (pieces.size == 2 && pieces[0] == "itag") pieces[1] else null
