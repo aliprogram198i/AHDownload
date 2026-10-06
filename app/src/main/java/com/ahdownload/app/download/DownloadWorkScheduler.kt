@@ -32,6 +32,16 @@ class DownloadWorkScheduler(
                     ?.value?.let { putString(DownloadWorker.KEY_REFERER, it) }
                 task.requestHeaders.entries.firstOrNull { it.key.equals("Origin", ignoreCase = true) }
                     ?.value?.let { putString(DownloadWorker.KEY_ORIGIN, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Accept", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_ACCEPT, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Accept-Language", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_ACCEPT_LANGUAGE, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-Fetch-Dest", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_SEC_FETCH_DEST, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-Fetch-Mode", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_SEC_FETCH_MODE, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-Fetch-Site", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_SEC_FETCH_SITE, it) }
             }
             .build()
 

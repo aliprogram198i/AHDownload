@@ -202,6 +202,11 @@ class DownloadWorker(
             inputData.getString(KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
             inputData.getString(KEY_ORIGIN)?.takeIf { it.isNotBlank() }?.let { put("Origin", it) }
+            inputData.getString(KEY_ACCEPT)?.takeIf { it.isNotBlank() }?.let { put("Accept", it) }
+            inputData.getString(KEY_ACCEPT_LANGUAGE)?.takeIf { it.isNotBlank() }?.let { put("Accept-Language", it) }
+            inputData.getString(KEY_SEC_FETCH_DEST)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Dest", it) }
+            inputData.getString(KEY_SEC_FETCH_MODE)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Mode", it) }
+            inputData.getString(KEY_SEC_FETCH_SITE)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Site", it) }
         }
 
         return DownloadTask(
@@ -303,6 +308,11 @@ class DownloadWorker(
         const val KEY_USER_AGENT = "user_agent"
         const val KEY_REFERER = "referer"
         const val KEY_ORIGIN = "origin"
+        const val KEY_ACCEPT = "accept"
+        const val KEY_ACCEPT_LANGUAGE = "accept_language"
+        const val KEY_SEC_FETCH_DEST = "sec_fetch_dest"
+        const val KEY_SEC_FETCH_MODE = "sec_fetch_mode"
+        const val KEY_SEC_FETCH_SITE = "sec_fetch_site"
         const val KEY_FAILURE_CODE = "failure_code"
         const val KEY_FAILURE_DETAIL = "failure_detail"
         const val TAG = "ahdownload-download-worker"
