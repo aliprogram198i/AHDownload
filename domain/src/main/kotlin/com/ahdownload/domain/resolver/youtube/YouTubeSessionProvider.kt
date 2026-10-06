@@ -7,6 +7,9 @@ data class YouTubeSessionSnapshot(
     val playerResponse: String? = null,
     val authenticated: Boolean,
     val userAgent: String? = null,
+    val browserRequestHeaders: Map<String, Map<String, String>> = emptyMap(),
+    val browserMediaObservedCount: Int = 0,
+    val browserPoTokenObserved: Boolean = false,
 )
 
 interface YouTubeSessionProvider {
