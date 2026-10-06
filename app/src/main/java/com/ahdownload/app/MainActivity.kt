@@ -44,6 +44,15 @@ class MainActivity : ComponentActivity() {
                     onDownloadRequested = { candidate, title ->
                         downloadLauncher.enqueue(candidate, title)
                     },
+                    onOpenYouTubeSession = {
+                        try {
+                            val intent = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://www.youtube.com")
+                            )
+                            startActivity(intent)
+                        } catch (_: Exception) { }
+                    },
                 )
             }
         }
@@ -54,6 +63,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (com.ahdownload.domain.resolver.MediaCandidate, String?) -> Boolean,
+    onOpenYouTubeSession: () -> Unit,
 ) {
     var destination by rememberSaveable { mutableStateOf(RootDestination.Welcome) }
 
@@ -70,15 +80,7 @@ private fun AHRoot(
                 onDownloadRequested = onDownloadRequested,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = {
-                    try {
-                        val intent = android.content.Intent(
-                            android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://www.youtube.com")
-                        )
-                        startActivity(intent)
-                    } catch (_: Exception) { }
-                },
+                onOpenYouTubeSession = onOpenYouTubeSession,
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
