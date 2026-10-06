@@ -48,7 +48,7 @@ class GoogleAuthManager(
     suspend fun signIn(activity: Activity): GoogleAuthResult = withContext(Dispatchers.Main.immediate) {
         val clientId = BuildConfig.GOOGLE_WEB_CLIENT_ID.trim()
         if (clientId.isBlank()) {
-            logger.log(
+            log(
                 DiagnosticLevel.ERROR,
                 type = "GOOGLE_AUTH_CONFIGURATION_MISSING",
                 reason = "Google Web Client ID غير مضبوط.",
@@ -57,7 +57,7 @@ class GoogleAuthManager(
             return@withContext GoogleAuthResult.ConfigurationMissing
         }
 
-        logger.log(
+        log(
             DiagnosticLevel.INFO,
             type = "GOOGLE_AUTH_STARTED",
             reason = "بدء اختيار حساب Google عبر Credential Manager.",
@@ -68,7 +68,7 @@ class GoogleAuthManager(
             val result = request(activity, clientId, authorizedOnly = true)
             handle(result)
         } catch (_: NoCredentialException) {
-            logger.log(
+            log(
                 DiagnosticLevel.INFO,
                 type = "GOOGLE_AUTH_NO_AUTHORIZED_ACCOUNT",
                 reason = "لا يوجد حساب Google سبق تفويضه للتطبيق؛ سيتم عرض الحسابات المتاحة.",
@@ -126,7 +126,7 @@ class GoogleAuthManager(
             )
 
             store.save(session, google.idToken)
-            logger.log(
+            log(
                 DiagnosticLevel.INFO,
                 type = "GOOGLE_AUTH_SUCCESS",
                 reason = "تم اختيار حساب Google وحفظ جلسة التطبيق محليًا.",
@@ -158,7 +158,7 @@ class GoogleAuthManager(
     }
 
     private fun failure(t: Throwable): GoogleAuthResult {
-        logger.log(
+        log(
             DiagnosticLevel.ERROR,
             type = "GOOGLE_AUTH_FAILED",
             reason = t.message ?: t::class.simpleName.orEmpty(),
