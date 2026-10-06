@@ -103,20 +103,29 @@ private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
     }
 }
 
-private fun formatDiagnostics(logs: List<DiagnosticLog>): String = logs.joinToString("\n\n") { formatDiagnostic(it) }
-
-private fun formatDiagnostic(log: DiagnosticLog): String = buildString {
-    appendLine("AHDownload Diagnostic Log")
-    appendLine("ID: " + log.id)
-    appendLine("Time: " + formatTime(log.timestampEpochMs))
-    appendLine("Level: " + log.level)
-    appendLine("Type: " + log.type)
-    appendLine("Operation: " + log.operation)
-    appendLine("Reason: " + log.reason)
-    log.context.forEach { (key, value) -> appendLine(key + ": " + value) }
-    log.throwableType?.let { appendLine("Exception: " + it) }
-    log.throwableMessage?.let { appendLine("ExceptionMessage: " + it) }
-    log.throwableStackTrace?.let { appendLine("StackTrace:\n" + it) }
+private fun formatDiagnostics(logs: List<DiagnosticLog>): String {
+    if (logs.isEmpty()) return "AHDownload Diagnostic Report\nstatus=NO_LOGS"
+    val latestError = logs.firstOrNull { it.level == DiagnosticLevel.ERROR }
+    val sessionId = latestError?.context?.get("diagnostic_session_id")
+    val related = if (sessionId != null) logs.filter { it.context["diagnostic_session_id"] == sessionId }.take(36) else logs.take(36)
+    val anchor = latestError ?: related.first()
+    return buildString {
+        appendLine("AHDownload Diagnostic Report")
+        appendLine("app=" + (anchor.context["app_package"] ?: "unknown") + " version=" + (anchor.context["app_version_name"] ?: "unknown") + " (" + (anchor.context["app_version_code"] ?: "unknown") + ")")
+        appendLine("android=" + (anchor.context["android_release"] ?: "unknown") + " sdk=" + (anchor.context["android_sdk"] ?: "unknown") + " targetSdk=" + (anchor.context["app_target_sdk"] ?: "unknown"))
+        appendLine("device=" + (anchor.context["device_manufacturer"] ?: "unknown") + " " + (anchor.context["device_model"] ?: "unknown"))
+        appendLine("session=" + (sessionId ?: "unknown") + " events=" + related.size)
+        appendLine("latest=" + formatTime(anchor.timestampEpochMs) + " level=" + anchor.level + " type=" + anchor.type + " operation=" + anchor.operation)
+        appendLine("reason=" + anchor.reason)
+        anchor.throwableType?.let { appendLine("exception=" + it) }
+        anchor.throwableMessage?.let { appendLine("detail=" + it) }
+        anchor.throwableStackTrace?.let { appendLine("stack=" + it.lineSequence().take(12).joinToString(" <- ").take(2400)) }
+        appendLine("timeline:")
+        related.asReversed().forEach { log ->
+            val keys = listOf("source", "provider", "stage", "resolver", "candidate", "status", "http_status", "content_type", "content_length", "duration_ms", "attempt", "attempts", "result", "failure_code")
+            val context = keys.mapNotNull { key -> log.context[key]?.takeIf(String::isNotBlank)?.let { key + "=" + it } }.joinToString(" ")
+            appendLine((log.context["event_sequence"] ?: "-") + " | " + formatTime(log.timestampEpochMs) + " | " + log.level + " | " + log.type + " | " + log.operation + " | " + log.reason + if (context.isNotEmpty()) " | " + context else "")
+        }
+    }.trimEnd()
 }
-
 private fun formatTime(epochMs: Long): String = DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
