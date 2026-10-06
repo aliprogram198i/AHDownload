@@ -29,7 +29,7 @@ class StreamingDownloadEngine(
             }
 
         var response = try {
-            source.open(task.sourceUrl, partialBytes)
+            source.open(task.sourceUrl, partialBytes, task.requestHeaders)
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
@@ -45,7 +45,7 @@ class StreamingDownloadEngine(
             response.body.close()
             partialBytes = 0L
             response = try {
-                source.open(task.sourceUrl, 0L)
+                source.open(task.sourceUrl, 0L, task.requestHeaders)
             } catch (cancelled: CancellationException) {
                 onState(DownloadState.Cancelled)
                 throw cancelled

@@ -62,6 +62,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 if (finished) return
                 finished = true
                 timeout?.let(main::removeCallbacks)
+                val userAgent = webView?.settings?.userAgentString
                 webView?.stopLoading()
                 webView?.destroy()
                 webView = null
@@ -74,6 +75,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                             audioUrls = audios.take(24),
                             playerResponse = playerResponse,
                             authenticated = authenticated || cookieAuth(c),
+                            userAgent = userAgent,
                         ),
                     )
                 }

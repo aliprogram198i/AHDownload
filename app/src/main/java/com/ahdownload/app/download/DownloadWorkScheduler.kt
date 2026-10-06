@@ -21,14 +21,22 @@ class DownloadWorkScheduler(
         require(task.sourceUrl.isNotBlank()) { "task.sourceUrl must not be blank" }
         require(task.destinationPath.isNotBlank()) { "task.destinationPath must not be blank" }
 
+        val input = Data.Builder()
+            .putString(DownloadWorker.KEY_TASK_ID, task.id)
+            .putString(DownloadWorker.KEY_SOURCE_URL, task.sourceUrl)
+            .putString(DownloadWorker.KEY_DESTINATION_PATH, task.destinationPath)
+            .apply {
+                task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_USER_AGENT, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Referer", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_REFERER, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Origin", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_ORIGIN, it) }
+            }
+            .build()
+
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()
-            .setInputData(
-                Data.Builder()
-                    .putString(DownloadWorker.KEY_TASK_ID, task.id)
-                    .putString(DownloadWorker.KEY_SOURCE_URL, task.sourceUrl)
-                    .putString(DownloadWorker.KEY_DESTINATION_PATH, task.destinationPath)
-                    .build(),
-            )
+            .setInputData(input)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)

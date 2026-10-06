@@ -216,14 +216,52 @@ class YouTubeResolver(
         snapshot: YouTubeSessionSnapshot,
     ): ResolverResult.Success {
         val headers = sessionHeaders(snapshot)
-        return result.copy(
-            candidates = result.candidates.map { it.copy(requestHeaders = it.requestHeaders + headers) },
-        )
+        val browserUrlsByItag = (snapshot.videoUrls + snapshot.audioUrls)
+            .mapNotNull { url -> extractItag(url)?.let { it to url } }
+            .toMap()
+
+        var replaced = 0
+        val candidates = result.candidates.map { candidate ->
+            val browserUrl = browserUrlsByItag[candidate.id]
+            if (browserUrl != null && browserUrl != candidate.sourceUrl) {
+                replaced++
+                candidate.copy(
+                    sourceUrl = browserUrl,
+                    requestHeaders = candidate.requestHeaders + headers,
+                )
+            } else {
+                candidate.copy(requestHeaders = candidate.requestHeaders + headers)
+            }
+        }
+
+        if (replaced > 0) {
+            logger.log(
+                DiagnosticLevel.INFO,
+                type = "youtube.browser_media_url_aligned",
+                reason = "replaced_player_url_with_webview_media_url",
+                operation = "youtube.resolve",
+                context = mapOf("replaced_candidates" to replaced.toString()),
+                throwable = null,
+            )
+        }
+
+        return result.copy(candidates = candidates)
     }
+
+    private fun extractItag(url: String): String? =
+        runCatching { URI(url).rawQuery.orEmpty().split('&') }
+            .getOrDefault(emptyList())
+            .mapNotNull { part ->
+                val pieces = part.split('=', limit = 2)
+                if (pieces.size == 2 && pieces[0] == "itag") pieces[1] else null
+            }
+            .firstOrNull()
 
     private fun sessionHeaders(snapshot: YouTubeSessionSnapshot): Map<String, String> = buildMap {
         snapshot.cookies?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
+        snapshot.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
         put("Referer", "https://www.youtube.com/")
+        put("Origin", "https://www.youtube.com")
     }
 
     private fun sessionCandidates(snapshot: YouTubeSessionSnapshot): List<MediaCandidate> {

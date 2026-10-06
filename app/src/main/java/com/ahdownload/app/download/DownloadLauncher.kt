@@ -29,6 +29,12 @@ class DownloadLauncher(
                 id = UUID.randomUUID().toString(),
                 sourceUrl = candidate.sourceUrl,
                 destinationPath = file.absolutePath,
+                requestHeaders = candidate.requestHeaders.filterKeys { key ->
+                    !key.equals("Cookie", ignoreCase = true) &&
+                        (key.equals("User-Agent", ignoreCase = true) ||
+                            key.equals("Referer", ignoreCase = true) ||
+                            key.equals("Origin", ignoreCase = true))
+                },
             ),
         )
         return true

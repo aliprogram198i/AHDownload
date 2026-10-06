@@ -6,6 +6,7 @@ data class YouTubeSessionSnapshot(
     val audioUrls: List<String>,
     val playerResponse: String? = null,
     val authenticated: Boolean,
+    val userAgent: String? = null,
 )
 
 interface YouTubeSessionProvider {
