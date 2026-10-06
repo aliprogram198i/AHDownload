@@ -38,6 +38,20 @@ class YouTubeResolver(
         var lastFailure: ResolverResult.Failure? = null
         try {
             val html = httpClient.get(request.link.normalizedUrl)
+            if (isBotChallenge(html)) {
+                lastFailure = ResolverResult.Failure(
+                    FailureCode.ResolverUnavailable,
+                    YOUTUBE_BOT_MESSAGE,
+                )
+                logger.log(
+                    DiagnosticLevel.WARNING,
+                    type = "youtube.bot_challenge_detected",
+                    reason = YOUTUBE_BOT_MESSAGE,
+                    operation = "youtube.resolve",
+                    context = diagnosticContext(videoId, request.operationId),
+                    throwable = null,
+                )
+            }
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) return filterKind(direct, request)
             lastFailure = direct as? ResolverResult.Failure
@@ -50,13 +64,14 @@ class YouTubeResolver(
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
             }
         } catch (error: Exception) {
+            val challenge = error.message?.takeIf(::isBotChallenge)
             lastFailure = ResolverResult.Failure(
                 FailureCode.ResolverUnavailable,
-                "فشل اتصال YouTube: " + (error.message ?: error::class.simpleName.orEmpty()),
+                challenge ?: "فشل اتصال YouTube: " + (error.message ?: error::class.simpleName.orEmpty()),
             )
             logger.log(
                 DiagnosticLevel.WARNING,
-                type = "youtube.primary_failed",
+                type = if (challenge != null) "youtube.bot_challenge_detected" else "youtube.primary_failed",
                 reason = lastFailure.message ?: "primary_failed",
                 operation = "youtube.resolve",
                 context = diagnosticContext(videoId, request.operationId),
@@ -270,6 +285,21 @@ class YouTubeResolver(
             if (markerIndex >= 0) return segments.getOrNull(markerIndex + 1)
         }
         return null
+    }
+
+    private fun isBotChallenge(text: String): Boolean =
+        BOT_CHALLENGE_MARKERS.any { text.contains(it, ignoreCase = true) }
+
+    private companion object {
+        const val YOUTUBE_BOT_MESSAGE =
+            "YouTube يطلب التحقق من أنك لست روبوتًا. افتح YouTube لتحديث الجلسة ثم أعد المحاولة."
+
+        val BOT_CHALLENGE_MARKERS = listOf(
+            "Sign in to confirm you’re not a bot",
+            "Sign in to confirm you're not a bot",
+            "confirm you're not a bot",
+            "confirm you’re not a bot",
+        )
     }
 
 }
