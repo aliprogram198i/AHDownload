@@ -111,9 +111,28 @@ class YouTubeResolver(
                 "player_response_obtained" to (!snapshot.playerResponse.isNullOrBlank()).toString(),
                 "video_candidates" to snapshot.videoUrls.size.toString(),
                 "audio_candidates" to snapshot.audioUrls.size.toString(),
+                "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
+                "browser_request_headers_captured" to snapshot.browserRequestHeaders.size.toString(),
+                "browser_po_token_observed" to snapshot.browserPoTokenObserved.toString(),
             ),
             throwable = null,
         )
+
+        if (snapshot.browserMediaObservedCount == 0) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.browser_media_capture_empty",
+                reason = "no_googlevideo_media_request_observed",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "video_candidates" to snapshot.videoUrls.size.toString(),
+                    "audio_candidates" to snapshot.audioUrls.size.toString(),
+                    "player_response_obtained" to (!snapshot.playerResponse.isNullOrBlank()).toString(),
+                    "browser_po_token_observed" to snapshot.browserPoTokenObserved.toString(),
+                ),
+                throwable = null,
+            )
+        }
 
         snapshot.playerResponse?.takeIf { it.isNotBlank() }?.let { response ->
             logger.log(
@@ -315,7 +334,7 @@ class YouTubeResolver(
                     hasVideo = true,
                     hasAudio = true,
                 ),
-                requestHeaders = sessionHeaders(snapshot),
+                requestHeaders = sessionHeaders(snapshot) + snapshot.browserRequestHeaders[url].orEmpty(),
             )
         }
         val audio = snapshot.audioUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
