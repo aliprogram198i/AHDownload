@@ -41,9 +41,9 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - name: Publish direct debug APK release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="debug-${{ github.run_id }}"
-          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk --title "AHDownload Debug ${{ github.run_number }}" --notes "Automated debug APK from commit ${{ github.sha }}"
+          gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk --target "${{ github.sha }}" --title "AHDownload Debug ${{ github.run_number }}" --notes "Automated debug APK from commit ${{ github.sha }}"
