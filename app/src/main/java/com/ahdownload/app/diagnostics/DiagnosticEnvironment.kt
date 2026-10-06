@@ -1,9 +1,9 @@
 package com.ahdownload.app.diagnostics
 
 import android.app.ActivityManager
-import com.ahdownload.app.BuildConfig
 import android.content.Context
 import android.os.Build
+import com.ahdownload.app.BuildConfig
 import java.util.Locale
 import java.util.TimeZone
 
@@ -26,6 +26,7 @@ object DiagnosticEnvironment {
             put("app_package", appContext.packageName)
             put("app_version_name", BuildConfig.VERSION_NAME)
             put("app_version_code", BuildConfig.VERSION_CODE.toString())
+            put("app_build_type", BuildConfig.BUILD_TYPE)
             put("app_target_sdk", appContext.applicationInfo.targetSdkVersion.toString())
             put("app_first_install_ms", packageInfo?.firstInstallTime?.toString() ?: "unknown")
             put("app_last_update_ms", packageInfo?.lastUpdateTime?.toString() ?: "unknown")
