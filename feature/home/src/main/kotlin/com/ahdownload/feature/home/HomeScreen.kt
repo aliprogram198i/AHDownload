@@ -61,7 +61,7 @@ fun HomeRoute(
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val context = LocalContext.current
+    val androidContext = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
         HomeViewModel.Factory(onDownloadRequested, logger, context)
     }
@@ -206,7 +206,7 @@ private fun HomeScreen(
                                     val text = clipboard?.primaryClip
                                         ?.takeIf { it.itemCount > 0 }
                                         ?.getItemAt(0)
-                                        ?.coerceToText(context)
+                                        ?.coerceToText(androidContext)
                                         ?.toString()
                                         ?.trim()
                                         .orEmpty()
