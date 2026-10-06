@@ -35,6 +35,7 @@ class DiagnosticReportFormatterTest {
                     "status_code" to "403",
                     "content_type" to "text/plain",
                     "platform" to "YouTube",
+                    "candidate_id" to "137",
                 ),
             ),
             event(
@@ -49,6 +50,7 @@ class DiagnosticReportFormatterTest {
                     "failure_code" to "HTTP_403",
                     "http_status" to "403",
                     "platform" to "YouTube",
+                    "candidate_id" to "137",
                 ),
             ),
             event(
@@ -104,10 +106,10 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("classification=NETWORK"))
         assertTrue(report.contains("root_cause=HTTP_403"))
         assertTrue(report.contains("action=INSPECT_BROWSER_MEDIA_CAPTURE"))
-        assertTrue(report.contains("http_403=2"))
+        assertTrue(report.contains("http_403=1"))
         assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
         assertTrue(report.contains("duration_ms=5000"))
-        assertTrue(report.contains("http_4xx=2"))
+        assertTrue(report.contains("http_4xx=1"))
         assertTrue(report.contains("YOUTUBE"))
         assertTrue(report.contains("browser_media_observed=0"))
         assertTrue(report.contains("browser_po_token_observed=false"))
@@ -119,6 +121,66 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("candidate_rejected"))
         assertTrue(report.contains("ui_error"))
         assertEquals(0, Regex("SMART_CENTER_OPTION_VISIBLE").findAll(report).count())
+    }
+
+    @Test
+    fun metricsAreScopedToFailingOperationAndCandidatesUseIds() {
+        val session = "session-scope"
+        val oldOperation = "op-old"
+        val failingOperation = "op-fail"
+        val logs = listOf(
+            event(
+                time = 1_000L, sequence = "1", type = "MEDIA_VALIDATION_STARTED",
+                level = DiagnosticLevel.INFO, reason = "old", session = session, operation = oldOperation,
+            ),
+            event(
+                time = 2_000L, sequence = "2", type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING, reason = "old_403", session = session, operation = oldOperation,
+                context = mapOf("status_code" to "403", "candidate_id" to "old"),
+            ),
+            event(
+                time = 3_000L, sequence = "3", type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.WARNING, reason = "HTTP_403", session = session, operation = oldOperation,
+                context = mapOf("http_status" to "403", "candidate_id" to "old"),
+            ),
+            event(
+                time = 4_000L, sequence = "4", type = "MEDIA_VALIDATION_STARTED",
+                level = DiagnosticLevel.INFO, reason = "start", session = session, operation = failingOperation,
+                context = mapOf("candidate_id" to "137"),
+            ),
+            event(
+                time = 5_000L, sequence = "5", type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING, reason = "403_a", session = session, operation = failingOperation,
+                context = mapOf("status_code" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 6_000L, sequence = "6", type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING, reason = "403_b", session = session, operation = failingOperation,
+                context = mapOf("status_code" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 7_000L, sequence = "7", type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.WARNING, reason = "HTTP_403", session = session, operation = failingOperation,
+                context = mapOf("http_status" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 8_000L, sequence = "8", type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.WARNING, reason = "HTTP_403", session = session, operation = failingOperation,
+                context = mapOf("http_status" to "403", "candidate_id" to "248"),
+            ),
+            event(
+                time = 9_000L, sequence = "9", type = "DOWNLOAD_ERROR",
+                level = DiagnosticLevel.ERROR, reason = "failed", session = session, operation = failingOperation,
+            ),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("http_403=2"))
+        assertTrue(report.contains("http_4xx=2"))
+        assertTrue(report.contains("requests=2"))
+        assertTrue(report.contains("candidates=2"))
+        assertTrue(report.contains("rejected=2"))
     }
 
     @Test

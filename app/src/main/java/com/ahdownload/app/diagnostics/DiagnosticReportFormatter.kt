@@ -31,27 +31,32 @@ object DiagnosticReportFormatter {
             it.last().timestampEpochMs - it.first().timestampEpochMs
         }
 
-        val visible = sessionEvents.count { it.type == "SMART_CENTER_OPTION_VISIBLE" }
-        val hidden = sessionEvents.count { it.type == "SMART_CENTER_OPTION_HIDDEN" }
-        val validationRejected = sessionEvents.count {
-            it.type == "MEDIA_VALIDATION_REJECTED" ||
-                (it.type == "YOUTUBE_FALLBACK_CANDIDATE_VALIDATION" &&
-                    it.context["validation_result"] == "invalid")
-        }
-        val validationAccepted = sessionEvents.count {
-            it.type == "MEDIA_VALIDATION_ACCEPTED" ||
-                (it.type == "YOUTUBE_FALLBACK_CANDIDATE_VALIDATION" &&
-                    it.context["validation_result"] == "valid")
-        }
-        val http403 = sessionEvents.count { event -> statusCode(event) == 403 }
-        val http4xx = sessionEvents.count { event -> statusCode(event) in 400..499 }
-        val http5xx = sessionEvents.count { event -> statusCode(event) in 500..599 }
-        val requestCount = sessionEvents.count { event ->
-            event.type == "MEDIA_PROBE_ATTEMPT" ||
-                event.type.endsWith("_REQUEST") ||
-                event.type == "HTTP_REQUEST"
-        }
-        val youtubeEvidence = sessionEvents.lastOrNull {
+        val visible = scopedEvents.count { it.type == "SMART_CENTER_OPTION_VISIBLE" }
+        val hidden = scopedEvents.count { it.type == "SMART_CENTER_OPTION_HIDDEN" }
+        val validationRejected = scopedEvents
+            .filter {
+                it.type == "MEDIA_VALIDATION_REJECTED" ||
+                    (it.type == "YOUTUBE_FALLBACK_CANDIDATE_VALIDATION" &&
+                        it.context["validation_result"] == "invalid")
+            }
+            .mapNotNull { it.context["candidate_id"] }
+            .distinct()
+            .size
+        val validationAccepted = scopedEvents
+            .filter {
+                it.type == "MEDIA_VALIDATION_ACCEPTED" ||
+                    (it.type == "YOUTUBE_FALLBACK_CANDIDATE_VALIDATION" &&
+                        it.context["validation_result"] == "valid")
+            }
+            .mapNotNull { it.context["candidate_id"] }
+            .distinct()
+            .size
+        val requestEvents = scopedEvents.filter(::isRequestEvent)
+        val http403 = requestEvents.count { event -> statusCode(event) == 403 }
+        val http4xx = requestEvents.count { event -> statusCode(event) in 400..499 }
+        val http5xx = requestEvents.count { event -> statusCode(event) in 500..599 }
+        val requestCount = requestEvents.size
+        val youtubeEvidence = scopedEvents.lastOrNull {
             it.context.containsKey("browser_media_observed")
         }
 
@@ -67,8 +72,8 @@ object DiagnosticReportFormatter {
             }
         }
         val classification = classify(status, rootCause, anchor)
-        val action = recommendedAction(status, classification, rootCause, sessionEvents)
-        val pipeline = pipelineStates(sessionEvents)
+        val action = recommendedAction(status, classification, rootCause, scopedEvents)
+        val pipeline = pipelineStates(scopedEvents)
         val failure = when {
             latestError == null -> "NONE"
             validationRejected > 0 && validationAccepted == 0 -> "NO_VALID_MEDIA_SOURCE"
@@ -123,10 +128,10 @@ object DiagnosticReportFormatter {
 
             appendLine()
             appendLine("MEDIA")
-            appendLine("candidates=${candidateCount(sessionEvents)}")
+            appendLine("candidates=${candidateCount(scopedEvents)}")
             appendLine("accepted=$validationAccepted")
             appendLine("rejected=$validationRejected")
-            appendLine("selected=${selectedCount(sessionEvents)}")
+            appendLine("selected=${selectedCount(scopedEvents)}")
 
             youtubeEvidence?.let { evidence ->
                 appendLine()
@@ -146,7 +151,7 @@ object DiagnosticReportFormatter {
 
             appendLine()
             appendLine("FAILURE_CHAIN")
-            appendLine(buildFailureChain(sessionEvents, latestError, validationRejected, validationAccepted))
+            appendLine(buildFailureChain(scopedEvents, latestError, validationRejected, validationAccepted))
 
             appendLine()
             appendLine("TIMELINE")
@@ -226,13 +231,23 @@ object DiagnosticReportFormatter {
         )
     }
 
-    private fun candidateCount(events: List<DiagnosticLog>): Int = events.count {
-        it.type.contains("CANDIDATE", ignoreCase = true) && !it.type.contains("VALIDATION", ignoreCase = true)
-    }
+    private fun candidateCount(events: List<DiagnosticLog>): Int =
+        events.mapNotNull { event ->
+            event.context["candidate_id"]?.takeIf(String::isNotBlank)
+        }.distinct().size
 
-    private fun selectedCount(events: List<DiagnosticLog>): Int = events.count {
-        it.type.contains("SELECTED", ignoreCase = true) || it.type == "MEDIA_SOURCE_SELECTED"
-    }
+    private fun isRequestEvent(event: DiagnosticLog): Boolean =
+        event.type == "MEDIA_PROBE_ATTEMPT" ||
+            event.type == "HTTP_REQUEST" ||
+            (event.type.endsWith("_REQUEST") &&
+                event.type != "MEDIA_VALIDATION_PROBE_RESULT" &&
+                event.type != "YOUTUBE_CANDIDATE_REFRESH_RESULT")
+
+    private fun selectedCount(events: List<DiagnosticLog>): Int =
+        events.mapNotNull { event ->
+            val selected = event.type.contains("SELECTED", ignoreCase = true) || event.type == "MEDIA_SOURCE_SELECTED"
+            if (selected) event.context["candidate_id"] else null
+        }.distinct().size
 
     private fun statusCode(event: DiagnosticLog): Int? =
         (event.context["http_status"] ?: event.context["status_code"])?.toIntOrNull()
