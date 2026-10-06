@@ -117,7 +117,7 @@ class GoogleAuthManager(
 
         return try {
             val google = GoogleIdTokenCredential.createFrom(credential.data)
-            val email = google.id.takeIf { it.contains("@") }
+            val email = google.email?.takeIf { it.isNotBlank() }
                 ?: return GoogleAuthResult.Failure("تعذر قراءة بريد حساب Google.")
             val session = GoogleAccountSession(
                 id = google.uniqueId,
