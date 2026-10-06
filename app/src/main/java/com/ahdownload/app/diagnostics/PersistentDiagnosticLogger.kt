@@ -113,6 +113,11 @@ class PersistentDiagnosticLogger(
     private fun sanitizeContext(context: Map<String, String>): Map<String, String> =
         context.mapValues { (key, value) ->
             when {
+                key == "diagnostic_session_id" ||
+                    key == "event_sequence" ||
+                    key == "process_uptime_ms" ||
+                    key == "thread" ||
+                    key == "thread_id" -> sanitizeText(value)
                 SENSITIVE_KEY.containsMatchIn(key) -> "[REDACTED]"
                 else -> sanitizeText(value)
             }
