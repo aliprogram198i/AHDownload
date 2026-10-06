@@ -35,7 +35,7 @@ jobs:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
       - name: Install Android SDK 37.1
-        run: sdkmanager "platforms;android-37.1" "build-tools;36.0.0"
+        run: sdkmanager "platforms;android-37.1" "build-tools;36.1.0"
       - name: Prepare official release signing
         env:
           AH_KEYSTORE_BASE64: ${{ secrets.AH_KEYSTORE_BASE64 }}
@@ -58,13 +58,11 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.1.0/apksigner"
           test -f "$APK"
           test -x "$APKSIGNER"
-          "$APKSIGNER" version
-          ls -l "$APKSIGNER"
           set +e
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 4 -v 4 "$APK"
+          "$ANDROID_HOME/build-tools/36.1.0/zipalign" -c -P 4 -v 4 "$APK"
           "$APKSIGNER" verify --verbose --min-sdk-version 24 "$APK" 2>&1 | tee apksigner-verify.txt
           VERIFY_STATUS=${PIPESTATUS[0]}
           set -e
