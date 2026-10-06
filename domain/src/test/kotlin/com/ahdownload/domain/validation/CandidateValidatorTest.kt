@@ -80,7 +80,7 @@ class CandidateValidatorTest {
                     finalUrl = "https://cdn.example/video.mp4",
                 ),
             ),
-        ).validate(candidate(MediaKind.Video))
+        ).validate(candidate(MediaKind.Video), operationId = "op-test-403")
 
         assertEquals(
             ValidationFailure.HttpStatus(403),
@@ -92,7 +92,11 @@ class CandidateValidatorTest {
     fun rejectsUnsupportedSchemeBeforeProbe() = kotlinx.coroutines.test.runTest {
         var called = false
         val probe = object : MediaProbe {
-            override suspend fun probe(url: String, headers: Map<String, String>): MediaProbeResult {
+            override suspend fun probe(
+                url: String,
+                headers: Map<String, String>,
+                operationId: String?,
+            ): MediaProbeResult {
                 called = true
                 error("probe must not be called")
             }
@@ -123,6 +127,10 @@ class CandidateValidatorTest {
     private class FakeProbe(
         private val result: MediaProbeResult,
     ) : MediaProbe {
-        override suspend fun probe(url: String, headers: Map<String, String>): MediaProbeResult = result
+        override suspend fun probe(
+            url: String,
+            headers: Map<String, String>,
+            operationId: String?,
+        ): MediaProbeResult = result
     }
 }
