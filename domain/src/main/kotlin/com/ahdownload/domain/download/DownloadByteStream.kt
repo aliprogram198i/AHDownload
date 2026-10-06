@@ -7,8 +7,9 @@ data class DownloadResponse(
     val contentLengthBytes: Long?,
     val contentType: String?,
     val body: InputStream,
+    val totalBytes: Long? = null,
 )
 
 interface DownloadByteStream {
-    suspend fun open(url: String): DownloadResponse
+    suspend fun open(url: String, rangeStart: Long = 0L): DownloadResponse
 }
