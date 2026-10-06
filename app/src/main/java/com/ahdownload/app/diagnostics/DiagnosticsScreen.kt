@@ -54,6 +54,9 @@ private fun DiagnosticsScreen(logs: List<DiagnosticLog>, clipboard: ClipboardMan
     val exportText = remember(logs) { formatDiagnostics(logs) }
     val errors = logs.count { it.level == DiagnosticLevel.ERROR }
     val warnings = logs.count { it.level == DiagnosticLevel.WARNING }
+    val infos = logs.count { it.level == DiagnosticLevel.INFO }
+    val sessions = logs.mapNotNull { it.context["diagnostic_session_id"] }.distinct().size
+    val operations = logs.mapNotNull { it.operation.takeIf(String::isNotBlank) }.distinct().size
     Scaffold(topBar = {
         TopAppBar(title = { Text("سجل الأخطاء والتشخيص") }, navigationIcon = { IconButton(onClick = onBack) { Text("‹", style = MaterialTheme.typography.headlineMedium) } }, actions = {
             IconButton(onClick = { clipboard.setText(AnnotatedString(exportText)) }, enabled = logs.isNotEmpty()) { Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل الكامل") }
@@ -64,7 +67,8 @@ private fun DiagnosticsScreen(logs: List<DiagnosticLog>, clipboard: ClipboardMan
             item {
                 Text("سجل مركزي واحد لكل عمليات التطبيق. تُحفظ الأحداث محليًا مع إخفاء بيانات الاعتماد وعدم حفظ استعلامات الروابط.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (logs.isNotEmpty()) {
-                    Text("الإجمالي: ${logs.size}  •  أخطاء: $errors  •  تحذيرات: $warnings", style = MaterialTheme.typography.labelLarge)
+                    Text("الإجمالي: ${logs.size}  •  أخطاء: $errors  •  تحذيرات: $warnings  •  معلومات: $infos", style = MaterialTheme.typography.labelLarge)
+                    Text("الجلسات: $sessions  •  العمليات: $operations", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (logs.isNotEmpty()) Button(onClick = onRefresh, modifier = Modifier.padding(top = 8.dp)) { Text("تحديث") }
             }
@@ -91,6 +95,10 @@ private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
             log.context.forEach { (key, value) -> Text(key + ": " + value, style = MaterialTheme.typography.bodySmall) }
             log.throwableType?.let { Text("Exception: " + it, style = MaterialTheme.typography.bodySmall) }
             log.throwableMessage?.let { Text("تفاصيل: " + it, style = MaterialTheme.typography.bodySmall) }
+            log.throwableStackTrace?.let {
+                Text("StackTrace:", style = MaterialTheme.typography.labelMedium)
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
@@ -108,6 +116,7 @@ private fun formatDiagnostic(log: DiagnosticLog): String = buildString {
     log.context.forEach { (key, value) -> appendLine(key + ": " + value) }
     log.throwableType?.let { appendLine("Exception: " + it) }
     log.throwableMessage?.let { appendLine("ExceptionMessage: " + it) }
+    log.throwableStackTrace?.let { appendLine("StackTrace:\n" + it) }
 }
 
 private fun formatTime(epochMs: Long): String = DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
