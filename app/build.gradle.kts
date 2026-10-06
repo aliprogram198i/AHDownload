@@ -46,6 +46,7 @@ android {
         release {
             isMinifyEnabled = false
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("releaseOfficial")
+            else error("Official release signing is required for release builds.")
         }
     }
 
