@@ -91,10 +91,24 @@ private fun HomeScreen(
     val recommendedCandidate = candidates.firstOrNull { it.format.kind == MediaKind.Video && it.format.hasAudio }
         ?: candidates.firstOrNull { it.format.kind == MediaKind.Video }
         ?: candidates.firstOrNull { it.format.kind == MediaKind.Audio }
+    val videoCandidates = candidates.filter { it.format.kind == MediaKind.Video && it.id != recommendedCandidate?.id }.take(6)
+    val audioCandidates = candidates.filter { it.format.kind == MediaKind.Audio }.take(4)
+    val displayedCandidates = buildList {
+        recommendedCandidate?.let { add(it) }
+        addAll(videoCandidates)
+        addAll(audioCandidates)
+    }.distinctBy { it.id }
+    val displayedPositionById = displayedCandidates.mapIndexed { index, candidate -> candidate.id to index }.toMap()
+    val candidateSectionById = buildMap {
+        recommendedCandidate?.let { put(it.id, "recommended") }
+        videoCandidates.forEach { put(it.id, "video") }
+        audioCandidates.forEach { put(it.id, "audio") }
+    }
     val renderSignature = listOf(
         state.analyzing, state.resolving, state.error, state.downloadQueued,
-        state.resolution?.title, candidates.size, recommendedCandidate?.id,
-        state.selectedCandidateId, state.validatingCandidateId
+        state.resolution?.title, state.resolution?.durationMs, candidates.size,
+        displayedCandidates.joinToString(",") { it.id },
+        recommendedCandidate?.id, state.selectedCandidateId, state.validatingCandidateId
     ).joinToString("|")
 
     LaunchedEffect(renderSignature) {
@@ -105,33 +119,70 @@ private fun HomeScreen(
             candidates.isEmpty() -> "RESULT_EMPTY"
             else -> "RESULT_READY"
         }
+        val hiddenCount = candidates.count { it.id !in displayedPositionById }
         logger.log(
             DiagnosticLevel.INFO,
-            "SMART_CENTER_RENDER",
-            "تم تحديث عرض مركز التحميل الذكي",
-            "ui.smart_center.render",
+            "SMART_CENTER_RESULT_PRESENTED",
+            "تم عرض نتائج الرابط في مركز التحميل الذكي",
+            "ui.smart_center.result",
             mapOf(
                 "layout_mode" to layoutMode,
                 "platform" to (state.result?.platform?.name ?: "unknown"),
                 "media_kind" to (state.result?.kind?.name ?: "unknown"),
+                "title_present" to (!state.resolution?.title.isNullOrBlank()).toString(),
+                "duration_ms" to (state.resolution?.durationMs?.toString() ?: "unknown"),
                 "candidate_total" to candidates.size.toString(),
+                "displayed_candidate_total" to displayedCandidates.size.toString(),
+                "hidden_candidate_total" to hiddenCount.toString(),
                 "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
                 "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
                 "validation_candidate_id" to (state.validatingCandidateId ?: "none"),
                 "has_error" to (state.error != null).toString(),
                 "download_queued" to state.downloadQueued.toString(),
-                "presentation_policy" to "recommended_first;technical_candidates_hidden"
+                "presentation_policy" to "recommended_first;video_max_6;audio_max_4;remaining_hidden",
             ),
-            null
+            null,
         )
-        candidates.take(10).forEachIndexed { index, candidate ->
+        logger.log(
+            DiagnosticLevel.INFO,
+            "SMART_CENTER_ORDERING",
+            "تم تحديد ترتيب النتائج وطريقة عرضها",
+            "ui.smart_center.ordering",
+            mapOf(
+                "ordering_algorithm" to "recommended_first;video_then_audio;stable_source_order_within_section",
+                "source_candidate_total" to candidates.size.toString(),
+                "visible_candidate_total" to displayedCandidates.size.toString(),
+                "hidden_candidate_total" to hiddenCount.toString(),
+                "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
+                "recommended_selection_reason" to when {
+                    recommendedCandidate?.format?.kind == MediaKind.Video && recommendedCandidate.format.hasAudio ->
+                        "video_with_audio"
+                    recommendedCandidate?.format?.kind == MediaKind.Video -> "first_video_fallback"
+                    recommendedCandidate?.format?.kind == MediaKind.Audio -> "first_audio_fallback"
+                    else -> "none"
+                },
+            ),
+            null,
+        )
+        candidates.forEachIndexed { sourceIndex, candidate ->
+            val displayPosition = displayedPositionById[candidate.id]
             logger.log(
-                DiagnosticLevel.INFO,
-                "SMART_CENTER_OPTION_VISIBLE",
-                "خيار وسائط معروض في الشاشة",
+                if (displayPosition != null) DiagnosticLevel.INFO else DiagnosticLevel.INFO,
+                if (displayPosition != null) "SMART_CENTER_OPTION_VISIBLE" else "SMART_CENTER_OPTION_HIDDEN",
+                if (displayPosition != null) "خيار وسائط ظهر فعليًا في الشاشة" else "خيار وسائط استُخرج ولم يظهر في الشاشة",
                 "ui.smart_center.result",
                 mapOf(
-                    "position" to index.toString(),
+                    "source_rank" to sourceIndex.toString(),
+                    "display_position" to (displayPosition?.toString() ?: "hidden"),
+                    "section" to (candidateSectionById[candidate.id] ?: "hidden"),
+                    "visibility" to if (displayPosition != null) "VISIBLE" else "HIDDEN",
+                    "visibility_reason" to when {
+                        displayPosition != null && candidate.id == recommendedCandidate?.id -> "recommended_first"
+                        displayPosition != null -> "section_limit"
+                        candidate.format.kind == MediaKind.Video -> "video_section_limit"
+                        candidate.format.kind == MediaKind.Audio -> "audio_section_limit"
+                        else -> "unsupported_or_unclassified_kind"
+                    },
                     "candidate_id" to candidate.id,
                     "kind" to candidate.format.kind.name,
                     "container" to candidate.format.container.name,
@@ -140,11 +191,38 @@ private fun HomeScreen(
                     "fps" to (candidate.format.fps?.toString() ?: "unknown"),
                     "bitrate_kbps" to (candidate.format.bitrateKbps?.toString() ?: "unknown"),
                     "size_bytes" to (candidate.format.fileSizeBytes?.toString() ?: "unknown"),
+                    "has_video" to candidate.format.hasVideo.toString(),
                     "has_audio" to candidate.format.hasAudio.toString(),
                     "selected" to (candidate.id == state.selectedCandidateId).toString(),
-                    "recommended" to (candidate.id == recommendedCandidate?.id).toString()
+                    "recommended" to (candidate.id == recommendedCandidate?.id).toString(),
+                    "validating" to (candidate.id == state.validatingCandidateId).toString(),
                 ),
-                null
+                null,
+            )
+        }
+    }
+
+    LaunchedEffect(state.error) {
+        state.error?.let { error ->
+            logger.log(
+                DiagnosticLevel.ERROR,
+                "SMART_CENTER_ERROR_VISIBLE",
+                "ظهر خطأ للمستخدم داخل مركز التحميل الذكي",
+                "ui.smart_center.error",
+                mapOf(
+                    "layout_mode" to when {
+                        state.analyzing -> "ANALYZING"
+                        state.resolving -> "RESOLVING"
+                        state.resolution == null -> "INPUT_OR_EMPTY"
+                        else -> "RESULT"
+                    },
+                    "platform" to (state.result?.platform?.name ?: "unknown"),
+                    "candidate_total" to candidates.size.toString(),
+                    "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
+                    "validating_candidate_id" to (state.validatingCandidateId ?: "none"),
+                    "error_visible" to "true",
+                ),
+                IllegalStateException(error),
             )
         }
     }
@@ -234,14 +312,30 @@ private fun HomeScreen(
                             selected = candidate.id == state.selectedCandidateId,
                             validating = candidate.id == state.validatingCandidateId,
                             recommended = true,
-                            onSelect = { onSelectCandidate(candidate.id) },
+                            onSelect = {
+                                logger.log(
+                                    DiagnosticLevel.INFO,
+                                    "SMART_CENTER_OPTION_SELECTED",
+                                    "اختار المستخدم خيار وسائط من النتائج المعروضة",
+                                    "ui.smart_center.selection",
+                                    mapOf(
+                                        "candidate_id" to candidate.id,
+                                        "display_position" to (displayedPositionById[candidate.id]?.toString() ?: "hidden"),
+                                        "section" to (candidateSectionById[candidate.id] ?: "hidden"),
+                                        "selected_before" to (candidate.id == state.selectedCandidateId).toString(),
+                                        "kind" to candidate.format.kind.name,
+                                        "height" to (candidate.format.height?.toString() ?: "unknown"),
+                                        "bitrate_kbps" to (candidate.format.bitrateKbps?.toString() ?: "unknown"),
+                                    ),
+                                    null,
+                                )
+                                onSelectCandidate(candidate.id)
+                            },
                             onDownload = onDownload,
                             onOpenDiagnostics = onOpenDiagnostics,
                         )
                     }
                 }
-                val videoCandidates = resolution.candidates.filter { it.format.kind == MediaKind.Video && it.id != recommendedCandidate?.id }.take(6)
-                val audioCandidates = resolution.candidates.filter { it.format.kind == MediaKind.Audio }.take(4)
                 if (videoCandidates.isNotEmpty()) {
                     item { Text("خيارات الفيديو", style = MaterialTheme.typography.titleLarge) }
                     items(videoCandidates, key = { "video-" + it.id }) { candidate ->
