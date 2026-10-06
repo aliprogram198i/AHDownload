@@ -80,12 +80,18 @@ class DiagnosticReportFormatterTest {
 
         val report = DiagnosticReportFormatter.format(logs)
 
+        assertTrue(report.contains("diagnostic_schema=2"))
         assertTrue(report.contains("version=0.1.1"))
         assertTrue(report.contains("build=debug"))
         assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("classification=NETWORK"))
         assertTrue(report.contains("root_cause=HTTP_403"))
+        assertTrue(report.contains("action=INSPECT_REQUEST_CONTEXT"))
         assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
         assertTrue(report.contains("duration_ms=5000"))
+        assertTrue(report.contains("http_403=2"))
+        assertTrue(report.contains("http_4xx=2"))
+        assertTrue(report.contains("http_5xx=0"))
         assertTrue(report.contains("options_extracted=2"))
         assertTrue(report.contains("visible=1"))
         assertTrue(report.contains("hidden=1"))
@@ -93,6 +99,30 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("candidate_rejected"))
         assertTrue(report.contains("ui_error"))
         assertEquals(0, Regex("SMART_CENTER_OPTION_VISIBLE").findAll(report).count())
+    }
+
+    @Test
+    fun successfulSmartCenterUiFlowHasNoFalseRootCause() {
+        val session = "session-ok"
+        val operation = "op-ok"
+        val logs = listOf(
+            event(1_000L, "1", "SMART_CENTER_ORDERING", DiagnosticLevel.INFO, "تم تحديد ترتيب النتائج", session, operation),
+            event(1_004L, "2", "SMART_CENTER_RESULT_PRESENTED", DiagnosticLevel.INFO, "تم عرض النتائج", session, operation),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("status=OK"))
+        assertTrue(report.contains("classification=UI_FLOW"))
+        assertTrue(report.contains("root_cause=NONE"))
+        assertTrue(report.contains("failure=NONE"))
+        assertTrue(report.contains("action=NONE"))
+        assertTrue(report.contains("ordering=COMPLETED"))
+        assertTrue(report.contains("presentation=COMPLETED"))
+        assertTrue(report.contains("media_validation=NOT_STARTED"))
+        assertTrue(report.contains("download=NOT_STARTED"))
+        assertTrue(report.contains("duration_ms=4"))
+        assertTrue(report.contains("FAILURE_CHAIN\nNONE"))
     }
 
     private fun event(
