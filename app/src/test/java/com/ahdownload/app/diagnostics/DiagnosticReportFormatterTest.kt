@@ -2,9 +2,9 @@ package com.ahdownload.app.diagnostics
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
-import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class DiagnosticReportFormatterTest {
 
@@ -80,18 +80,18 @@ class DiagnosticReportFormatterTest {
 
         val report = DiagnosticReportFormatter.format(logs)
 
-        assertContains(report, "version=0.1.1")
-        assertContains(report, "build=debug")
-        assertContains(report, "status=FAILED")
-        assertContains(report, "root_cause=HTTP_403")
-        assertContains(report, "failure=NO_VALID_MEDIA_SOURCE")
-        assertContains(report, "duration_ms=5000")
-        assertContains(report, "options_extracted=2")
-        assertContains(report, "visible=1")
-        assertContains(report, "hidden=1")
-        assertContains(report, "resolver")
-        assertContains(report, "candidate_rejected")
-        assertContains(report, "ui_error")
+        assertTrue(report.contains("version=0.1.1"))
+        assertTrue(report.contains("build=debug"))
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("root_cause=HTTP_403"))
+        assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
+        assertTrue(report.contains("duration_ms=5000"))
+        assertTrue(report.contains("options_extracted=2"))
+        assertTrue(report.contains("visible=1"))
+        assertTrue(report.contains("hidden=1"))
+        assertTrue(report.contains("resolver"))
+        assertTrue(report.contains("candidate_rejected"))
+        assertTrue(report.contains("ui_error"))
         assertEquals(0, Regex("SMART_CENTER_OPTION_VISIBLE").findAll(report).count())
     }
 
