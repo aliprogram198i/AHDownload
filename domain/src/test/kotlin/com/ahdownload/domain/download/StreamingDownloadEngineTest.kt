@@ -26,8 +26,6 @@ class StreamingDownloadEngineTest {
             sink = sink,
             bufferSize = 2,
         ).download(task(), states::add)
-        val sourceRange = source.requestedRange
-
         assertIs<DownloadState.Queued>(states[0])
         assertIs<DownloadState.Preparing>(states[1])
         assertEquals(DownloadState.Downloading(0, 5), states[2])
@@ -112,16 +110,17 @@ class StreamingDownloadEngineTest {
         sink.seed("he".encodeToByteArray())
         val states = mutableListOf<DownloadState>()
 
-        StreamingDownloadEngine(
-            source = FakeSource(
-                DownloadResponse(
+        val source = FakeSource(
+            DownloadResponse(
                     statusCode = 206,
                     contentLengthBytes = 3,
                     contentType = "video/mp4",
                     body = ByteArrayInputStream("llo".encodeToByteArray()),
                     totalBytes = 5,
                 ),
-            ),
+            )
+        StreamingDownloadEngine(
+            source = source,
             sink = sink,
             bufferSize = 2,
         ).download(task(), states::add)
@@ -129,7 +128,7 @@ class StreamingDownloadEngineTest {
         assertEquals(DownloadState.Downloading(2, 5), states[2])
         assertIs<DownloadState.Completed>(states.last())
         assertEquals("hello", sink.committedData())
-        assertEquals(2L, sourceRange)
+        assertEquals(2L, source.requestedRange)
     )
 
     private fun task() = DownloadTask("task-1", "https://cdn.example/video.mp4", "/tmp/video.mp4")
@@ -145,7 +144,6 @@ class StreamingDownloadEngineTest {
 
     private class FakeSink : AtomicFileSink {
         private var data = ByteArrayOutputStream()
-        var requestedRangeStart = 0L
         var committed = false
         var tempOpened = false
         var discardCount = 0
