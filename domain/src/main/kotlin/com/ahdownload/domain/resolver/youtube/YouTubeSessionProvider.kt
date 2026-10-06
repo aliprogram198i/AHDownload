@@ -10,6 +10,10 @@ data class YouTubeSessionSnapshot(
     val browserRequestHeaders: Map<String, Map<String, String>> = emptyMap(),
     val browserMediaObservedCount: Int = 0,
     val browserPoTokenObserved: Boolean = false,
+    /**
+     * Ephemeral PO token observed on a browser media request. Never persist this value.
+     */
+    val browserPoToken: String? = null,
 )
 
 interface YouTubeSessionProvider {
