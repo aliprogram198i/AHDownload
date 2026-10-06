@@ -149,18 +149,10 @@ class YouTubeResolver(
             return filterKind(ResolverResult.Success(null, null, null, webCandidates), request)
         }
 
-        if (!snapshot.authenticated && snapshot.cookies.isNullOrBlank()) {
-            return failure(
-                FailureCode.ResolverUnavailable,
-                "YouTube يتطلب جلسة WebView صالحة. افتح YouTube داخل التطبيق وسجّل الدخول ثم أعد المحاولة.",
-                context = diagnosticContext(videoId, request.operationId) + mapOf("reason_class" to "AUTH_REQUIRED"),
-            )
-        }
-
         return failure(
             lastFailure?.code ?: FailureCode.ResolverUnavailable,
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
-            context = mapOf("video_id" to videoId),
+            context = diagnosticContext(videoId, request.operationId),
         )
     }
 
@@ -280,9 +272,4 @@ class YouTubeResolver(
         return null
     }
 
-    private fun ResolverResult.failureCodeOr(default: FailureCode): FailureCode =
-        (this as? ResolverResult.Failure)?.code ?: default
-
-    private fun ResolverResult.failureMessageOr(default: String): String =
-        (this as? ResolverResult.Failure)?.message ?: default
 }
