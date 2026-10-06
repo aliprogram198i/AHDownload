@@ -173,19 +173,65 @@ private fun HomeScreen(
             }
 
             item {
-                OutlinedTextField(
-                    value = state.url,
-                    onValueChange = {
-                        showAll = false
-                        onUrlChanged(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
-                    label = { Text("رابط المحتوى") },
-                    placeholder = { Text("https://...") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                )
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            "الرابط والمصدر",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        OutlinedTextField(
+                            value = state.url,
+                            onValueChange = {
+                                showAll = false
+                                onUrlChanged(it)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
+                            label = { Text("رابط المحتوى") },
+                            placeholder = { Text("الصق رابط YouTube أو أي مصدر مباشر") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                enabled = !state.analyzing && !state.resolving,
+                                onClick = {
+                                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                    val text = clipboard?.primaryClip
+                                        ?.takeIf { it.itemCount > 0 }
+                                        ?.getItemAt(0)
+                                        ?.coerceToText(context)
+                                        ?.toString()
+                                        ?.trim()
+                                        .orEmpty()
+                                    if (text.isNotBlank()) {
+                                        showAll = false
+                                        onUrlChanged(text)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("لصق الرابط")
+                            }
+                            OutlinedButton(
+                                enabled = state.url.isNotBlank() && !state.analyzing && !state.resolving,
+                                onClick = {
+                                    showAll = false
+                                    onUrlChanged("")
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("مسح")
+                            }
+                        }
+                    }
+                }
             }
 
             item {
