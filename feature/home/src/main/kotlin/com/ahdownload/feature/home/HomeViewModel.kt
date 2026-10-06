@@ -190,7 +190,72 @@ class HomeViewModel(
                 downloadQueued = false,
             )
             try {
-                when (val validation = resolver.validate(candidate, validationOperationId)) {
+                var candidateToValidate = candidate
+                var validation = resolver.validate(candidateToValidate, validationOperationId)
+
+                // YouTube media URLs are signed/short-lived. A candidate can become stale
+                // between analysis and the user's download tap. Refresh exactly once on 403
+                // instead of adding blind retries or bypass logic.
+                if (
+                    validation is CandidateValidationResult.Invalid &&
+                    validation.failure is com.ahdownload.domain.validation.ValidationFailure.HttpStatus &&
+                    validation.failure.code == 403 &&
+                    state.result?.platform == com.ahdownload.domain.model.MediaPlatform.YouTube
+                ) {
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "YOUTUBE_CANDIDATE_REFRESH_STARTED",
+                        "مصدر YouTube أصبح غير صالح؛ سيتم استخراج مصدر حديث مرة واحدة",
+                        "download.refresh",
+                        mapOf(
+                            "candidate_id" to candidate.id,
+                            "candidate_format_id" to candidate.format.id,
+                            "operation_id" to validationOperationId,
+                            "platform" to "YouTube",
+                        ),
+                        null,
+                    )
+
+                    when (val refreshed = resolver.resolve(state.result, validationOperationId)) {
+                        is ResolverResult.Success -> {
+                            val sameFormat = refreshed.candidates.firstOrNull { it.id == candidate.id }
+                            candidateToValidate = sameFormat
+                                ?: refreshed.candidates.firstOrNull { it.format.kind == candidate.format.kind }
+                                ?: candidateToValidate
+                            logger.log(
+                                DiagnosticLevel.INFO,
+                                "YOUTUBE_CANDIDATE_REFRESH_RESULT",
+                                "تم استخراج مصدر YouTube حديث وإعادة التحقق",
+                                "download.refresh",
+                                mapOf(
+                                    "old_candidate_id" to candidate.id,
+                                    "new_candidate_id" to candidateToValidate.id,
+                                    "candidate_count" to refreshed.candidates.size.toString(),
+                                    "operation_id" to validationOperationId,
+                                ),
+                                null,
+                            )
+                            validation = resolver.validate(candidateToValidate, validationOperationId)
+                        }
+
+                        is ResolverResult.Failure -> {
+                            logger.log(
+                                DiagnosticLevel.WARNING,
+                                "YOUTUBE_CANDIDATE_REFRESH_FAILED",
+                                refreshed.message ?: refreshed.code.name,
+                                "download.refresh",
+                                mapOf(
+                                    "candidate_id" to candidate.id,
+                                    "operation_id" to validationOperationId,
+                                    "failure_code" to refreshed.code.name,
+                                ),
+                                null,
+                            )
+                        }
+                    }
+                }
+
+                when (validation) {
                     is CandidateValidationResult.Valid -> {
                         val queued = onDownloadRequested(
                             validation.candidate.copy(sourceUrl = validation.finalUrl),
@@ -220,8 +285,9 @@ class HomeViewModel(
                             validation.failure.toString(),
                             "download.validate",
                             mapOf(
-                                "candidate_id" to candidate.id,
+                                "candidate_id" to candidateToValidate.id,
                                 "operation_id" to validationOperationId,
+                                "youtube_refresh_attempted" to (candidateToValidate.id != candidate.id).toString(),
                             ),
                             null,
                         )
