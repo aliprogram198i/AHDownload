@@ -134,7 +134,11 @@ class StreamingDownloadEngineTest {
     private fun task() = DownloadTask("task-1", "https://cdn.example/video.mp4", "/tmp/video.mp4")
 
     private class FakeSource(private val response: DownloadResponse) : DownloadByteStream {
-        override suspend fun open(url: String, rangeStart: Long): DownloadResponse {
+        override suspend fun open(
+            url: String,
+            rangeStart: Long,
+            headers: Map<String, String>,
+        ): DownloadResponse {
             requestedRange = rangeStart
             return response
         }
