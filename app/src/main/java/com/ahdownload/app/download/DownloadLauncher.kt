@@ -3,6 +3,7 @@ package com.ahdownload.app.download
 import android.content.Context
 import android.os.Environment
 import com.ahdownload.domain.download.DownloadTask
+import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.domain.resolver.MediaCandidate
 import java.io.File
 import java.util.UUID
@@ -12,8 +13,10 @@ class DownloadLauncher(
 ) {
     private val appContext = context.applicationContext
     private val scheduler = (appContext as com.ahdownload.app.AHDownloadApplication).downloadWorkScheduler
+    private val locationStore = DownloadLocationStore(appContext)
 
     fun enqueue(candidate: MediaCandidate, title: String?): Boolean {
+        if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) return false
         val directory = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return false
         if (!directory.exists() && !directory.mkdirs()) return false
 
