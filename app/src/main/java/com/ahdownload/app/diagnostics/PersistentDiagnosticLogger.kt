@@ -86,6 +86,7 @@ class PersistentDiagnosticLogger(
             log.context.forEach { (key, value) -> appendLine("$key: $value") }
             log.throwableType?.let { appendLine("Exception: $it") }
             log.throwableMessage?.let { appendLine("ExceptionMessage: $it") }
+            log.throwableStackTrace?.let { appendLine("StackTrace:\n$it") }
         }.trimEnd()
     }
 
