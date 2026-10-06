@@ -184,7 +184,7 @@ object DiagnosticReportFormatter {
         val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
         val gvsEvidence = events.lastOrNull { it.type == "youtube.gvs_strategy" }
         return when {
-            classification == "NETWORK" && rootCause == "HTTP_403" && isYouTube &&
+            isYouTube &&
                 gvsEvidence?.context?.get("po_token_observed") == "false" &&
                 gvsEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->
                 "INSPECT_YOUTUBE_PO_TOKEN_OR_CLIENT_POLICY"
