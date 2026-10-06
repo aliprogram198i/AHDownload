@@ -11,11 +11,29 @@ class CandidateValidator(
 ) {
 
     suspend fun validate(candidate: MediaCandidate, operationId: String? = null): CandidateValidationResult {
+        fun reject(failure: ValidationFailure): CandidateValidationResult.Invalid {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                "MEDIA_VALIDATION_REJECTED",
+                failureCode(failure),
+                "download.validate",
+                buildMap {
+                    put("candidate_id", candidate.id)
+                    put("failure_code", failureCode(failure))
+                    put("stage", "MEDIA_VALIDATION")
+                    operationId?.let { put("operation_id", it) }
+                    if (failure is ValidationFailure.HttpStatus) {
+                        put("http_status", failure.code.toString())
+                    }
+                },
+                null,
+            )
+            return CandidateValidationResult.Invalid(failure)
+        }
+
         val url = candidate.sourceUrl.trim()
         if (!url.startsWith("http://") && !url.startsWith("https://")) {
-            return CandidateValidationResult.Invalid(
-                ValidationFailure.InvalidUrl,
-            )
+            return reject(ValidationFailure.InvalidUrl)
         }
 
         logger.log(
@@ -29,15 +47,16 @@ class CandidateValidator(
                 put("requested_kind", candidate.format.kind.name)
                 put("request_header_names", candidate.requestHeaders.keys.sorted().joinToString(",").ifBlank { "none" })
                 put("cookie_present", candidate.requestHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString())
+                put("stage", "MEDIA_VALIDATION")
                 operationId?.let { put("operation_id", it) }
             },
             null,
         )
 
-        val probeResult = runCatching { probe.probe(url, candidate.requestHeaders) }.getOrElse {
-            return CandidateValidationResult.Invalid(
-                ValidationFailure.ProbeFailed,
-            )
+        val probeResult = runCatching {
+            probe.probe(url, candidate.requestHeaders, operationId)
+        }.getOrElse {
+            return reject(ValidationFailure.ProbeFailed)
         }
 
         logger.log(
@@ -53,27 +72,22 @@ class CandidateValidator(
                 put("range", probeResult.range ?: "none")
                 put("content_type", probeResult.contentType ?: "unknown")
                 put("content_length_bytes", probeResult.contentLengthBytes?.toString() ?: "unknown")
+                put("stage", "MEDIA_VALIDATION")
                 operationId?.let { put("operation_id", it) }
             },
             null,
         )
 
         if (probeResult.statusCode !in 200..299) {
-            return CandidateValidationResult.Invalid(
-                ValidationFailure.HttpStatus(probeResult.statusCode),
-            )
+            return reject(ValidationFailure.HttpStatus(probeResult.statusCode))
         }
 
         if (probeResult.contentType.isHtml()) {
-            return CandidateValidationResult.Invalid(
-                ValidationFailure.HtmlResponse,
-            )
+            return reject(ValidationFailure.HtmlResponse)
         }
 
         if (!probeResult.contentType.matchesKind(candidate.format.kind)) {
-            return CandidateValidationResult.Invalid(
-                ValidationFailure.ContentTypeMismatch,
-            )
+            return reject(ValidationFailure.ContentTypeMismatch)
         }
 
         val updated = if (
@@ -89,10 +103,34 @@ class CandidateValidator(
             candidate
         }
 
+        logger.log(
+            DiagnosticLevel.INFO,
+            "MEDIA_VALIDATION_ACCEPTED",
+            "تم قبول مصدر الوسائط بعد التحقق",
+            "download.validate",
+            buildMap {
+                put("candidate_id", candidate.id)
+                put("stage", "MEDIA_VALIDATION")
+                put("validation_result", "valid")
+                put("status_code", probeResult.statusCode.toString())
+                put("content_type", probeResult.contentType ?: "unknown")
+                operationId?.let { put("operation_id", it) }
+            },
+            null,
+        )
+
         return CandidateValidationResult.Valid(
             candidate = updated,
             finalUrl = probeResult.finalUrl,
         )
+    }
+
+    private fun failureCode(failure: ValidationFailure): String = when (failure) {
+        ValidationFailure.InvalidUrl -> "INVALID_URL"
+        ValidationFailure.ProbeFailed -> "PROBE_FAILED"
+        is ValidationFailure.HttpStatus -> "HTTP_${failure.code}"
+        ValidationFailure.HtmlResponse -> "HTML_RESPONSE"
+        ValidationFailure.ContentTypeMismatch -> "CONTENT_TYPE_MISMATCH"
     }
 
     private fun hostOf(url: String): String =
