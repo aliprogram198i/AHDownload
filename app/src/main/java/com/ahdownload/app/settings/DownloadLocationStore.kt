@@ -21,12 +21,16 @@ class DownloadLocationStore(context: Context) {
     private val _location = MutableStateFlow(loadLocation())
     val location: StateFlow<DownloadLocation> = _location.asStateFlow()
 
-    fun saveTreeUri(uri: Uri) {
+    fun saveTreeUri(uri: Uri): Boolean {
         val resolver = appContext.contentResolver
         val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        resolver.takePersistableUriPermission(uri, flags)
-        preferences.edit().putString(KEY_TREE_URI, uri.toString()).apply()
-        _location.value = loadLocation()
+        return runCatching {
+            resolver.takePersistableUriPermission(uri, flags)
+            check(isAccessible(uri)) { "Selected folder is not accessible" }
+            preferences.edit().putString(KEY_TREE_URI, uri.toString()).apply()
+            _location.value = loadLocation()
+            true
+        }.getOrDefault(false)
     }
 
     fun resetToDefault() {
