@@ -35,6 +35,7 @@ class DiagnosticReportFormatterTest {
                     "status_code" to "403",
                     "content_type" to "text/plain",
                     "platform" to "YouTube",
+                    "candidate_id" to "137",
                 ),
             ),
             event(
@@ -104,10 +105,10 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("classification=NETWORK"))
         assertTrue(report.contains("root_cause=HTTP_403"))
         assertTrue(report.contains("action=INSPECT_BROWSER_MEDIA_CAPTURE"))
-        assertTrue(report.contains("http_403=2"))
+        assertTrue(report.contains("http_403=1"))
         assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
         assertTrue(report.contains("duration_ms=5000"))
-        assertTrue(report.contains("http_4xx=2"))
+        assertTrue(report.contains("http_4xx=1"))
         assertTrue(report.contains("YOUTUBE"))
         assertTrue(report.contains("browser_media_observed=0"))
         assertTrue(report.contains("browser_po_token_observed=false"))
