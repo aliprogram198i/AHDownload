@@ -89,6 +89,7 @@ private fun HomeScreen(
     onDownload: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val candidates = state.resolution?.candidates.orEmpty()
     val recommendedCandidate = candidates
