@@ -63,6 +63,7 @@ class DownloadWorker(
                 "source_host" to hostOf(task.sourceUrl),
                 "destination_mode" to if (DownloadLocationStore(applicationContext).persistedUri() != null) "CUSTOM_DIRECTORY" else "APP_DEFAULT",
                 "youtube_session_context" to isYouTubeMediaHost(task.sourceUrl).toString(),
+                "request_context_present" to task.requestHeaders.keys.sorted().joinToString(",").ifBlank { "none" },
             ),
             null,
         )
@@ -197,11 +198,17 @@ class DownloadWorker(
         val sourceUrl = inputData.getString(KEY_SOURCE_URL)?.takeIf { it.isNotBlank() } ?: return null
         val destinationPath =
             inputData.getString(KEY_DESTINATION_PATH)?.takeIf { it.isNotBlank() } ?: return null
+        val requestHeaders = buildMap {
+            inputData.getString(KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+            inputData.getString(KEY_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+            inputData.getString(KEY_ORIGIN)?.takeIf { it.isNotBlank() }?.let { put("Origin", it) }
+        }
 
         return DownloadTask(
             id = taskId,
             sourceUrl = sourceUrl,
             destinationPath = destinationPath,
+            requestHeaders = requestHeaders,
         )
     }
 
@@ -293,6 +300,9 @@ class DownloadWorker(
         const val KEY_TASK_ID = "task_id"
         const val KEY_SOURCE_URL = "source_url"
         const val KEY_DESTINATION_PATH = "destination_path"
+        const val KEY_USER_AGENT = "user_agent"
+        const val KEY_REFERER = "referer"
+        const val KEY_ORIGIN = "origin"
         const val KEY_FAILURE_CODE = "failure_code"
         const val KEY_FAILURE_DETAIL = "failure_detail"
         const val TAG = "ahdownload-download-worker"
