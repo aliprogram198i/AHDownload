@@ -12,6 +12,11 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      AH_KEYSTORE_FILE: ${{ runner.temp }}/AHDownload-release.keystore
+      AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+      AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+      AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
