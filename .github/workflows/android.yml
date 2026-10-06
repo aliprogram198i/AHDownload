@@ -34,6 +34,13 @@ jobs:
         run: sdkmanager "platforms;android-37.1" "build-tools;36.0.0"
       - name: Compile and test
         run: gradle --no-daemon testDebugUnitTest assembleDebug
+      - name: Verify debug APK
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$APK"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
@@ -41,9 +48,10 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
       - name: Publish direct debug APK release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == "push" && github.ref == "refs/heads/main"
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           TAG="debug-${{ github.run_id }}"
           gh release create "$TAG" app/build/outputs/apk/debug/app-debug.apk --title "AHDownload Debug ${{ github.run_number }}" --notes "Automated debug APK from commit ${{ github.sha }}"
