@@ -125,7 +125,46 @@ class YouTubeResolver(
                 throwable = null,
             )
             val webResult = parser.parsePlayerResponse(response)
-            if (webResult is ResolverResult.Success) return filterKind(withSessionHeaders(webResult, snapshot), request)
+            if (webResult is ResolverResult.Success) {
+                val sessionResult = withSessionHeaders(webResult, snapshot)
+                val browserCandidates = sessionCandidates(snapshot)
+                val browserUrls = (snapshot.videoUrls + snapshot.audioUrls).toSet()
+                val alignedCount = sessionResult.candidates.count { it.sourceUrl in browserUrls }
+                if (alignedCount > 0) {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        type = "youtube.webview_source_selected",
+                        reason = "aligned_browser_media_source",
+                        operation = "youtube.resolve",
+                        context = diagnosticContext(videoId, request.operationId) + mapOf(
+                            "aligned_candidates" to alignedCount.toString(),
+                            "browser_candidates" to browserCandidates.size.toString(),
+                        ),
+                        throwable = null,
+                    )
+                    return filterKind(sessionResult, request)
+                }
+                if (browserCandidates.isNotEmpty()) {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        type = "youtube.webview_source_selected",
+                        reason = "browser_media_fallback",
+                        operation = "youtube.resolve",
+                        context = diagnosticContext(videoId, request.operationId) + mapOf(
+                            "browser_candidates" to browserCandidates.size.toString(),
+                            "player_candidates" to sessionResult.candidates.size.toString(),
+                        ),
+                        throwable = null,
+                    )
+                    return filterKind(ResolverResult.Success(
+                        title = webResult.title,
+                        thumbnailUrl = webResult.thumbnailUrl,
+                        durationMs = webResult.durationMs,
+                        candidates = browserCandidates,
+                    ), request)
+                }
+                return filterKind(sessionResult, request)
+            }
             lastFailure = webResult as? ResolverResult.Failure ?: lastFailure
             logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
         }

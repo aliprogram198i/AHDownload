@@ -85,6 +85,12 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 if (finished) return
                 val script = """(function(){
                     const v=new Set(),a=new Set();
+
+                    const isHttp=x=>/^https?:\/\//i.test(x);
+                    const isM3u8=x=>/.m3u8(?:[?#]|$)/i.test(x);
+                    const isGoogleVideo=x=>{try{return new URL(x).hostname.toLowerCase().endsWith(".googlevideo.com")}catch(_){return false}};
+                    const classify=x=>{try{const q=new URL(x).search.toLowerCase();if(q.includes("mime=audio%2f")||q.includes("mime=audio/")||q.includes("type=audio%2f")||q.includes("type=audio/"))return a;if(q.includes("mime=video%2f")||q.includes("mime=video/")||q.includes("type=video%2f")||q.includes("type=video/"))return v}catch(_){}return null};
+                    const addResource=x=>{if(!isHttp(x)||isM3u8(x))return;const target=classify(x);if(target)target.add(x);else if(isGoogleVideo(x)&&/\/videoplayback(?:[/?]|$)/i.test(x))v.add(x)};
                     const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){} 
                       if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
@@ -99,8 +105,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     try{performance.getEntriesByType('resource').forEach(e=>{
                       const u=e.name||'',l=u.toLowerCase();
                       if(!/^https?:\/\//i.test(u)||/.m3u8(?:[?#]|$)/i.test(u))return;
-                      if(/(?:[?&](?:mime|type)=audio%2f|[?&](?:mime|type)=audio\/|audio)/i.test(l))a.add(u);
-                      else if(/(?:[?&](?:mime|type)=video%2f|[?&](?:mime|type)=video\/|\.mp4|\.webm|\.m4v|\.mov)/i.test(l))v.add(u)
+                      addResource(u)
                     })}catch(_){}
                     let p=null;
                     try{
@@ -152,6 +157,18 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 view.settings.mediaPlaybackRequiresUserGesture = false
                 view.settings.userAgentString = WebSettings.getDefaultUserAgent(context.applicationContext)
 
+                fun classifyGoogleVideoResource(resourceUrl: String) {
+                    val lower = resourceUrl.lowercase()
+                    when {
+                        Regex("""[?&](?:mime|type)=audio(?:%2f|/)""").containsMatchIn(lower) -> add(audios, resourceUrl)
+                        Regex("""[?&](?:mime|type)=video(?:%2f|/)""").containsMatchIn(lower) -> add(videos, resourceUrl)
+                        "/videoplayback" in lower -> add(videos, resourceUrl)
+                    }
+                }
+
+                fun isYouTubeGoogleVideo(resourceUrl: String): Boolean =
+                    runCatching { java.net.URI(resourceUrl).host?.lowercase()?.endsWith(".googlevideo.com") == true }
+
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         CookieManager.getInstance().flush()
@@ -182,6 +199,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                             !lower.contains(".m3u8")
                         ) {
                             when {
+                                isYouTubeGoogleVideo(resourceUrl) -> classifyGoogleVideoResource(resourceUrl)
                                 "mime=audio" in lower || "type=audio" in lower -> add(audios, resourceUrl)
                                 lower.contains(".mp4") || lower.contains(".webm") ||
                                     lower.contains(".m4v") || lower.contains(".mov") -> add(videos, resourceUrl)

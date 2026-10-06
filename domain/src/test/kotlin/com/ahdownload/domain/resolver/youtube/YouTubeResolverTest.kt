@@ -223,4 +223,51 @@ class YouTubeResolverTest {
     }
 
 
+    @Test
+    fun prefersCapturedBrowserMediaWhenPlayerUrlCannotBeAlignedByItag() = runBlocking {
+        val playerUrl = "https://rr1---sn.googlevideo.com/videoplayback?itag=136&mime=video%2Fmp4&source=youtube"
+        val browserUrl = "https://rr1---sn.googlevideo.com/videoplayback?itag=136&mime=video%2Fmp4&source=youtube&pot=redacted"
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                throw IllegalStateException("Sign in to confirm you're not a bot")
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
+                YouTubeSessionSnapshot(
+                    cookies = null,
+                    videoUrls = listOf(browserUrl),
+                    audioUrls = emptyList(),
+                    playerResponse = """
+                        {
+                          "videoDetails":{"title":"Browser Source Test","lengthSeconds":"8"},
+                          "playabilityStatus":{"status":"OK"},
+                          "streamingData":{"formats":[
+                            {"itag":"136","mimeType":"video/mp4; codecs=\\"avc1.4d401f\\"","width":1280,"height":720,"url":"$playerUrl"}
+                          ]}
+                        }
+                    """.trimIndent(),
+                    authenticated = false,
+                )
+        }
+
+        val result = YouTubeResolver(
+            httpClient = client,
+            sessionProvider = session,
+        ).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/browser-alignment",
+                    normalizedUrl = "https://youtu.be/browser-alignment",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        result as ResolverResult.Success
+        assertEquals(1, result.candidates.size)
+        assertEquals(browserUrl, result.candidates.single().sourceUrl)
+    }
+
 }
