@@ -124,6 +124,66 @@ class DiagnosticReportFormatterTest {
     }
 
     @Test
+    fun metricsAreScopedToFailingOperationAndCandidatesUseIds() {
+        val session = "session-scope"
+        val oldOperation = "op-old"
+        val failingOperation = "op-fail"
+        val logs = listOf(
+            event(
+                time = 1_000L, sequence = "1", type = "MEDIA_VALIDATION_STARTED",
+                level = DiagnosticLevel.INFO, reason = "old", session = session, operation = oldOperation,
+            ),
+            event(
+                time = 2_000L, sequence = "2", type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING, reason = "old_403", session = session, operation = oldOperation,
+                context = mapOf("status_code" to "403", "candidate_id" to "old"),
+            ),
+            event(
+                time = 3_000L, sequence = "3", type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.WARNING, reason = "HTTP_403", session = session, operation = oldOperation,
+                context = mapOf("http_status" to "403", "candidate_id" to "old"),
+            ),
+            event(
+                time = 4_000L, sequence = "4", type = "MEDIA_VALIDATION_STARTED",
+                level = DiagnosticLevel.INFO, reason = "start", session = session, operation = failingOperation,
+                context = mapOf("candidate_id" to "137"),
+            ),
+            event(
+                time = 5_000L, sequence = "5", type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING, reason = "403_a", session = session, operation = failingOperation,
+                context = mapOf("status_code" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 6_000L, sequence = "6", type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING, reason = "403_b", session = session, operation = failingOperation,
+                context = mapOf("status_code" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 7_000L, sequence = "7", type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.WARNING, reason = "HTTP_403", session = session, operation = failingOperation,
+                context = mapOf("http_status" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 8_000L, sequence = "8", type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.WARNING, reason = "HTTP_403", session = session, operation = failingOperation,
+                context = mapOf("http_status" to "403", "candidate_id" to "248"),
+            ),
+            event(
+                time = 9_000L, sequence = "9", type = "DOWNLOAD_ERROR",
+                level = DiagnosticLevel.ERROR, reason = "failed", session = session, operation = failingOperation,
+            ),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("http_403=2"))
+        assertTrue(report.contains("http_4xx=2"))
+        assertTrue(report.contains("requests=2"))
+        assertTrue(report.contains("candidates=2"))
+        assertTrue(report.contains("rejected=2"))
+    }
+
+    @Test
     fun successfulSmartCenterUiFlowHasNoFalseRootCause() {
         val session = "session-ok"
         val operation = "op-ok"
