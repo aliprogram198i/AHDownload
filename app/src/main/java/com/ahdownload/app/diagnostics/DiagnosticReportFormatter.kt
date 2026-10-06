@@ -138,7 +138,7 @@ object DiagnosticReportFormatter {
                 appendLine("YOUTUBE")
                 appendLine("browser_media_observed=${evidence.context["browser_media_observed"] ?: "unknown"}")
                 appendLine("browser_request_headers_captured=${evidence.context["browser_request_headers_captured"] ?: "unknown"}")
-                appendLine("browser_po_token_observed=${evidence.context["browser_po_token_observed"] ?: "unknown"}")
+                appendLine("browser_po_token_observed=${evidence.context["browser_po_token_observed"] ?: evidence.context["po_token_observed"] ?: "unknown"}")
             }
 
             if (visible > 0 || hidden > 0) {
@@ -182,14 +182,15 @@ object DiagnosticReportFormatter {
             it.context["platform"] == "YouTube" || it.type.startsWith("youtube.", ignoreCase = true)
         }
         val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
+        val gvsEvidence = events.lastOrNull { it.type == "youtube.gvs_strategy" }
         return when {
+            isYouTube &&
+                gvsEvidence?.context?.get("po_token_observed") == "false" &&
+                gvsEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->
+                "INSPECT_YOUTUBE_PO_TOKEN_OR_CLIENT_POLICY"
             classification == "NETWORK" && rootCause == "HTTP_403" && isYouTube &&
                 captureEvidence?.context["browser_media_observed"] == "0" ->
                 "INSPECT_BROWSER_MEDIA_CAPTURE"
-            classification == "NETWORK" && rootCause == "HTTP_403" && isYouTube &&
-                captureEvidence?.context["browser_po_token_observed"] == "false" &&
-                captureEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->
-                "INSPECT_YOUTUBE_PO_TOKEN_OR_CLIENT_POLICY"
             classification == "NETWORK" -> "INSPECT_REQUEST_CONTEXT"
             classification == "MEDIA_RESOLUTION" -> "INSPECT_RESOLVER"
             classification == "MEDIA_VALIDATION" -> "INSPECT_VALIDATION"

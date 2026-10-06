@@ -184,6 +184,31 @@ class DiagnosticReportFormatterTest {
     }
 
     @Test
+    fun youtubeGvsPolicyEvidenceGetsPreciseAction() {
+        val session = "session-gvs"
+        val operation = "op-gvs"
+        val logs = listOf(
+            event(1_000L, "1", "MEDIA_PROBE_ATTEMPT", DiagnosticLevel.WARNING, "403", session, operation,
+                mapOf("status_code" to "403", "candidate_id" to "137", "platform" to "YouTube")),
+            event(1_100L, "2", "youtube.gvs_strategy", DiagnosticLevel.WARNING, "browser_gvs_media_observed_without_po_token", session, operation,
+                mapOf(
+                    "platform" to "YouTube",
+                    "browser_media_observed" to "3",
+                    "browser_request_headers_captured" to "3",
+                    "po_token_observed" to "false",
+                )),
+            event(1_200L, "3", "MEDIA_VALIDATION_REJECTED", DiagnosticLevel.ERROR, "HTTP_403", session, operation,
+                mapOf("http_status" to "403", "failure_code" to "HTTP_403", "candidate_id" to "137", "platform" to "YouTube")),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("root_cause=HTTP_403"))
+        assertTrue(report.contains("browser_media_observed=3"))
+        assertTrue(report.contains("po_token_observed=false"))
+    }
+
+    @Test
     fun successfulSmartCenterUiFlowHasNoFalseRootCause() {
         val session = "session-ok"
         val operation = "op-ok"

@@ -62,32 +62,35 @@ class YouTubeResolver(
                 if (apiResult is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(apiResult, request), request)
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
+            }
 
-                val embeddedResponse = runCatching {
-                    playerClient.fetchEmbeddedPlayerResponse(
-                        html = html,
-                        videoUrl = request.link.normalizedUrl,
-                        operationId = request.operationId,
+            // The embedded client is an independent fallback. It must not depend on
+            // the primary Player API returning a response; otherwise a network/policy
+            // failure on the primary call prevents the only PO-token-light fallback.
+            val embeddedResponse = runCatching {
+                playerClient.fetchEmbeddedPlayerResponse(
+                    html = html,
+                    videoUrl = request.link.normalizedUrl,
+                    operationId = request.operationId,
+                )
+            }.getOrNull()
+            if (embeddedResponse != null) {
+                val embeddedResult = parser.parsePlayerResponse(embeddedResponse)
+                if (embeddedResult is ResolverResult.Success) {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        type = "youtube.embedded_fallback_selected",
+                        reason = "web_embedded_player",
+                        operation = "youtube.resolve",
+                        context = diagnosticContext(videoId, request.operationId) + mapOf(
+                            "candidate_count" to embeddedResult.candidates.size.toString(),
+                        ),
+                        throwable = null,
                     )
-                }.getOrNull()
-                if (embeddedResponse != null) {
-                    val embeddedResult = parser.parsePlayerResponse(embeddedResponse)
-                    if (embeddedResult is ResolverResult.Success) {
-                        logger.log(
-                            DiagnosticLevel.INFO,
-                            type = "youtube.embedded_fallback_selected",
-                            reason = "web_embedded_player",
-                            operation = "youtube.resolve",
-                            context = diagnosticContext(videoId, request.operationId) + mapOf(
-                                "candidate_count" to embeddedResult.candidates.size.toString(),
-                            ),
-                            throwable = null,
-                        )
-                        return filterKind(enrichWithSessionIfNeeded(embeddedResult, request), request)
-                    }
-                    lastFailure = embeddedResult as? ResolverResult.Failure ?: lastFailure
-                    logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
+                    return filterKind(enrichWithSessionIfNeeded(embeddedResult, request), request)
                 }
+                lastFailure = embeddedResult as? ResolverResult.Failure ?: lastFailure
+                logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
             }
         } catch (error: Exception) {
             val challenge = error.message?.takeIf(::isBotChallenge)
@@ -140,6 +143,25 @@ class YouTubeResolver(
                 "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
                 "browser_request_headers_captured" to snapshot.browserRequestHeaders.size.toString(),
                 "browser_po_token_observed" to snapshot.browserPoTokenObserved.toString(),
+            ),
+            throwable = null,
+        )
+
+        logger.log(
+            if (snapshot.browserPoTokenObserved) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+            type = "youtube.gvs_strategy",
+            reason = when {
+                snapshot.browserPoTokenObserved -> "browser_gvs_po_token_observed"
+                snapshot.browserMediaObservedCount > 0 -> "browser_gvs_media_observed_without_po_token"
+                else -> "no_browser_gvs_media_observed"
+            },
+            operation = "youtube.resolve",
+            context = diagnosticContext(videoId, request.operationId) + mapOf(
+                "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
+                "browser_request_headers_captured" to snapshot.browserRequestHeaders.size.toString(),
+                "po_token_observed" to snapshot.browserPoTokenObserved.toString(),
+                "cookies_obtained" to (!snapshot.cookies.isNullOrBlank()).toString(),
+                "authenticated" to snapshot.authenticated.toString(),
             ),
             throwable = null,
         )
