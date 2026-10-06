@@ -54,6 +54,11 @@ jobs:
         run: gradle --no-daemon testDebugUnitTest
       - name: Build signed release APK
         run: gradle --no-daemon assembleRelease
+      - name: Set up JDK 21 for APK verification
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
       - name: Verify release APK
         run: |
           set -euo pipefail
