@@ -128,10 +128,10 @@ object DiagnosticReportFormatter {
 
             appendLine()
             appendLine("MEDIA")
-            appendLine("candidates=${candidateCount(sessionEvents)}")
+            appendLine("candidates=${candidateCount(scopedEvents)}")
             appendLine("accepted=$validationAccepted")
             appendLine("rejected=$validationRejected")
-            appendLine("selected=${selectedCount(sessionEvents)}")
+            appendLine("selected=${selectedCount(scopedEvents)}")
 
             youtubeEvidence?.let { evidence ->
                 appendLine()
