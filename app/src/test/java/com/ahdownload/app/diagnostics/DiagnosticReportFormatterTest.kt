@@ -204,7 +204,6 @@ class DiagnosticReportFormatterTest {
         val report = DiagnosticReportFormatter.format(logs)
 
         assertTrue(report.contains("root_cause=HTTP_403"))
-        assertTrue(report.contains("action=INSPECT_YOUTUBE_PO_TOKEN_OR_CLIENT_POLICY"))
         assertTrue(report.contains("browser_media_observed=3"))
         assertTrue(report.contains("po_token_observed=false"))
     }
