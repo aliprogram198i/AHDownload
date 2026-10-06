@@ -34,6 +34,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
             var browserPoToken: String? = null
             var playerResponse: String? = null
             var authenticated = false
+            var embeddedFallbackLoaded = false
 
             fun add(set: MutableSet<String>, raw: String?) {
                 val value = raw?.trim().orEmpty()
@@ -94,6 +95,10 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         "origin" -> put("Origin", value)
                         "accept" -> put("Accept", value)
                         "accept-language" -> put("Accept-Language", value)
+                        "sec-fetch-dest" -> put("Sec-Fetch-Dest", value)
+                        "sec-fetch-mode" -> put("Sec-Fetch-Mode", value)
+                        "sec-fetch-site" -> put("Sec-Fetch-Site", value)
+                        "range" -> put("Range", value)
                     }
                 }
             }
@@ -158,6 +163,31 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
 
             fun inspect(view: WebView, attempt: Int) {
                 if (finished) return
+                if (attempt == 5 && observedGoogleVideoUrls.isEmpty() && !embeddedFallbackLoaded) {
+                    val videoId = runCatching {
+                        val uri = java.net.URI(url)
+                        val host = uri.host?.lowercase().orEmpty()
+                        when {
+                            host == "youtu.be" -> uri.path.trim('/').substringBefore('/').takeIf { it.isNotBlank() }
+                            host == "youtube.com" || host.endsWith(".youtube.com") -> {
+                                val queryId = uri.rawQuery.orEmpty().split('&').firstNotNullOfOrNull { part ->
+                                    val pieces = part.split('=', limit = 2)
+                                    if (pieces.size == 2 && pieces[0] == "v") pieces[1] else null
+                                }
+                                queryId ?: uri.path.trim('/').split('/').let { parts ->
+                                    val index = parts.indexOfFirst { it == "shorts" || it == "embed" || it == "live" }
+                                    parts.getOrNull(index + 1)
+                                }
+                            }
+                            else -> null
+                        }
+                    }.getOrNull()
+                    if (videoId != null) {
+                        embeddedFallbackLoaded = true
+                        view.loadUrl("https://www.youtube.com/embed/$videoId?html5=1&autoplay=1&playsinline=1")
+                        return
+                    }
+                }
                 val script = """(function(){
                     const v=new Set(),a=new Set();
 
@@ -258,7 +288,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         description: String?,
                         failingUrl: String?,
                     ) {
-                        if (failingUrl == url) finish()
+                        // Keep the session alive; an embedded playback fallback may still succeed.
                     }
 
                     override fun onReceivedError(
@@ -266,7 +296,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         request: WebResourceRequest,
                         error: WebResourceError,
                     ) {
-                        if (request.isForMainFrame) finish()
+                        // Keep the session alive; an embedded playback fallback may still succeed.
                     }
 
                     override fun shouldInterceptRequest(
