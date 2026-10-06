@@ -20,7 +20,7 @@ class OkHttpMediaProbe(
     override suspend fun probe(
         url: String,
         headers: Map<String, String>,
-        operationId: String?,
+        operationId: String? = null,
     ): MediaProbeResult =
         withContext(Dispatchers.IO) {
             val started = TimeSource.Monotonic.markNow()
