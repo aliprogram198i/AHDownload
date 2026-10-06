@@ -108,16 +108,56 @@ class YouTubePlayerResponseParser {
     }
 
     private fun extractPlayerResponse(html: String): String? {
-        val markers = listOf("var ytInitialPlayerResponse = ", "ytInitialPlayerResponse = ")
+        val markers = listOf(
+            "var ytInitialPlayerResponse = ",
+            "ytInitialPlayerResponse = ",
+            "window.ytInitialPlayerResponse = ",
+        )
         for (marker in markers) {
             val start = html.indexOf(marker)
             if (start < 0) continue
             val objectStart = html.indexOf('{', start + marker.length)
             if (objectStart < 0) continue
             val end = findJsonObjectEnd(html, objectStart)
-            if (end > objectStart) return html.substring(objectStart, end + 1)
+            if (end > objectStart) {
+                val candidate = html.substring(objectStart, end + 1)
+                if (runCatching { JsonParser.parseString(candidate).isJsonObject }.getOrDefault(false)) {
+                    return candidate
+                }
+            }
+        }
+
+        val argMarker = ""player_response":""
+        val argStart = html.indexOf(argMarker)
+        if (argStart >= 0) {
+            val valueStart = argStart + argMarker.length
+            val valueEnd = findQuotedJsonStringEnd(html, valueStart)
+            if (valueEnd > valueStart) {
+                val encoded = html.substring(valueStart, valueEnd)
+                val decoded = runCatching {
+                    JsonParser.parseString(""$encoded"").asString
+                }.getOrNull()
+                if (!decoded.isNullOrBlank() &&
+                    runCatching { JsonParser.parseString(decoded).isJsonObject }.getOrDefault(false)
+                ) return decoded
+            }
         }
         return null
+    }
+
+    private fun findQuotedJsonStringEnd(text: String, start: Int): Int {
+        var escaped = false
+        for (index in start until text.length) {
+            val char = text[index]
+            if (escaped) {
+                escaped = false
+            } else if (char == '\\') {
+                escaped = true
+            } else if (char == '"') {
+                return index
+            }
+        }
+        return -1
     }
 
     private fun findJsonObjectEnd(text: String, start: Int): Int {
