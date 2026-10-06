@@ -210,8 +210,8 @@ class YouTubeResolver(
                     container = containerFor(url, MediaKind.Video),
                     hasVideo = true,
                     hasAudio = true,
-                    requestHeaders = sessionHeaders(snapshot),
                 ),
+                requestHeaders = sessionHeaders(snapshot),
             )
         }
         val audio = snapshot.audioUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
@@ -224,8 +224,8 @@ class YouTubeResolver(
                     container = containerFor(url, MediaKind.Audio),
                     hasVideo = false,
                     hasAudio = true,
-                    requestHeaders = sessionHeaders(snapshot),
                 ),
+                requestHeaders = sessionHeaders(snapshot),
             )
         }
         return videos + audio
