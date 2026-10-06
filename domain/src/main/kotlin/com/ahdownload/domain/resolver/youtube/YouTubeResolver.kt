@@ -59,7 +59,7 @@ class YouTubeResolver(
             val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
-                if (apiResult is ResolverResult.Success) return filterKind(apiResult, request)
+                if (apiResult is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(apiResult, request), request)
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
             }
