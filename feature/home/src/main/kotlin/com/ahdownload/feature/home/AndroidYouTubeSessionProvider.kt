@@ -4,10 +4,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.os.Build
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.ahdownload.domain.resolver.youtube.YouTubeSessionProvider
@@ -33,7 +33,9 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 val value = raw?.trim().orEmpty()
                 if ((value.startsWith("https://") || value.startsWith("http://")) &&
                     !value.contains(".m3u8", ignoreCase = true)
-                ) set.add(value)
+                ) {
+                    set.add(value)
+                }
             }
 
             fun cookies(): String? {
@@ -47,7 +49,13 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 val names = value.orEmpty().split(';')
                     .mapNotNull { it.trim().substringBefore('=').takeIf(String::isNotBlank) }
                     .toSet()
-                return setOf("SID", "SAPISID", "APISID", "__Secure-3PSID", "LOGIN_INFO").any(names::contains)
+                return setOf(
+                    "SID",
+                    "SAPISID",
+                    "APISID",
+                    "__Secure-3PSID",
+                    "LOGIN_INFO",
+                ).any(names::contains)
             }
 
             fun finish() {
@@ -75,7 +83,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 if (finished) return
                 val script = """(function(){
                     const v=new Set(),a=new Set();
-                    const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){}
+                    const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){} 
                       if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
                       add(v,e.currentSrc);add(v,e.src);
@@ -102,22 +110,30 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     const auth=!!document.querySelector('ytd-masthead #avatar-btn,ytd-topbar-menu-button-renderer #avatar-btn')&&!t.includes('sign in');
                     return JSON.stringify({v:Array.from(v).slice(0,24),a:Array.from(a).slice(0,24),auth,p});
                 })();"""
+
                 view.evaluateJavascript(script) { raw ->
                     val parsed = runCatching {
                         val decoded = JSONTokener(raw ?: "null").nextValue()
                         if (decoded is String) org.json.JSONObject(decoded) else null
                     }.getOrNull()
+
                     authenticated = authenticated || (parsed?.optBoolean("auth", false) == true)
-                    parsed?.optString("p")?.takeIf { it.isNotBlank() && it != "null" }?.let {
-                        playerResponse = it
+                    parsed?.optString("p")
+                        ?.takeIf { it.isNotBlank() && it != "null" }
+                        ?.let { playerResponse = it }
+
+                    parsed?.optJSONArray("v")?.let { array ->
+                        for (i in 0 until array.length()) add(videos, array.optString(i))
                     }
-                    parsed?.optJSONArray("v")?.let { arr ->
-                        for (i in 0 until arr.length()) add(videos, arr.optString(i))
+                    parsed?.optJSONArray("a")?.let { array ->
+                        for (i in 0 until array.length()) add(audios, array.optString(i))
                     }
-                    parsed?.optJSONArray("a")?.let { arr ->
-                        for (i in 0 until arr.length()) add(audios, arr.optString(i))
+
+                    if (attempt >= 8) {
+                        finish()
+                    } else {
+                        main.postDelayed({ inspect(view, attempt + 1) }, 1000)
                     }
-                    if (attempt >= 8) finish() else main.postDelayed({ inspect(view, attempt + 1) }, 1000)
                 }
             }
 
@@ -132,9 +148,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 view.settings.domStorageEnabled = true
                 view.settings.databaseEnabled = true
                 view.settings.mediaPlaybackRequiresUserGesture = false
-                view.settings.userAgentString =
-                    "Mozilla/5.0 (Linux; Android " + Build.VERSION.RELEASE + "; Mobile) " +
-                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
+                view.settings.userAgentString = WebSettings.getDefaultUserAgent(context.applicationContext)
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
