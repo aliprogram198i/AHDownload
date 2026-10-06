@@ -74,6 +74,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                             audioUrls = audios.take(24),
                             playerResponse = playerResponse,
                             authenticated = authenticated || cookieAuth(c),
+                            userAgent = webView?.settings?.userAgentString,
                         ),
                     )
                 }
