@@ -353,6 +353,28 @@ class YouTubeResolver(
         val provider = sessionProvider ?: return result
         val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrNull() ?: return result
         logger.log(
+            if (snapshot.browserPoTokenObserved) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+            type = "youtube.gvs_strategy",
+            reason = when {
+                snapshot.browserPoTokenObserved -> "browser_gvs_po_token_observed"
+                snapshot.browserMediaObservedCount > 0 -> "browser_gvs_media_observed_without_po_token"
+                else -> "no_browser_gvs_media_observed"
+            },
+            operation = "youtube.resolve",
+            context = diagnosticContext(
+                extractVideoId(request.link.normalizedUrl).orEmpty(),
+                request.operationId,
+            ) + mapOf(
+                "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
+                "browser_request_headers_captured" to snapshot.browserRequestHeaders.size.toString(),
+                "po_token_observed" to snapshot.browserPoTokenObserved.toString(),
+                "cookies_obtained" to (!snapshot.cookies.isNullOrBlank()).toString(),
+                "authenticated" to snapshot.authenticated.toString(),
+            ),
+            throwable = null,
+        )
+
+        logger.log(
             DiagnosticLevel.INFO,
             type = "youtube.session_context_attached",
             reason = "session_headers_attached_to_media_candidates",
