@@ -75,27 +75,40 @@ class PersistentDiagnosticLogger(
     }
 
     @Synchronized
-    fun exportText(): String = list().joinToString("\n\n") { log ->
-        buildString {
-            appendLine("AHDownload Diagnostic Log")
-            appendLine("ID: " + log.id)
-            appendLine("Time: " + log.timestampEpochMs)
-            appendLine("Level: " + log.level)
-            appendLine("Type: " + log.type)
-            appendLine("Operation: " + log.operation)
-            appendLine("Reason: " + log.reason)
-            log.context.forEach { (key, value) -> appendLine("$key: $value") }
-            log.throwableType?.let { appendLine("Exception: $it") }
-            log.throwableMessage?.let { appendLine("ExceptionMessage: $it") }
-            log.throwableStackTrace?.let { appendLine("StackTrace:\n$it") }
+    fun exportText(): String {
+        val logs = list()
+        if (logs.isEmpty()) return "AHDownload Diagnostic Report\\nstatus=NO_LOGS"
+
+        val latestError = logs.firstOrNull { it.level == DiagnosticLevel.ERROR }
+        val sessionId = latestError?.context?.get("diagnostic_session_id")
+        val related = if (sessionId != null) {
+            logs.filter { it.context["diagnostic_session_id"] == sessionId }.take(MAX_EXPORT_EVENTS)
+        } else {
+            logs.take(MAX_EXPORT_EVENTS)
+        }
+
+        val anchor = latestError ?: related.first()
+        return buildString {
+            appendLine("AHDownload Diagnostic Report")
+            appendLine("app=" + (anchor.context["app_package"] ?: appContext.packageName) + " version=" + (anchor.context["app_version_name"] ?: "unknown") + " (" + (anchor.context["app_version_code"] ?: "unknown") + ")")
+            appendLine("android=" + (anchor.context["android_release"] ?: "unknown") + " sdk=" + (anchor.context["android_sdk"] ?: "unknown") + " targetSdk=" + (anchor.context["app_target_sdk"] ?: "unknown"))
+            appendLine("device=" + (anchor.context["device_manufacturer"] ?: "unknown") + " " + (anchor.context["device_model"] ?: "unknown"))
+            appendLine("session=" + (sessionId ?: "unknown") + " events=" + related.size)
+            appendLine("latest=" + formatTime(anchor.timestampEpochMs) + " level=" + anchor.level + " type=" + anchor.type + " operation=" + anchor.operation)
+            appendLine("reason=" + anchor.reason)
+            anchor.throwableType?.let { appendLine("exception=" + it) }
+            anchor.throwableMessage?.let { appendLine("detail=" + it) }
+            anchor.throwableStackTrace?.let { appendLine("stack=" + compactStack(it)) }
+            appendLine("timeline:")
+            related.asReversed().forEach { log -> appendLine(formatCompactEvent(log)) }
         }.trimEnd()
     }
-
     companion object {
         private const val PREFS = "ahdownload_diagnostics"
         private const val KEY_LOGS = "logs"
         private const val LEGACY_KEY_ENTRIES = "entries"
         private const val MAX_ENTRIES = 500
+        private const val MAX_EXPORT_EVENTS = 36
 
         private val SENSITIVE_KEY = Regex(
             "(cookie|authorization|token|password|passwd|secret|api[_-]?key|session[_-]?id)",
@@ -123,6 +136,25 @@ class PersistentDiagnosticLogger(
             }
         }
 
+    private fun formatCompactEvent(log: DiagnosticLog): String {
+        val sequence = log.context["event_sequence"] ?: "-"
+        val uptime = log.context["process_uptime_ms"] ?: "-"
+        val context = compactContext(log.context)
+        return buildString {
+            append(sequence + " | " + formatTime(log.timestampEpochMs) + " | " + log.level + " | " + log.type + " | " + log.operation + " | " + log.reason)
+            if (uptime != "-") append(" | uptimeMs=" + uptime)
+            if (context.isNotEmpty()) append(" | " + context)
+        }
+    }
+
+    private fun compactContext(context: Map<String, String>): String {
+        val keys = listOf("source", "provider", "stage", "resolver", "candidate", "status", "http_status", "content_type", "content_length", "duration_ms", "attempt", "attempts", "result", "failure_code")
+        return keys.mapNotNull { key -> context[key]?.takeIf { it.isNotBlank() }?.let { key + "=" + it } }.joinToString(" ")
+    }
+
+    private fun compactStack(stack: String): String = stack.lineSequence().take(12).joinToString(" <- ").take(2400)
+
+    private fun formatTime(epochMs: Long): String = java.time.Instant.ofEpochMilli(epochMs).toString()
     private fun stackTraceText(throwable: Throwable): String =
         buildString {
             var current: Throwable? = throwable
