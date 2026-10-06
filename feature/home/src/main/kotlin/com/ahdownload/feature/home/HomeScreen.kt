@@ -91,7 +91,7 @@ private fun HomeScreen(
     val recommendedCandidate = candidates
         .sortedWith(
             compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video && it.format.hasAudio }
-                .thenByDescending { it.format.kind == MediaKind.Video && it.format.height in 1..1080 }
+                .thenByDescending { it.format.kind == MediaKind.Video && (it.format.height ?: 0) in 1..1080 }
                 .thenByDescending { it.format.kind == MediaKind.Video && (it.format.height ?: 0) }
                 .thenByDescending { it.format.hasAudio }
                 .thenByDescending { it.format.bitrateKbps ?: 0 },
