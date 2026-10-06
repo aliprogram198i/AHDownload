@@ -16,7 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
@@ -110,7 +110,7 @@ private fun AHRoot(
     onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
 ) {
-    var destination by rememberSaveable {
+    var destination by remember {
         mutableStateOf(
             if (initialUrl?.isNotBlank() == true) RootDestination.Home
             else RootDestination.Welcome,
