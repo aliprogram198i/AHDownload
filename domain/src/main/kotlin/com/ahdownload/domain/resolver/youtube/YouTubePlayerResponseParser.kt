@@ -10,6 +10,8 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 class YouTubePlayerResponseParser {
     fun parse(html: String): ResolverResult {
@@ -20,7 +22,7 @@ class YouTubePlayerResponseParser {
 
     fun parsePlayerResponse(json: String): ResolverResult =
         runCatching {
-            val root = JsonParser.parseString(json).asJsonObject
+            val root = parseJsonObject(json) ?: throw IllegalArgumentException("استجابة YouTube ليست JSON صالحًا.")
             val details = root.obj("videoDetails")
             val playability = root.obj("playabilityStatus")
             val playabilityStatus = playability?.string("status")
@@ -53,6 +55,35 @@ class YouTubePlayerResponseParser {
                 "تعذر تحليل استجابة YouTube: " + (error.message ?: error::class.simpleName.orEmpty()),
             )
         }
+
+
+    private fun parseJsonObject(raw: String): JsonObject? {
+        val candidates = linkedSetOf<String>()
+        fun add(value: String?) {
+            value?.trim()?.takeIf { it.isNotEmpty() }?.let(candidates::add)
+        }
+        add(raw)
+        var current = raw.trim()
+        repeat(2) {
+            val decoded = runCatching {
+                URLDecoder.decode(current, StandardCharsets.UTF_8.toString())
+            }.getOrNull()
+            if (decoded != null && decoded != current) {
+                add(decoded)
+                current = decoded
+            }
+        }
+        for (candidate in candidates) {
+            runCatching { JsonParser.parseString(candidate).asJsonObject }.getOrNull()?.let { return it }
+            val unquoted = runCatching {
+                JsonParser.parseString(candidate).takeIf(JsonElement::isJsonPrimitive)?.asString
+            }.getOrNull()
+            if (!unquoted.isNullOrBlank()) {
+                runCatching { JsonParser.parseString(unquoted).asJsonObject }.getOrNull()?.let { return it }
+            }
+        }
+        return null
+    }
 
     private fun buildCandidates(streamingData: JsonObject?): List<MediaCandidate> {
         if (streamingData == null) return emptyList()
