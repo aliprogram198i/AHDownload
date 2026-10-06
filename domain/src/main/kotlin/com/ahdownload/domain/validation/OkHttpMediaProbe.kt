@@ -17,7 +17,11 @@ class OkHttpMediaProbe(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
 ) : MediaProbe {
 
-    override suspend fun probe(url: String, headers: Map<String, String>): MediaProbeResult =
+    override suspend fun probe(
+        url: String,
+        headers: Map<String, String>,
+        operationId: String?,
+    ): MediaProbeResult =
         withContext(Dispatchers.IO) {
             val started = TimeSource.Monotonic.markNow()
             val head = execute(url, "HEAD", headers, null)
@@ -26,7 +30,16 @@ class OkHttpMediaProbe(
                 type = "MEDIA_PROBE_ATTEMPT",
                 reason = "head_response",
                 operation = "download.validate",
-                context = probeContext(url, "HEAD", null, head.code, head.header("Content-Type"), started.elapsedNow().inWholeMilliseconds, headers),
+                context = probeContext(
+                    url,
+                    "HEAD",
+                    null,
+                    head.code,
+                    head.header("Content-Type"),
+                    started.elapsedNow().inWholeMilliseconds,
+                    headers,
+                    operationId,
+                ),
                 throwable = null,
             )
             if (head.code in 200..299) return@withContext head.toResult("HEAD", null)
@@ -41,7 +54,16 @@ class OkHttpMediaProbe(
                     type = "MEDIA_PROBE_ATTEMPT",
                     reason = "range_get_response",
                     operation = "download.validate",
-                    context = probeContext(url, "GET", range, response.code, response.header("Content-Type"), rangeStarted.elapsedNow().inWholeMilliseconds, headers),
+                    context = probeContext(
+                        url,
+                        "GET",
+                        range,
+                        response.code,
+                        response.header("Content-Type"),
+                        rangeStarted.elapsedNow().inWholeMilliseconds,
+                        headers,
+                        operationId,
+                    ),
                     throwable = null,
                 )
                 return@withContext response.toResult("GET", range)
@@ -102,6 +124,7 @@ class OkHttpMediaProbe(
         contentType: String?,
         elapsedMs: Long,
         headers: Map<String, String>,
+        operationId: String?,
     ): Map<String, String> = buildMap {
         put("host", hostOf(url))
         put("method", method)
@@ -109,6 +132,7 @@ class OkHttpMediaProbe(
         put("elapsed_ms", elapsedMs.toString())
         put("content_type", contentType ?: "unknown")
         put("range", range ?: "none")
+        put("stage", "MEDIA_VALIDATION")
         put("youtube_media_host", isYouTubeMediaHost(url).toString())
         put("request_header_names", headers.keys.sorted().joinToString(",").ifBlank { "none" })
         put("effective_header_names", buildList {
@@ -120,6 +144,7 @@ class OkHttpMediaProbe(
         }.distinct().joinToString(","))
         put("cookie_present", headers.keys.any { it.equals("Cookie", ignoreCase = true) }.toString())
         put("referer_present", (headers.keys.any { it.equals("Referer", ignoreCase = true) } || isYouTubeMediaHost(url)).toString())
+        operationId?.let { put("operation_id", it) }
     }
 
     private fun hostOf(url: String): String =

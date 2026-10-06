@@ -10,5 +10,9 @@ data class MediaProbeResult(
 )
 
 interface MediaProbe {
-    suspend fun probe(url: String, headers: Map<String, String> = emptyMap()): MediaProbeResult
+    suspend fun probe(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        operationId: String? = null,
+    ): MediaProbeResult
 }
