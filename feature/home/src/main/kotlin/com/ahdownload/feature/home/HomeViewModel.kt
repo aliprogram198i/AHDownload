@@ -258,6 +258,23 @@ class HomeViewModel(
                                     refreshedCandidate,
                                     validationOperationId,
                                 )
+                                logger.log(
+                                    if (validation is CandidateValidationResult.Valid) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                                    "YOUTUBE_FALLBACK_CANDIDATE_VALIDATION",
+                                    if (validation is CandidateValidationResult.Valid) "تم قبول مصدر YouTube البديل" else "تم رفض مصدر YouTube البديل",
+                                    "download.refresh.validation",
+                                    mapOf(
+                                        "candidate_id" to refreshedCandidate.id,
+                                        "candidate_format_id" to refreshedCandidate.format.id,
+                                        "candidate_kind" to refreshedCandidate.format.kind.name,
+                                        "height" to (refreshedCandidate.format.height?.toString() ?: "unknown"),
+                                        "bitrate_kbps" to (refreshedCandidate.format.bitrateKbps?.toString() ?: "unknown"),
+                                        "has_audio" to refreshedCandidate.format.hasAudio.toString(),
+                                        "validation_result" to if (validation is CandidateValidationResult.Valid) "valid" else "invalid",
+                                        "operation_id" to validationOperationId,
+                                    ),
+                                    null,
+                                )
                                 if (validation is CandidateValidationResult.Valid) break
 
                                 val refreshedFailure =
@@ -329,7 +346,12 @@ class HomeViewModel(
                         )
                         _uiState.value = _uiState.value.copy(
                             validatingCandidateId = null,
-                            error = "تم رفض مصدر الوسائط: " + validation.failure,
+                            error = when (validation.failure) {
+                                is com.ahdownload.domain.validation.ValidationFailure.HttpStatus ->
+                                    "لم نتمكن من الحصول على مصدر صالح من المنصة حاليًا. يمكنك فتح التشخيص لمعرفة التفاصيل."
+                                else ->
+                                    "تعذر التحقق من مصدر الوسائط. يمكنك فتح التشخيص لمعرفة التفاصيل."
+                            },
                         )
                     }
                 }
