@@ -136,10 +136,22 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     "Mozilla/5.0 (Linux; Android " + Build.VERSION.RELEASE + "; Mobile) " +
                     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
 
+                val videoId = extractVideoId(url)
+                val navigationTargets = buildList {
+                    add(url)
+                    videoId?.let { add("https://www.youtube.com/embed/$it?autoplay=1&playsinline=1") }
+                }.distinct()
+                var navigationIndex = 0
+
+                fun loadNext() {
+                    if (!continuation.isActive || finished) return
+                    navigationTargets.getOrNull(navigationIndex++)?.let(view::loadUrl)
+                }
+
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         CookieManager.getInstance().flush()
-                        main.postDelayed({ inspect(view, 1) }, 1500)
+                        main.postDelayed({ inspect(view, 1) }, 1200)
                     }
 
                     @Deprecated("Deprecated in API 23")
@@ -149,7 +161,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         description: String?,
                         failingUrl: String?,
                     ) {
-                        if (failingUrl == url) finish()
+                        if (failingUrl == url) loadNext()
                     }
 
                     override fun onReceivedError(
@@ -157,7 +169,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         request: WebResourceRequest,
                         error: WebResourceError,
                     ) {
-                        if (request.isForMainFrame) finish()
+                        if (request.isForMainFrame) loadNext()
                     }
 
                     override fun onLoadResource(view: WebView, resourceUrl: String) {
@@ -174,13 +186,24 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     }
                 }
 
-                timeout = Runnable { finish() }
-                main.postDelayed(timeout, 25_000)
-                view.loadUrl(url)
-            }
-
+                timeout = Runnable {
+                    // Give the embed surface a chance after the normal watch page.
+                    if (navigationIndex < navigationTargets.size) loadNext() else finish()
+                }
+                main.postDelayed(timeout, 30_000)
+                loadNext()
             continuation.invokeOnCancellation {
                 main.post { finish() }
             }
         }
+    private fun extractVideoId(url: String): String? {
+        val patterns = listOf(
+            Regex("[?&]v=([A-Za-z0-9_-]{6,})"),
+            Regex("youtu\\.be/([A-Za-z0-9_-]{6,})"),
+            Regex("/shorts/([A-Za-z0-9_-]{6,})"),
+            Regex("/embed/([A-Za-z0-9_-]{6,})"),
+        )
+        return patterns.firstNotNullOfOrNull { it.find(url)?.groupValues?.get(1) }
+    }
+
 }
