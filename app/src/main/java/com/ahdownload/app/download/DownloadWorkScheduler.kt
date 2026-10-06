@@ -27,6 +27,9 @@ class DownloadWorkScheduler(
                     .putString(DownloadWorker.KEY_TASK_ID, task.id)
                     .putString(DownloadWorker.KEY_SOURCE_URL, task.sourceUrl)
                     .putString(DownloadWorker.KEY_DESTINATION_PATH, task.destinationPath)
+                    .putString(DownloadWorker.KEY_USER_AGENT, task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value)
+                    .putString(DownloadWorker.KEY_REFERER, task.requestHeaders.entries.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value)
+                    .putString(DownloadWorker.KEY_ORIGIN, task.requestHeaders.entries.firstOrNull { it.key.equals("Origin", ignoreCase = true) }?.value)
                     .build(),
             )
             .setConstraints(
