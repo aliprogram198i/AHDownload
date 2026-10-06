@@ -111,8 +111,15 @@ class OkHttpMediaProbe(
         put("range", range ?: "none")
         put("youtube_media_host", isYouTubeMediaHost(url).toString())
         put("request_header_names", headers.keys.sorted().joinToString(",").ifBlank { "none" })
+        put("effective_header_names", buildList {
+            add("User-Agent")
+            add("Accept")
+            headers.keys.filterNot { it.equals("Host", ignoreCase = true) }.forEach(::add)
+            if (isYouTubeMediaHost(url) && headers.keys.none { it.equals("Referer", ignoreCase = true) }) add("Referer")
+            if (isYouTubeMediaHost(url) && headers.keys.any { it.equals("Cookie", ignoreCase = true) }) add("Cookie")
+        }.distinct().joinToString(","))
         put("cookie_present", headers.keys.any { it.equals("Cookie", ignoreCase = true) }.toString())
-        put("referer_present", headers.keys.any { it.equals("Referer", ignoreCase = true) }.toString())
+        put("referer_present", (headers.keys.any { it.equals("Referer", ignoreCase = true) } || isYouTubeMediaHost(url)).toString())
     }
 
     private fun hostOf(url: String): String =
