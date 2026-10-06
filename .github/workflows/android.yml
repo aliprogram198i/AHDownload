@@ -63,17 +63,17 @@ jobs:
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
-          APKSIGNER="$ANDROID_HOME/build-tools/36.1.0/apksigner"
+          APKSIGNER_JAR="$ANDROID_HOME/build-tools/36.1.0/lib/apksigner.jar"
           test -f "$APK"
-          test -x "$APKSIGNER"
+          test -f "$APKSIGNER_JAR"
           set +e
           "$ANDROID_HOME/build-tools/36.1.0/zipalign" -c -P 4 -v 4 "$APK"
-          "$APKSIGNER" verify --verbose --min-sdk-version 24 "$APK" 2>&1 | tee apksigner-verify.txt
+          java -jar "$APKSIGNER_JAR" verify --verbose --min-sdk-version 24 "$APK" 2>&1 | tee apksigner-verify.txt
           VERIFY_STATUS=${PIPESTATUS[0]}
           set -e
           test "$VERIFY_STATUS" -eq 0
           grep -E "Verified using v[123] scheme|Number of signers" apksigner-verify.txt
-          "$APKSIGNER" verify --print-certs "$APK" 2>&1 | tee apksigner-certs.txt
+          java -jar "$APKSIGNER_JAR" verify --print-certs "$APK" 2>&1 | tee apksigner-certs.txt
           grep -E "Signer #1 certificate SHA-256 digest:" apksigner-certs.txt
           jarsigner -verify -certs "$APK" >/dev/null
       - name: Upload release APK
