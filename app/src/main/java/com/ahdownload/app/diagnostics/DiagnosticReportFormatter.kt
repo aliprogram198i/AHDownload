@@ -10,13 +10,12 @@ object DiagnosticReportFormatter {
     private const val DEFAULT_MAX_EVENTS = 36
 
     fun format(logs: List<DiagnosticLog>, maxEvents: Int = DEFAULT_MAX_EVENTS): String {
-        if (logs.isEmpty()) return "AHDownload Diagnostic Report\\nstatus=NO_LOGS"
+        if (logs.isEmpty()) return "AHDownload Diagnostic Report\nstatus=NO_LOGS"
 
         val ordered = logs.sortedByDescending { it.timestampEpochMs }
         val latestError = ordered.firstOrNull { it.level == DiagnosticLevel.ERROR }
         val sessionId = latestError?.context?.get("diagnostic_session_id")
             ?: ordered.first().context["diagnostic_session_id"]
-
         val sessionEvents = ordered.filter {
             sessionId == null || it.context["diagnostic_session_id"] == sessionId
         }
@@ -25,11 +24,11 @@ object DiagnosticReportFormatter {
         val operationEvents = if (!operationId.isNullOrBlank()) {
             sessionEvents.filter { it.context["operation_id"] == operationId }
         } else sessionEvents
-        val scopedEvents = if (operationEvents.isNotEmpty()) operationEvents else sessionEvents
+        val scopedEvents = operationEvents.ifEmpty { sessionEvents }
         val chronological = scopedEvents.sortedBy { it.timestampEpochMs }
-        val durationMs = if (chronological.size >= 2) {
-            chronological.last().timestampEpochMs - chronological.first().timestampEpochMs
-        } else null
+        val durationMs = chronological.takeIf { it.size >= 2 }?.let {
+            it.last().timestampEpochMs - it.first().timestampEpochMs
+        }
 
         val visible = sessionEvents.count { it.type == "SMART_CENTER_OPTION_VISIBLE" }
         val hidden = sessionEvents.count { it.type == "SMART_CENTER_OPTION_HIDDEN" }
@@ -61,50 +60,47 @@ object DiagnosticReportFormatter {
             else -> rootCause
         }
 
-        val significant = chronological
-            .filterNot {
-                it.type == "SMART_CENTER_OPTION_VISIBLE" ||
-                    it.type == "SMART_CENTER_OPTION_HIDDEN"
-            }
-            .takeLast(maxEvents)
+        val significant = chronological.filterNot {
+            it.type == "SMART_CENTER_OPTION_VISIBLE" || it.type == "SMART_CENTER_OPTION_HIDDEN"
+        }.takeLast(maxEvents)
 
         return buildString {
             appendLine("AHDownload Diagnostic")
             appendLine(
-                "app=\${anchor.context["app_package"] ?: "unknown"} " +
-                    "version=\${anchor.context["app_version_name"] ?: "unknown"} " +
-                    "(\${anchor.context["app_version_code"] ?: "unknown"}) " +
-                    "build=\${anchor.context["app_build_type"] ?: "unknown"}",
+                "app=${anchor.context["app_package"] ?: "unknown"} " +
+                    "version=${anchor.context["app_version_name"] ?: "unknown"} " +
+                    "(${anchor.context["app_version_code"] ?: "unknown"}) " +
+                    "build=${anchor.context["app_build_type"] ?: "unknown"}",
             )
             appendLine(
-                "android=\${anchor.context["android_release"] ?: "unknown"} " +
-                    "sdk=\${anchor.context["android_sdk"] ?: "unknown"} " +
-                    "targetSdk=\${anchor.context["app_target_sdk"] ?: "unknown"}",
+                "android=${anchor.context["android_release"] ?: "unknown"} " +
+                    "sdk=${anchor.context["android_sdk"] ?: "unknown"} " +
+                    "targetSdk=${anchor.context["app_target_sdk"] ?: "unknown"}",
             )
             appendLine(
-                "device=\${anchor.context["device_manufacturer"] ?: "unknown"} " +
-                    "\${anchor.context["device_model"] ?: "unknown"}",
+                "device=${anchor.context["device_manufacturer"] ?: "unknown"} " +
+                    "${anchor.context["device_model"] ?: "unknown"}",
             )
-            appendLine("session=\${sessionId ?: "unknown"} events=\${sessionEvents.size}")
-            operationId?.let { appendLine("operation=\$it") }
-            durationMs?.let { appendLine("duration_ms=\$it") }
+            appendLine("session=${sessionId ?: "unknown"} events=${sessionEvents.size}")
+            operationId?.let { appendLine("operation=$it") }
+            durationMs?.let { appendLine("duration_ms=$it") }
 
             appendLine()
             appendLine("RESULT")
-            appendLine("status=\${if (latestError == null) "OK" else "FAILED"}")
-            appendLine("stage=\${stageOf(anchor)}")
-            appendLine("root_cause=\$rootCause")
-            appendLine("failure=\$failure")
-            appendLine("http_403_count=\$http403")
-            appendLine("validation_rejected=\$validationRejected")
-            appendLine("validation_accepted=\$validationAccepted")
+            appendLine("status=${if (latestError == null) "OK" else "FAILED"}")
+            appendLine("stage=${stageOf(anchor)}")
+            appendLine("root_cause=$rootCause")
+            appendLine("failure=$failure")
+            appendLine("http_403_count=$http403")
+            appendLine("validation_rejected=$validationRejected")
+            appendLine("validation_accepted=$validationAccepted")
 
             if (visible > 0 || hidden > 0) {
                 appendLine()
                 appendLine("SMART_CENTER")
-                appendLine("options_extracted=\${visible + hidden}")
-                appendLine("visible=\$visible")
-                appendLine("hidden=\$hidden")
+                appendLine("options_extracted=${visible + hidden}")
+                appendLine("visible=$visible")
+                appendLine("hidden=$hidden")
             }
 
             appendLine()
@@ -119,15 +115,14 @@ object DiagnosticReportFormatter {
     }
 
     private fun stageOf(log: DiagnosticLog): String =
-        log.context["stage"]
-            ?: when {
-                log.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION"
-                log.type.contains("RESOLVER", ignoreCase = true) -> "RESOLUTION"
-                log.type.contains("SMART_CENTER", ignoreCase = true) -> "SMART_CENTER"
-                log.operation.startsWith("download") -> "DOWNLOAD"
-                log.operation.startsWith("home") -> "HOME"
-                else -> log.operation
-            }
+        log.context["stage"] ?: when {
+            log.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION"
+            log.type.contains("RESOLVER", ignoreCase = true) -> "RESOLUTION"
+            log.type.contains("SMART_CENTER", ignoreCase = true) -> "SMART_CENTER"
+            log.operation.startsWith("download") -> "DOWNLOAD"
+            log.operation.startsWith("home") -> "HOME"
+            else -> log.operation
+        }
 
     private fun buildFailureChain(
         events: List<DiagnosticLog>,
@@ -152,13 +147,13 @@ object DiagnosticReportFormatter {
             "attempt", "attempts", "validation_result", "failure_code", "result",
         )
         val context = contextKeys.mapNotNull { key ->
-            log.context[key]?.takeIf(String::isNotBlank)?.let { "\$key=\$it" }
+            log.context[key]?.takeIf(String::isNotBlank)?.let { "$key=$it" }
         }.joinToString(" ")
         val sequence = log.context["event_sequence"] ?: "-"
         val base =
-            "\$sequence | \${formatTime(log.timestampEpochMs)} | \${log.level} | " +
-                "\${log.type} | \${log.operation} | \${log.reason}"
-        return if (context.isBlank()) base else "\$base | \$context"
+            "$sequence | ${formatTime(log.timestampEpochMs)} | ${log.level} | " +
+                "${log.type} | ${log.operation} | ${log.reason}"
+        return if (context.isBlank()) base else "$base | $context"
     }
 
     private fun formatTime(epochMs: Long): String =
