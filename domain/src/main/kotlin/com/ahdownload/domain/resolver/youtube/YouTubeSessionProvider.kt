@@ -4,6 +4,7 @@ data class YouTubeSessionSnapshot(
     val cookies: String?,
     val videoUrls: List<String>,
     val audioUrls: List<String>,
+    val playerResponse: String?,
     val authenticated: Boolean,
 )
 
