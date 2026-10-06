@@ -13,59 +13,69 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
-import com.ahdownload.domain.resolver.MediaCandidate
 
 private enum class RootDestination { Welcome, Home, Diagnostics }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
     private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
+    private var pendingSharedUrl by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(
-                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                    NOTIFICATION_PERMISSION_REQUEST_CODE,
-                )
-            }
-        }
-
-        val sharedUrl = intent.takeIf { it.action == Intent.ACTION_SEND }
-            ?.getStringExtra(Intent.EXTRA_TEXT)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
+        requestNotificationPermissionIfNeeded()
+        extractSharedUrl(intent)?.let { pendingSharedUrl = it }
 
         setContent {
             AHTheme {
                 AHRoot(
-                    initialUrl = sharedUrl,
+                    initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
                     onDownloadRequested = { candidate, title ->
                         downloadLauncher.enqueue(candidate, title)
                     },
-                    onOpenYouTubeSession = {
-                        openYouTubeSession()
-                    },
+                    onOpenYouTubeSession = ::openYouTubeSession,
                 )
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        extractSharedUrl(intent)?.let { pendingSharedUrl = it }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_PERMISSION_REQUEST_CODE,
+            )
+        }
+    }
+
+    private fun extractSharedUrl(intent: Intent?): String? =
+        intent?.takeIf { it.action == Intent.ACTION_SEND }
+            ?.getStringExtra(Intent.EXTRA_TEXT)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
 
     private fun openYouTubeSession() {
         runCatching {
@@ -105,6 +115,12 @@ private fun AHRoot(
             if (initialUrl?.isNotBlank() == true) RootDestination.Home
             else RootDestination.Welcome,
         )
+    }
+
+    LaunchedEffect(initialUrl) {
+        if (initialUrl?.isNotBlank() == true) {
+            destination = RootDestination.Home
+        }
     }
 
     AnimatedContent(
