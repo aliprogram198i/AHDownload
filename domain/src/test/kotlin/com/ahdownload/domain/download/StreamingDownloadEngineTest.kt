@@ -26,6 +26,7 @@ class StreamingDownloadEngineTest {
             sink = sink,
             bufferSize = 2,
         ).download(task(), states::add)
+        val sourceRange = source.requestedRange
 
         assertIs<DownloadState.Queued>(states[0])
         assertIs<DownloadState.Preparing>(states[1])
@@ -101,26 +102,61 @@ class StreamingDownloadEngineTest {
 
         assertEquals(DownloadFailure.NetworkError, assertIs<DownloadState.Failed>(states.last()).reason)
         assertEquals(false, sink.committed)
-        assertEquals(1, sink.discardCount)
+        assertEquals(0, sink.discardCount)
     }
+
+
+    @Test
+    fun resumesExistingPartialFileWhenServerHonorsRange() = runTest {
+        val sink = FakeSink()
+        sink.seed("he".encodeToByteArray())
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 206,
+                    contentLengthBytes = 3,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("llo".encodeToByteArray()),
+                    totalBytes = 5,
+                ),
+            ),
+            sink = sink,
+            bufferSize = 2,
+        ).download(task(), states::add)
+
+        assertEquals(DownloadState.Downloading(2, 5), states[2])
+        assertIs<DownloadState.Completed>(states.last())
+        assertEquals("hello", sink.committedData())
+        assertEquals(2L, sourceRange)
+    )
 
     private fun task() = DownloadTask("task-1", "https://cdn.example/video.mp4", "/tmp/video.mp4")
 
     private class FakeSource(private val response: DownloadResponse) : DownloadByteStream {
-        override suspend fun open(url: String): DownloadResponse = response
+        override suspend fun open(url: String, rangeStart: Long): DownloadResponse {
+            requestedRange = rangeStart
+            return response
+        }
+
+        var requestedRange = 0L
     }
 
     private class FakeSink : AtomicFileSink {
         private var data = ByteArrayOutputStream()
+        var requestedRangeStart = 0L
         var committed = false
         var tempOpened = false
         var discardCount = 0
 
-        override suspend fun openTemporary(destinationPath: String): java.io.OutputStream {
+        override suspend fun openTemporary(destinationPath: String, append: Boolean): java.io.OutputStream {
             tempOpened = true
-            data = ByteArrayOutputStream()
+            if (!append) data = ByteArrayOutputStream()
             return data
         }
+
+        fun seed(bytes: ByteArray) { data.write(bytes) }
 
         override suspend fun commit(destinationPath: String) {
             committed = true
