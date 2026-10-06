@@ -37,7 +37,7 @@ class GoogleAuthManager(
 
     fun signOut() {
         store.clear()
-        logger.log(
+        log(
             DiagnosticLevel.INFO,
             type = "GOOGLE_AUTH_SIGNED_OUT",
             reason = "تم حذف جلسة حساب Google المحلية.",
@@ -137,6 +137,24 @@ class GoogleAuthManager(
         } catch (t: GoogleIdTokenParsingException) {
             failure(t)
         }
+    }
+
+    private fun log(
+        level: DiagnosticLevel,
+        type: String,
+        reason: String,
+        operation: String,
+        context: Map<String, String> = emptyMap(),
+        throwable: Throwable? = null,
+    ) {
+        logger.log(
+            level = level,
+            type = type,
+            reason = reason,
+            operation = operation,
+            context = context,
+            throwable = throwable,
+        )
     }
 
     private fun failure(t: Throwable): GoogleAuthResult {
