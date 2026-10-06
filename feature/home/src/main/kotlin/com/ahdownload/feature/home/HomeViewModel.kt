@@ -192,17 +192,22 @@ class HomeViewModel(
             try {
                 var candidateToValidate = candidate
                 var validation = resolver.validate(candidateToValidate, validationOperationId)
+                var youtubeRefreshAttempted = false
+                var youtubeFallbackCandidatesChecked = 0
 
-                // YouTube media URLs are signed/short-lived. A candidate can become stale
-                // between analysis and the user's download tap. Refresh exactly once on 403
-                // instead of adding blind retries or bypass logic.
+                // YouTube media URLs are signed/short-lived. Refresh exactly once on 403.
+                // After the refresh, validate a small, deterministic set of same-kind
+                // candidates so a stale top-ranked URL cannot block an otherwise valid
+                // source. No blind retries or bypass logic are used.
                 val validationFailure = (validation as? CandidateValidationResult.Invalid)?.failure
-                val httpStatusFailure = validationFailure
-                    as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
-                val youtubeLink = state.result
-                    ?.takeIf { it.platform == com.ahdownload.domain.model.MediaPlatform.YouTube }
+                val httpStatusFailure =
+                    validationFailure as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
+                val youtubeLink = state.result?.takeIf {
+                    it.platform == com.ahdownload.domain.model.MediaPlatform.YouTube
+                }
 
                 if (httpStatusFailure?.code == 403 && youtubeLink != null) {
+                    youtubeRefreshAttempted = true
                     logger.log(
                         DiagnosticLevel.WARNING,
                         "YOUTUBE_CANDIDATE_REFRESH_STARTED",
@@ -219,10 +224,18 @@ class HomeViewModel(
 
                     when (val refreshed = resolver.resolve(youtubeLink, validationOperationId)) {
                         is ResolverResult.Success -> {
-                            val sameFormat = refreshed.candidates.firstOrNull { it.id == candidate.id }
-                            candidateToValidate = sameFormat
-                                ?: refreshed.candidates.firstOrNull { it.format.kind == candidate.format.kind }
-                                ?: candidateToValidate
+                            val refreshedCandidates = refreshed.candidates
+                                .filter { it.format.kind == candidate.format.kind }
+                                .distinctBy { it.id }
+                                .sortedWith(
+                                    compareByDescending<MediaCandidate> { it.id == candidate.id }
+                                        .thenByDescending { it.format.hasVideo }
+                                        .thenByDescending { it.format.hasAudio }
+                                        .thenByDescending { it.format.height ?: 0 }
+                                        .thenByDescending { it.format.bitrateKbps ?: 0 },
+                                )
+                                .take(3)
+
                             logger.log(
                                 DiagnosticLevel.INFO,
                                 "YOUTUBE_CANDIDATE_REFRESH_RESULT",
@@ -230,13 +243,33 @@ class HomeViewModel(
                                 "download.refresh",
                                 mapOf(
                                     "old_candidate_id" to candidate.id,
-                                    "new_candidate_id" to candidateToValidate.id,
+                                    "new_candidate_id" to (refreshedCandidates.firstOrNull()?.id ?: "none"),
                                     "candidate_count" to refreshed.candidates.size.toString(),
+                                    "fallback_candidate_count" to refreshedCandidates.size.toString(),
                                     "operation_id" to validationOperationId,
                                 ),
                                 null,
                             )
-                            validation = resolver.validate(candidateToValidate, validationOperationId)
+
+                            for (refreshedCandidate in refreshedCandidates) {
+                                candidateToValidate = refreshedCandidate
+                                youtubeFallbackCandidatesChecked++
+                                validation = resolver.validate(
+                                    refreshedCandidate,
+                                    validationOperationId,
+                                )
+                                if (validation is CandidateValidationResult.Valid) break
+
+                                val refreshedFailure =
+                                    (validation as CandidateValidationResult.Invalid).failure
+                                val refreshedHttpFailure =
+                                    refreshedFailure as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
+
+                                // Only continue to another candidate for a rejected HTTP
+                                // source. Parser/content-type/storage failures are not
+                                // candidates for blind fallback.
+                                if (refreshedHttpFailure?.code != 403) break
+                            }
                         }
 
                         is ResolverResult.Failure -> {
@@ -255,6 +288,7 @@ class HomeViewModel(
                         }
                     }
                 }
+
 
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
@@ -288,7 +322,8 @@ class HomeViewModel(
                             mapOf(
                                 "candidate_id" to candidateToValidate.id,
                                 "operation_id" to validationOperationId,
-                                "youtube_refresh_attempted" to (candidateToValidate.id != candidate.id).toString(),
+                                "youtube_refresh_attempted" to youtubeRefreshAttempted.toString(),
+                                "youtube_fallback_candidates_checked" to youtubeFallbackCandidatesChecked.toString(),
                             ),
                             null,
                         )
