@@ -223,7 +223,9 @@ class YouTubeResolver(
 
     private fun sessionHeaders(snapshot: YouTubeSessionSnapshot): Map<String, String> = buildMap {
         snapshot.cookies?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
+        snapshot.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
         put("Referer", "https://www.youtube.com/")
+        put("Origin", "https://www.youtube.com")
     }
 
     private fun sessionCandidates(snapshot: YouTubeSessionSnapshot): List<MediaCandidate> {
