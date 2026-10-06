@@ -37,6 +37,29 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun extractsUrlFromSharedTextAndNormalizesMobileYouTube() {
+        val result = analyzer.analyze("شاهد هذا: https://m.youtube.com/watch?v=abc123 !!!")
+        assertEquals(MediaPlatform.YouTube, result?.platform)
+        assertEquals("https://m.youtube.com/watch?v=abc123", result?.normalizedUrl)
+    }
+
+    @Test
+    fun unwrapsRedirectTarget() {
+        val result = analyzer.analyze(
+            "https://www.google.com/url?sa=t&url=https%3A%2F%2Fyoutu.be%2Fabc123",
+        )
+        assertEquals(MediaPlatform.YouTube, result?.platform)
+        assertEquals("https://youtu.be/abc123", result?.normalizedUrl)
+    }
+
+    @Test
+    fun detectsMediaTypeFromQueryHint() {
+        val result = analyzer.analyze("https://cdn.example.com/resource?id=7&mime=video%2Fmp4")
+        assertEquals(MediaPlatform.DirectMedia, result?.platform)
+        assertEquals(MediaKind.Video, result?.kind)
+    }
+
+    @Test
     fun recognizesDirectMediaByType() {
         assertEquals(
             MediaPlatform.DirectMedia,
