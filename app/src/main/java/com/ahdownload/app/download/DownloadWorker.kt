@@ -76,12 +76,18 @@ class DownloadWorker(
 
         return when (record.status) {
             DownloadStatus.COMPLETED -> Result.success()
-            DownloadStatus.FAILED -> Result.failure(
-                workDataOf(
-                    KEY_FAILURE_CODE to record.failureCode,
-                    KEY_FAILURE_DETAIL to record.failureDetail,
-                ),
-            )
+            DownloadStatus.FAILED -> {
+                if (record.failureCode == "network_error" || record.failureCode == "http_error" && isRetryableHttp(record.failureDetail)) {
+                    Result.retry()
+                } else {
+                    Result.failure(
+                        workDataOf(
+                            KEY_FAILURE_CODE to record.failureCode,
+                            KEY_FAILURE_DETAIL to record.failureDetail,
+                        ),
+                    )
+                }
+            }
             DownloadStatus.CANCELLED -> Result.failure(
                 workDataOf(KEY_FAILURE_CODE to "cancelled"),
             )
@@ -183,6 +189,11 @@ class DownloadWorker(
     private fun DownloadState.bytesDownloadedOrNull(): Long? = when (this) {
         is DownloadState.Downloading -> bytesDownloaded
         else -> null
+    }
+
+    private fun isRetryableHttp(detail: String?): Boolean {
+        val code = detail?.toIntOrNull() ?: return false
+        return code == 408 || code == 429 || code in 500..599
     }
 
     companion object {
