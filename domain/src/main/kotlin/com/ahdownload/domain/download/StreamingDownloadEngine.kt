@@ -22,8 +22,14 @@ class StreamingDownloadEngine(
         onState(DownloadState.Queued)
         onState(DownloadState.Preparing)
 
-        val response = try {
-            source.open(task.sourceUrl)
+        var partialBytes = runCatching { sink.temporarySize(task.destinationPath) }
+            .getOrElse {
+                onState(DownloadState.Failed(DownloadFailure.StorageError))
+                return
+            }
+
+        var response = try {
+            source.open(task.sourceUrl, partialBytes)
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
@@ -35,9 +41,32 @@ class StreamingDownloadEngine(
             return
         }
 
+        if (partialBytes > 0L && response.statusCode == 200) {
+            response.body.close()
+            partialBytes = 0L
+            response = try {
+                source.open(task.sourceUrl, 0L)
+            } catch (cancelled: CancellationException) {
+                onState(DownloadState.Cancelled)
+                throw cancelled
+            } catch (_: IOException) {
+                onState(DownloadState.Failed(DownloadFailure.NetworkError))
+                return
+            } catch (_: Throwable) {
+                onState(DownloadState.Failed(DownloadFailure.NetworkError))
+                return
+            }
+        }
+
         if (response.statusCode !in 200..299) {
             response.body.close()
             onState(DownloadState.Failed(DownloadFailure.HttpError(response.statusCode)))
+            return
+        }
+
+        if (partialBytes > 0L && response.statusCode != 206) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
         }
 
@@ -47,8 +76,17 @@ class StreamingDownloadEngine(
             return
         }
 
+        val append = partialBytes > 0L && response.statusCode == 206
+        val totalBytes = when {
+            response.totalBytes != null -> response.totalBytes
+            response.contentLengthBytes != null ->
+                (response.contentLengthBytes + partialBytes).takeIf { append }
+                    ?: response.contentLengthBytes
+            else -> null
+        }
+
         val output = try {
-            sink.openTemporary(task.destinationPath)
+            sink.openTemporary(task.destinationPath, append = append)
         } catch (cancelled: CancellationException) {
             response.body.close()
             onState(DownloadState.Cancelled)
@@ -64,8 +102,8 @@ class StreamingDownloadEngine(
                 response.body.use { input ->
                     output.use { target ->
                         val buffer = ByteArray(bufferSize)
-                        var downloaded = 0L
-                        onState(DownloadState.Downloading(downloaded, response.contentLengthBytes))
+                        var downloaded = partialBytes
+                        onState(DownloadState.Downloading(downloaded, totalBytes))
 
                         while (true) {
                             val read = try {
@@ -86,7 +124,7 @@ class StreamingDownloadEngine(
                             }
 
                             downloaded += read
-                            onState(DownloadState.Downloading(downloaded, response.contentLengthBytes))
+                            onState(DownloadState.Downloading(downloaded, totalBytes))
                         }
 
                         target.flush()
@@ -94,11 +132,9 @@ class StreamingDownloadEngine(
                 }
             }
         } catch (cancelled: CancellationException) {
-            sink.discard(task.destinationPath)
             onState(DownloadState.Cancelled)
             throw cancelled
         } catch (_: NetworkReadException) {
-            sink.discard(task.destinationPath)
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
             return
         } catch (_: StorageWriteException) {
@@ -119,11 +155,9 @@ class StreamingDownloadEngine(
             sink.commit(task.destinationPath)
             onState(DownloadState.Completed)
         } catch (cancelled: CancellationException) {
-            sink.discard(task.destinationPath)
             onState(DownloadState.Cancelled)
             throw cancelled
         } catch (_: Throwable) {
-            sink.discard(task.destinationPath)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
         }
     }
