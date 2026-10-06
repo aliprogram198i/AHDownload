@@ -1,5 +1,6 @@
 package com.ahdownload.app
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -29,12 +30,28 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+            }
+        }
         setContent {
             AHTheme {
                 AHRoot(
                     logger = diagnosticLogger,
                     onDownloadRequested = { candidate, title ->
                         downloadLauncher.enqueue(candidate, title)
+                    },
+                    onOpenYouTubeSession = {
+                        try {
+                            val intent = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://www.youtube.com")
+                            )
+                            startActivity(intent)
+                        } catch (_: Exception) { }
                     },
                 )
             }
@@ -46,6 +63,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (com.ahdownload.domain.resolver.MediaCandidate, String?) -> Boolean,
+    onOpenYouTubeSession: () -> Unit,
 ) {
     var destination by rememberSaveable { mutableStateOf(RootDestination.Welcome) }
 
@@ -62,7 +80,7 @@ private fun AHRoot(
                 onDownloadRequested = onDownloadRequested,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = { destination = RootDestination.Home },
+                onOpenYouTubeSession = onOpenYouTubeSession,
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
