@@ -12,19 +12,29 @@ class OkHttpDownloadByteStream(
         .build(),
 ) : DownloadByteStream {
 
-    override suspend fun open(url: String): DownloadResponse = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
+    override suspend fun open(url: String, rangeStart: Long): DownloadResponse = withContext(Dispatchers.IO) {
+        val builder = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "*/*")
-            .build()
 
-        val response = client.newCall(request).execute()
+        if (rangeStart > 0L) {
+            builder.header("Range", "bytes=$rangeStart-")
+        }
+
+        val response = client.newCall(builder.build()).execute()
+        val contentRange = response.header("Content-Range")
+        val totalBytes = contentRange
+            ?.substringAfter('/', "")
+            ?.toLongOrNull()
+            ?.takeIf { it >= 0L }
+
         DownloadResponse(
             statusCode = response.code,
             contentLengthBytes = response.body.contentLength().takeIf { it >= 0L },
             contentType = response.header("Content-Type"),
             body = response.body.byteStream(),
+            totalBytes = totalBytes,
         )
     }
 
