@@ -1,8 +1,6 @@
 package com.ahdownload.app.diagnostics
 
 import android.content.Context
-import android.os.Build
-import com.ahdownload.app.BuildConfig
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
 import com.ahdownload.core.common.DiagnosticLogger
@@ -20,6 +18,10 @@ import java.util.UUID
 class PersistentDiagnosticLogger(
     context: Context,
 ) : DiagnosticLogger {
+    private val appContext = context.applicationContext
+    private val sessionId = UUID.randomUUID().toString()
+    private var sequence = 0L
+    private val processStartedElapsedMs = android.os.SystemClock.elapsedRealtime()
     private val preferences = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val gson = Gson()
     private val listType = object : TypeToken<List<DiagnosticLog>>() {}.type
@@ -45,13 +47,12 @@ class PersistentDiagnosticLogger(
             reason = sanitizeText(reason),
             operation = sanitizeText(operation),
             context = sanitizeContext(
-                context + mapOf(
-                    "android_sdk" to Build.VERSION.SDK_INT.toString(),
-                    "device_manufacturer" to Build.MANUFACTURER,
-                    "device_model" to Build.MODEL,
-                    "app_version_name" to BuildConfig.VERSION_NAME,
-                    "app_version_code" to BuildConfig.VERSION_CODE.toString(),
+                context + DiagnosticEnvironment.snapshot(appContext) + mapOf(
+                    "diagnostic_session_id" to sessionId,
+                    "event_sequence" to (++sequence).toString(),
+                    "process_uptime_ms" to (android.os.SystemClock.elapsedRealtime() - processStartedElapsedMs).toString(),
                     "thread" to Thread.currentThread().name,
+                    "thread_id" to Thread.currentThread().id.toString(),
                 ),
             ),
             throwableType = throwable?.javaClass?.name,
