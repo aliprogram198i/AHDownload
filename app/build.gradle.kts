@@ -21,10 +21,10 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
-    val signingFile = providers.environmentVariable("AH_KEYSTORE_FILE").orNull
-    val signingStorePassword = providers.environmentVariable("AH_KEYSTORE_PASSWORD").orNull
-    val signingAlias = providers.environmentVariable("AH_KEY_ALIAS").orNull
-    val signingKeyPassword = providers.environmentVariable("AH_KEY_PASSWORD").orNull
+    val signingFile = providers.gradleProperty("AH_KEYSTORE_FILE").orElse(providers.environmentVariable("AH_KEYSTORE_FILE")).orNull
+    val signingStorePassword = providers.gradleProperty("AH_KEYSTORE_PASSWORD").orElse(providers.environmentVariable("AH_KEYSTORE_PASSWORD")).orNull
+    val signingAlias = providers.gradleProperty("AH_KEY_ALIAS").orElse(providers.environmentVariable("AH_KEY_ALIAS")).orNull
+    val signingKeyPassword = providers.gradleProperty("AH_KEY_PASSWORD").orElse(providers.environmentVariable("AH_KEY_PASSWORD")).orNull
     val hasReleaseSigning = listOf(signingFile, signingStorePassword, signingAlias, signingKeyPassword)
         .all { !it.isNullOrBlank() && File(it!!).exists() }
 
