@@ -171,6 +171,15 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                       else if(window.ytplayer&&window.ytplayer.config&&window.ytplayer.config.args&&window.ytplayer.config.args.player_response)
                         p=window.ytplayer.config.args.player_response;
                     }catch(_){}
+                    try{
+                      const play=document.querySelector('.ytp-play-button,#movie_player .ytp-play-button');
+                      if(play) play.click();
+                      document.querySelectorAll('video').forEach(e=>{
+                        e.muted=true;e.playsInline=true;
+                        const promise=e.play();
+                        if(promise&&promise.catch) promise.catch(()=>{});
+                      });
+                    }catch(_){}
                     const t=(document.body&&document.body.innerText||'').toLowerCase();
                     const auth=!!document.querySelector('ytd-masthead #avatar-btn,ytd-topbar-menu-button-renderer #avatar-btn')&&!t.includes('sign in');
                     return JSON.stringify({v:Array.from(v).slice(0,24),a:Array.from(a).slice(0,24),auth,p});
@@ -194,7 +203,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         for (i in 0 until array.length()) add(audios, array.optString(i))
                     }
 
-                    if (attempt >= 8) {
+                    if (attempt >= 12) {
                         finish()
                     } else {
                         main.postDelayed({ inspect(view, attempt + 1) }, 1000)
