@@ -76,7 +76,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 val script = """(function(){
                     const v=new Set(),a=new Set();
                     const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){}
-                      if(/^https?:\/\/i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
+                      if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
                       add(v,e.currentSrc);add(v,e.src);
                       e.querySelectorAll('source').forEach(s=>add(v,s.src));
