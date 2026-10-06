@@ -1,7 +1,5 @@
 name: Android CI
 
-# Verification trigger: keep CI execution on every main push.
-
 on:
   push:
     branches: ["main"]
@@ -14,42 +12,38 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "9.5.0"
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools"
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
-
       - name: Install Android SDK 37.1
         run: sdkmanager "platforms;android-37.1" "build-tools;36.0.0"
-
       - name: Compile and test
-        run: gradle --no-daemon testDebugUnitTest assembleDebug
-
+        env:
+          GOOGLE_WEB_CLIENT_ID: ${{ vars.GOOGLE_WEB_CLIENT_ID }}
+        run: |
+          test -n "$GOOGLE_WEB_CLIENT_ID"
+          gradle --no-daemon -PGOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" testDebugUnitTest assembleDebug
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: ahdownload-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
       - name: Publish direct debug APK release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
