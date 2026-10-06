@@ -69,7 +69,6 @@ class DownloadWorker(
             setForeground(createForegroundInfo(state))
         }
 
-        val diagnostics = diagnosticsLogger()
         if (record.status == DownloadStatus.FAILED) {
             diagnostics.log(
                 level = DiagnosticLevel.ERROR,
