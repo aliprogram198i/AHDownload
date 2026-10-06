@@ -62,6 +62,32 @@ class YouTubeResolver(
                 if (apiResult is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(apiResult, request), request)
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
+
+                val embeddedResponse = runCatching {
+                    playerClient.fetchEmbeddedPlayerResponse(
+                        html = html,
+                        videoUrl = request.link.normalizedUrl,
+                        operationId = request.operationId,
+                    )
+                }.getOrNull()
+                if (embeddedResponse != null) {
+                    val embeddedResult = parser.parsePlayerResponse(embeddedResponse)
+                    if (embeddedResult is ResolverResult.Success) {
+                        logger.log(
+                            DiagnosticLevel.INFO,
+                            type = "youtube.embedded_fallback_selected",
+                            reason = "web_embedded_player",
+                            operation = "youtube.resolve",
+                            context = diagnosticContext(videoId, request.operationId) + mapOf(
+                                "candidate_count" to embeddedResult.candidates.size.toString(),
+                            ),
+                            throwable = null,
+                        )
+                        return filterKind(enrichWithSessionIfNeeded(embeddedResult, request), request)
+                    }
+                    lastFailure = embeddedResult as? ResolverResult.Failure ?: lastFailure
+                    logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
+                }
             }
         } catch (error: Exception) {
             val challenge = error.message?.takeIf(::isBotChallenge)
@@ -279,9 +305,11 @@ class YouTubeResolver(
             .toMap()
 
         var replaced = 0
+        var poTokenAttached = 0
         val candidates = result.candidates.map { candidate ->
             val browserUrl = browserUrlsByItag[candidate.id]
-            val effectiveUrl = browserUrl ?: candidate.sourceUrl
+            val tokenizedUrl = if (browserUrl == null) appendPoToken(candidate.sourceUrl, snapshot.browserPoToken) else candidate.sourceUrl
+            val effectiveUrl = browserUrl ?: tokenizedUrl
             val browserHeaders = snapshot.browserRequestHeaders[effectiveUrl].orEmpty()
             if (browserUrl != null && browserUrl != candidate.sourceUrl) {
                 replaced++
@@ -290,8 +318,23 @@ class YouTubeResolver(
                     requestHeaders = candidate.requestHeaders + headers + browserHeaders,
                 )
             } else {
-                candidate.copy(requestHeaders = candidate.requestHeaders + headers + browserHeaders)
+                if (effectiveUrl != candidate.sourceUrl) poTokenAttached++
+                candidate.copy(
+                    sourceUrl = effectiveUrl,
+                    requestHeaders = candidate.requestHeaders + headers + browserHeaders,
+                )
             }
+        }
+
+        if (poTokenAttached > 0) {
+            logger.log(
+                DiagnosticLevel.INFO,
+                type = "youtube.po_token_attached",
+                reason = "browser_gvs_po_token_reused_for_same_session",
+                operation = "youtube.resolve",
+                context = mapOf("candidate_count" to poTokenAttached.toString()),
+                throwable = null,
+            )
         }
 
         if (replaced > 0) {
@@ -354,6 +397,14 @@ class YouTubeResolver(
             )
         }
         return videos + audio
+    }
+
+    private fun appendPoToken(url: String, token: String?): String {
+        val value = token?.trim().orEmpty()
+        if (value.isEmpty() || !isYouTubeMediaHost(url)) return url
+        val query = runCatching { URI(url).rawQuery.orEmpty() }.getOrDefault("")
+        if (query.split('&').any { it.substringBefore('=').equals("pot", ignoreCase = true) }) return url
+        return url + if (query.isEmpty()) "?pot=$value" else "&pot=$value"
     }
 
     private fun isDirectHttpMedia(url: String): Boolean {
