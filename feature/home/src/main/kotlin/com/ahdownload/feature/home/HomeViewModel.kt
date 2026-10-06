@@ -197,12 +197,12 @@ class HomeViewModel(
                 // between analysis and the user's download tap. Refresh exactly once on 403
                 // instead of adding blind retries or bypass logic.
                 val validationFailure = (validation as? CandidateValidationResult.Invalid)?.failure
-                val isYouTubeStaleCandidate = validationFailure
-                    is com.ahdownload.domain.validation.ValidationFailure.HttpStatus &&
-                    validationFailure.code == 403 &&
-                    state.result?.platform == com.ahdownload.domain.model.MediaPlatform.YouTube
+                val httpStatusFailure = validationFailure
+                    as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
+                val youtubeLink = state.result
+                    ?.takeIf { it.platform == com.ahdownload.domain.model.MediaPlatform.YouTube }
 
-                if (isYouTubeStaleCandidate) {
+                if (httpStatusFailure?.code == 403 && youtubeLink != null) {
                     logger.log(
                         DiagnosticLevel.WARNING,
                         "YOUTUBE_CANDIDATE_REFRESH_STARTED",
@@ -217,7 +217,7 @@ class HomeViewModel(
                         null,
                     )
 
-                    when (val refreshed = resolver.resolve(state.result, validationOperationId)) {
+                    when (val refreshed = resolver.resolve(youtubeLink, validationOperationId)) {
                         is ResolverResult.Success -> {
                             val sameFormat = refreshed.candidates.firstOrNull { it.id == candidate.id }
                             candidateToValidate = sameFormat
