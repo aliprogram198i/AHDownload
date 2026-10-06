@@ -61,7 +61,7 @@ fun HomeRoute(
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val androidContext = LocalContext.current
+    val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
         HomeViewModel.Factory(onDownloadRequested, logger, context)
     }
@@ -98,6 +98,7 @@ private fun HomeScreen(
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
     val engine = remember { SmartResultEngine() }
     val resultSet = remember(candidates) { engine.build(candidates) }
@@ -202,7 +203,7 @@ private fun HomeScreen(
                             OutlinedButton(
                                 enabled = !state.analyzing && !state.resolving,
                                 onClick = {
-                                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
                                     val text = clipboard?.primaryClip
                                         ?.takeIf { it.itemCount > 0 }
                                         ?.getItemAt(0)
