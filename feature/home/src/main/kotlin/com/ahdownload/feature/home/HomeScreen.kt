@@ -88,11 +88,27 @@ private fun HomeScreen(
     onOpenYouTubeSession: () -> Unit,
 ) {
     val candidates = state.resolution?.candidates.orEmpty()
-    val recommendedCandidate = candidates.firstOrNull { it.format.kind == MediaKind.Video && it.format.hasAudio }
-        ?: candidates.firstOrNull { it.format.kind == MediaKind.Video }
-        ?: candidates.firstOrNull { it.format.kind == MediaKind.Audio }
-    val videoCandidates = candidates.filter { it.format.kind == MediaKind.Video && it.id != recommendedCandidate?.id }.take(6)
-    val audioCandidates = candidates.filter { it.format.kind == MediaKind.Audio }.take(4)
+    val recommendedCandidate = candidates
+        .sortedWith(
+            compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video && it.format.hasAudio }
+                .thenByDescending { it.format.kind == MediaKind.Video && it.format.height in 1..1080 }
+                .thenByDescending { it.format.kind == MediaKind.Video && (it.format.height ?: 0) }
+                .thenByDescending { it.format.hasAudio }
+                .thenByDescending { it.format.bitrateKbps ?: 0 },
+        )
+        .firstOrNull()
+    val videoCandidates = candidates
+        .filter { it.format.kind == MediaKind.Video && it.id != recommendedCandidate?.id }
+        .sortedWith(
+            compareByDescending<MediaCandidate> { it.format.hasAudio }
+                .thenByDescending { it.format.height ?: 0 }
+                .thenByDescending { it.format.bitrateKbps ?: 0 },
+        )
+        .take(6)
+    val audioCandidates = candidates
+        .filter { it.format.kind == MediaKind.Audio }
+        .sortedByDescending { it.format.bitrateKbps ?: 0 }
+        .take(4)
     val displayedCandidates = buildList {
         recommendedCandidate?.let { add(it) }
         addAll(videoCandidates)
@@ -149,7 +165,7 @@ private fun HomeScreen(
             "تم تحديد ترتيب النتائج وطريقة عرضها",
             "ui.smart_center.ordering",
             mapOf(
-                "ordering_algorithm" to "recommended_first;video_then_audio;stable_source_order_within_section",
+                "ordering_algorithm" to "recommended_first;video_quality_ranked;audio_bitrate_ranked",
                 "source_candidate_total" to candidates.size.toString(),
                 "visible_candidate_total" to displayedCandidates.size.toString(),
                 "hidden_candidate_total" to hiddenCount.toString(),
@@ -301,8 +317,10 @@ private fun HomeScreen(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(resolution.title ?: "وسائط متاحة", style = MaterialTheme.typography.titleLarge)
-                        resolution.durationMs?.let {
-                            Text((it / 1000).toString() + "s", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            state.result?.platform?.name?.let { AHStatusPill(it) }
+                            state.result?.kind?.name?.let { AHStatusPill(it) }
+                            resolution.durationMs?.let { AHStatusPill(formatDuration(it)) }
                         }
                     }
                 }
@@ -407,20 +425,34 @@ private fun CandidateCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AHStatusPill(if (format.kind == MediaKind.Audio) "صوت" else "فيديو")
                 format.height?.let { AHStatusPill(it.toString() + "p") }
-                format.bitrateKbps?.let { AHStatusPill(it.toString() + "kbps") }
-                if (recommended) AHStatusPill("⭐ الأفضل")
+                format.bitrateKbps?.let { AHStatusPill(it.toString() + " kbps") }
+                if (recommended) AHStatusPill("⭐ موصى به")
                 if (selected) AHStatusPill("محدد")
             }
             Text(
                 when {
                     format.kind == MediaKind.Video && format.height != null -> "فيديو " + format.height + "p"
-                    format.kind == MediaKind.Audio && format.bitrateKbps != null -> "صوت " + format.bitrateKbps + "kbps"
-                    else -> "وسائط " + format.container
+                    format.kind == MediaKind.Audio && format.bitrateKbps != null -> "صوت " + format.bitrateKbps + " kbps"
+                    else -> "وسائط"
                 },
                 style = MaterialTheme.typography.titleMedium,
             )
-            format.fileSizeBytes?.let {
-                Text((it / 1024 / 1024).toString() + " MB")
+            Text(
+                buildString {
+                    append(containerLabel(format.container))
+                    format.videoCodec?.takeIf { it.isNotBlank() }?.let { append(" · "); append(it) }
+                    format.audioCodec?.takeIf { it.isNotBlank() }?.let { append(" · "); append(it) }
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                format.fileSizeBytes?.let { AHStatusPill(formatBytes(it)) }
+                when {
+                    format.hasVideo && format.hasAudio -> AHStatusPill("فيديو + صوت")
+                    format.hasVideo -> AHStatusPill("فيديو فقط")
+                    format.hasAudio -> AHStatusPill("صوت فقط")
+                }
             }
             Button(
                 enabled = selected && !validating,
@@ -433,4 +465,32 @@ private fun CandidateCard(
             }
         }
     }
+}
+
+private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContainer): String =
+    when (container) {
+        com.ahdownload.domain.resolver.MediaContainer.Mp4 -> "MP4"
+        com.ahdownload.domain.resolver.MediaContainer.Webm -> "WebM"
+        com.ahdownload.domain.resolver.MediaContainer.Mkv -> "MKV"
+        com.ahdownload.domain.resolver.MediaContainer.Mov -> "MOV"
+        com.ahdownload.domain.resolver.MediaContainer.M4a -> "M4A"
+        com.ahdownload.domain.resolver.MediaContainer.Mp3 -> "MP3"
+        com.ahdownload.domain.resolver.MediaContainer.Aac -> "AAC"
+        com.ahdownload.domain.resolver.MediaContainer.Ogg -> "OGG"
+        com.ahdownload.domain.resolver.MediaContainer.Flac -> "FLAC"
+        com.ahdownload.domain.resolver.MediaContainer.ThreeGp -> "3GP"
+        com.ahdownload.domain.resolver.MediaContainer.Avi -> "AVI"
+        com.ahdownload.domain.resolver.MediaContainer.Unknown -> "صيغة غير معروفة"
+    }
+
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024L -> bytes.toString() + " B"
+    bytes < 1024L * 1024L -> (bytes / 1024L).toString() + " KB"
+    bytes < 1024L * 1024L * 1024L -> (bytes / (1024L * 1024L)).toString() + " MB"
+    else -> (bytes / (1024L * 1024L * 1024L)).toString() + " GB"
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+    return (totalSeconds / 60L).toString() + ":" + (totalSeconds % 60L).toString().padStart(2, '0')
 }
