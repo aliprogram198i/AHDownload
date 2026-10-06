@@ -196,12 +196,13 @@ class HomeViewModel(
                 // YouTube media URLs are signed/short-lived. A candidate can become stale
                 // between analysis and the user's download tap. Refresh exactly once on 403
                 // instead of adding blind retries or bypass logic.
-                if (
-                    validation is CandidateValidationResult.Invalid &&
-                    validation.failure is com.ahdownload.domain.validation.ValidationFailure.HttpStatus &&
-                    validation.failure.code == 403 &&
+                val validationFailure = (validation as? CandidateValidationResult.Invalid)?.failure
+                val isYouTubeStaleCandidate = validationFailure
+                    is com.ahdownload.domain.validation.ValidationFailure.HttpStatus &&
+                    validationFailure.code == 403 &&
                     state.result?.platform == com.ahdownload.domain.model.MediaPlatform.YouTube
-                ) {
+
+                if (isYouTubeStaleCandidate) {
                     logger.log(
                         DiagnosticLevel.WARNING,
                         "YOUTUBE_CANDIDATE_REFRESH_STARTED",
