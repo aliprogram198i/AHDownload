@@ -131,6 +131,18 @@ class YouTubeResolverTest {
                     videoUrls = listOf("https://cdn.example.com/video.mp4"),
                     audioUrls = listOf("https://cdn.example.com/audio.m4a"),
                     authenticated = true,
+                    browserRequestHeaders = mapOf(
+                        "https://cdn.example.com/video.mp4" to mapOf(
+                            "Referer" to "https://www.youtube.com/",
+                            "Origin" to "https://www.youtube.com",
+                            "Accept" to "*/*",
+                        ),
+                        "https://cdn.example.com/audio.m4a" to mapOf(
+                            "Referer" to "https://www.youtube.com/",
+                        ),
+                    ),
+                    browserMediaObservedCount = 2,
+                    browserPoTokenObserved = false,
                 )
         }
         val resolver = YouTubeResolver(
@@ -155,6 +167,8 @@ class YouTubeResolverTest {
         assertTrue(result.candidates.any { it.format.kind == MediaKind.Audio })
         assertTrue(result.candidates.all { it.requestHeaders["Referer"] == "https://www.youtube.com/" })
         assertTrue(result.candidates.all { it.requestHeaders["Cookie"] == "SID=redacted" })
+        assertTrue(result.candidates.first { it.format.kind == MediaKind.Video }.requestHeaders["Accept"] == "*/*")
+        assertTrue(result.candidates.first { it.format.kind == MediaKind.Audio }.requestHeaders["Referer"] == "https://www.youtube.com/")
     }
 
     @Test
