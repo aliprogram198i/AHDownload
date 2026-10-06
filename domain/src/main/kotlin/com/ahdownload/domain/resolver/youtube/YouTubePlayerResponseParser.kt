@@ -56,30 +56,39 @@ class YouTubePlayerResponseParser {
             )
         }
 
-
     private fun parseJsonObject(raw: String): JsonObject? {
         val candidates = linkedSetOf<String>()
         fun add(value: String?) {
             value?.trim()?.takeIf { it.isNotEmpty() }?.let(candidates::add)
         }
+
         add(raw)
         var current = raw.trim()
         repeat(2) {
             val decoded = runCatching {
                 URLDecoder.decode(current, StandardCharsets.UTF_8.toString())
             }.getOrNull()
-            if (decoded != null && decoded != current) {
+            if (!decoded.isNullOrBlank() && decoded != current) {
                 add(decoded)
                 current = decoded
             }
         }
+
         for (candidate in candidates) {
-            runCatching { JsonParser.parseString(candidate).asJsonObject }.getOrNull()?.let { return it }
+            runCatching {
+                JsonParser.parseString(candidate).asJsonObject
+            }.getOrNull()?.let { return it }
+
             val unquoted = runCatching {
-                JsonParser.parseString(candidate).takeIf(JsonElement::isJsonPrimitive)?.asString
+                JsonParser.parseString(candidate)
+                    .takeIf(JsonElement::isJsonPrimitive)
+                    ?.asString
             }.getOrNull()
-            if (!unquoted.isNullOrBlank()) {
-                runCatching { JsonParser.parseString(unquoted).asJsonObject }.getOrNull()?.let { return it }
+
+            if (!unquoted.isNullOrBlank() && unquoted != candidate) {
+                runCatching {
+                    JsonParser.parseString(unquoted).asJsonObject
+                }.getOrNull()?.let { return it }
             }
         }
         return null
@@ -104,7 +113,8 @@ class YouTubePlayerResponseParser {
             else -> return null
         }
         val formatId = string("itag") ?: return null
-        val codecs = Regex("""codecs="([^"]+)""").find(mimeType)?.groupValues?.get(1)
+        val codecs = Regex("""codecs="([^"]+)"""").find(mimeType)?.groupValues?.get(1)
+
         return MediaCandidate(
             id = formatId,
             sourceUrl = url,
@@ -125,8 +135,8 @@ class YouTubePlayerResponseParser {
         )
     }
 
-    private fun String.toContainer(): MediaContainer {
-        return when (substringAfter('/', "").substringBefore(';').lowercase()) {
+    private fun String.toContainer(): MediaContainer =
+        when (substringAfter('/', "").substringBefore(';').lowercase()) {
             "mp4" -> MediaContainer.Mp4
             "webm" -> MediaContainer.Webm
             "quicktime" -> MediaContainer.Mov
@@ -136,46 +146,118 @@ class YouTubePlayerResponseParser {
             "flac" -> MediaContainer.Flac
             else -> MediaContainer.Unknown
         }
-    }
 
     private fun extractPlayerResponse(html: String): String? {
-        val markers = listOf("var ytInitialPlayerResponse = ", "ytInitialPlayerResponse = ")
+        val markers = listOf(
+            "var ytInitialPlayerResponse =",
+            "ytInitialPlayerResponse =",
+            "ytInitialPlayerResponse:",
+            "ytplayer.config.args.player_response=",
+            ""player_response":",
+            ""playerResponse":",
+            "player_response=",
+        )
+
         for (marker in markers) {
-            val start = html.indexOf(marker)
-            if (start < 0) continue
-            val objectStart = html.indexOf('{', start + marker.length)
-            if (objectStart < 0) continue
-            val end = findJsonObjectEnd(html, objectStart)
-            if (end > objectStart) return html.substring(objectStart, end + 1)
+            var searchFrom = 0
+            while (searchFrom < html.length) {
+                val markerStart = html.indexOf(marker, searchFrom)
+                if (markerStart < 0) break
+
+                val extracted = extractValueAfterMarker(
+                    html = html,
+                    valueStart = markerStart + marker.length,
+                )
+                if (extracted != null) return extracted
+                searchFrom = markerStart + marker.length
+            }
         }
         return null
+    }
+
+    private fun extractValueAfterMarker(html: String, valueStart: Int): String? {
+        var index = valueStart
+        while (index < html.length && (html[index].isWhitespace() || html[index] == ':' || html[index] == '=')) {
+            index++
+        }
+        if (index >= html.length) return null
+
+        return when (html[index]) {
+            '{' -> {
+                val end = findJsonObjectEnd(html, index)
+                if (end > index) html.substring(index, end + 1) else null
+            }
+
+            '"' -> {
+                val end = findJsonStringEnd(html, index)
+                if (end <= index) return null
+                val quoted = html.substring(index, end + 1)
+                runCatching { JsonParser.parseString(quoted).asString }
+                    .getOrNull()
+                    ?.takeIf { it.isNotBlank() }
+            }
+
+            else -> null
+        }
     }
 
     private fun findJsonObjectEnd(text: String, start: Int): Int {
         var depth = 0
         var inString = false
         var escaped = false
+
         for (index in start until text.length) {
             val char = text[index]
             if (inString) {
-                if (escaped) escaped = false else if (char == '\\') escaped = true else if (char == '"') inString = false
+                if (escaped) escaped = false
+                else if (char == '\\') escaped = true
+                else if (char == '"') inString = false
                 continue
             }
             when (char) {
                 '"' -> inString = true
                 '{' -> depth++
-                '}' -> { depth--; if (depth == 0) return index }
+                '}' -> {
+                    depth--
+                    if (depth == 0) return index
+                }
             }
         }
         return -1
     }
 
-    private fun JsonObject.string(name: String): String? = get(name)?.takeUnless(JsonElement::isJsonNull)?.asString
+    private fun findJsonStringEnd(text: String, start: Int): Int {
+        var escaped = false
+        for (index in start + 1 until text.length) {
+            val char = text[index]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (char == '\\') {
+                escaped = true
+                continue
+            }
+            if (char == '"') return index
+        }
+        return -1
+    }
+
+    private fun JsonObject.string(name: String): String? =
+        get(name)?.takeUnless(JsonElement::isJsonNull)?.asString
+
     private fun JsonObject.int(name: String): Int? = string(name)?.toIntOrNull()
     private fun JsonObject.long(name: String): Long? = string(name)?.toLongOrNull()
     private fun JsonObject.double(name: String): Double? = string(name)?.toDoubleOrNull()
-    private fun JsonObject.obj(name: String): JsonObject? = get(name)?.takeUnless(JsonElement::isJsonNull)?.asJsonObject
-    private fun JsonObject.array(name: String): JsonArray? = get(name)?.takeUnless(JsonElement::isJsonNull)?.asJsonArray
-    private fun JsonElement.objValue(name: String): String? = takeIf(JsonElement::isJsonObject)?.asJsonObject?.string(name)
-    private fun JsonArray.lastOrNull(): JsonElement? = if (size() == 0) null else get(size() - 1)
+    private fun JsonObject.obj(name: String): JsonObject? =
+        get(name)?.takeUnless(JsonElement::isJsonNull)?.asJsonObject
+
+    private fun JsonObject.array(name: String): JsonArray? =
+        get(name)?.takeUnless(JsonElement::isJsonNull)?.asJsonArray
+
+    private fun JsonElement.objValue(name: String): String? =
+        takeIf(JsonElement::isJsonObject)?.asJsonObject?.string(name)
+
+    private fun JsonArray.lastOrNull(): JsonElement? =
+        if (size() == 0) null else get(size() - 1)
 }
