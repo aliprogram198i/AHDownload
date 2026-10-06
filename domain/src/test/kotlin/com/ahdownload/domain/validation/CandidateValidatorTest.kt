@@ -92,7 +92,7 @@ class CandidateValidatorTest {
     fun rejectsUnsupportedSchemeBeforeProbe() = kotlinx.coroutines.test.runTest {
         var called = false
         val probe = object : MediaProbe {
-            override suspend fun probe(url: String): MediaProbeResult {
+            override suspend fun probe(url: String, headers: Map<String, String>): MediaProbeResult {
                 called = true
                 error("probe must not be called")
             }
@@ -123,6 +123,6 @@ class CandidateValidatorTest {
     private class FakeProbe(
         private val result: MediaProbeResult,
     ) : MediaProbe {
-        override suspend fun probe(url: String): MediaProbeResult = result
+        override suspend fun probe(url: String, headers: Map<String, String>): MediaProbeResult = result
     }
 }
