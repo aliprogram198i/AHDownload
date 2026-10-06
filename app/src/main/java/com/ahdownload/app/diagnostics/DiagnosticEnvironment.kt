@@ -1,6 +1,7 @@
 package com.ahdownload.app.diagnostics
 
 import android.app.ActivityManager
+import com.ahdownload.app.BuildConfig
 import android.content.Context
 import android.os.Build
 import java.util.Locale
