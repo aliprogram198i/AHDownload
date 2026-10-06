@@ -33,7 +33,12 @@ class DownloadLauncher(
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
                             key.equals("Referer", ignoreCase = true) ||
-                            key.equals("Origin", ignoreCase = true))
+                            key.equals("Origin", ignoreCase = true) ||
+                            key.equals("Accept", ignoreCase = true) ||
+                            key.equals("Accept-Language", ignoreCase = true) ||
+                            key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
+                            key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
+                            key.equals("Sec-Fetch-Site", ignoreCase = true))
                 },
             ),
         )
