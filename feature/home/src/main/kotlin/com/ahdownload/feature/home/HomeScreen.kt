@@ -7,16 +7,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,7 +31,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -44,6 +46,10 @@ import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.domain.resolver.MediaPresentationModel
+import com.ahdownload.domain.resolver.MediaResultGroup
+import com.ahdownload.domain.resolver.MediaResultRecommendation
+import com.ahdownload.domain.resolver.SmartResultEngine
 
 @Composable
 fun HomeRoute(
@@ -92,156 +98,36 @@ private fun HomeScreen(
     onOpenSettings: () -> Unit,
 ) {
     val candidates = state.resolution?.candidates.orEmpty()
-    val recommendedCandidate = candidates
-        .sortedWith(
-            compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video && it.format.hasAudio }
-                .thenByDescending { val height = it.format.height ?: 0; if (it.format.kind == MediaKind.Video && height >= 1 && height <= 1080) 1 else 0 }
-                .thenByDescending { if (it.format.kind == MediaKind.Video) it.format.height ?: 0 else 0 }
-                .thenByDescending { it.format.hasAudio }
-                .thenByDescending { it.format.bitrateKbps ?: 0 },
-        )
-        .firstOrNull()
-    val videoCandidates = candidates
-        .filter { it.format.kind == MediaKind.Video && it.id != recommendedCandidate?.id }
-        .sortedWith(
-            compareByDescending<MediaCandidate> { it.format.hasAudio }
-                .thenByDescending { it.format.height ?: 0 }
-                .thenByDescending { it.format.bitrateKbps ?: 0 },
-        )
-        .take(6)
-    val audioCandidates = candidates
-        .filter { it.format.kind == MediaKind.Audio }
-        .sortedByDescending { it.format.bitrateKbps ?: 0 }
-        .take(4)
-    val displayedCandidates = buildList {
-        recommendedCandidate?.let { add(it) }
-        addAll(videoCandidates)
-        addAll(audioCandidates)
-    }.distinctBy { it.id }
-    val displayedPositionById = displayedCandidates.mapIndexed { index, candidate -> candidate.id to index }.toMap()
-    val candidateSectionById = buildMap {
-        recommendedCandidate?.let { put(it.id, "recommended") }
-        videoCandidates.forEach { put(it.id, "video") }
-        audioCandidates.forEach { put(it.id, "audio") }
-    }
-    val renderSignature = listOf(
-        state.analyzing, state.resolving, state.error, state.downloadQueued,
-        state.resolution?.title, state.resolution?.durationMs, candidates.size,
-        displayedCandidates.joinToString(",") { it.id },
-        recommendedCandidate?.id, state.selectedCandidateId, state.validatingCandidateId
-    ).joinToString("|")
+    val engine = remember { SmartResultEngine() }
+    val resultSet = remember(candidates) { engine.build(candidates) }
+    var showAll by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf(MediaResultGroup.Video) }
 
-    LaunchedEffect(renderSignature) {
-        val layoutMode = when {
-            state.analyzing -> "ANALYZING"
-            state.resolving -> "RESOLVING"
-            state.resolution == null -> "INPUT"
-            candidates.isEmpty() -> "RESULT_EMPTY"
-            else -> "RESULT_READY"
-        }
-        val hiddenCount = candidates.count { it.id !in displayedPositionById }
-        logger.log(
-            DiagnosticLevel.INFO,
-            "SMART_CENTER_ORDERING",
-            "تم تحديد ترتيب النتائج وطريقة عرضها",
-            "ui.smart_center.ordering",
-            mapOf(
-                "ordering_algorithm" to "recommended_first;video_quality_ranked;audio_bitrate_ranked",
-                "source_candidate_total" to candidates.size.toString(),
-                "visible_candidate_total" to displayedCandidates.size.toString(),
-                "hidden_candidate_total" to hiddenCount.toString(),
-                "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
-                "recommended_selection_reason" to when {
-                    recommendedCandidate?.format?.kind == MediaKind.Video && recommendedCandidate.format.hasAudio ->
-                        "video_with_audio"
-                    recommendedCandidate?.format?.kind == MediaKind.Video -> "first_video_fallback"
-                    recommendedCandidate?.format?.kind == MediaKind.Audio -> "first_audio_fallback"
-                    else -> "none"
-                },
-            ),
-            null,
-        )
-        logger.log(
-            DiagnosticLevel.INFO,
-            "SMART_CENTER_RESULT_PRESENTED",
-            "تم عرض نتائج الرابط في مركز التحميل الذكي",
-            "ui.smart_center.result",
-            mapOf(
-                "layout_mode" to layoutMode,
-                "platform" to (state.result?.platform?.name ?: "unknown"),
-                "media_kind" to (state.result?.kind?.name ?: "unknown"),
-                "title_present" to (!state.resolution?.title.isNullOrBlank()).toString(),
-                "media_duration_ms" to (state.resolution?.durationMs?.toString() ?: "unknown"),
-                "candidate_total" to candidates.size.toString(),
-                "displayed_candidate_total" to displayedCandidates.size.toString(),
-                "hidden_candidate_total" to hiddenCount.toString(),
-                "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
-                "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
-                "validation_candidate_id" to (state.validatingCandidateId ?: "none"),
-                "has_error" to (state.error != null).toString(),
-                "download_queued" to state.downloadQueued.toString(),
-                "presentation_policy" to "recommended_first;video_max_6;audio_max_4;remaining_hidden",
-            ),
-            null,
-        )
-        candidates.forEachIndexed { sourceIndex, candidate ->
-            val displayPosition = displayedPositionById[candidate.id]
+    LaunchedEffect(
+        state.analyzing,
+        state.resolving,
+        state.resolution?.title,
+        candidates.size,
+        state.selectedCandidateId,
+        state.validatingCandidateId,
+        state.error,
+    ) {
+        if (state.resolution != null || state.error != null) {
             logger.log(
-                if (displayPosition != null) DiagnosticLevel.INFO else DiagnosticLevel.INFO,
-                if (displayPosition != null) "SMART_CENTER_OPTION_VISIBLE" else "SMART_CENTER_OPTION_HIDDEN",
-                if (displayPosition != null) "خيار وسائط ظهر فعليًا في الشاشة" else "خيار وسائط استُخرج ولم يظهر في الشاشة",
+                DiagnosticLevel.INFO,
+                "SMART_CENTER_RESULT_PRESENTED",
+                "تم تجهيز نتائج الرابط وعرضها",
                 "ui.smart_center.result",
                 mapOf(
-                    "source_rank" to sourceIndex.toString(),
-                    "display_position" to (displayPosition?.toString() ?: "hidden"),
-                    "section" to (candidateSectionById[candidate.id] ?: "hidden"),
-                    "visibility" to if (displayPosition != null) "VISIBLE" else "HIDDEN",
-                    "visibility_reason" to when {
-                        displayPosition != null && candidate.id == recommendedCandidate?.id -> "recommended_first"
-                        displayPosition != null -> "section_limit"
-                        candidate.format.kind == MediaKind.Video -> "video_section_limit"
-                        candidate.format.kind == MediaKind.Audio -> "audio_section_limit"
-                        else -> "unsupported_or_unclassified_kind"
-                    },
-                    "candidate_id" to candidate.id,
-                    "kind" to candidate.format.kind.name,
-                    "container" to candidate.format.container.name,
-                    "width" to (candidate.format.width?.toString() ?: "unknown"),
-                    "height" to (candidate.format.height?.toString() ?: "unknown"),
-                    "fps" to (candidate.format.fps?.toString() ?: "unknown"),
-                    "bitrate_kbps" to (candidate.format.bitrateKbps?.toString() ?: "unknown"),
-                    "size_bytes" to (candidate.format.fileSizeBytes?.toString() ?: "unknown"),
-                    "has_video" to candidate.format.hasVideo.toString(),
-                    "has_audio" to candidate.format.hasAudio.toString(),
-                    "selected" to (candidate.id == state.selectedCandidateId).toString(),
-                    "recommended" to (candidate.id == recommendedCandidate?.id).toString(),
-                    "validating" to (candidate.id == state.validatingCandidateId).toString(),
-                ),
-                null,
-            )
-        }
-    }
-
-    LaunchedEffect(state.error) {
-        state.error?.let { error ->
-            logger.log(
-                DiagnosticLevel.ERROR,
-                "SMART_CENTER_ERROR_VISIBLE",
-                "ظهر خطأ للمستخدم داخل مركز التحميل الذكي",
-                "ui.smart_center.error",
-                mapOf(
-                    "layout_mode" to when {
-                        state.analyzing -> "ANALYZING"
-                        state.resolving -> "RESOLVING"
-                        state.resolution == null -> "INPUT_OR_EMPTY"
-                        else -> "RESULT"
-                    },
                     "platform" to (state.result?.platform?.name ?: "unknown"),
                     "candidate_total" to candidates.size.toString(),
-                    "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
-                    "validating_candidate_id" to (state.validatingCandidateId ?: "none"),
-                    "error_visible" to "true",
-                    "error_message" to error,
+                    "normalized_total" to resultSet.all.size.toString(),
+                    "visible_total" to resultSet.visible.size.toString(),
+                    "hidden_total" to resultSet.hiddenCount.toString(),
+                    "best_overall" to (resultSet.bestOverall?.candidate?.id ?: "none"),
+                    "best_quality" to (resultSet.bestQuality?.candidate?.id ?: "none"),
+                    "smallest_size" to (resultSet.smallestSize?.candidate?.id ?: "none"),
+                    "presentation_policy" to "normalized;deduplicated;ranked;grouped",
                 ),
                 null,
             )
@@ -254,9 +140,15 @@ private fun HomeScreen(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                 actions = {
-                    IconButton(onClick = onOpenSettings) { Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات") }
-                    IconButton(onClick = onOpenYouTubeSession) { Icon(Icons.Rounded.AccountCircle, contentDescription = "جلسة YouTube") }
-                    IconButton(onClick = onOpenDiagnostics) { Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء") }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات")
+                    }
+                    IconButton(onClick = onOpenYouTubeSession) {
+                        Icon(Icons.Rounded.AccountCircle, contentDescription = "جلسة YouTube")
+                    }
+                    IconButton(onClick = onOpenDiagnostics) {
+                        Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء")
+                    }
                 },
             )
         },
@@ -265,21 +157,27 @@ private fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp, vertical = 24.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                Text("مركز التحميل الذكي", style = MaterialTheme.typography.headlineMedium)
-                Text(
-                    "ألصق الرابط، استخرج الوسائط الحقيقية، اختر الجودة ثم أضفها إلى قائمة التنزيل.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("مركز التحميل الذكي", style = MaterialTheme.typography.headlineMedium)
+                    Text(
+                        "ألصق الرابط، وسنرتب أفضل المصادر الحقيقية تلقائيًا ثم نعرضها بشكل واضح.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+
             item {
                 OutlinedTextField(
                     value = state.url,
-                    onValueChange = onUrlChanged,
+                    onValueChange = {
+                        showAll = false
+                        onUrlChanged(it)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
@@ -288,6 +186,7 @@ private fun HomeScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
             }
+
             item {
                 AHGradientPrimaryButton(
                     text = when {
@@ -300,6 +199,7 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+
             if (state.analyzing || state.resolving) {
                 item {
                     Row(
@@ -310,95 +210,152 @@ private fun HomeScreen(
                     }
                 }
             }
+
             state.result?.let { link ->
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AHStatusPill(link.platform.name)
-                        AHStatusPill(link.kind.name)
+                        if (link.kind != MediaKind.Unknown) AHStatusPill(link.kind.name)
                     }
                 }
             }
+
             state.resolution?.let { resolution ->
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(resolution.title ?: "وسائط متاحة", style = MaterialTheme.typography.titleLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            state.result?.platform?.name?.let { AHStatusPill(it) }
-                            state.result?.kind?.name?.let { AHStatusPill(it) }
-                            resolution.durationMs?.let { AHStatusPill(formatDuration(it)) }
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                resolution.title ?: "وسائط متاحة",
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                state.result?.platform?.name?.let { AHStatusPill(it) }
+                                resolution.durationMs?.let { AHStatusPill(formatDuration(it)) }
+                                AHStatusPill("${resultSet.all.size} خيارات")
+                            }
+                            Text(
+                                "تم ترتيب المصادر وإزالة الخيارات المتكررة قبل عرضها.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
-                recommendedCandidate?.let { candidate ->
+
+                resultSet.bestOverall?.let { best ->
                     item {
-                        CandidateCard(
-                            candidate = candidate,
-                            selected = candidate.id == state.selectedCandidateId,
-                            validating = candidate.id == state.validatingCandidateId,
-                            recommended = true,
+                        SmartHeroCard(
+                            model = best,
+                            selected = best.candidate.id == state.selectedCandidateId,
+                            validating = best.candidate.id == state.validatingCandidateId,
                             onSelect = {
-                                logger.log(
-                                    DiagnosticLevel.INFO,
-                                    "SMART_CENTER_OPTION_SELECTED",
-                                    "اختار المستخدم خيار وسائط من النتائج المعروضة",
-                                    "ui.smart_center.selection",
-                                    mapOf(
-                                        "candidate_id" to candidate.id,
-                                        "display_position" to (displayedPositionById[candidate.id]?.toString() ?: "hidden"),
-                                        "section" to (candidateSectionById[candidate.id] ?: "hidden"),
-                                        "selected_before" to (candidate.id == state.selectedCandidateId).toString(),
-                                        "kind" to candidate.format.kind.name,
-                                        "height" to (candidate.format.height?.toString() ?: "unknown"),
-                                        "bitrate_kbps" to (candidate.format.bitrateKbps?.toString() ?: "unknown"),
-                                    ),
-                                    null,
-                                )
-                                onSelectCandidate(candidate.id)
+                                logSelection(logger, best, state.selectedCandidateId)
+                                onSelectCandidate(best.candidate.id)
                             },
                             onDownload = onDownload,
                             onOpenDiagnostics = onOpenDiagnostics,
                         )
                     }
                 }
-                if (videoCandidates.isNotEmpty()) {
-                    item { Text("خيارات الفيديو", style = MaterialTheme.typography.titleLarge) }
-                    items(videoCandidates, key = { "video-" + it.id }) { candidate ->
-                        CandidateCard(
-                            candidate = candidate,
-                            selected = candidate.id == state.selectedCandidateId,
-                            validating = candidate.id == state.validatingCandidateId,
-                            recommended = false,
-                            onSelect = { onSelectCandidate(candidate.id) },
+
+                val alternatives = listOfNotNull(
+                    resultSet.bestQuality?.takeUnless { it.candidate.id == resultSet.bestOverall?.candidate?.id },
+                    resultSet.smallestSize?.takeUnless {
+                        it.candidate.id == resultSet.bestOverall?.candidate?.id ||
+                            it.candidate.id == resultSet.bestQuality?.candidate?.id
+                    },
+                )
+
+                if (alternatives.isNotEmpty()) {
+                    item { Text("اختيارات ذكية", style = MaterialTheme.typography.titleLarge) }
+                    items(alternatives, key = { "smart-" + it.candidate.id }) { model ->
+                        ResultOptionCard(
+                            model = model,
+                            selected = model.candidate.id == state.selectedCandidateId,
+                            validating = model.candidate.id == state.validatingCandidateId,
+                            onSelect = {
+                                logSelection(logger, model, state.selectedCandidateId)
+                                onSelectCandidate(model.candidate.id)
+                            },
                             onDownload = onDownload,
                             onOpenDiagnostics = onOpenDiagnostics,
                         )
                     }
                 }
-                if (audioCandidates.isNotEmpty()) {
-                    item { Text("خيارات الصوت", style = MaterialTheme.typography.titleLarge) }
-                    items(audioCandidates, key = { "audio-" + it.id }) { candidate ->
-                        CandidateCard(
-                            candidate = candidate,
-                            selected = candidate.id == state.selectedCandidateId,
-                            validating = candidate.id == state.validatingCandidateId,
-                            recommended = false,
-                            onSelect = { onSelectCandidate(candidate.id) },
+
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { filter = MediaResultGroup.Video }) { Text("فيديو") }
+                        Button(onClick = { filter = MediaResultGroup.Audio }) { Text("صوت") }
+                        Button(onClick = { showAll = !showAll }) {
+                            Text(if (showAll) "إخفاء الخيارات" else "كل الخيارات")
+                        }
+                    }
+                }
+
+                val filtered = if (showAll) {
+                    when (filter) {
+                        MediaResultGroup.Video -> resultSet.video
+                        MediaResultGroup.Audio -> resultSet.audio
+                        MediaResultGroup.Other -> resultSet.other
+                    }
+                } else {
+                    resultSet.visible.filter { it.group == filter }
+                }
+
+                if (filtered.isNotEmpty()) {
+                    item {
+                        Text(
+                            if (showAll) "كل الخيارات المتاحة" else "الخيارات المقترحة",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    }
+                    items(filtered, key = { "option-" + it.candidate.id }) { model ->
+                        ResultOptionCard(
+                            model = model,
+                            selected = model.candidate.id == state.selectedCandidateId,
+                            validating = model.candidate.id == state.validatingCandidateId,
+                            onSelect = {
+                                logSelection(logger, model, state.selectedCandidateId)
+                                onSelectCandidate(model.candidate.id)
+                            },
                             onDownload = onDownload,
                             onOpenDiagnostics = onOpenDiagnostics,
+                        )
+                    }
+                } else {
+                    item {
+                        Text(
+                            "لا توجد خيارات في هذا التصنيف.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
             }
+
             state.error?.let { error ->
-                item { AHStatusPill(error) }
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            error,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
+
             if (state.downloadQueued) {
                 item { AHStatusPill("تمت إضافة التنزيل إلى قائمة الانتظار.") }
             }
+
             item {
-                Spacer(Modifier.padding(top = 4.dp))
+                Spacer(Modifier.padding(top = 2.dp))
                 Text(
-                    "المصدر يُتحقق منه قبل الإدخال إلى Queue، والتقدم الفعلي يديره WorkManager.",
+                    "المصدر يعاد التحقق منه قبل إدخاله إلى Queue؛ لا يتم عرض مصدر غير صالح كتنزيل مؤكد.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -408,16 +365,61 @@ private fun HomeScreen(
 }
 
 @Composable
-private fun CandidateCard(
-    candidate: MediaCandidate,
+private fun SmartHeroCard(
+    model: MediaPresentationModel,
     selected: Boolean,
     validating: Boolean,
-    recommended: Boolean = false,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
     onOpenDiagnostics: () -> Unit,
 ) {
-    val format = candidate.format
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = !validating, onClick = onSelect),
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AHStatusPill("الأفضل")
+                AHStatusPill("جاهز")
+                if (selected) AHStatusPill("محدد")
+            }
+            Text("أفضل اختيار", style = MaterialTheme.typography.titleLarge)
+            Text(
+                buildQualityLine(model),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                buildDetailLine(model),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                enabled = selected && !validating,
+                onClick = onDownload,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.Download, contentDescription = null)
+                Spacer(Modifier.padding(horizontal = 4.dp))
+                Text(if (validating) "جارٍ التحقق..." else "تنزيل")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ResultOptionCard(
+    model: MediaPresentationModel,
+    selected: Boolean,
+    validating: Boolean,
+    onSelect: () -> Unit,
+    onDownload: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+) {
+    val format = model.candidate.format
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -425,39 +427,34 @@ private fun CandidateCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AHStatusPill(if (format.kind == MediaKind.Audio) "صوت" else "فيديو")
-                format.height?.let { AHStatusPill(it.toString() + "p") }
-                format.bitrateKbps?.let { AHStatusPill(it.toString() + " kbps") }
-                if (recommended) AHStatusPill("⭐ موصى به")
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                AHStatusPill(model.qualityLabel)
+                AHStatusPill(containerLabel(format.container))
+                if (model.sourceState.name == "Ready") AHStatusPill("جاهز")
                 if (selected) AHStatusPill("محدد")
+                when (model.recommendation) {
+                    MediaResultRecommendation.BestQuality -> AHStatusPill("أفضل جودة")
+                    MediaResultRecommendation.SmallestSize -> AHStatusPill("أصغر حجم")
+                    else -> Unit
+                }
             }
             Text(
-                when {
-                    format.kind == MediaKind.Video && format.height != null -> "فيديو " + format.height + "p"
-                    format.kind == MediaKind.Audio && format.bitrateKbps != null -> "صوت " + format.bitrateKbps + " kbps"
-                    else -> "وسائط"
-                },
+                buildQualityLine(model),
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                buildString {
-                    append(containerLabel(format.container))
-                    format.videoCodec?.takeIf { it.isNotBlank() }?.let { append(" · "); append(it) }
-                    format.audioCodec?.takeIf { it.isNotBlank() }?.let { append(" · "); append(it) }
-                },
+                buildDetailLine(model),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                format.fileSizeBytes?.let { AHStatusPill(formatBytes(it)) }
-                when {
-                    format.hasVideo && format.hasAudio -> AHStatusPill("فيديو + صوت")
-                    format.hasVideo -> AHStatusPill("فيديو فقط")
-                    format.hasAudio -> AHStatusPill("صوت فقط")
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                model.sizeLabel?.let { AHStatusPill(it) }
+                format.fileSizeBytes ?: 0L
+                if (format.hasVideo && format.hasAudio) AHStatusPill("فيديو + صوت")
+                else if (format.hasVideo) AHStatusPill("فيديو")
+                else if (format.hasAudio) AHStatusPill("صوت")
             }
             Button(
                 enabled = selected && !validating,
@@ -470,6 +467,50 @@ private fun CandidateCard(
             }
         }
     }
+}
+
+private fun buildQualityLine(model: MediaPresentationModel): String {
+    val format = model.candidate.format
+    return when {
+        format.kind == MediaKind.Video -> "${model.qualityLabel} · ${containerLabel(format.container)}"
+        format.kind == MediaKind.Audio -> "${model.qualityLabel} · ${containerLabel(format.container)}"
+        else -> model.qualityLabel
+    }
+}
+
+private fun buildDetailLine(model: MediaPresentationModel): String {
+    val format = model.candidate.format
+    val parts = buildList {
+        model.codecLabel?.let(::add)
+        model.fpsLabel?.let(::add)
+        if (format.hasVideo && format.hasAudio) add("فيديو + صوت")
+        else if (format.hasVideo) add("فيديو فقط")
+        else if (format.hasAudio) add("صوت فقط")
+        if (model.sizeLabel == null) add("الحجم يحسب أثناء التنزيل")
+    }
+    return parts.joinToString(" · ")
+}
+
+private fun logSelection(
+    logger: DiagnosticLogger,
+    model: MediaPresentationModel,
+    selectedId: String?,
+) {
+    logger.log(
+        DiagnosticLevel.INFO,
+        "SMART_CENTER_OPTION_SELECTED",
+        "اختار المستخدم مصدرًا من النتائج الذكية",
+        "ui.smart_center.selection",
+        mapOf(
+            "candidate_id" to model.candidate.id,
+            "quality" to model.qualityLabel,
+            "group" to model.group.name,
+            "recommendation" to model.recommendation.name,
+            "score" to model.score.toString(),
+            "previous_selection" to (selectedId ?: "none"),
+        ),
+        null,
+    )
 }
 
 private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContainer): String =
@@ -487,13 +528,6 @@ private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContai
         com.ahdownload.domain.resolver.MediaContainer.Avi -> "AVI"
         com.ahdownload.domain.resolver.MediaContainer.Unknown -> "صيغة غير معروفة"
     }
-
-private fun formatBytes(bytes: Long): String = when {
-    bytes < 1024L -> bytes.toString() + " B"
-    bytes < 1024L * 1024L -> (bytes / 1024L).toString() + " KB"
-    bytes < 1024L * 1024L * 1024L -> (bytes / (1024L * 1024L)).toString() + " MB"
-    else -> (bytes / (1024L * 1024L * 1024L)).toString() + " GB"
-}
 
 private fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
