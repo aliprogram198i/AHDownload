@@ -52,8 +52,23 @@ class DiagnosticReportFormatterTest {
                 ),
             ),
             event(
-                time = 4_000L,
+                time = 3_500L,
                 sequence = "4",
+                type = "youtube.session_snapshot",
+                level = DiagnosticLevel.INFO,
+                reason = "snapshot",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "browser_media_observed" to "0",
+                    "browser_request_headers_captured" to "0",
+                    "browser_po_token_observed" to "false",
+                ),
+            ),
+            event(
+                time = 4_000L,
+                sequence = "5",
                 type = "SMART_CENTER_OPTION_VISIBLE",
                 level = DiagnosticLevel.INFO,
                 reason = "visible",
@@ -62,7 +77,7 @@ class DiagnosticReportFormatterTest {
             ),
             event(
                 time = 5_000L,
-                sequence = "5",
+                sequence = "6",
                 type = "SMART_CENTER_OPTION_HIDDEN",
                 level = DiagnosticLevel.INFO,
                 reason = "hidden",
@@ -71,7 +86,7 @@ class DiagnosticReportFormatterTest {
             ),
             event(
                 time = 6_000L,
-                sequence = "6",
+                sequence = "7",
                 type = "SMART_CENTER_ERROR_VISIBLE",
                 level = DiagnosticLevel.ERROR,
                 reason = "ظهر خطأ للمستخدم",
@@ -91,7 +106,7 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("action=INSPECT_BROWSER_MEDIA_CAPTURE"))
         assertTrue(report.contains("http_403=2"))
         assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
-        assertTrue(report.contains("duration_ms=6000"))
+        assertTrue(report.contains("duration_ms=5000"))
         assertTrue(report.contains("http_4xx=2"))
         assertTrue(report.contains("YOUTUBE"))
         assertTrue(report.contains("browser_media_observed=0"))
