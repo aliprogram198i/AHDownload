@@ -15,24 +15,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "9.5.0"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
           packages: "platform-tools"
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
-      - name: Install Android SDK 37.1
+
+      - name: Install Android SDK
         run: sdkmanager "platforms;android-37.1" "build-tools;36.1.0"
-      - name: Prepare official release signing
+
+      - name: Prepare release signing
         env:
           AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
           AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
@@ -48,46 +53,60 @@ jobs:
           printf '%s' "$AH_KEYSTORE_BASE64" | base64 --decode > "$AH_KEYSTORE_FILE"
           test -s "$AH_KEYSTORE_FILE"
           keytool -list -keystore "$AH_KEYSTORE_FILE" -storepass "$AH_KEYSTORE_PASSWORD" -alias "$AH_KEY_ALIAS" >/dev/null
-          umask 077
-          cat > "$GITHUB_WORKSPACE/gradle.properties" <<EOF
-AH_KEYSTORE_FILE=$AH_KEYSTORE_FILE
-AH_KEYSTORE_PASSWORD=$AH_KEYSTORE_PASSWORD
-AH_KEY_ALIAS=$AH_KEY_ALIAS
-AH_KEY_PASSWORD=$AH_KEY_PASSWORD
-EOF
-          test -s "$GITHUB_WORKSPACE/gradle.properties"
+
       - name: Compile and test
-        env:
-          ORG_GRADLE_PROJECT_AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
-          ORG_GRADLE_PROJECT_AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
-        run: gradle --no-daemon testDebugUnitTest
-      - name: Build signed release APK
-        env:
-          ORG_GRADLE_PROJECT_AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
-          ORG_GRADLE_PROJECT_AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
-        run: gradle --no-daemon assembleRelease
-      - name: Verify release signing configuration
-        env:
-          ORG_GRADLE_PROJECT_AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
-          ORG_GRADLE_PROJECT_AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          gradle --no-daemon :app:signingReport | tee signing-report.txt
+          gradle --no-daemon testDebugUnitTest \
+            -PAH_KEYSTORE_FILE="$AH_KEYSTORE_FILE" \
+            -PAH_KEYSTORE_PASSWORD="$AH_KEYSTORE_PASSWORD" \
+            -PAH_KEY_ALIAS="$AH_KEY_ALIAS" \
+            -PAH_KEY_PASSWORD="$AH_KEY_PASSWORD"
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
+
+      - name: Build signed release APK
+        run: |
+          set -euo pipefail
+          gradle --no-daemon assembleRelease \
+            -PAH_KEYSTORE_FILE="$AH_KEYSTORE_FILE" \
+            -PAH_KEYSTORE_PASSWORD="$AH_KEYSTORE_PASSWORD" \
+            -PAH_KEY_ALIAS="$AH_KEY_ALIAS" \
+            -PAH_KEY_PASSWORD="$AH_KEY_PASSWORD"
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
+
+      - name: Verify release signing
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          gradle --no-daemon :app:signingReport \
+            -PAH_KEYSTORE_FILE="$AH_KEYSTORE_FILE" \
+            -PAH_KEYSTORE_PASSWORD="$AH_KEYSTORE_PASSWORD" \
+            -PAH_KEY_ALIAS="$AH_KEY_ALIAS" \
+            -PAH_KEY_PASSWORD="$AH_KEY_PASSWORD" | tee signing-report.txt
           grep -q "Variant: release" signing-report.txt
           grep -q "SHA-256" signing-report.txt
-          test -s "app/build/outputs/apk/release/app-release.apk"
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
+
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
           name: ahdownload-release-apk
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
       - name: Publish direct release APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
@@ -95,4 +114,6 @@ EOF
         run: |
           set -euo pipefail
           TAG="release-${{ github.run_id }}"
-          gh release create "$TAG" app/build/outputs/apk/release/app-release.apk --title "AHDownload Release ${{ github.run_number }}" --notes "Official signed release APK from commit ${{ github.sha }}"
+          gh release create "$TAG" app/build/outputs/apk/release/app-release.apk \
+            --title "AHDownload Release ${{ github.run_number }}" \
+            --notes "Official signed release APK from commit ${{ github.sha }}"
