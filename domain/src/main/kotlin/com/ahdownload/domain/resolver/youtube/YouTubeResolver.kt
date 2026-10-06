@@ -93,11 +93,27 @@ class YouTubeResolver(
             operation = "youtube.resolve",
             context = diagnosticContext(videoId, request.operationId) + mapOf(
                 "cookies_obtained" to (!snapshot.cookies.isNullOrBlank()).toString(),
+                "player_response_obtained" to (!snapshot.playerResponse.isNullOrBlank()).toString(),
                 "video_candidates" to snapshot.videoUrls.size.toString(),
                 "audio_candidates" to snapshot.audioUrls.size.toString(),
             ),
             throwable = null,
         )
+
+        snapshot.playerResponse?.takeIf { it.isNotBlank() }?.let { response ->
+            logger.log(
+                DiagnosticLevel.INFO,
+                type = "youtube.webview_player_response",
+                reason = "player_response_captured",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId),
+                throwable = null,
+            )
+            val webResult = parser.parsePlayerResponse(response)
+            if (webResult is ResolverResult.Success) return filterKind(webResult, request)
+            lastFailure = webResult as? ResolverResult.Failure ?: lastFailure
+            logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
+        }
 
         val headers = buildMap {
             snapshot.cookies?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
