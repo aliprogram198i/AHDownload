@@ -37,6 +37,33 @@ class StreamingDownloadEngineTest {
     }
 
     @Test
+    fun forwardsTaskRequestHeadersToSource() = runTest {
+        val source = CapturingSource(
+            DownloadResponse(
+                statusCode = 200,
+                contentLengthBytes = 1,
+                contentType = "video/mp4",
+                body = ByteArrayInputStream(byteArrayOf(1)),
+            ),
+        )
+        StreamingDownloadEngine(source = source, sink = FakeSink()).download(
+            task = DownloadTask(
+                "task-headers",
+                "https://cdn.example/video.mp4",
+                "/tmp/video.mp4",
+                requestHeaders = mapOf(
+                    "User-Agent" to "WebView-UA",
+                    "Referer" to "https://www.youtube.com/",
+                    "Origin" to "https://www.youtube.com",
+                ),
+            ),
+        )
+        assertEquals("WebView-UA", source.headers["User-Agent"])
+        assertEquals("https://www.youtube.com/", source.headers["Referer"])
+        assertEquals("https://www.youtube.com", source.headers["Origin"])
+    }
+
+    @Test
     fun rejectsHtmlWithoutCreatingFinalFile() = runTest {
         val sink = FakeSink()
         val states = mutableListOf<DownloadState>()
@@ -132,6 +159,14 @@ class StreamingDownloadEngineTest {
     )
 
     private fun task() = DownloadTask("task-1", "https://cdn.example/video.mp4", "/tmp/video.mp4")
+
+    private class CapturingSource(private val response: DownloadResponse) : DownloadByteStream {
+        var headers: Map<String, String> = emptyMap()
+        override suspend fun open(url: String, rangeStart: Long, headers: Map<String, String>): DownloadResponse {
+            this.headers = headers
+            return response
+        }
+    }
 
     private class FakeSource(private val response: DownloadResponse) : DownloadByteStream {
         override suspend fun open(
