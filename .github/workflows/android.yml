@@ -12,11 +12,6 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    env:
-      AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
-      AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
-      AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
-      AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -39,6 +34,10 @@ jobs:
         run: sdkmanager "platforms;android-37.1" "build-tools;36.1.0"
       - name: Prepare official release signing
         env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
           AH_KEYSTORE_BASE64: ${{ secrets.AH_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
@@ -50,10 +49,25 @@ jobs:
           test -s "$AH_KEYSTORE_FILE"
           keytool -list -keystore "$AH_KEYSTORE_FILE" -storepass "$AH_KEYSTORE_PASSWORD" -alias "$AH_KEY_ALIAS" >/dev/null
       - name: Compile and test
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
         run: gradle --no-daemon testDebugUnitTest
       - name: Build signed release APK
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
         run: gradle --no-daemon assembleRelease
       - name: Verify release signing configuration
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           gradle --no-daemon :app:signingReport | tee signing-report.txt
