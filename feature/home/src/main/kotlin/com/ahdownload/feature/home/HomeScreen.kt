@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -51,6 +52,7 @@ fun HomeRoute(
     logger: DiagnosticLogger,
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -250,6 +252,7 @@ private fun HomeScreen(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                 actions = {
+                    IconButton(onClick = onOpenSettings) { Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات") }
                     IconButton(onClick = onOpenYouTubeSession) { Icon(Icons.Rounded.AccountCircle, contentDescription = "جلسة YouTube") }
                     IconButton(onClick = onOpenDiagnostics) { Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء") }
                 },
