@@ -23,54 +23,93 @@ class OkHttpMediaProbe(
         operationId: String?,
     ): MediaProbeResult =
         withContext(Dispatchers.IO) {
-            val started = TimeSource.Monotonic.markNow()
-            val head = execute(url, "HEAD", headers, null)
+            if (isYouTubeMediaHost(url)) {
+                probeYouTubeAligned(url, headers, operationId)
+            } else {
+                probeGeneric(url, headers, operationId)
+            }
+        }
+
+    private fun probeYouTubeAligned(
+        url: String,
+        headers: Map<String, String>,
+        operationId: String?,
+    ): MediaProbeResult {
+        val started = TimeSource.Monotonic.markNow()
+        val response = execute(url, "GET", headers, null)
+        logger.log(
+            level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+            type = "MEDIA_PROBE_ATTEMPT",
+            reason = "youtube_download_aligned_get_response",
+            operation = "download.validate",
+            context = probeContext(
+                url,
+                "GET",
+                null,
+                response.code,
+                response.header("Content-Type"),
+                started.elapsedNow().inWholeMilliseconds,
+                headers,
+                operationId,
+            ) + mapOf("validation_mode" to "YOUTUBE_DOWNLOAD_ALIGNED"),
+            throwable = null,
+        )
+        return response.toResult("GET", null)
+    }
+
+    private fun probeGeneric(
+        url: String,
+        headers: Map<String, String>,
+        operationId: String?,
+    ): MediaProbeResult {
+        val started = TimeSource.Monotonic.markNow()
+        val head = execute(url, "HEAD", headers, null)
+        logger.log(
+            level = if (head.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+            type = "MEDIA_PROBE_ATTEMPT",
+            reason = "head_response",
+            operation = "download.validate",
+            context = probeContext(
+                url,
+                "HEAD",
+                null,
+                head.code,
+                head.header("Content-Type"),
+                started.elapsedNow().inWholeMilliseconds,
+                headers,
+                operationId,
+            ),
+            throwable = null,
+        )
+        if (head.code in 200..299) return head.toResult("HEAD", null)
+
+        if (head.code in RETRY_HEAD_CODES) {
+            head.close()
+            val range = "bytes=0-0"
+            val rangeStarted = TimeSource.Monotonic.markNow()
+            val response = execute(url, "GET", headers, range)
             logger.log(
-                level = if (head.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
                 type = "MEDIA_PROBE_ATTEMPT",
-                reason = "head_response",
+                reason = "range_get_response",
                 operation = "download.validate",
                 context = probeContext(
                     url,
-                    "HEAD",
-                    null,
-                    head.code,
-                    head.header("Content-Type"),
-                    started.elapsedNow().inWholeMilliseconds,
+                    "GET",
+                    range,
+                    response.code,
+                    response.header("Content-Type"),
+                    rangeStarted.elapsedNow().inWholeMilliseconds,
                     headers,
                     operationId,
                 ),
                 throwable = null,
             )
-            if (head.code in 200..299) return@withContext head.toResult("HEAD", null)
-
-            if (head.code in RETRY_HEAD_CODES) {
-                head.close()
-                val range = "bytes=0-0"
-                val rangeStarted = TimeSource.Monotonic.markNow()
-                val response = execute(url, "GET", headers, range)
-                logger.log(
-                    level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
-                    type = "MEDIA_PROBE_ATTEMPT",
-                    reason = "range_get_response",
-                    operation = "download.validate",
-                    context = probeContext(
-                        url,
-                        "GET",
-                        range,
-                        response.code,
-                        response.header("Content-Type"),
-                        rangeStarted.elapsedNow().inWholeMilliseconds,
-                        headers,
-                        operationId,
-                    ),
-                    throwable = null,
-                )
-                return@withContext response.toResult("GET", range)
-            }
-
-            head.toResult("HEAD", null)
+            return response.toResult("GET", range)
         }
+
+        return head.toResult("HEAD", null)
+    }
 
     private fun execute(
         url: String,
@@ -140,7 +179,6 @@ class OkHttpMediaProbe(
             add("Accept")
             headers.keys.filterNot { it.equals("Host", ignoreCase = true) }.forEach(::add)
             if (isYouTubeMediaHost(url) && headers.keys.none { it.equals("Referer", ignoreCase = true) }) add("Referer")
-            if (isYouTubeMediaHost(url) && headers.keys.any { it.equals("Cookie", ignoreCase = true) }) add("Cookie")
         }.distinct().joinToString(","))
         put("cookie_present", headers.keys.any { it.equals("Cookie", ignoreCase = true) }.toString())
         put("referer_present", (headers.keys.any { it.equals("Referer", ignoreCase = true) } || isYouTubeMediaHost(url)).toString())

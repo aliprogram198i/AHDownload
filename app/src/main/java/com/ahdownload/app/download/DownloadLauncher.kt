@@ -58,6 +58,8 @@ class DownloadLauncher(
             com.ahdownload.domain.resolver.MediaContainer.Aac -> ".aac"
             com.ahdownload.domain.resolver.MediaContainer.Ogg -> ".ogg"
             com.ahdownload.domain.resolver.MediaContainer.Flac -> ".flac"
+            com.ahdownload.domain.resolver.MediaContainer.ThreeGp -> ".3gp"
+            com.ahdownload.domain.resolver.MediaContainer.Avi -> ".avi"
             com.ahdownload.domain.resolver.MediaContainer.Unknown -> ".bin"
         }
 }

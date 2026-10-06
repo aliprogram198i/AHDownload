@@ -114,6 +114,12 @@ class YouTubePlayerResponseParser {
         }
         val formatId = string("itag") ?: return null
         val codecs = Regex("""codecs="([^"]+)"""").find(mimeType)?.groupValues?.get(1)
+            ?.split(',')
+            ?.map(String::trim)
+            ?.filter(String::isNotBlank)
+            .orEmpty()
+        val videoCodec = codecs.firstOrNull()
+        val audioCodec = codecs.drop(1).firstOrNull()
 
         return MediaCandidate(
             id = formatId,
@@ -122,8 +128,12 @@ class YouTubePlayerResponseParser {
                 id = formatId,
                 kind = mediaKind,
                 container = mimeType.toContainer(),
-                videoCodec = if (mediaKind == MediaKind.Video) codecs?.substringBefore(',') else null,
-                audioCodec = if (mediaKind == MediaKind.Audio) codecs?.substringBefore(',') else null,
+                videoCodec = if (mediaKind == MediaKind.Video) videoCodec else null,
+                audioCodec = when {
+                    mediaKind == MediaKind.Audio -> videoCodec
+                    mediaKind == MediaKind.Video -> audioCodec
+                    else -> null
+                },
                 width = int("width"),
                 height = int("height"),
                 fps = double("fps"),
@@ -139,10 +149,17 @@ class YouTubePlayerResponseParser {
         when (substringAfter('/', "").substringBefore(';').lowercase()) {
             "mp4" -> MediaContainer.Mp4
             "webm" -> MediaContainer.Webm
+            "x-matroska" -> MediaContainer.Mkv
             "quicktime" -> MediaContainer.Mov
+            "3gpp" -> MediaContainer.ThreeGp
+            "x-msvideo" -> MediaContainer.Avi
             "mpeg" -> MediaContainer.Mp3
+            "mp3" -> MediaContainer.Mp3
+            "m4a" -> MediaContainer.M4a
+            "x-m4a" -> MediaContainer.M4a
             "aac" -> MediaContainer.Aac
             "ogg" -> MediaContainer.Ogg
+            "opus" -> MediaContainer.Ogg
             "flac" -> MediaContainer.Flac
             else -> MediaContainer.Unknown
         }

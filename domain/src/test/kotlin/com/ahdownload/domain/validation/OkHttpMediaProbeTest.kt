@@ -14,7 +14,48 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 class OkHttpMediaProbeTest {
 
     @Test
-    fun retriesWithRangeGetWhenHeadIsForbidden() = runTest {
+    fun usesDownloadAlignedGetForYouTubeInsteadOfHeadOrRangeProbe() = runTest {
+        val methods = mutableListOf<String>()
+        val ranges = mutableListOf<String?>()
+
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                methods += chain.request().method
+                ranges += chain.request().header("Range")
+                assertTrue(chain.request().header("Referer") == "https://www.youtube.com/")
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .header("Content-Type", "video/webm; codecs=\"vp9\"")
+                    .header("Content-Length", "123456")
+                    .body(
+                        byteArrayOf(0)
+                            .toString(Charsets.ISO_8859_1)
+                            .toResponseBody("video/webm".toMediaType()),
+                    )
+                    .build()
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://example.googlevideo.com/videoplayback",
+            mapOf("Cookie" to "SID=redacted"),
+            operationId = "op-youtube-probe",
+        )
+
+        assertEquals(200, result.statusCode)
+        assertEquals("video/webm; codecs=\"vp9\"", result.contentType)
+        assertEquals(123456L, result.contentLengthBytes)
+        assertEquals(listOf("GET"), methods)
+        assertEquals(listOf(null), ranges)
+        assertEquals("GET", result.method)
+        assertEquals(null, result.range)
+    }
+
+    @Test
+    fun keepsHeadThenRangeFallbackForGenericMedia() = runTest {
         val methods = mutableListOf<String>()
         val ranges = mutableListOf<String?>()
 
@@ -49,9 +90,9 @@ class OkHttpMediaProbeTest {
             .build()
 
         val result = OkHttpMediaProbe(client).probe(
-            "https://example.googlevideo.com/videoplayback",
-            mapOf("Cookie" to "SID=redacted", "Referer" to "https://www.youtube.com/"),
-            operationId = "op-test-probe",
+            "https://cdn.example.com/video.mp4",
+            emptyMap(),
+            operationId = "op-generic-probe",
         )
 
         assertEquals(206, result.statusCode)
@@ -59,6 +100,5 @@ class OkHttpMediaProbeTest {
         assertEquals(123456L, result.contentLengthBytes)
         assertEquals(listOf("HEAD", "GET"), methods)
         assertEquals(listOf(null, "bytes=0-0"), ranges)
-        assertTrue(result.finalUrl.contains("googlevideo.com"))
     }
 }
