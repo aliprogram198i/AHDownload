@@ -61,6 +61,8 @@ jobs:
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           test -f "$APK"
           test -x "$APKSIGNER"
+          "$APKSIGNER" version
+          ls -l "$APKSIGNER"
           set +e
           "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 4 -v 4 "$APK"
           "$APKSIGNER" verify --verbose --min-sdk-version 24 "$APK" 2>&1 | tee apksigner-verify.txt
