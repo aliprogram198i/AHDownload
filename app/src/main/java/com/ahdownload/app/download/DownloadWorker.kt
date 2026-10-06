@@ -14,6 +14,8 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.ahdownload.app.R
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.app.settings.DownloadLocationStore
+import com.ahdownload.app.settings.SelectedDirectoryStorage
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.domain.download.DownloadCoordinator
 import com.ahdownload.domain.download.DownloadState
@@ -59,7 +61,7 @@ class DownloadWorker(
             mapOf(
                 "task_id" to task.id,
                 "source_host" to hostOf(task.sourceUrl),
-                "destination" to task.destinationPath,
+                "destination_mode" to if (DownloadLocationStore(applicationContext).persistedUri() != null) "CUSTOM_DIRECTORY" else "APP_DEFAULT",
                 "youtube_session_context" to isYouTubeMediaHost(task.sourceUrl).toString(),
             ),
             null,
@@ -67,6 +69,57 @@ class DownloadWorker(
 
         val record = coordinator.execute(task) { state ->
             setForeground(createForegroundInfo(state))
+        }
+
+        if (record.status == DownloadStatus.COMPLETED) {
+            val locationStore = DownloadLocationStore(applicationContext)
+            val treeUri = locationStore.persistedUri()
+            if (treeUri != null) {
+                val localFile = java.io.File(task.destinationPath)
+                val copied = runCatching {
+                    SelectedDirectoryStorage.copyFromLocal(
+                        context = applicationContext,
+                        source = localFile,
+                        treeUri = treeUri,
+                        displayName = localFile.name,
+                    )
+                }
+                if (copied.isSuccess) {
+                    localFile.delete()
+                    diagnostics.log(
+                        DiagnosticLevel.INFO,
+                        "DOWNLOAD_DESTINATION_COMMITTED",
+                        "تم نقل الوسيط المكتمل إلى المسار الذي اختاره المستخدم",
+                        "download.destination",
+                        mapOf(
+                            "task_id" to task.id,
+                            "destination_mode" to "CUSTOM_DIRECTORY",
+                            "source_deleted_after_copy" to "true",
+                        ),
+                        null,
+                    )
+                } else {
+                    diagnostics.log(
+                        DiagnosticLevel.ERROR,
+                        "DOWNLOAD_DESTINATION_COPY_FAILED",
+                        "فشل حفظ الوسيط المكتمل في المسار المحدد",
+                        "download.destination",
+                        mapOf(
+                            "task_id" to task.id,
+                            "destination_mode" to "CUSTOM_DIRECTORY",
+                            "local_recovery_file_present" to localFile.exists().toString(),
+                            "failure" to (copied.exceptionOrNull()?.message ?: "unknown"),
+                        ),
+                        copied.exceptionOrNull(),
+                    )
+                    return Result.failure(
+                        workDataOf(
+                            KEY_FAILURE_CODE to "destination_storage_error",
+                            KEY_FAILURE_DETAIL to "تعذر الكتابة في مجلد التنزيل المحدد.",
+                        ),
+                    )
+                }
+            }
         }
 
         if (record.status == DownloadStatus.FAILED) {
