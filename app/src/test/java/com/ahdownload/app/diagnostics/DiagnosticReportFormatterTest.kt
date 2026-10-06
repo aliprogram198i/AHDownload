@@ -50,6 +50,7 @@ class DiagnosticReportFormatterTest {
                     "failure_code" to "HTTP_403",
                     "http_status" to "403",
                     "platform" to "YouTube",
+                    "candidate_id" to "137",
                 ),
             ),
             event(
