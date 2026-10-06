@@ -51,6 +51,7 @@ class OkHttpMediaProbeTest {
         val result = OkHttpMediaProbe(client).probe(
             "https://example.googlevideo.com/videoplayback",
             mapOf("Cookie" to "SID=redacted", "Referer" to "https://www.youtube.com/"),
+            operationId = "op-test-probe",
         )
 
         assertEquals(206, result.statusCode)
