@@ -1,0 +1,133 @@
+package com.ahdownload.domain.resolver
+
+import com.ahdownload.domain.model.MediaKind
+import kotlin.math.roundToInt
+
+class SmartResultEngine {
+    fun build(candidates: List<MediaCandidate>, maxVideo: Int = 6, maxAudio: Int = 4): SmartResultSet {
+        val normalized = candidates
+            .filter { it.sourceUrl.startsWith("http://") || it.sourceUrl.startsWith("https://") }
+            .map(::normalize)
+            .distinctBy { it.dedupeKey }
+            .sortedByDescending { it.score }
+
+        val video = normalized.filter { it.group == MediaResultGroup.Video }.sortedWith(videoComparator)
+        val audio = normalized.filter { it.group == MediaResultGroup.Audio }.sortedWith(audioComparator)
+        val other = normalized.filter { it.group == MediaResultGroup.Other }
+
+        val bestOverall = normalized.firstOrNull()
+        val bestQuality = video.maxWithOrNull(
+            compareBy<MediaPresentationModel> { it.candidate.format.height ?: 0 }
+                .thenBy { it.candidate.format.fps ?: 0.0 }
+                .thenBy { it.candidate.format.bitrateKbps ?: 0 }
+        ) ?: audio.maxWithOrNull(compareBy { it.candidate.format.bitrateKbps ?: 0 })
+        val smallestSize = normalized
+            .filter { (it.candidate.format.fileSizeBytes ?: 0L) > 0L }
+            .minByOrNull { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
+
+        val recommended = normalized.map { item ->
+            when {
+                item.candidate.id == bestOverall?.candidate?.id -> item.copy(recommendation = MediaResultRecommendation.BestOverall)
+                item.candidate.id == bestQuality?.candidate?.id -> item.copy(recommendation = MediaResultRecommendation.BestQuality)
+                item.candidate.id == smallestSize?.candidate?.id -> item.copy(recommendation = MediaResultRecommendation.SmallestSize)
+                else -> item
+            }
+        }
+
+        val finalBestOverall = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.BestOverall }
+        val finalBestQuality = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.BestQuality }
+        val finalSmallest = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.SmallestSize }
+        val visibleIds = buildList {
+            finalBestOverall?.candidate?.id?.let(::add)
+            addAll(video.take(maxVideo).map { it.candidate.id })
+            addAll(audio.take(maxAudio).map { it.candidate.id })
+        }.toSet()
+
+        return SmartResultSet(
+            all = recommended,
+            visible = recommended.filter { it.candidate.id in visibleIds },
+            video = recommended.filter { it.group == MediaResultGroup.Video },
+            audio = recommended.filter { it.group == MediaResultGroup.Audio },
+            other = other,
+            bestOverall = finalBestOverall,
+            bestQuality = finalBestQuality,
+            smallestSize = finalSmallest,
+        )
+    }
+
+    private fun normalize(candidate: MediaCandidate): MediaPresentationModel {
+        val f = candidate.format
+        val height = f.height ?: 0
+        val bitrate = f.bitrateKbps ?: 0
+        val fps = f.fps ?: 0.0
+        val muxedBonus = if (f.hasVideo && f.hasAudio) 350 else 0
+        val containerBonus = if (f.container == MediaContainer.Mp4 || f.container == MediaContainer.M4a) 120 else 0
+        val codecBonus = when {
+            f.videoCodec?.startsWith("avc", true) == true -> 100
+            f.videoCodec?.startsWith("vp9", true) == true -> 80
+            f.videoCodec?.startsWith("av01", true) == true -> 60
+            else -> 0
+        }
+        val score = (height * 2.2 + bitrate * 0.12 + fps * 3).roundToInt() + muxedBonus + containerBonus + codecBonus
+        val group = candidate.resultGroup()
+        val dedupeKey = listOf(
+            group.name, height, f.width ?: 0, f.container.name,
+            normalizeCodec(f.videoCodec), normalizeCodec(f.audioCodec), (bitrate / 16) * 16
+        ).joinToString("|")
+        return MediaPresentationModel(
+            candidate = candidate,
+            group = group,
+            score = score,
+            sourceState = if (candidate.sourceUrl.isNotBlank()) MediaSourceState.Ready else MediaSourceState.Unavailable,
+            qualityLabel = qualityLabel(candidate),
+            codecLabel = codecLabel(candidate),
+            fpsLabel = f.fps?.let { "${it.roundToInt()} FPS" },
+            sizeLabel = f.fileSizeBytes?.takeIf { it > 0 }?.let(::formatBytes),
+            dedupeKey = dedupeKey,
+        )
+    }
+
+    private fun qualityLabel(c: MediaCandidate): String = when {
+        c.format.kind == MediaKind.Video && c.format.height != null -> "${c.format.height}p"
+        c.format.kind == MediaKind.Audio && c.format.bitrateKbps != null -> "${c.format.bitrateKbps} kbps"
+        c.format.kind == MediaKind.Video -> "Video"
+        c.format.kind == MediaKind.Audio -> "Audio"
+        else -> "Media"
+    }
+
+    private fun codecLabel(c: MediaCandidate): String? {
+        val v = normalizeCodec(c.format.videoCodec)
+        val a = normalizeCodec(c.format.audioCodec)
+        return listOfNotNull(v, a).joinToString(" · ").ifBlank { null }
+    }
+
+    private fun normalizeCodec(codec: String?): String? {
+        val value = codec?.substringBefore(',')?.trim()?.lowercase() ?: return null
+        return when {
+            value.startsWith("avc") -> "H.264"
+            value.startsWith("av01") -> "AV1"
+            value.startsWith("vp9") -> "VP9"
+            value.startsWith("vp8") -> "VP8"
+            value.startsWith("mp4a") -> "AAC"
+            value.startsWith("opus") -> "Opus"
+            value.startsWith("vorbis") -> "Vorbis"
+            else -> codec.substringBefore(',').trim().takeIf { it.isNotBlank() }
+        }
+    }
+
+    private val videoComparator = compareByDescending<MediaPresentationModel> { it.candidate.format.hasAudio }
+        .thenByDescending { it.candidate.format.height ?: 0 }
+        .thenByDescending { it.candidate.format.fps ?: 0.0 }
+        .thenByDescending { it.candidate.format.bitrateKbps ?: 0 }
+        .thenBy { it.candidate.format.container != MediaContainer.Mp4 }
+
+    private val audioComparator = compareByDescending<MediaPresentationModel> { it.candidate.format.bitrateKbps ?: 0 }
+        .thenBy { it.candidate.format.container != MediaContainer.M4a }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes < 1024L -> "$bytes B"
+        bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+        bytes < 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
+        else -> "${bytes / (1024L * 1024L * 1024L)} GB"
+    }
+}
