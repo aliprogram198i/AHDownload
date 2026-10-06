@@ -47,7 +47,12 @@ android {
             isMinifyEnabled = false
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("releaseOfficial")
             else if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
-                error("Official release signing is required for release builds.")
+                val filePresent = !signingFile.isNullOrBlank()
+                val fileExists = signingFile?.let { File(it).exists() } == true
+                val storePasswordPresent = !signingStorePassword.isNullOrBlank()
+                val aliasPresent = !signingAlias.isNullOrBlank()
+                val keyPasswordPresent = !signingKeyPassword.isNullOrBlank()
+                error("Official release signing unavailable: filePresent=$filePresent fileExists=$fileExists storePasswordPresent=$storePasswordPresent aliasPresent=$aliasPresent keyPasswordPresent=$keyPasswordPresent")
             }
         }
     }
