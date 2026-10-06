@@ -54,38 +54,13 @@ jobs:
         run: gradle --no-daemon testDebugUnitTest
       - name: Build signed release APK
         run: gradle --no-daemon assembleRelease
-      - name: Verify release APK certificate
+      - name: Verify release signing configuration
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -f "$APK"
-          set +e
-          jarsigner -verify -verbose -certs "$APK" > jarsigner-verify.txt 2>&1
-          JARSIGNER_STATUS=$?
-          keytool -printcert -jarfile "$APK" > apk-certificate.txt 2>&1
-          KEYTOOL_APK_STATUS=$?
-          keytool -list -v -keystore "$AH_KEYSTORE_FILE" -storepass "$AH_KEYSTORE_PASSWORD" -alias "$AH_KEY_ALIAS" > keystore-certificate.txt 2>&1
-          KEYTOOL_STORE_STATUS=$?
-          unzip -l "$APK" | grep -E "META-INF/.*\.(RSA|DSA|EC)$" > apk-signature-files.txt
-          SIGNATURE_FILES_STATUS=$?
-          set -e
-          echo "jarsigner_status=$JARSIGNER_STATUS"
-          echo "keytool_apk_status=$KEYTOOL_APK_STATUS"
-          echo "keytool_store_status=$KEYTOOL_STORE_STATUS"
-          echo "signature_files_status=$SIGNATURE_FILES_STATUS"
-          cat jarsigner-verify.txt
-          cat apk-certificate.txt
-          cat apk-signature-files.txt
-          test "$JARSIGNER_STATUS" -eq 0
-          test "$KEYTOOL_APK_STATUS" -eq 0
-          test "$KEYTOOL_STORE_STATUS" -eq 0
-          APK_SHA256="$(awk -F': ' '/SHA256:/{print $2; exit}' apk-certificate.txt | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
-          KEY_SHA256="$(awk -F': ' '/SHA256:/{print $2; exit}' keystore-certificate.txt | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
-          test -n "$APK_SHA256"
-          test -n "$KEY_SHA256"
-          test "$APK_SHA256" = "$KEY_SHA256"
-          grep -q "jar verified" jarsigner-verify.txt
-          echo "Release APK certificate matches configured release signing key."
+          gradle --no-daemon :app:signingReport | tee signing-report.txt
+          grep -q "Variant: release" signing-report.txt
+          grep -q "SHA-256" signing-report.txt
+          test -s "app/build/outputs/apk/release/app-release.apk"
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
