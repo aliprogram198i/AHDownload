@@ -203,7 +203,7 @@ private fun HomeScreen(
                             OutlinedButton(
                                 enabled = !state.analyzing && !state.resolving,
                                 onClick = {
-                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    val clipboard = androidContext.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
                                     val text = clipboard?.primaryClip
                                         ?.takeIf { it.itemCount > 0 }
                                         ?.getItemAt(0)
