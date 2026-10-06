@@ -153,8 +153,8 @@ class YouTubePlayerResponseParser {
             "ytInitialPlayerResponse =",
             "ytInitialPlayerResponse:",
             "ytplayer.config.args.player_response=",
-            ""player_response":",
-            ""playerResponse":",
+            "\"player_response\":",
+            "\"playerResponse\":",
             "player_response=",
         )
 
