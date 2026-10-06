@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
@@ -64,6 +65,7 @@ fun HomeRoute(
 
     HomeScreen(
         state = state,
+        logger = logger,
         onUrlChanged = viewModel::onUrlChanged,
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
@@ -77,6 +79,7 @@ fun HomeRoute(
 @Composable
 private fun HomeScreen(
     state: HomeUiState,
+    logger: DiagnosticLogger,
     onUrlChanged: (String) -> Unit,
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
@@ -84,6 +87,68 @@ private fun HomeScreen(
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
 ) {
+    val candidates = state.resolution?.candidates.orEmpty()
+    val recommendedCandidate = candidates.firstOrNull { it.format.kind == MediaKind.Video && it.format.hasAudio }
+        ?: candidates.firstOrNull { it.format.kind == MediaKind.Video }
+        ?: candidates.firstOrNull { it.format.kind == MediaKind.Audio }
+    val renderSignature = listOf(
+        state.analyzing, state.resolving, state.error, state.downloadQueued,
+        state.resolution?.title, candidates.size, recommendedCandidate?.id,
+        state.selectedCandidateId, state.validatingCandidateId
+    ).joinToString("|")
+
+    LaunchedEffect(renderSignature) {
+        val layoutMode = when {
+            state.analyzing -> "ANALYZING"
+            state.resolving -> "RESOLVING"
+            state.resolution == null -> "INPUT"
+            candidates.isEmpty() -> "RESULT_EMPTY"
+            else -> "RESULT_READY"
+        }
+        logger.log(
+            DiagnosticLevel.INFO,
+            "SMART_CENTER_RENDER",
+            "تم تحديث عرض مركز التحميل الذكي",
+            "ui.smart_center.render",
+            mapOf(
+                "layout_mode" to layoutMode,
+                "platform" to (state.result?.platform?.name ?: "unknown"),
+                "media_kind" to (state.result?.kind?.name ?: "unknown"),
+                "candidate_total" to candidates.size.toString(),
+                "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
+                "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
+                "validation_candidate_id" to (state.validatingCandidateId ?: "none"),
+                "has_error" to (state.error != null).toString(),
+                "download_queued" to state.downloadQueued.toString(),
+                "presentation_policy" to "recommended_first;technical_candidates_hidden"
+            ),
+            null
+        )
+        candidates.take(10).forEachIndexed { index, candidate ->
+            logger.log(
+                DiagnosticLevel.INFO,
+                "SMART_CENTER_OPTION_VISIBLE",
+                "خيار وسائط معروض في الشاشة",
+                "ui.smart_center.result",
+                mapOf(
+                    "position" to index.toString(),
+                    "candidate_id" to candidate.id,
+                    "kind" to candidate.format.kind.name,
+                    "container" to candidate.format.container.name,
+                    "width" to (candidate.format.width?.toString() ?: "unknown"),
+                    "height" to (candidate.format.height?.toString() ?: "unknown"),
+                    "fps" to (candidate.format.fps?.toString() ?: "unknown"),
+                    "bitrate_kbps" to (candidate.format.bitrateKbps?.toString() ?: "unknown"),
+                    "size_bytes" to (candidate.format.fileSizeBytes?.toString() ?: "unknown"),
+                    "has_audio" to candidate.format.hasAudio.toString(),
+                    "selected" to (candidate.id == state.selectedCandidateId).toString(),
+                    "recommended" to (candidate.id == recommendedCandidate?.id).toString()
+                ),
+                null
+            )
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -162,15 +227,48 @@ private fun HomeScreen(
                         }
                     }
                 }
-                items(resolution.candidates, key = { it.id }) { candidate ->
-                    CandidateCard(
-                        candidate = candidate,
-                        selected = candidate.id == state.selectedCandidateId,
-                        validating = candidate.id == state.validatingCandidateId,
-                        onSelect = { onSelectCandidate(candidate.id) },
-                        onDownload = onDownload,
-                        onOpenDiagnostics = onOpenDiagnostics,
-                    )
+                recommendedCandidate?.let { candidate ->
+                    item {
+                        CandidateCard(
+                            candidate = candidate,
+                            selected = candidate.id == state.selectedCandidateId,
+                            validating = candidate.id == state.validatingCandidateId,
+                            recommended = true,
+                            onSelect = { onSelectCandidate(candidate.id) },
+                            onDownload = onDownload,
+                            onOpenDiagnostics = onOpenDiagnostics,
+                        )
+                    }
+                }
+                val videoCandidates = resolution.candidates.filter { it.format.kind == MediaKind.Video && it.id != recommendedCandidate?.id }.take(6)
+                val audioCandidates = resolution.candidates.filter { it.format.kind == MediaKind.Audio }.take(4)
+                if (videoCandidates.isNotEmpty()) {
+                    item { Text("خيارات الفيديو", style = MaterialTheme.typography.titleLarge) }
+                    items(videoCandidates, key = { "video-" + it.id }) { candidate ->
+                        CandidateCard(
+                            candidate = candidate,
+                            selected = candidate.id == state.selectedCandidateId,
+                            validating = candidate.id == state.validatingCandidateId,
+                            recommended = false,
+                            onSelect = { onSelectCandidate(candidate.id) },
+                            onDownload = onDownload,
+                            onOpenDiagnostics = onOpenDiagnostics,
+                        )
+                    }
+                }
+                if (audioCandidates.isNotEmpty()) {
+                    item { Text("خيارات الصوت", style = MaterialTheme.typography.titleLarge) }
+                    items(audioCandidates, key = { "audio-" + it.id }) { candidate ->
+                        CandidateCard(
+                            candidate = candidate,
+                            selected = candidate.id == state.selectedCandidateId,
+                            validating = candidate.id == state.validatingCandidateId,
+                            recommended = false,
+                            onSelect = { onSelectCandidate(candidate.id) },
+                            onDownload = onDownload,
+                            onOpenDiagnostics = onOpenDiagnostics,
+                        )
+                    }
                 }
             }
             state.error?.let { error ->
@@ -196,6 +294,7 @@ private fun CandidateCard(
     candidate: MediaCandidate,
     selected: Boolean,
     validating: Boolean,
+    recommended: Boolean = false,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
     onOpenDiagnostics: () -> Unit,
@@ -214,6 +313,7 @@ private fun CandidateCard(
                 AHStatusPill(if (format.kind == MediaKind.Audio) "صوت" else "فيديو")
                 format.height?.let { AHStatusPill(it.toString() + "p") }
                 format.bitrateKbps?.let { AHStatusPill(it.toString() + "kbps") }
+                if (recommended) AHStatusPill("⭐ الأفضل")
                 if (selected) AHStatusPill("محدد")
             }
             Text(
@@ -227,7 +327,11 @@ private fun CandidateCard(
             format.fileSizeBytes?.let {
                 Text((it / 1024 / 1024).toString() + " MB")
             }
-            Button(enabled = selected && !validating, onClick = onDownload) {
+            Button(
+                enabled = selected && !validating,
+                onClick = onDownload,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 Icon(Icons.Rounded.Download, contentDescription = null)
                 Spacer(Modifier.padding(horizontal = 4.dp))
                 Text(if (validating) "جارٍ التحقق..." else "تنزيل")
