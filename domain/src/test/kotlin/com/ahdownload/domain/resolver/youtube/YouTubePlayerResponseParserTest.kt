@@ -65,6 +65,21 @@ class YouTubePlayerResponseParserTest {
     }
 
     @Test
+    fun parsesEncodedPlayerResponseWhenInitialObjectIsMalformed() {
+        val html = """
+            <script>
+            var ytInitialPlayerResponse = {"gt":"unterminated;
+            ytplayer.config.args.player_response = "{\"videoDetails\":{\"title\":\"Recovered\"},\"streamingData\":{\"formats\":[{\"itag\":\"18\",\"mimeType\":\"video/mp4\",\"url\":\"https://cdn.example.com/recovered\"}]}}";
+            </script>
+        """.trimIndent()
+
+        val result = parser.parse(html)
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals("Recovered", (result as ResolverResult.Success).title)
+    }
+
+    @Test
     fun rejectsMissingPlayerResponse() {
         val result = parser.parse("<html>blocked</html>")
         assertEquals(
