@@ -103,6 +103,17 @@ private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
     }
 }
 
+private fun formatDiagnostic(log: DiagnosticLog): String = buildString {
+    appendLine("AHDownload Diagnostic")
+    appendLine("id=" + log.id + " time=" + formatTime(log.timestampEpochMs))
+    appendLine("level=" + log.level + " type=" + log.type + " operation=" + log.operation)
+    appendLine("reason=" + log.reason)
+    val contextKeys = listOf("app_package", "app_version_name", "app_version_code", "android_release", "android_sdk", "app_target_sdk", "device_manufacturer", "device_model", "diagnostic_session_id", "event_sequence", "source", "provider", "stage", "resolver", "status", "http_status", "content_type", "content_length", "duration_ms", "failure_code")
+    contextKeys.forEach { key -> log.context[key]?.takeIf(String::isNotBlank)?.let { appendLine(key + "=" + it) } }
+    log.throwableType?.let { appendLine("exception=" + it) }
+    log.throwableMessage?.let { appendLine("detail=" + it) }
+    log.throwableStackTrace?.let { appendLine("stack=" + it.lineSequence().take(12).joinToString(" <- ").take(2400)) }
+}.trimEnd()
 private fun formatDiagnostics(logs: List<DiagnosticLog>): String {
     if (logs.isEmpty()) return "AHDownload Diagnostic Report\nstatus=NO_LOGS"
     val latestError = logs.firstOrNull { it.level == DiagnosticLevel.ERROR }
