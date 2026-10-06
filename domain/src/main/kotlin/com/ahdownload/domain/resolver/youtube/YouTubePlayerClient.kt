@@ -43,6 +43,57 @@ internal class YouTubePlayerClient(
         }
     }
 
+    /**
+     * Uses YouTube's embedded-player Innertube client as a deterministic fallback.
+     * The embedded client currently does not require a GVS PO token, but only exposes
+     * videos that are available for embedding. This is intentionally attempted only
+     * after the normal player path fails.
+     */
+    suspend fun fetchEmbeddedPlayerResponse(
+        html: String,
+        videoUrl: String,
+        headers: Map<String, String> = emptyMap(),
+        operationId: String? = null,
+    ): String? {
+        val videoId = extractVideoId(videoUrl) ?: return null
+        val contextJson = extractObject(html, "INNERTUBE_CONTEXT") ?: return null
+        val context = runCatching { JsonParser.parseString(contextJson).asJsonObject.deepCopy() }.getOrElse { error ->
+            logFailure("youtube.embedded_context_parse_failed", "تعذر تجهيز سياق YouTube المضمّن: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
+            return null
+        }
+        val client = context.getAsJsonObject("client") ?: JsonObject().also { context.add("client", it) }
+        client.addProperty("clientName", "WEB_EMBEDDED_PLAYER")
+        client.addProperty("clientVersion", EMBEDDED_CLIENT_VERSION)
+        client.addProperty("originalUrl", "https://www.youtube.com/embed/$videoId?html5=1")
+
+        val thirdParty = context.getAsJsonObject("thirdParty") ?: JsonObject().also { context.add("thirdParty", it) }
+        thirdParty.addProperty("embedUrl", "https://www.youtube.com/")
+
+        val payload = JsonObject().apply {
+            add("context", context)
+            addProperty("videoId", videoId)
+            addProperty("contentCheckOk", true)
+            addProperty("racyCheckOk", true)
+        }
+        val requestHeaders = buildMap {
+            putAll(headers)
+            put("X-YouTube-Client-Name", EMBEDDED_CLIENT_NAME)
+            put("X-YouTube-Client-Version", EMBEDDED_CLIENT_VERSION)
+            put("Origin", "https://www.youtube.com")
+            put("Referer", "https://www.youtube.com/")
+            client.get("visitorData")?.asString?.takeIf { it.isNotBlank() }?.let { put("X-Goog-Visitor-Id", it) }
+            client.get("userAgent")?.asString?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+        }
+        val apiKey = extractQuotedValue(html, "INNERTUBE_API_KEY") ?: return null
+        val endpoint = "https://www.youtube.com/youtubei/v1/player?key=" +
+            URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
+
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders) }.getOrElse { error ->
+            logFailure("youtube.embedded_player_failed", "فشل مسار YouTube Embedded Player: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
+            null
+        }
+    }
+
     private fun logFailure(type: String, reason: String, videoId: String?, operationId: String?, error: Throwable? = null) {
         logger.log(
             DiagnosticLevel.WARNING,
@@ -91,6 +142,11 @@ internal class YouTubePlayerClient(
             Regex("/embed/([A-Za-z0-9_-]{6,})"),
         )
         return patterns.firstNotNullOfOrNull { it.find(url)?.groupValues?.get(1) }
+    }
+
+    private companion object {
+        const val EMBEDDED_CLIENT_NAME = "56"
+        const val EMBEDDED_CLIENT_VERSION = "2.20260708.00.00"
     }
 
     private fun findJsonObjectEnd(text: String, start: Int): Int {
