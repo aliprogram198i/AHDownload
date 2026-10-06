@@ -59,9 +59,26 @@ jobs:
           set -euo pipefail
           APK="app/build/outputs/apk/release/app-release.apk"
           test -f "$APK"
+          set +e
           jarsigner -verify -verbose -certs "$APK" > jarsigner-verify.txt 2>&1
-          keytool -printcert -jarfile "$APK" > apk-certificate.txt
-          keytool -list -v -keystore "$AH_KEYSTORE_FILE" -storepass "$AH_KEYSTORE_PASSWORD" -alias "$AH_KEY_ALIAS" > keystore-certificate.txt 2>/dev/null
+          JARSIGNER_STATUS=$?
+          keytool -printcert -jarfile "$APK" > apk-certificate.txt 2>&1
+          KEYTOOL_APK_STATUS=$?
+          keytool -list -v -keystore "$AH_KEYSTORE_FILE" -storepass "$AH_KEYSTORE_PASSWORD" -alias "$AH_KEY_ALIAS" > keystore-certificate.txt 2>&1
+          KEYTOOL_STORE_STATUS=$?
+          unzip -l "$APK" | grep -E "META-INF/.*\.(RSA|DSA|EC)$" > apk-signature-files.txt
+          SIGNATURE_FILES_STATUS=$?
+          set -e
+          echo "jarsigner_status=$JARSIGNER_STATUS"
+          echo "keytool_apk_status=$KEYTOOL_APK_STATUS"
+          echo "keytool_store_status=$KEYTOOL_STORE_STATUS"
+          echo "signature_files_status=$SIGNATURE_FILES_STATUS"
+          cat jarsigner-verify.txt
+          cat apk-certificate.txt
+          cat apk-signature-files.txt
+          test "$JARSIGNER_STATUS" -eq 0
+          test "$KEYTOOL_APK_STATUS" -eq 0
+          test "$KEYTOOL_STORE_STATUS" -eq 0
           APK_SHA256="$(awk -F': ' '/SHA256:/{print $2; exit}' apk-certificate.txt | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
           KEY_SHA256="$(awk -F': ' '/SHA256:/{print $2; exit}' keystore-certificate.txt | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
           test -n "$APK_SHA256"
