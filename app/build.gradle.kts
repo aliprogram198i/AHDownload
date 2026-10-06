@@ -21,12 +21,21 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
-    val signingFile = providers.gradleProperty("AH_KEYSTORE_FILE").orElse(providers.environmentVariable("AH_KEYSTORE_FILE")).orNull
-    val signingStorePassword = providers.gradleProperty("AH_KEYSTORE_PASSWORD").orElse(providers.environmentVariable("AH_KEYSTORE_PASSWORD")).orNull
-    val signingAlias = providers.gradleProperty("AH_KEY_ALIAS").orElse(providers.environmentVariable("AH_KEY_ALIAS")).orNull
-    val signingKeyPassword = providers.gradleProperty("AH_KEY_PASSWORD").orElse(providers.environmentVariable("AH_KEY_PASSWORD")).orNull
-    val hasReleaseSigning = listOf(signingFile, signingStorePassword, signingAlias, signingKeyPassword)
-        .all { !it.isNullOrBlank() && File(it!!).exists() }
+    val signingFile = providers.gradleProperty("AH_KEYSTORE_FILE")
+        .orElse(providers.environmentVariable("AH_KEYSTORE_FILE")).orNull
+    val signingStorePassword = providers.gradleProperty("AH_KEYSTORE_PASSWORD")
+        .orElse(providers.environmentVariable("AH_KEYSTORE_PASSWORD")).orNull
+    val signingAlias = providers.gradleProperty("AH_KEY_ALIAS")
+        .orElse(providers.environmentVariable("AH_KEY_ALIAS")).orNull
+    val signingKeyPassword = providers.gradleProperty("AH_KEY_PASSWORD")
+        .orElse(providers.environmentVariable("AH_KEY_PASSWORD")).orNull
+
+    val hasReleaseSigning =
+        !signingFile.isNullOrBlank() &&
+        File(signingFile!!).exists() &&
+        !signingStorePassword.isNullOrBlank() &&
+        !signingAlias.isNullOrBlank() &&
+        !signingKeyPassword.isNullOrBlank()
 
     if (hasReleaseSigning) {
         signingConfigs {
@@ -45,8 +54,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("releaseOfficial")
-            else if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("releaseOfficial")
+            } else if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
                 val filePresent = !signingFile.isNullOrBlank()
                 val fileExists = signingFile?.let { File(it).exists() } == true
                 val storePasswordPresent = !signingStorePassword.isNullOrBlank()
