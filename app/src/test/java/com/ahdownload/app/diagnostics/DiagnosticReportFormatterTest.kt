@@ -21,7 +21,7 @@ class DiagnosticReportFormatterTest {
                 reason = "بدء التحقق",
                 session = session,
                 operation = operation,
-                context = mapOf("stage" to "MEDIA_VALIDATION"),
+                context = mapOf("stage" to "MEDIA_VALIDATION", "platform" to "YouTube"),
             ),
             event(
                 time = 2_000L,
@@ -92,7 +92,7 @@ class DiagnosticReportFormatterTest {
         assertContains(report, "resolver")
         assertContains(report, "candidate_rejected")
         assertContains(report, "ui_error")
-        assertEquals(1, Regex("SMART_CENTER_OPTION_VISIBLE").findAll(report).count())
+        assertEquals(0, Regex("SMART_CENTER_OPTION_VISIBLE").findAll(report).count())
     }
 
     private fun event(
