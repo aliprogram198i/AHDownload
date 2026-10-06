@@ -32,8 +32,8 @@ class PersistentDiagnosticLogger(
         type: String,
         reason: String,
         operation: String,
-        context: Map<String, String>,
-        throwable: Throwable?,
+        context: Map<String, String> = emptyMap(),
+        throwable: Throwable? = null,
     ) {
         val record = DiagnosticLog(
             id = UUID.randomUUID().toString(),
