@@ -34,6 +34,7 @@ class DiagnosticReportFormatterTest {
                 context = mapOf(
                     "status_code" to "403",
                     "content_type" to "text/plain",
+                    "platform" to "YouTube",
                 ),
             ),
             event(
@@ -47,6 +48,7 @@ class DiagnosticReportFormatterTest {
                 context = mapOf(
                     "failure_code" to "HTTP_403",
                     "http_status" to "403",
+                    "platform" to "YouTube",
                 ),
             ),
             event(
@@ -86,11 +88,14 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("status=FAILED"))
         assertTrue(report.contains("classification=NETWORK"))
         assertTrue(report.contains("root_cause=HTTP_403"))
-        assertTrue(report.contains("action=INSPECT_REQUEST_CONTEXT"))
-        assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
-        assertTrue(report.contains("duration_ms=5000"))
+        assertTrue(report.contains("action=INSPECT_BROWSER_MEDIA_CAPTURE"))
         assertTrue(report.contains("http_403=2"))
+        assertTrue(report.contains("failure=NO_VALID_MEDIA_SOURCE"))
+        assertTrue(report.contains("duration_ms=6000"))
         assertTrue(report.contains("http_4xx=2"))
+        assertTrue(report.contains("YOUTUBE"))
+        assertTrue(report.contains("browser_media_observed=0"))
+        assertTrue(report.contains("browser_po_token_observed=false"))
         assertTrue(report.contains("http_5xx=0"))
         assertTrue(report.contains("options_extracted=2"))
         assertTrue(report.contains("visible=1"))
