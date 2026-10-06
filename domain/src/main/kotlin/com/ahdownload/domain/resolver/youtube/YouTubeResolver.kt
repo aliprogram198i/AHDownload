@@ -125,7 +125,7 @@ class YouTubeResolver(
                 throwable = null,
             )
             val webResult = parser.parsePlayerResponse(response)
-            if (webResult is ResolverResult.Success) return filterKind(webResult, request)
+            if (webResult is ResolverResult.Success) return filterKind(withSessionHeaders(webResult, snapshot), request)
             lastFailure = webResult as? ResolverResult.Failure ?: lastFailure
             logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
         }
@@ -144,7 +144,7 @@ class YouTubeResolver(
                 }.getOrNull()
                 if (api != null) {
                     val result = parser.parsePlayerResponse(api)
-                    if (result is ResolverResult.Success) return filterKind(result, request)
+                    if (result is ResolverResult.Success) return filterKind(withSessionHeaders(result, snapshot), request)
                     lastFailure = result as? ResolverResult.Failure ?: lastFailure
                     logPlayerFailure(videoId, result, "youtubei_player_session", request.operationId)
                 }
@@ -184,6 +184,21 @@ class YouTubeResolver(
         }
     }
 
+    private fun withSessionHeaders(
+        result: ResolverResult.Success,
+        snapshot: YouTubeSessionSnapshot,
+    ): ResolverResult.Success {
+        val headers = sessionHeaders(snapshot)
+        return result.copy(
+            candidates = result.candidates.map { it.copy(requestHeaders = it.requestHeaders + headers) },
+        )
+    }
+
+    private fun sessionHeaders(snapshot: YouTubeSessionSnapshot): Map<String, String> = buildMap {
+        snapshot.cookies?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
+        put("Referer", "https://www.youtube.com/")
+    }
+
     private fun sessionCandidates(snapshot: YouTubeSessionSnapshot): List<MediaCandidate> {
         val videos = snapshot.videoUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
             MediaCandidate(
@@ -195,6 +210,7 @@ class YouTubeResolver(
                     container = containerFor(url, MediaKind.Video),
                     hasVideo = true,
                     hasAudio = true,
+                    requestHeaders = sessionHeaders(snapshot),
                 ),
             )
         }
@@ -208,6 +224,7 @@ class YouTubeResolver(
                     container = containerFor(url, MediaKind.Audio),
                     hasVideo = false,
                     hasAudio = true,
+                    requestHeaders = sessionHeaders(snapshot),
                 ),
             )
         }

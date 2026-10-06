@@ -168,6 +168,18 @@ class HomeViewModel(
         if (downloadJob?.isActive == true) return
 
         val state = _uiState.value
+        val validationOperationId = UUID.randomUUID().toString()
+        logger.log(
+            DiagnosticLevel.INFO,
+            "DOWNLOAD_PREPARE_STARTED",
+            "بدء تجهيز التنزيل والتحقق من المصدر",
+            "download.prepare",
+            mapOf(
+                "operation_id" to validationOperationId,
+                "candidate_id" to (state.resolution?.candidates?.firstOrNull { it.id == state.selectedCandidateId }?.id ?: "unknown"),
+            ),
+            null,
+        )
         val candidate = state.resolution?.candidates?.firstOrNull { it.id == state.selectedCandidateId }
             ?: return
 
@@ -178,7 +190,7 @@ class HomeViewModel(
                 downloadQueued = false,
             )
             try {
-                when (val validation = resolver.validate(candidate)) {
+                when (val validation = resolver.validate(candidate, validationOperationId)) {
                     is CandidateValidationResult.Valid -> {
                         val queued = onDownloadRequested(
                             validation.candidate.copy(sourceUrl = validation.finalUrl),
@@ -207,7 +219,10 @@ class HomeViewModel(
                             "MEDIA_VALIDATION",
                             validation.failure.toString(),
                             "download.validate",
-                            emptyMap(),
+                            mapOf(
+                                "candidate_id" to candidate.id,
+                                "operation_id" to validationOperationId,
+                            ),
                             null,
                         )
                         _uiState.value = _uiState.value.copy(
@@ -224,7 +239,10 @@ class HomeViewModel(
                     "DOWNLOAD_PREPARE_UNEXPECTED",
                     error.message ?: error::class.simpleName.orEmpty(),
                     "download.prepare",
-                    mapOf("candidate_id" to candidate.id),
+                    mapOf(
+                        "candidate_id" to candidate.id,
+                        "operation_id" to validationOperationId,
+                    ),
                     error,
                 )
                 _uiState.value = _uiState.value.copy(

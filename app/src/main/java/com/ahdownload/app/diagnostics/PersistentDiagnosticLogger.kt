@@ -1,6 +1,8 @@
 package com.ahdownload.app.diagnostics
 
 import android.content.Context
+import android.os.Build
+import com.ahdownload.BuildConfig
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
 import com.ahdownload.core.common.DiagnosticLogger
@@ -42,9 +44,19 @@ class PersistentDiagnosticLogger(
             type = type,
             reason = sanitizeText(reason),
             operation = sanitizeText(operation),
-            context = sanitizeContext(context),
+            context = sanitizeContext(
+                context + mapOf(
+                    "android_sdk" to Build.VERSION.SDK_INT.toString(),
+                    "device_manufacturer" to Build.MANUFACTURER,
+                    "device_model" to Build.MODEL,
+                    "app_version_name" to BuildConfig.VERSION_NAME,
+                    "app_version_code" to BuildConfig.VERSION_CODE.toString(),
+                    "thread" to Thread.currentThread().name,
+                ),
+            ),
             throwableType = throwable?.javaClass?.name,
             throwableMessage = throwable?.message?.let(::sanitizeText),
+            throwableStackTrace = throwable?.let(::stackTraceText),
         )
         val updated = (read() + record).takeLast(MAX_ENTRIES)
         preferences.edit().putString(KEY_LOGS, gson.toJson(updated, listType)).apply()
@@ -103,6 +115,20 @@ class PersistentDiagnosticLogger(
                 else -> sanitizeText(value)
             }
         }
+
+    private fun stackTraceText(throwable: Throwable): String =
+        buildString {
+            var current: Throwable? = throwable
+            var depth = 0
+            while (current != null && depth < 4) {
+                append(current::class.java.name)
+                current.message?.let { append(": ").append(sanitizeText(it)) }
+                appendLine()
+                current.stackTrace.take(24).forEach { appendLine("    at $it") }
+                current = current.cause
+                depth++
+            }
+        }.trim().take(12000)
 
     private fun sanitizeText(value: String): String =
         URL_WITH_QUERY.replace(value, "$1")

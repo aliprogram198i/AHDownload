@@ -14,6 +14,7 @@ data class DiagnosticLog(
     val context: Map<String, String> = emptyMap(),
     val throwableType: String? = null,
     val throwableMessage: String? = null,
+    val throwableStackTrace: String? = null,
 )
 
 fun interface DiagnosticLogger {

@@ -5,8 +5,10 @@ data class MediaProbeResult(
     val contentType: String?,
     val contentLengthBytes: Long?,
     val finalUrl: String,
+    val method: String = "GET",
+    val range: String? = null,
 )
 
 interface MediaProbe {
-    suspend fun probe(url: String): MediaProbeResult
+    suspend fun probe(url: String, headers: Map<String, String> = emptyMap()): MediaProbeResult
 }

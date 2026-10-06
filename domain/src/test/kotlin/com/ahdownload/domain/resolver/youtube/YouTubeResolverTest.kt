@@ -153,6 +153,8 @@ class YouTubeResolverTest {
         assertEquals(2, result.candidates.size)
         assertTrue(result.candidates.any { it.format.kind == MediaKind.Video })
         assertTrue(result.candidates.any { it.format.kind == MediaKind.Audio })
+        assertTrue(result.candidates.all { it.requestHeaders["Referer"] == "https://www.youtube.com/" })
+        assertTrue(result.candidates.all { it.requestHeaders["Cookie"] == "SID=redacted" })
     }
 
 }

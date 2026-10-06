@@ -24,7 +24,10 @@ class HomeResolver(
         logger = logger,
         sessionProvider = sessionProvider,
     ),
-    private val candidateValidator: CandidateValidator = CandidateValidator(OkHttpMediaProbe()),
+    private val candidateValidator: CandidateValidator = CandidateValidator(
+        probe = OkHttpMediaProbe(logger = logger),
+        logger = logger,
+    ),
     private val candidateRanker: CandidateRanker = CandidateRanker(),
 ) {
     suspend fun resolve(link: MediaLink, operationId: String? = null): ResolverResult {
@@ -63,8 +66,8 @@ class HomeResolver(
         }
     }
 
-    suspend fun validate(candidate: MediaCandidate): CandidateValidationResult =
-        candidateValidator.validate(candidate)
+    suspend fun validate(candidate: MediaCandidate, operationId: String? = null): CandidateValidationResult =
+        candidateValidator.validate(candidate, operationId)
 
     private fun containerFor(kind: MediaKind, url: String): MediaContainer {
         val extension = url.substringBefore('?').substringAfterLast('.').lowercase()

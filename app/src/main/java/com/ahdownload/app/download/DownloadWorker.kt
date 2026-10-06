@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -38,7 +39,10 @@ class DownloadWorker(
         val repository = FileDownloadRepository(applicationContext)
         val queue = PersistentDownloadQueue(repository)
         val engine = StreamingDownloadEngine(
-            source = OkHttpDownloadByteStream(),
+            source = OkHttpDownloadByteStream(
+                logger = diagnosticsLogger(),
+                dynamicHeaders = ::dynamicHeadersFor,
+            ),
             sink = LocalAtomicFileSink(),
         )
         val coordinator = DownloadCoordinator(
@@ -46,11 +50,26 @@ class DownloadWorker(
             queue = queue,
         )
 
+        val diagnostics = diagnosticsLogger()
+        diagnostics.log(
+            DiagnosticLevel.INFO,
+            "DOWNLOAD_STARTED",
+            "بدء تنفيذ مهمة التنزيل",
+            "download.worker",
+            mapOf(
+                "task_id" to task.id,
+                "source_host" to hostOf(task.sourceUrl),
+                "destination" to task.destinationPath,
+                "youtube_session_context" to isYouTubeMediaHost(task.sourceUrl).toString(),
+            ),
+            null,
+        )
+
         val record = coordinator.execute(task) { state ->
             setForeground(createForegroundInfo(state))
         }
 
-        val diagnostics = (applicationContext as com.ahdownload.app.AHDownloadApplication).diagnosticLogger
+        val diagnostics = diagnosticsLogger()
         if (record.status == DownloadStatus.FAILED) {
             diagnostics.log(
                 level = DiagnosticLevel.ERROR,
@@ -97,6 +116,28 @@ class DownloadWorker(
                 workDataOf(KEY_FAILURE_CODE to "non_terminal_state"),
             )
         }
+    }
+
+    private fun diagnosticsLogger(): com.ahdownload.app.diagnostics.PersistentDiagnosticLogger =
+        (applicationContext as com.ahdownload.app.AHDownloadApplication).diagnosticLogger
+
+    private fun dynamicHeadersFor(url: String): Map<String, String> {
+        if (!isYouTubeMediaHost(url)) return emptyMap()
+        val cookies = CookieManager.getInstance()
+            .getCookie("https://www.youtube.com/")
+            ?.takeIf { it.isNotBlank() }
+        return buildMap {
+            cookies?.let { put("Cookie", it) }
+            put("Referer", "https://www.youtube.com/")
+        }
+    }
+
+    private fun hostOf(url: String): String =
+        runCatching { java.net.URI(url).host?.lowercase() }.getOrNull() ?: "invalid"
+
+    private fun isYouTubeMediaHost(url: String): Boolean {
+        val host = hostOf(url)
+        return host == "googlevideo.com" || host.endsWith(".googlevideo.com")
     }
 
     private fun readTask(): DownloadTask? {
