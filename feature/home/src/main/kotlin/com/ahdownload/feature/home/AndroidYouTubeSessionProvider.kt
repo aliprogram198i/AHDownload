@@ -26,6 +26,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
             var timeout: Runnable? = null
             val videos = linkedSetOf<String>()
             val audios = linkedSetOf<String>()
+            var playerResponse: String? = null
             var authenticated = false
 
             fun add(set: MutableSet<String>, raw: String?) {
@@ -63,6 +64,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                             cookies = c,
                             videoUrls = videos.take(24),
                             audioUrls = audios.take(24),
+                            playerResponse = playerResponse,
                             authenticated = authenticated || cookieAuth(c),
                         ),
                     )
@@ -74,7 +76,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 val script = """(function(){
                     const v=new Set(),a=new Set();
                     const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){}
-                      if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
+                      if(/^https?:\/\/i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
                       add(v,e.currentSrc);add(v,e.src);
                       e.querySelectorAll('source').forEach(s=>add(v,s.src));
@@ -90,9 +92,15 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                       if(/(?:[?&](?:mime|type)=audio%2f|[?&](?:mime|type)=audio\/|audio)/i.test(l))a.add(u);
                       else if(/(?:[?&](?:mime|type)=video%2f|[?&](?:mime|type)=video\/|\.mp4|\.webm|\.m4v|\.mov)/i.test(l))v.add(u)
                     })}catch(_){}
+                    let p=null;
+                    try{
+                      if(window.ytInitialPlayerResponse)p=JSON.stringify(window.ytInitialPlayerResponse);
+                      else if(window.ytplayer&&window.ytplayer.config&&window.ytplayer.config.args&&window.ytplayer.config.args.player_response)
+                        p=window.ytplayer.config.args.player_response;
+                    }catch(_){}
                     const t=(document.body&&document.body.innerText||'').toLowerCase();
                     const auth=!!document.querySelector('ytd-masthead #avatar-btn,ytd-topbar-menu-button-renderer #avatar-btn')&&!t.includes('sign in');
-                    return JSON.stringify({v:Array.from(v).slice(0,24),a:Array.from(a).slice(0,24),auth});
+                    return JSON.stringify({v:Array.from(v).slice(0,24),a:Array.from(a).slice(0,24),auth,p});
                 })();"""
                 view.evaluateJavascript(script) { raw ->
                     val parsed = runCatching {
@@ -100,6 +108,9 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         if (decoded is String) org.json.JSONObject(decoded) else null
                     }.getOrNull()
                     authenticated = authenticated || (parsed?.optBoolean("auth", false) == true)
+                    parsed?.optString("p")?.takeIf { it.isNotBlank() && it != "null" }?.let {
+                        playerResponse = it
+                    }
                     parsed?.optJSONArray("v")?.let { arr ->
                         for (i in 0 until arr.length()) add(videos, arr.optString(i))
                     }
