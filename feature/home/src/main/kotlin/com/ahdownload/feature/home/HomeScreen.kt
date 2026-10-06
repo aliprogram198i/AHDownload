@@ -221,8 +221,9 @@ private fun HomeScreen(
                     "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
                     "validating_candidate_id" to (state.validatingCandidateId ?: "none"),
                     "error_visible" to "true",
+                    "error_message" to error,
                 ),
-                IllegalStateException(error),
+                null,
             )
         }
     }
