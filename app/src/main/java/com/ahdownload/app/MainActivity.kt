@@ -1,8 +1,10 @@
 package com.ahdownload.app
 
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,9 +20,11 @@ import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.download.DownloadLauncher
+import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
+import com.ahdownload.domain.resolver.MediaCandidate
 
 private enum class RootDestination { Welcome, Home, Diagnostics }
 
@@ -33,9 +37,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED
+                != PackageManager.PERMISSION_GRANTED
             ) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE,
+                )
             }
         }
 
@@ -53,17 +60,36 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title)
                     },
                     onOpenYouTubeSession = {
-                        try {
-                            val youtubeIntent = Intent(
-                                Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://www.youtube.com")
-                            )
-                            startActivity(youtubeIntent)
-                        } catch (_: Exception) { }
+                        openYouTubeSession()
                     },
                 )
             }
         }
+    }
+
+    private fun openYouTubeSession() {
+        runCatching {
+            startActivity(
+                Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse(YOUTUBE_URL),
+                ),
+            )
+        }.onFailure { error ->
+            diagnosticLogger.log(
+                level = DiagnosticLevel.WARN,
+                type = "youtube_session_open_failed",
+                reason = "Unable to open YouTube session",
+                operation = "main.open_youtube_session",
+                context = emptyMap(),
+                throwable = error,
+            )
+        }
+    }
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+        private const val YOUTUBE_URL = "https://www.youtube.com"
     }
 }
 
@@ -71,7 +97,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
-    onDownloadRequested: suspend (com.ahdownload.domain.resolver.MediaCandidate, String?) -> Boolean,
+    onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
 ) {
     var destination by rememberSaveable {
