@@ -26,7 +26,7 @@ object DiagnosticEnvironment {
             put("app_package", appContext.packageName)
             put("app_version_name", BuildConfig.VERSION_NAME)
             put("app_version_code", BuildConfig.VERSION_CODE.toString())
-            put("app_target_sdk", BuildConfig.TARGET_SDK_INT.toString())
+            put("app_target_sdk", appContext.applicationInfo.targetSdkVersion.toString())
             put("app_first_install_ms", packageInfo?.firstInstallTime?.toString() ?: "unknown")
             put("app_last_update_ms", packageInfo?.lastUpdateTime?.toString() ?: "unknown")
             put("android_sdk", Build.VERSION.SDK_INT.toString())
