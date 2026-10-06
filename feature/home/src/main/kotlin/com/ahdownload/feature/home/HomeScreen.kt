@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -222,27 +223,15 @@ private fun HomeScreen(
 
             state.resolution?.let { resolution ->
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                resolution.title ?: "وسائط متاحة",
-                                style = MaterialTheme.typography.titleLarge,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                state.result?.platform?.name?.let { AHStatusPill(it) }
-                                resolution.durationMs?.let { AHStatusPill(formatDuration(it)) }
-                                AHStatusPill("${resultSet.all.size} خيارات")
-                            }
-                            Text(
-                                "تم ترتيب المصادر وإزالة الخيارات المتكررة قبل عرضها.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    ResultSummaryCard(
+                        title = resolution.title ?: "نتائج الرابط",
+                        platform = state.result?.platform?.name,
+                        durationMs = resolution.durationMs,
+                        total = resultSet.all.size,
+                        video = resultSet.video.size,
+                        audio = resultSet.audio.size,
+                        hidden = resultSet.hiddenCount,
+                    )
                 }
 
                 resultSet.bestOverall?.let { best ->
@@ -365,6 +354,39 @@ private fun HomeScreen(
 }
 
 @Composable
+private fun ResultSummaryCard(
+    title: String,
+    platform: String?,
+    durationMs: Long?,
+    total: Int,
+    video: Int,
+    audio: Int,
+    hidden: Int,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("نتائج الرابط", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                platform?.let { AHStatusPill(it) }
+                durationMs?.let { AHStatusPill(formatDuration(it)) }
+                AHStatusPill("$total مصدر")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (video > 0) AHStatusPill("$video فيديو")
+                if (audio > 0) AHStatusPill("$audio صوت")
+                if (hidden > 0) AHStatusPill("+$hidden مخفي")
+            }
+            Text(
+                "تم تنظيف النتائج ودمج المتكرر وترتيبها حسب الجودة والتوافق والحجم قبل العرض.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
 private fun SmartHeroCard(
     model: MediaPresentationModel,
     selected: Boolean,
@@ -373,38 +395,25 @@ private fun SmartHeroCard(
     onDownload: () -> Unit,
     onOpenDiagnostics: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !validating, onClick = onSelect),
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(enabled = !validating, onClick = onSelect)) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AHStatusPill("الأفضل")
-                AHStatusPill("جاهز")
+                AHStatusPill("التوصية الأولى")
+                recommendationLabel(model)?.let { AHStatusPill(it) }
                 if (selected) AHStatusPill("محدد")
             }
-            Text("أفضل اختيار", style = MaterialTheme.typography.titleLarge)
-            Text(
-                buildQualityLine(model),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                buildDetailLine(model),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                enabled = selected && !validating,
-                onClick = onDownload,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            Text("أفضل اختيار للتنزيل", style = MaterialTheme.typography.titleLarge)
+            Text(buildQualityLine(model), style = MaterialTheme.typography.titleMedium)
+            Text(buildDetailLine(model), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                model.sizeLabel?.let { AHStatusPill(it) }
+                model.fpsLabel?.let { AHStatusPill(it) }
+                if (model.candidate.format.hasVideo && model.candidate.format.hasAudio) AHStatusPill("فيديو + صوت")
+            }
+            Button(enabled = selected && !validating, onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.Download, contentDescription = null)
                 Spacer(Modifier.padding(horizontal = 4.dp))
-                Text(if (validating) "جارٍ التحقق..." else "تنزيل")
+                Text(if (validating) "جارٍ التحقق من المصدر..." else "تنزيل هذا الاختيار")
             }
         }
     }
@@ -420,47 +429,23 @@ private fun ResultOptionCard(
     onOpenDiagnostics: () -> Unit,
 ) {
     val format = model.candidate.format
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !validating, onClick = onSelect),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-        ) {
+    Card(modifier = Modifier.fillMaxWidth().clickable(enabled = !validating, onClick = onSelect)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 AHStatusPill(model.qualityLabel)
                 AHStatusPill(containerLabel(format.container))
-                if (model.sourceState.name == "Ready") AHStatusPill("جاهز")
                 if (selected) AHStatusPill("محدد")
-                when (model.recommendation) {
-                    MediaResultRecommendation.BestQuality -> AHStatusPill("أفضل جودة")
-                    MediaResultRecommendation.SmallestSize -> AHStatusPill("أصغر حجم")
-                    else -> Unit
-                }
+                recommendationLabel(model)?.let { AHStatusPill(it) }
             }
-            Text(
-                buildQualityLine(model),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                buildDetailLine(model),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text(buildQualityLine(model), style = MaterialTheme.typography.titleMedium)
+            Text(buildDetailLine(model), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 model.sizeLabel?.let { AHStatusPill(it) }
-                format.fileSizeBytes ?: 0L
                 if (format.hasVideo && format.hasAudio) AHStatusPill("فيديو + صوت")
                 else if (format.hasVideo) AHStatusPill("فيديو")
                 else if (format.hasAudio) AHStatusPill("صوت")
             }
-            Button(
-                enabled = selected && !validating,
-                onClick = onDownload,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            OutlinedButton(enabled = selected && !validating, onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.Download, contentDescription = null)
                 Spacer(Modifier.padding(horizontal = 4.dp))
                 Text(if (validating) "جارٍ التحقق..." else "تنزيل")
@@ -468,6 +453,14 @@ private fun ResultOptionCard(
         }
     }
 }
+
+private fun recommendationLabel(model: MediaPresentationModel): String? =
+    when (model.recommendation) {
+        MediaResultRecommendation.BestOverall -> "الأفضل"
+        MediaResultRecommendation.BestQuality -> "أفضل جودة"
+        MediaResultRecommendation.SmallestSize -> "أصغر حجم"
+        MediaResultRecommendation.None -> null
+    }
 
 private fun buildQualityLine(model: MediaPresentationModel): String {
     val format = model.candidate.format
