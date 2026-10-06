@@ -74,6 +74,7 @@ fun HomeRoute(
         onDownload = viewModel::downloadSelected,
         onOpenDiagnostics = onOpenDiagnostics,
         onOpenYouTubeSession = onOpenYouTubeSession,
+        onOpenSettings = onOpenSettings,
     )
 }
 
