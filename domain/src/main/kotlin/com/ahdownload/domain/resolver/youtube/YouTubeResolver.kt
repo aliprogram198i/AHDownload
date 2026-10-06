@@ -53,13 +53,19 @@ class YouTubeResolver(
                 )
             }
             val direct = parser.parse(html)
-            if (direct is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(direct, request), request)
+            if (direct is ResolverResult.Success) {
+                val enriched = enrichWithSessionIfNeeded(direct, request)
+                return filterKind(augmentWithEmbeddedFallback(enriched, html, request), request)
+            }
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
             val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
-                if (apiResult is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(apiResult, request), request)
+                if (apiResult is ResolverResult.Success) {
+                    val enriched = enrichWithSessionIfNeeded(apiResult, request)
+                    return filterKind(augmentWithEmbeddedFallback(enriched, html, request), request)
+                }
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
             }
@@ -288,6 +294,54 @@ class YouTubeResolver(
                 throwable = null,
             )
         }
+    }
+
+    private suspend fun augmentWithEmbeddedFallback(
+        result: ResolverResult.Success,
+        html: String,
+        request: ResolverRequest,
+    ): ResolverResult.Success {
+        if (result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
+
+        val videoId = extractVideoId(request.link.normalizedUrl).orEmpty()
+        val embeddedResponse = runCatching {
+            playerClient.fetchEmbeddedPlayerResponse(
+                html = html,
+                videoUrl = request.link.normalizedUrl,
+                operationId = request.operationId,
+            )
+        }.getOrNull() ?: return result
+
+        val embeddedResult = parser.parsePlayerResponse(embeddedResponse)
+        if (embeddedResult !is ResolverResult.Success) {
+            logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
+            return result
+        }
+
+        val existingUrls = result.candidates.mapTo(linkedSetOf()) { it.sourceUrl }
+        val embeddedCandidates = embeddedResult.candidates
+            .filter { it.sourceUrl !in existingUrls }
+            .map { candidate ->
+                candidate.copy(
+                    id = "embedded-${candidate.id}",
+                    format = candidate.format.copy(id = "embedded-${candidate.format.id}"),
+                )
+            }
+
+        if (embeddedCandidates.isEmpty()) return result
+
+        logger.log(
+            DiagnosticLevel.INFO,
+            type = "youtube.embedded_candidates_added",
+            reason = "web_embedded_player_available",
+            operation = "youtube.resolve",
+            context = diagnosticContext(videoId, request.operationId) + mapOf(
+                "primary_candidates" to result.candidates.size.toString(),
+                "embedded_candidates" to embeddedCandidates.size.toString(),
+            ),
+            throwable = null,
+        )
+        return result.copy(candidates = result.candidates + embeddedCandidates)
     }
 
     private suspend fun enrichWithSessionIfNeeded(
