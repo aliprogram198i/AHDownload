@@ -157,4 +157,70 @@ class YouTubeResolverTest {
         assertTrue(result.candidates.all { it.requestHeaders["Cookie"] == "SID=redacted" })
     }
 
+    @Test
+    fun preservesCommonVideoCodecsAndContainers() = runBlocking {
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                {
+                  "videoDetails":{"title":"Codec Test","lengthSeconds":"12"},
+                  "streamingData":{
+                    "formats":[
+                      {
+                        "itag":"999",
+                        "mimeType":"video/webm; codecs=\"vp9, opus\"",
+                        "width":1920,
+                        "height":1080,
+                        "url":"https://cdn.example.com/vp9"
+                      },
+                      {
+                        "itag":"1000",
+                        "mimeType":"video/mp4; codecs=\"av01.0.08M.08, mp4a.40.2\"",
+                        "width":1920,
+                        "height":1080,
+                        "url":"https://cdn.example.com/av1"
+                      }
+                    ],
+                    "adaptiveFormats":[
+                      {
+                        "itag":"1001",
+                        "mimeType":"audio/webm; codecs=\"opus\"",
+                        "bitrate":160000,
+                        "url":"https://cdn.example.com/opus"
+                      }
+                    ]
+                  }
+                }
+            """.trimIndent()
+        }
+
+        val result = YouTubeResolver(client).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/codecs1",
+                    normalizedUrl = "https://youtu.be/codecs1",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        result as ResolverResult.Success
+
+        val vp9 = result.candidates.first { it.id == "999" }
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Webm, vp9.format.container)
+        assertEquals("vp9", vp9.format.videoCodec)
+        assertEquals("opus", vp9.format.audioCodec)
+
+        val av1 = result.candidates.first { it.id == "1000" }
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Mp4, av1.format.container)
+        assertEquals("av01.0.08M.08", av1.format.videoCodec)
+        assertEquals("mp4a.40.2", av1.format.audioCodec)
+
+        val opus = result.candidates.first { it.id == "1001" }
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Webm, opus.format.container)
+        assertEquals("opus", opus.format.audioCodec)
+    }
+
+
 }
