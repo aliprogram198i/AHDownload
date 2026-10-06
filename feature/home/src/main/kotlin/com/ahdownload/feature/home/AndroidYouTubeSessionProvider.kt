@@ -14,6 +14,8 @@ import com.ahdownload.domain.resolver.youtube.YouTubeSessionProvider
 import com.ahdownload.domain.resolver.youtube.YouTubeSessionSnapshot
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONTokener
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
 class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessionProvider {
@@ -24,8 +26,11 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
             var webView: WebView? = null
             var finished = false
             var timeout: Runnable? = null
-            val videos = linkedSetOf<String>()
-            val audios = linkedSetOf<String>()
+            val videos = ConcurrentHashMap.newKeySet<String>()
+            val audios = ConcurrentHashMap.newKeySet<String>()
+            val browserRequestHeaders = ConcurrentHashMap<String, Map<String, String>>()
+            val observedGoogleVideoUrls = ConcurrentHashMap.newKeySet<String>()
+            val browserPoTokenObserved = AtomicBoolean(false)
             var playerResponse: String? = null
             var authenticated = false
 
@@ -58,6 +63,56 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 ).any(names::contains)
             }
 
+            fun hasPoToken(resourceUrl: String): Boolean =
+                runCatching {
+                    java.net.URI(resourceUrl).rawQuery.orEmpty()
+                        .split('&')
+                        .mapNotNull { part ->
+                            part.substringBefore('=').lowercase().takeIf { it.isNotBlank() }
+                        }
+                        .any { it == "pot" || it == "potc" || it.contains("po_token") }
+                }.getOrDefault(false)
+
+            fun safeBrowserHeaders(headers: Map<String, String>): Map<String, String> = buildMap {
+                headers.forEach { (name, value) ->
+                    when (name.lowercase()) {
+                        "user-agent" -> put("User-Agent", value)
+                        "referer" -> put("Referer", value)
+                        "origin" -> put("Origin", value)
+                        "accept" -> put("Accept", value)
+                        "accept-language" -> put("Accept-Language", value)
+                    }
+                }
+            }
+
+            fun captureBrowserMedia(resourceUrl: String, requestHeaders: Map<String, String> = emptyMap()) {
+                val lower = resourceUrl.lowercase()
+                if (!lower.startsWith("https://") && !lower.startsWith("http://")) return
+                if (lower.contains(".m3u8")) return
+                if (!runCatching {
+                        java.net.URI(resourceUrl).host?.lowercase()?.endsWith(".googlevideo.com") == true
+                    }.getOrDefault(false)
+                ) return
+                if (!lower.contains("/videoplayback")) return
+
+                observedGoogleVideoUrls.add(resourceUrl)
+                if (hasPoToken(resourceUrl)) browserPoTokenObserved.set(true)
+
+                val safeHeaders = safeBrowserHeaders(requestHeaders)
+                if (safeHeaders.isNotEmpty()) {
+                    browserRequestHeaders[resourceUrl] = safeHeaders
+                }
+
+                when {
+                    Regex("""[?&](?:mime|type)=audio(?:%2f|/)""").containsMatchIn(lower) ->
+                        audios.add(resourceUrl)
+                    Regex("""[?&](?:mime|type)=video(?:%2f|/)""").containsMatchIn(lower) ->
+                        videos.add(resourceUrl)
+                    else ->
+                        videos.add(resourceUrl)
+                }
+            }
+
             fun finish() {
                 if (finished) return
                 finished = true
@@ -76,6 +131,9 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                             playerResponse = playerResponse,
                             authenticated = authenticated || cookieAuth(c),
                             userAgent = userAgent,
+                            browserRequestHeaders = browserRequestHeaders.toMap(),
+                            browserMediaObservedCount = observedGoogleVideoUrls.size,
+                            browserPoTokenObserved = browserPoTokenObserved.get(),
                         ),
                     )
                 }
@@ -157,15 +215,6 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 view.settings.mediaPlaybackRequiresUserGesture = false
                 view.settings.userAgentString = WebSettings.getDefaultUserAgent(context.applicationContext)
 
-                fun classifyGoogleVideoResource(resourceUrl: String) {
-                    val lower = resourceUrl.lowercase()
-                    when {
-                        Regex("""[?&](?:mime|type)=audio(?:%2f|/)""").containsMatchIn(lower) -> add(audios, resourceUrl)
-                        Regex("""[?&](?:mime|type)=video(?:%2f|/)""").containsMatchIn(lower) -> add(videos, resourceUrl)
-                        "/videoplayback" in lower -> add(videos, resourceUrl)
-                    }
-                }
-
                 fun isYouTubeGoogleVideo(resourceUrl: String): Boolean =
                     runCatching { java.net.URI(resourceUrl).host?.lowercase()?.endsWith(".googlevideo.com") == true }
                         .getOrDefault(false)
@@ -194,17 +243,17 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         if (request.isForMainFrame) finish()
                     }
 
+                    override fun shouldInterceptRequest(
+                        view: WebView,
+                        request: WebResourceRequest,
+                    ): android.webkit.WebResourceResponse? {
+                        captureBrowserMedia(request.url.toString(), request.requestHeaders)
+                        return null
+                    }
+
                     override fun onLoadResource(view: WebView, resourceUrl: String) {
-                        val lower = resourceUrl.lowercase()
-                        if ((resourceUrl.startsWith("https://") || resourceUrl.startsWith("http://")) &&
-                            !lower.contains(".m3u8")
-                        ) {
-                            when {
-                                isYouTubeGoogleVideo(resourceUrl) -> classifyGoogleVideoResource(resourceUrl)
-                                "mime=audio" in lower || "type=audio" in lower -> add(audios, resourceUrl)
-                                lower.contains(".mp4") || lower.contains(".webm") ||
-                                    lower.contains(".m4v") || lower.contains(".mov") -> add(videos, resourceUrl)
-                            }
+                        if (isYouTubeGoogleVideo(resourceUrl)) {
+                            captureBrowserMedia(resourceUrl)
                         }
                     }
                 }

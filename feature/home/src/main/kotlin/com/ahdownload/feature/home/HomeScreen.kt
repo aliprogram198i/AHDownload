@@ -142,29 +142,6 @@ private fun HomeScreen(
         val hiddenCount = candidates.count { it.id !in displayedPositionById }
         logger.log(
             DiagnosticLevel.INFO,
-            "SMART_CENTER_RESULT_PRESENTED",
-            "تم عرض نتائج الرابط في مركز التحميل الذكي",
-            "ui.smart_center.result",
-            mapOf(
-                "layout_mode" to layoutMode,
-                "platform" to (state.result?.platform?.name ?: "unknown"),
-                "media_kind" to (state.result?.kind?.name ?: "unknown"),
-                "title_present" to (!state.resolution?.title.isNullOrBlank()).toString(),
-                "duration_ms" to (state.resolution?.durationMs?.toString() ?: "unknown"),
-                "candidate_total" to candidates.size.toString(),
-                "displayed_candidate_total" to displayedCandidates.size.toString(),
-                "hidden_candidate_total" to hiddenCount.toString(),
-                "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
-                "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
-                "validation_candidate_id" to (state.validatingCandidateId ?: "none"),
-                "has_error" to (state.error != null).toString(),
-                "download_queued" to state.downloadQueued.toString(),
-                "presentation_policy" to "recommended_first;video_max_6;audio_max_4;remaining_hidden",
-            ),
-            null,
-        )
-        logger.log(
-            DiagnosticLevel.INFO,
             "SMART_CENTER_ORDERING",
             "تم تحديد ترتيب النتائج وطريقة عرضها",
             "ui.smart_center.ordering",
@@ -181,6 +158,29 @@ private fun HomeScreen(
                     recommendedCandidate?.format?.kind == MediaKind.Audio -> "first_audio_fallback"
                     else -> "none"
                 },
+            ),
+            null,
+        )
+        logger.log(
+            DiagnosticLevel.INFO,
+            "SMART_CENTER_RESULT_PRESENTED",
+            "تم عرض نتائج الرابط في مركز التحميل الذكي",
+            "ui.smart_center.result",
+            mapOf(
+                "layout_mode" to layoutMode,
+                "platform" to (state.result?.platform?.name ?: "unknown"),
+                "media_kind" to (state.result?.kind?.name ?: "unknown"),
+                "title_present" to (!state.resolution?.title.isNullOrBlank()).toString(),
+                "media_duration_ms" to (state.resolution?.durationMs?.toString() ?: "unknown"),
+                "candidate_total" to candidates.size.toString(),
+                "displayed_candidate_total" to displayedCandidates.size.toString(),
+                "hidden_candidate_total" to hiddenCount.toString(),
+                "recommended_candidate_id" to (recommendedCandidate?.id ?: "none"),
+                "selected_candidate_id" to (state.selectedCandidateId ?: "none"),
+                "validation_candidate_id" to (state.validatingCandidateId ?: "none"),
+                "has_error" to (state.error != null).toString(),
+                "download_queued" to state.downloadQueued.toString(),
+                "presentation_policy" to "recommended_first;video_max_6;audio_max_4;remaining_hidden",
             ),
             null,
         )

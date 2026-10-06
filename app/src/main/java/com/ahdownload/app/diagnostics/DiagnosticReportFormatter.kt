@@ -43,18 +43,16 @@ object DiagnosticReportFormatter {
                 (it.type == "YOUTUBE_FALLBACK_CANDIDATE_VALIDATION" &&
                     it.context["validation_result"] == "valid")
         }
-        val http403 = sessionEvents.count { event ->
-            event.context["http_status"] == "403" ||
-                event.context["status_code"] == "403" ||
-                event.reason.contains("403", ignoreCase = true)
-        }
+        val http403 = sessionEvents.count { event -> statusCode(event) == 403 }
         val http4xx = sessionEvents.count { event -> statusCode(event) in 400..499 }
         val http5xx = sessionEvents.count { event -> statusCode(event) in 500..599 }
-        val requestCount = sessionEvents.count {
-            it.context["http_status"] != null ||
-                it.context["status_code"] != null ||
-                it.type.contains("REQUEST", ignoreCase = true) ||
-                it.type.contains("PROBE_ATTEMPT", ignoreCase = true)
+        val requestCount = sessionEvents.count { event ->
+            event.type == "MEDIA_PROBE_ATTEMPT" ||
+                event.type.endsWith("_REQUEST") ||
+                event.type == "HTTP_REQUEST"
+        }
+        val youtubeEvidence = sessionEvents.lastOrNull {
+            it.context.containsKey("browser_media_observed")
         }
 
         val status = if (latestError == null) "OK" else "FAILED"
@@ -69,7 +67,7 @@ object DiagnosticReportFormatter {
             }
         }
         val classification = classify(status, rootCause, anchor)
-        val action = recommendedAction(status, classification, rootCause)
+        val action = recommendedAction(status, classification, rootCause, sessionEvents)
         val pipeline = pipelineStates(sessionEvents)
         val failure = when {
             latestError == null -> "NONE"
@@ -130,6 +128,14 @@ object DiagnosticReportFormatter {
             appendLine("rejected=$validationRejected")
             appendLine("selected=${selectedCount(sessionEvents)}")
 
+            youtubeEvidence?.let { evidence ->
+                appendLine()
+                appendLine("YOUTUBE")
+                appendLine("browser_media_observed=${evidence.context["browser_media_observed"] ?: "unknown"}")
+                appendLine("browser_request_headers_captured=${evidence.context["browser_request_headers_captured"] ?: "unknown"}")
+                appendLine("browser_po_token_observed=${evidence.context["browser_po_token_observed"] ?: "unknown"}")
+            }
+
             if (visible > 0 || hidden > 0) {
                 appendLine()
                 appendLine("SMART_CENTER")
@@ -160,21 +166,48 @@ object DiagnosticReportFormatter {
             else -> "INTERNAL"
         }
 
-    private fun recommendedAction(status: String, classification: String, rootCause: String): String =
-        if (status == "OK") "NONE" else when (classification) {
-            "NETWORK" -> "INSPECT_REQUEST_CONTEXT"
-            "MEDIA_RESOLUTION" -> "INSPECT_RESOLVER"
-            "MEDIA_VALIDATION" -> "INSPECT_VALIDATION"
-            "UI_FLOW" -> "INSPECT_UI_FLOW"
-            else -> if (rootCause == "UNHANDLED_EXCEPTION") "INSPECT_STACKTRACE" else "INSPECT_FAILURE_CHAIN"
+    private fun recommendedAction(
+        status: String,
+        classification: String,
+        rootCause: String,
+        events: List<DiagnosticLog>,
+    ): String {
+        if (status == "OK") return "NONE"
+        val isYouTube = events.any {
+            it.context["platform"] == "YouTube" || it.type.startsWith("youtube.", ignoreCase = true)
         }
+        val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
+        return when {
+            classification == "NETWORK" && rootCause == "HTTP_403" && isYouTube &&
+                captureEvidence?.context["browser_media_observed"] == "0" ->
+                "INSPECT_BROWSER_MEDIA_CAPTURE"
+            classification == "NETWORK" && rootCause == "HTTP_403" && isYouTube &&
+                captureEvidence?.context["browser_po_token_observed"] == "false" &&
+                captureEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->
+                "INSPECT_YOUTUBE_PO_TOKEN_OR_CLIENT_POLICY"
+            classification == "NETWORK" -> "INSPECT_REQUEST_CONTEXT"
+            classification == "MEDIA_RESOLUTION" -> "INSPECT_RESOLVER"
+            classification == "MEDIA_VALIDATION" -> "INSPECT_VALIDATION"
+            classification == "UI_FLOW" -> "INSPECT_UI_FLOW"
+            rootCause == "UNHANDLED_EXCEPTION" -> "INSPECT_STACKTRACE"
+            else -> "INSPECT_FAILURE_CHAIN"
+        }
+    }
 
     private fun pipelineStates(events: List<DiagnosticLog>): LinkedHashMap<String, String> {
         fun has(type: String) = events.any { it.type == type }
         return linkedMapOf(
             "input" to (events.firstNotNullOfOrNull { it.context["input_type"] } ?: "RECEIVED"),
             "resolution" to when {
-                has("SMART_CENTER_RESULT_READY") || has("MEDIA_RESOLUTION_COMPLETED") || has("RESOLUTION_COMPLETED") -> "COMPLETED"
+                has("SMART_CENTER_RESULT_READY") ||
+                    has("MEDIA_RESOLUTION_COMPLETED") ||
+                    has("RESOLUTION_COMPLETED") ||
+                    events.any {
+                        it.type == "SMART_CENTER_RESULT_PRESENTED" &&
+                            it.context["layout_mode"] == "RESULT_READY"
+                    } ||
+                    events.any { it.type == "YOUTUBE_CANDIDATE_REFRESH_RESULT" } ||
+                    events.any { it.type == "youtube.webview_source_selected" } -> "COMPLETED"
                 events.any { it.type.contains("RESOLVER", ignoreCase = true) } -> "STARTED"
                 else -> "NOT_STARTED"
             },
