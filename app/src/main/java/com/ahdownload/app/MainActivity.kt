@@ -67,7 +67,7 @@ private fun AHRoot(
                 onDownloadRequested = onDownloadRequested,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = { destination = RootDestination.YouTubeSession },
+                onOpenYouTubeSession = { destination = RootDestination.GoogleAccount },
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
