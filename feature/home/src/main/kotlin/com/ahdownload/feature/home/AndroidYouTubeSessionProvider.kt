@@ -168,6 +168,7 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
 
                 fun isYouTubeGoogleVideo(resourceUrl: String): Boolean =
                     runCatching { java.net.URI(resourceUrl).host?.lowercase()?.endsWith(".googlevideo.com") == true }
+                        .getOrDefault(false)
 
                 view.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, pageUrl: String) {
