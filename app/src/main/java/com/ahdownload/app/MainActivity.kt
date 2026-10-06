@@ -1,6 +1,8 @@
 package com.ahdownload.app
 
+import android.os.Build
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -29,12 +31,35 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1001)
+            }
+        }
+
+        val sharedUrl = intent.takeIf { it.action == Intent.ACTION_SEND }
+            ?.getStringExtra(Intent.EXTRA_TEXT)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
         setContent {
             AHTheme {
                 AHRoot(
+                    initialUrl = sharedUrl,
                     logger = diagnosticLogger,
                     onDownloadRequested = { candidate, title ->
                         downloadLauncher.enqueue(candidate, title)
+                    },
+                    onOpenYouTubeSession = {
+                        try {
+                            val youtubeIntent = Intent(
+                                Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://www.youtube.com")
+                            )
+                            startActivity(youtubeIntent)
+                        } catch (_: Exception) { }
                     },
                 )
             }
@@ -44,8 +69,10 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AHRoot(
+    initialUrl: String?,
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (com.ahdownload.domain.resolver.MediaCandidate, String?) -> Boolean,
+    onOpenYouTubeSession: () -> Unit,
 ) {
     var destination by rememberSaveable { mutableStateOf(RootDestination.Welcome) }
 
@@ -59,10 +86,11 @@ private fun AHRoot(
                 onContinue = { destination = RootDestination.Home },
             )
             RootDestination.Home -> HomeRoute(
+                initialUrl = initialUrl,
                 onDownloadRequested = onDownloadRequested,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = { destination = RootDestination.Home },
+                onOpenYouTubeSession = onOpenYouTubeSession,
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
