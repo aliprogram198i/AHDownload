@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter
 
 object DiagnosticReportFormatter {
     private const val DEFAULT_MAX_EVENTS = 36
+    private const val DIAGNOSTIC_SCHEMA = 2
 
     fun format(logs: List<DiagnosticLog>, maxEvents: Int = DEFAULT_MAX_EVENTS): String {
         if (logs.isEmpty()) return "AHDownload Diagnostic Report\nstatus=NO_LOGS"
@@ -47,13 +48,29 @@ object DiagnosticReportFormatter {
                 event.context["status_code"] == "403" ||
                 event.reason.contains("403", ignoreCase = true)
         }
-
-        val rootCause = when {
-            http403 > 0 -> "HTTP_403"
-            !anchor.context["failure_code"].isNullOrBlank() -> anchor.context["failure_code"]!!
-            anchor.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION_FAILED"
-            else -> anchor.type
+        val http4xx = sessionEvents.count { event -> statusCode(event) in 400..499 }
+        val http5xx = sessionEvents.count { event -> statusCode(event) in 500..599 }
+        val requestCount = sessionEvents.count {
+            it.context["http_status"] != null ||
+                it.context["status_code"] != null ||
+                it.type.contains("REQUEST", ignoreCase = true) ||
+                it.type.contains("PROBE_ATTEMPT", ignoreCase = true)
         }
+
+        val status = if (latestError == null) "OK" else "FAILED"
+        val rootCause = if (latestError == null) {
+            "NONE"
+        } else {
+            when {
+                http403 > 0 -> "HTTP_403"
+                !anchor.context["failure_code"].isNullOrBlank() -> anchor.context["failure_code"]!!
+                anchor.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION_FAILED"
+                else -> anchor.type
+            }
+        }
+        val classification = classify(status, rootCause, anchor)
+        val action = recommendedAction(status, classification, rootCause)
+        val pipeline = pipelineStates(sessionEvents)
         val failure = when {
             latestError == null -> "NONE"
             validationRejected > 0 && validationAccepted == 0 -> "NO_VALID_MEDIA_SOURCE"
@@ -66,6 +83,7 @@ object DiagnosticReportFormatter {
 
         return buildString {
             appendLine("AHDownload Diagnostic")
+            appendLine("diagnostic_schema=$DIAGNOSTIC_SCHEMA")
             appendLine(
                 "app=${anchor.context["app_package"] ?: "unknown"} " +
                     "version=${anchor.context["app_version_name"] ?: "unknown"} " +
@@ -87,13 +105,30 @@ object DiagnosticReportFormatter {
 
             appendLine()
             appendLine("RESULT")
-            appendLine("status=${if (latestError == null) "OK" else "FAILED"}")
+            appendLine("status=$status")
             appendLine("stage=${stageOf(anchor)}")
+            appendLine("classification=$classification")
             appendLine("root_cause=$rootCause")
             appendLine("failure=$failure")
-            appendLine("http_403_count=$http403")
-            appendLine("validation_rejected=$validationRejected")
-            appendLine("validation_accepted=$validationAccepted")
+            appendLine("action=$action")
+
+            appendLine()
+            appendLine("PIPELINE")
+            pipeline.forEach { (name, value) -> appendLine("$name=$value") }
+
+            appendLine()
+            appendLine("NETWORK")
+            appendLine("requests=$requestCount")
+            appendLine("http_403=$http403")
+            appendLine("http_4xx=$http4xx")
+            appendLine("http_5xx=$http5xx")
+
+            appendLine()
+            appendLine("MEDIA")
+            appendLine("candidates=${candidateCount(sessionEvents)}")
+            appendLine("accepted=$validationAccepted")
+            appendLine("rejected=$validationRejected")
+            appendLine("selected=${selectedCount(sessionEvents)}")
 
             if (visible > 0 || hidden > 0) {
                 appendLine()
@@ -114,6 +149,60 @@ object DiagnosticReportFormatter {
         }.trimEnd()
     }
 
+    private fun classify(status: String, rootCause: String, log: DiagnosticLog): String =
+        if (status == "OK") {
+            if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
+        } else when {
+            rootCause.startsWith("HTTP_") -> "NETWORK"
+            rootCause.contains("VALIDATION", ignoreCase = true) || rootCause.contains("MEDIA", ignoreCase = true) -> "MEDIA_VALIDATION"
+            log.type.contains("RESOLVER", ignoreCase = true) -> "MEDIA_RESOLUTION"
+            log.type.contains("SMART_CENTER", ignoreCase = true) -> "UI_FLOW"
+            else -> "INTERNAL"
+        }
+
+    private fun recommendedAction(status: String, classification: String, rootCause: String): String =
+        if (status == "OK") "NONE" else when (classification) {
+            "NETWORK" -> "INSPECT_REQUEST_CONTEXT"
+            "MEDIA_RESOLUTION" -> "INSPECT_RESOLVER"
+            "MEDIA_VALIDATION" -> "INSPECT_VALIDATION"
+            "UI_FLOW" -> "INSPECT_UI_FLOW"
+            else -> if (rootCause == "UNHANDLED_EXCEPTION") "INSPECT_STACKTRACE" else "INSPECT_FAILURE_CHAIN"
+        }
+
+    private fun pipelineStates(events: List<DiagnosticLog>): LinkedHashMap<String, String> {
+        fun has(type: String) = events.any { it.type == type }
+        return linkedMapOf(
+            "input" to (events.firstNotNullOfOrNull { it.context["input_type"] } ?: "RECEIVED"),
+            "resolution" to when {
+                has("SMART_CENTER_RESULT_READY") || has("MEDIA_RESOLUTION_COMPLETED") || has("RESOLUTION_COMPLETED") -> "COMPLETED"
+                events.any { it.type.contains("RESOLVER", ignoreCase = true) } -> "STARTED"
+                else -> "NOT_STARTED"
+            },
+            "ordering" to if (has("SMART_CENTER_ORDERING")) "COMPLETED" else "NOT_STARTED",
+            "presentation" to if (has("SMART_CENTER_RESULT_PRESENTED")) "COMPLETED" else "NOT_STARTED",
+            "media_validation" to when {
+                events.any { it.type == "MEDIA_VALIDATION_ACCEPTED" || it.type == "MEDIA_VALIDATION_REJECTED" } -> "COMPLETED"
+                events.any { it.type.contains("MEDIA_VALIDATION", ignoreCase = true) } -> "STARTED"
+                else -> "NOT_STARTED"
+            },
+            "download" to when {
+                events.any { it.type.contains("DOWNLOAD_COMPLETED", ignoreCase = true) } -> "COMPLETED"
+                events.any { it.operation.contains("download", ignoreCase = true) && it.type.contains("DOWNLOAD", ignoreCase = true) } -> "STARTED"
+                else -> "NOT_STARTED"
+            },
+        )
+    }
+
+    private fun candidateCount(events: List<DiagnosticLog>): Int = events.count {
+        it.type.contains("CANDIDATE", ignoreCase = true) && !it.type.contains("VALIDATION", ignoreCase = true)
+    }
+
+    private fun selectedCount(events: List<DiagnosticLog>): Int = events.count {
+        it.type.contains("SELECTED", ignoreCase = true) || it.type == "MEDIA_SOURCE_SELECTED"
+    }
+
+    private fun statusCode(event: DiagnosticLog): Int? =
+        (event.context["http_status"] ?: event.context["status_code"])?.toIntOrNull()
     private fun stageOf(log: DiagnosticLog): String =
         log.context["stage"] ?: when {
             log.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION"
@@ -137,7 +226,9 @@ object DiagnosticReportFormatter {
         if (rejected > 0) parts += "candidate_rejected"
         if (accepted == 0 && rejected > 0) parts += "no_valid_source"
         if (latestError?.type?.contains("SMART_CENTER", ignoreCase = true) == true) parts += "ui_error"
-        return if (parts.isEmpty()) "no_failure_chain" else parts.distinct().joinToString(" -> ")
+        if (latestError == null) return "NONE"
+        return if (parts.isEmpty()) (latestError.context["failure_code"] ?: latestError.type)
+        else parts.distinct().joinToString(" -> ")
     }
 
     private fun formatEvent(log: DiagnosticLog): String {
