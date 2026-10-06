@@ -36,6 +36,8 @@ android {
                 keyAlias = signingAlias
                 keyPassword = signingKeyPassword
                 storeType = "PKCS12"
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
