@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
             )
         }.onFailure { error ->
             diagnosticLogger.log(
-                level = DiagnosticLevel.WARN,
+                level = DiagnosticLevel.WARNING,
                 type = "youtube_session_open_failed",
                 reason = "Unable to open YouTube session",
                 operation = "main.open_youtube_session",
