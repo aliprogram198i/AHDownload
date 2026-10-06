@@ -2,7 +2,7 @@ package com.ahdownload.app.diagnostics
 
 import android.content.Context
 import android.os.Build
-import com.ahdownload.BuildConfig
+import com.ahdownload.app.BuildConfig
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
 import com.ahdownload.core.common.DiagnosticLogger
