@@ -53,7 +53,7 @@ class YouTubeResolver(
                 )
             }
             val direct = parser.parse(html)
-            if (direct is ResolverResult.Success) return filterKind(direct, request)
+            if (direct is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(direct, request), request)
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
             val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
@@ -138,7 +138,7 @@ class YouTubeResolver(
             val sessionHtml = runCatching { httpClient.get(request.link.normalizedUrl, headers) }.getOrNull()
             if (sessionHtml != null) {
                 val direct = parser.parse(sessionHtml)
-                if (direct is ResolverResult.Success) return filterKind(direct, request)
+                if (direct is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(direct, request), request)
                 val api = runCatching {
                     playerClient.fetchPlayerResponse(sessionHtml, request.link.normalizedUrl, headers, request.operationId)
                 }.getOrNull()
@@ -182,6 +182,33 @@ class YouTubeResolver(
                 throwable = null,
             )
         }
+    }
+
+    private suspend fun enrichWithSessionIfNeeded(
+        result: ResolverResult.Success,
+        request: ResolverRequest,
+    ): ResolverResult.Success {
+        if (result.candidates.isEmpty() || result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
+        if (result.candidates.any { it.requestHeaders.isNotEmpty() }) return result
+        val provider = sessionProvider ?: return result
+        val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrNull() ?: return result
+        logger.log(
+            DiagnosticLevel.INFO,
+            type = "youtube.session_context_attached",
+            reason = "session_headers_attached_to_media_candidates",
+            operation = "youtube.resolve",
+            context = diagnosticContext(extractVideoId(request.link.normalizedUrl).orEmpty(), request.operationId) + mapOf(
+                "candidate_count" to result.candidates.size.toString(),
+                "cookies_available" to (!snapshot.cookies.isNullOrBlank()).toString(),
+            ),
+            throwable = null,
+        )
+        return withSessionHeaders(result, snapshot)
+    }
+
+    private fun isYouTubeMediaHost(url: String): Boolean {
+        val host = runCatching { URI(url).host?.lowercase() }.getOrNull() ?: return false
+        return host == "googlevideo.com" || host.endsWith(".googlevideo.com")
     }
 
     private fun withSessionHeaders(
