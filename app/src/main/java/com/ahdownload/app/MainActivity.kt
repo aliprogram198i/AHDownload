@@ -463,6 +463,7 @@ private fun AHRoot(
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
+            downloadPreferencesProvider = downloadPreferencesStore,
         )
         RootDestination.Downloads -> DownloadsRoute(
             repository = downloadRepository,
