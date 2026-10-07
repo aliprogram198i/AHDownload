@@ -39,6 +39,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.BuildConfig
 import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.AudioBitratePreference
+import com.ahdownload.core.common.VideoQualityPreference
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
