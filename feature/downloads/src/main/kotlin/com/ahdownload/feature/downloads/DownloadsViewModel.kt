@@ -7,6 +7,7 @@ import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
