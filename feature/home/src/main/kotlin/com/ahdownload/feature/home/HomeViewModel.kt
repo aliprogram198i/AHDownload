@@ -505,7 +505,10 @@ class HomeViewModel(
             downloadQueued = false,
         )
     }
-    private fun downloadSelected(extractAudio: Boolean = false) {
+    private fun downloadSelected(
+        extractAudio: Boolean = false,
+        audioOutputFormat: AudioOutputFormat = _uiState.value.selectedAudioOutputFormat,
+    ) {
         if (downloadJob?.isActive == true) return
 
         val state = _uiState.value
@@ -655,7 +658,7 @@ class HomeViewModel(
                         val queued = if (extractAudio) {
                             onAudioOnlyRequested(
                                 validation.candidate.copy(sourceUrl = validation.finalUrl),
-                                outputFormat,
+                                audioOutputFormat,
                                 state.resolution.title,
                                 state.result?.normalizedUrl,
                                 state.resolution.thumbnailUrl,
@@ -858,7 +861,11 @@ class HomeViewModel(
                     ),
                     null,
                 )
-                downloadCandidateInternal(candidate.id, extractAudio = true)
+                downloadCandidateInternal(
+                    candidate.id,
+                    extractAudio = true,
+                    audioOutputFormat = outputFormat,
+                )
             }
             else -> {
                 _uiState.value = _uiState.value.copy(
@@ -887,14 +894,21 @@ class HomeViewModel(
         }
     }
 
-    private fun downloadCandidateInternal(id: String, extractAudio: Boolean) {
+    private fun downloadCandidateInternal(
+        id: String,
+        extractAudio: Boolean,
+        audioOutputFormat: AudioOutputFormat = _uiState.value.selectedAudioOutputFormat,
+    ) {
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         _uiState.value = _uiState.value.copy(
             selectedCandidateId = id,
             error = null,
             downloadQueued = false,
         )
-        downloadSelected(extractAudio = extractAudio)
+        downloadSelected(
+            extractAudio = extractAudio,
+            audioOutputFormat = audioOutputFormat,
+        )
     }
 
     class Factory(
