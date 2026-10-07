@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -80,6 +81,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.widthIn
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -95,6 +98,9 @@ import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.favorites.FavoriteItem
+import com.ahdownload.domain.favorites.FavoriteKey
+import com.ahdownload.domain.favorites.FavoriteRepository
 import com.ahdownload.domain.model.MediaKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -108,11 +114,13 @@ private enum class DownloadFilter(val label: String) {
     Active("نشطة"),
     Completed("مكتملة"),
     Failed("فشل"),
+    Favorites("المفضلة"),
 }
 
 @Composable
 fun DownloadsRoute(
     repository: DownloadRepository,
+    favoriteRepository: FavoriteRepository,
     onPauseDownload: (String) -> Unit,
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
@@ -120,6 +128,7 @@ fun DownloadsRoute(
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
+    onOpenStudio: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
@@ -136,6 +145,9 @@ fun DownloadsRoute(
     val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModel.Factory(repository, controls))
     val records by vm.records.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
+    val favoriteUrls = remember(favorites) { favorites.map { FavoriteKey.fromUrl(it.url) }.toSet() }
+    val favoriteScope = rememberCoroutineScope()
     val transferStats = remember { mutableStateMapOf<String, TransferStats>() }
     val lastSamples = remember { mutableMapOf<String, TransferSample>() }
     var refreshTick by remember { mutableLongStateOf(0L) }
@@ -204,6 +216,7 @@ fun DownloadsRoute(
 
     DownloadsScreen(
         repository = repository,
+        favorites = favoriteUrls,
         records = records,
         onBack = onBack,
         onNavigateHome = onNavigateHome,
@@ -223,6 +236,22 @@ fun DownloadsRoute(
         onShareDownload = onShareDownload,
         onDeleteDownloadFile = onDeleteDownloadFile,
         onOpenDownloadFolder = onOpenDownloadFolder,
+        onOpenStudio = onOpenStudio,
+        onToggleFavorite = { record ->
+            val url = (record.task.sourcePageUrl ?: record.task.sourceUrl).trim()
+            val key = FavoriteKey.fromUrl(url)
+            val existing = favorites.firstOrNull { FavoriteKey.fromUrl(it.url) == key }
+            val item = FavoriteItem(
+                id = key,
+                url = url,
+                title = record.task.displayName,
+                thumbnailUrl = record.task.thumbnailUrl,
+                createdAtEpochMs = System.currentTimeMillis(),
+            )
+            favoriteScope.launch {
+                favoriteRepository.setFavorite(item, favorite = existing == null)
+            }
+        },
         uiTraceLogger = uiTraceLogger,
     )
 }
@@ -232,6 +261,7 @@ fun DownloadsRoute(
 private fun DownloadsScreen(
     repository: DownloadRepository,
     records: List<DownloadRecord>,
+    favorites: Set<String>,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     onNavigateSettings: () -> Unit,
@@ -250,6 +280,8 @@ private fun DownloadsScreen(
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
+    onOpenStudio: (DownloadRecord) -> Unit,
+    onToggleFavorite: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
     var query by remember { mutableStateOf("") }
@@ -279,6 +311,7 @@ private fun DownloadsScreen(
                     DownloadFilter.Active -> record.status in ACTIVE_STATUSES
                     DownloadFilter.Completed -> record.status == DownloadStatus.COMPLETED
                     DownloadFilter.Failed -> record.status == DownloadStatus.FAILED
+                    DownloadFilter.Favorites -> FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites
                 }
                 val title = record.task.displayName.orEmpty()
                 val path = record.task.destinationPath
@@ -427,6 +460,9 @@ private fun DownloadsScreen(
                                 DownloadFilter.Active -> activeCount
                                 DownloadFilter.Completed -> completedCount
                                 DownloadFilter.Failed -> failedCount
+                                DownloadFilter.Favorites -> records.count {
+                                    FavoriteKey.fromUrl(it.task.sourcePageUrl ?: it.task.sourceUrl) in favorites
+                                }
                             }
                             item {
                                 FilterChip(
@@ -504,6 +540,15 @@ private fun DownloadsScreen(
                             },
                             onOpenDownloadFolder = {
                                 onOpenDownloadFolder(record)
+                            },
+                            onOpenStudio = {
+                                uiTraceLogger.interaction("DOWNLOADS", "studio_control", "open_studio")
+                                onOpenStudio(record)
+                            },
+                            favorite = FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites,
+                            onToggleFavorite = {
+                                uiTraceLogger.interaction("DOWNLOADS", "favorite_control", "toggle")
+                                onToggleFavorite(record)
                             },
                         )
                     }
@@ -641,6 +686,9 @@ private fun DownloadRecordCard(
     onShareDownload: () -> Unit,
     onDeleteDownloadFile: () -> Unit,
     onOpenDownloadFolder: () -> Unit,
+    onOpenStudio: () -> Unit,
+    favorite: Boolean,
+    onToggleFavorite: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val progress = record.totalBytes
@@ -728,6 +776,20 @@ private fun DownloadRecordCard(
                     )
                 }
 
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.semantics {
+                        contentDescription =
+                            if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
+                    },
+                ) {
+                    Icon(
+                        Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Rounded.MoreVert, contentDescription = "المزيد")
@@ -736,6 +798,16 @@ private fun DownloadRecordCard(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
+                        if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
+                            DropdownMenuItem(
+                                text = { Text("Smart Studio") },
+                                leadingIcon = { Icon(Icons.Rounded.VideoFile, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenStudio()
+                                },
+                            )
+                        }
                         if (record.status == DownloadStatus.COMPLETED && fileAvailable && record.destinationUri != null) {
                             DropdownMenuItem(
                                 text = { Text("فتح") },
