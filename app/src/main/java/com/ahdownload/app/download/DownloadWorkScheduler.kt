@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.ahdownload.domain.download.DownloadRecord
+import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import java.util.concurrent.TimeUnit
@@ -93,7 +94,7 @@ class DownloadWorkScheduler(
             .putString(DownloadWorker.KEY_MEDIA_KIND, task.mediaKind?.name)
             .putString(
                 DownloadWorker.KEY_PROCESSING_MODE,
-                runCatching { task.processingMode }.getOrNull().name,
+                (runCatching { task.processingMode }.getOrNull() ?: DownloadProcessingMode.Direct).name,
             )
             .putBoolean(DownloadWorker.KEY_FORCE_REFRESH, forceRefresh)
             .apply {
