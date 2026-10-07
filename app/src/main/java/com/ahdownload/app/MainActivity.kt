@@ -24,6 +24,7 @@ import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
 import com.ahdownload.app.diagnostics.UiDiagnosticsRoute
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.settings.DownloadLocationStore
+import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
     private val diagnosticLogger by lazy { applicationServices.diagnosticLogger }
     private val uiTraceLogger by lazy { applicationServices.uiTraceLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
+    private val downloadPreferencesStore by lazy { DownloadPreferencesStore(applicationContext) }
 
     private val folderPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -89,6 +91,7 @@ class MainActivity : ComponentActivity() {
                     onCancelDownload = downloadWorkScheduler::cancel,
                     onOpenDownload = ::openCompletedDownload,
                     downloadLocationStore = downloadLocationStore,
+                    downloadPreferencesProvider = downloadPreferencesStore,
                     openDownloadsOnStart = openDownloadsOnStart,
                     onPickDownloadFolder = {
                         folderPicker.launch(downloadLocationStore.persistedUri())
@@ -284,6 +287,7 @@ private fun AHRoot(
     onCancelDownload: (String) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
+    downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
 ) {
