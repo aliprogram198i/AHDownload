@@ -18,6 +18,9 @@ import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
 import com.ahdownload.domain.search.ContentSearchItem
 import com.ahdownload.domain.search.ContentSearchProvider
 import com.ahdownload.domain.validation.CandidateValidationResult
+import com.ahdownload.app.settings.AudioBitratePreference
+import com.ahdownload.app.settings.DownloadPreferencesStore
+import com.ahdownload.app.settings.VideoQualityPreference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +68,7 @@ class HomeViewModel(
     private val resolver: HomeResolver,
     private val recentLinkStore: RecentLinkStore,
     private val searchProvider: ContentSearchProvider,
+    private val downloadPreferencesStore: DownloadPreferencesStore,
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
@@ -75,6 +79,7 @@ class HomeViewModel(
     private var analysisJob: Job? = null
     private var searchJob: Job? = null
     private var downloadJob: Job? = null
+    private var batchJob: Job? = null
 
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
@@ -274,6 +279,7 @@ class HomeViewModel(
                                 url = link.normalizedUrl,
                                 title = resolution.title,
                                 platform = link.platform.name,
+                                thumbnailUrl = resolution.thumbnailUrl,
                             )
                             recentLinkStore.list()
                         } else {
@@ -349,7 +355,7 @@ class HomeViewModel(
     }
 
     fun downloadSelected() {
-        if (downloadJob?.isActive == true) return
+        if (downloadJob?.isActive == true || batchJob?.isActive == true) return
 
         val state = _uiState.value
         val candidate = state.resolution?.candidates
@@ -565,6 +571,65 @@ class HomeViewModel(
         }
     }
 
+    fun downloadBatch(ids: List<String>) {
+        if (batchJob?.isActive == true || downloadJob?.isActive == true) return
+        val uniqueIds = ids.distinct().filter { id ->
+            _uiState.value.resolution?.candidates?.any { it.id == id } == true
+        }
+        if (uniqueIds.isEmpty()) return
+
+        batchJob = viewModelScope.launch {
+            for (id in uniqueIds) {
+                selectCandidate(id)
+                downloadSelected()
+                downloadJob?.join()
+            }
+        }
+    }
+
+    private fun preferredCandidateId(
+        candidates: List<MediaCandidate>,
+        kind: MediaKind,
+    ): String? {
+        val preferences = downloadPreferencesStore.current()
+        return when (kind) {
+            MediaKind.Video -> {
+                val videos = candidates.filter { it.format.kind == MediaKind.Video }
+                val target = preferences.videoQuality.height
+                when {
+                    videos.isEmpty() -> null
+                    target == null -> null
+                    else -> videos
+                        .sortedWith(
+                            compareByDescending<MediaCandidate> { (it.format.height ?: 0) <= target }
+                                .thenByDescending { minOf(it.format.height ?: 0, target) }
+                                .thenByDescending { it.format.height ?: 0 }
+                                .thenByDescending { it.format.hasAudio }
+                        )
+                        .firstOrNull()
+                        ?.id
+                }
+            }
+            MediaKind.Audio -> {
+                val audio = candidates.filter { it.format.kind == MediaKind.Audio }
+                val target = preferences.audioBitrate.bitrateKbps
+                when {
+                    audio.isEmpty() -> null
+                    target == null -> null
+                    else -> audio
+                        .sortedWith(
+                            compareByDescending<MediaCandidate> { (it.format.bitrateKbps ?: 0) <= target }
+                                .thenByDescending { minOf(it.format.bitrateKbps ?: 0, target) }
+                                .thenByDescending { it.format.bitrateKbps ?: 0 }
+                        )
+                        .firstOrNull()
+                        ?.id
+                }
+            }
+            else -> null
+        }
+    }
+
     fun downloadCandidate(id: String) {
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         selectCandidate(id)
@@ -597,6 +662,7 @@ class HomeViewModel(
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
+                downloadPreferencesStore = DownloadPreferencesStore(context.applicationContext),
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
