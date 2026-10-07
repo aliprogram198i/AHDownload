@@ -83,8 +83,8 @@ class YouTubeSearchProvider(
 
         when {
             value.isJsonObject -> {
-                val object = value.asJsonObject
-                for ((key, child) in object.entrySet()) {
+                val jsonObject = value.asJsonObject
+                for ((key, child) in jsonObject.entrySet()) {
                     if (results.size >= limit) break
                     if (key == "videoRenderer" && child.isJsonObject) {
                         parseRenderer(child.asJsonObject)?.let(results::add)
