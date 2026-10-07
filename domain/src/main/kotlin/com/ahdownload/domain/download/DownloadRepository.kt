@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.Flow
 interface DownloadRepository {
     suspend fun upsert(record: DownloadRecord)
     suspend fun get(taskId: String): DownloadRecord?
+    suspend fun delete(taskId: String)
     suspend fun listHistory(): List<DownloadRecord>
     fun observeHistory(): Flow<List<DownloadRecord>>
     suspend fun listActive(): List<DownloadRecord>

@@ -38,13 +38,32 @@ class DownloadsViewModel(
     }
 
     fun cancel(record: DownloadRecord) {
-        if (record.status in setOf(DownloadStatus.QUEUED, DownloadStatus.PREPARING, DownloadStatus.DOWNLOADING)) {
+        if (record.status in setOf(
+                DownloadStatus.QUEUED,
+                DownloadStatus.PREPARING,
+                DownloadStatus.DOWNLOADING,
+                DownloadStatus.PAUSED,
+            )
+        ) {
             controls.cancel(record.task.id)
         }
     }
 
     fun retry(record: DownloadRecord) {
         if (record.status == DownloadStatus.FAILED) controls.resume(record)
+    }
+
+    fun deleteHistory(record: DownloadRecord) {
+        if (record.status !in setOf(
+                DownloadStatus.QUEUED,
+                DownloadStatus.PREPARING,
+                DownloadStatus.DOWNLOADING,
+            )
+        ) {
+            viewModelScope.launch {
+                repository.delete(record.task.id)
+            }
+        }
     }
 
     class Factory(
