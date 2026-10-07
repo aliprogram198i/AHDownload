@@ -35,23 +35,27 @@ class OkHttpMediaProbe(
         headers: Map<String, String>,
         operationId: String?,
     ): MediaProbeResult {
+        // YouTube media URLs can reject an unrestricted GET while accepting a
+        // byte-range request. Probe the same transfer mode used by the downloader
+        // before declaring a candidate invalid.
+        val range = "bytes=0-0"
         val started = TimeSource.Monotonic.markNow()
-        var response = execute(url, "GET", headers, null)
+        var response = execute(url, "GET", headers, range)
         logger.log(
             level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "MEDIA_PROBE_ATTEMPT",
-            reason = "youtube_download_aligned_get_response",
+            reason = "youtube_range_get_response",
             operation = "download.validate",
             context = probeContext(
                 url,
                 "GET",
-                null,
+                range,
                 response.code,
                 response.header("Content-Type"),
                 started.elapsedNow().inWholeMilliseconds,
                 headers,
                 operationId,
-            ) + mapOf("validation_mode" to "YOUTUBE_DOWNLOAD_ALIGNED"),
+            ) + mapOf("validation_mode" to "YOUTUBE_RANGE_ALIGNED"),
             throwable = null,
         )
 
@@ -67,30 +71,30 @@ class OkHttpMediaProbe(
                     !it.equals("Referer", ignoreCase = true)
             }
             val retryStarted = TimeSource.Monotonic.markNow()
-            response = execute(url, "GET", retryHeaders, null)
+            response = execute(url, "GET", retryHeaders, range)
             logger.log(
                 level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
                 type = "MEDIA_PROBE_ATTEMPT",
-                reason = "youtube_403_header_sanitized_retry",
+                reason = "youtube_403_header_sanitized_range_retry",
                 operation = "download.validate",
                 context = probeContext(
                     url,
                     "GET",
-                    null,
+                    range,
                     response.code,
                     response.header("Content-Type"),
                     retryStarted.elapsedNow().inWholeMilliseconds,
                     retryHeaders,
                     operationId,
                 ) + mapOf(
-                    "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_RETRY",
+                    "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_RANGE_RETRY",
                     "removed_session_headers" to "Cookie,Origin,Referer",
                 ),
                 throwable = null,
             )
         }
 
-        return response.toResult("GET", null)
+        return response.toResult("GET", range)
     }
 
     private fun probeGeneric(
