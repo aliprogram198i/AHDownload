@@ -8,6 +8,8 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.DownloadEnqueueResult
+import com.ahdownload.core.common.DownloadPreferences
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.MediaCandidate
@@ -57,6 +59,12 @@ data class HomeUiState(
     val mode: HomeMode = HomeMode.Link,
     val showAll: Boolean = false,
     val resultFilter: ResultFilter = ResultFilter.All,
+    val selectedSearchIds: Set<String> = emptySet(),
+    val batchDownloading: Boolean = false,
+    val batchIndex: Int = 0,
+    val batchTotal: Int = 0,
+    val batchQueued: Int = 0,
+    val batchError: String? = null,
 )
 
 class HomeViewModel(
@@ -68,6 +76,7 @@ class HomeViewModel(
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
+    private val preferencesProvider: DownloadPreferencesProvider,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(recentLinks = recentLinkStore.list()))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -108,6 +117,12 @@ class HomeViewModel(
             searching = true,
             searchResults = emptyList(),
             searchError = null,
+            selectedSearchIds = emptySet(),
+            batchDownloading = false,
+            batchIndex = 0,
+            batchTotal = 0,
+            batchQueued = 0,
+            batchError = null,
         )
 
         searchJob = viewModelScope.launch {
@@ -188,7 +203,103 @@ class HomeViewModel(
             searchQuery = value,
             searchResults = if (value == _uiState.value.searchQuery) _uiState.value.searchResults else emptyList(),
             searchError = null,
+            selectedSearchIds = if (value == _uiState.value.searchQuery) _uiState.value.selectedSearchIds else emptySet(),
+            batchError = null,
         )
+    }
+
+    fun toggleSearchSelection(id: String) {
+        if (_uiState.value.batchDownloading) return
+        val selected = _uiState.value.selectedSearchIds.toMutableSet()
+        if (!selected.add(id)) selected.remove(id)
+        _uiState.value = _uiState.value.copy(selectedSearchIds = selected)
+    }
+
+    fun clearSearchSelection() {
+        _uiState.value = _uiState.value.copy(selectedSearchIds = emptySet())
+    }
+
+    fun downloadSelectedSearchResults(items: List<ContentSearchItem>) {
+        if (_uiState.value.batchDownloading) return
+        val selected = items.filter { it.id in _uiState.value.selectedSearchIds }.take(8)
+        if (selected.isEmpty()) {
+            _uiState.value = _uiState.value.copy(batchError = "حدد نتيجة واحدة على الأقل.")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            batchDownloading = true,
+            batchIndex = 0,
+            batchTotal = selected.size,
+            batchQueued = 0,
+            batchError = null,
+        )
+
+        viewModelScope.launch {
+            var queuedCount = 0
+            var failures = 0
+            selected.forEachIndexed { index, item ->
+                _uiState.value = _uiState.value.copy(
+                    batchIndex = index + 1,
+                    batchQueued = queuedCount,
+                )
+                try {
+                    val link = analyzer.analyze(item.url)
+                    if (link == null) {
+                        failures++
+                        return@forEachIndexed
+                    }
+                    val operationId = UUID.randomUUID().toString()
+                    when (val resolution = resolver.resolve(link, operationId)) {
+                        is ResolverResult.Success -> {
+                            val smart = SmartResultEngine().build(resolution.candidates)
+                            val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesProvider.read())
+                            val candidate = resolution.candidates.firstOrNull { it.id == selectedId }
+                            if (candidate == null) {
+                                failures++
+                                return@forEachIndexed
+                            }
+                            when (val validation = resolver.validate(candidate, operationId)) {
+                                is CandidateValidationResult.Valid -> {
+                                    val queued = onDownloadRequested(
+                                        validation.candidate.copy(sourceUrl = validation.finalUrl),
+                                        item.title,
+                                        link.normalizedUrl,
+                                        item.thumbnailUrl,
+                                    )
+                                    if (queued == DownloadEnqueueResult.QUEUED) queuedCount++ else failures++
+                                }
+                                is CandidateValidationResult.Invalid -> failures++
+                            }
+                        }
+                        is ResolverResult.Failure -> failures++
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    failures++
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "SEARCH_BATCH_ITEM_FAILED",
+                        error.message ?: error::class.simpleName.orEmpty(),
+                        "home.search.batch",
+                        mapOf("item_id" to item.id),
+                        error,
+                    )
+                }
+                _uiState.value = _uiState.value.copy(batchQueued = queuedCount)
+            }
+            _uiState.value = _uiState.value.copy(
+                batchDownloading = false,
+                batchQueued = queuedCount,
+                selectedSearchIds = emptySet(),
+                batchError = if (failures > 0) {
+                    "أضيف $queuedCount للتنزيل وتعذر تجهيز $failures."
+                } else {
+                    "تمت إضافة $queuedCount عناصر إلى قائمة التنزيل."
+                },
+            )
+        }
     }
 
     fun openSearchResult(item: ContentSearchItem) {
@@ -266,14 +377,13 @@ class HomeViewModel(
                 when (val resolution = resolver.resolve(link, operationId)) {
                     is ResolverResult.Success -> {
                         val smart = SmartResultEngine().build(resolution.candidates)
-                        val selectedId = smart.bestOverall?.candidate?.id
-                            ?: smart.bestQuality?.candidate?.id
-                            ?: resolution.candidates.firstOrNull()?.id
+                        val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesProvider.read())
                         val updatedRecent = if (resolution.candidates.isNotEmpty()) {
                             recentLinkStore.add(
                                 url = link.normalizedUrl,
                                 title = resolution.title,
                                 platform = link.platform.name,
+                                thumbnailUrl = resolution.thumbnailUrl,
                             )
                             recentLinkStore.list()
                         } else {
@@ -565,6 +675,47 @@ class HomeViewModel(
         }
     }
 
+    private fun chooseDefaultCandidate(
+        candidates: List<MediaCandidate>,
+        smart: com.ahdownload.domain.resolver.SmartResultSet,
+        preferences: DownloadPreferences,
+    ): String? {
+        if (!preferences.smartDownload) {
+            return smart.bestOverall?.candidate?.id
+                ?: smart.bestQuality?.candidate?.id
+                ?: candidates.firstOrNull()?.id
+        }
+
+        val video = candidates
+            .filter { it.format.kind == MediaKind.Video }
+            .sortedWith(
+                compareByDescending<MediaCandidate> { it.format.height ?: 0 }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 },
+            )
+        val audio = candidates
+            .filter { it.format.kind == MediaKind.Audio }
+            .sortedByDescending { it.format.bitrateKbps ?: 0 }
+
+        val preferredHeight = preferences.videoQuality.maxHeight
+        val preferredVideo = if (preferredHeight == null) {
+            video.firstOrNull()
+        } else {
+            video.firstOrNull { (it.format.height ?: 0) <= preferredHeight } ?: video.lastOrNull()
+        }
+        val preferredBitrate = preferences.audioBitrate.kbps
+        val preferredAudio = if (preferredBitrate <= 0) {
+            audio.firstOrNull()
+        } else {
+            audio.firstOrNull { (it.format.bitrateKbps ?: 0) <= preferredBitrate } ?: audio.lastOrNull()
+        }
+
+        return when {
+            preferredVideo != null -> preferredVideo.id
+            preferredAudio != null -> preferredAudio.id
+            else -> smart.bestOverall?.candidate?.id ?: candidates.firstOrNull()?.id
+        }
+    }
+
     fun downloadCandidate(id: String) {
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         selectCandidate(id)
@@ -585,6 +736,7 @@ class HomeViewModel(
         private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
+        private val preferencesProvider: DownloadPreferencesProvider,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -597,6 +749,7 @@ class HomeViewModel(
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
+                preferencesProvider = preferencesProvider,
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }

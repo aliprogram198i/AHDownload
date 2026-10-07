@@ -46,6 +46,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -76,6 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
@@ -104,10 +106,11 @@ fun HomeRoute(
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
+    preferencesProvider: DownloadPreferencesProvider,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
-        HomeViewModel.Factory(onDownloadRequested, logger, context)
+        HomeViewModel.Factory(onDownloadRequested, logger, context, preferencesProvider)
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -132,6 +135,9 @@ fun HomeRoute(
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSearch = viewModel::searchContent,
         onSearchResultSelected = viewModel::openSearchResult,
+        onSearchSelectionToggle = viewModel::toggleSearchSelection,
+        onClearSearchSelection = viewModel::clearSearchSelection,
+        onBatchDownload = viewModel::downloadSelectedSearchResults,
         onOpenSettings = onOpenSettings,
         onOpenDownloads = onOpenDownloads,
         onRecentLinkSelected = viewModel::selectRecentLink,
@@ -156,6 +162,9 @@ private fun HomeScreen(
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
     onSearchResultSelected: (ContentSearchItem) -> Unit,
+    onSearchSelectionToggle: (String) -> Unit,
+    onClearSearchSelection: () -> Unit,
+    onBatchDownload: (List<ContentSearchItem>) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
     onRecentLinkSelected: (RecentLink) -> Unit,
@@ -539,11 +548,63 @@ private fun HomeScreen(
 
                 if (state.searchResults.isNotEmpty()) {
                     item {
-                        Text(
-                            "نتائج البحث",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "نتائج البحث",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (state.selectedSearchIds.isNotEmpty()) {
+                                TextButton(onClick = onClearSearchSelection) { Text("مسح التحديد") }
+                            }
+                        }
+                    }
+                    if (state.selectedSearchIds.isNotEmpty() || state.batchDownloading || state.batchError != null) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = if (state.batchDownloading) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    if (state.batchDownloading) {
+                                        Text(
+                                            "جاري تجهيز التنزيل الجماعي " + state.batchIndex + "/" + state.batchTotal,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = {
+                                                if (state.batchTotal > 0) state.batchIndex.toFloat() / state.batchTotal.toFloat() else 0f
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                        Text(
+                                            "تمت إضافة " + state.batchQueued + " عناصر إلى قائمة التنزيل.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else if (state.batchError != null) {
+                                        Text(state.batchError, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                    }
+                                    if (!state.batchDownloading && state.selectedSearchIds.isNotEmpty()) {
+                                        Button(
+                                            onClick = { onBatchDownload(state.searchResults) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(Icons.Rounded.Download, contentDescription = null)
+                                            Spacer(Modifier.size(6.dp))
+                                            Text("تنزيل " + state.selectedSearchIds.size + " عناصر")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     items(
                         state.searchResults,
@@ -551,6 +612,8 @@ private fun HomeScreen(
                     ) { item ->
                         SearchResultCard(
                             item = item,
+                            selected = item.id in state.selectedSearchIds,
+                            onToggleSelection = { onSearchSelectionToggle(item.id) },
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
                                 onModeChanged(HomeMode.Link)
@@ -794,6 +857,8 @@ private fun HomeScreen(
 @Composable
 private fun SearchResultCard(
     item: ContentSearchItem,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
     onClick: () -> Unit,
 ) {
     Card(
@@ -840,6 +905,11 @@ private fun SearchResultCard(
                     )
                 }
             }
+            androidx.compose.material3.FilterChip(
+                selected = selected,
+                onClick = onToggleSelection,
+                label = { Text(if (selected) "محدد" else "تحديد") },
+            )
         }
     }
 }
@@ -877,24 +947,47 @@ private fun RecentLinksCard(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            link.title ?: link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold,
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MediaThumbnail(
+                            url = link.thumbnailUrl,
+                            contentDescription = "صورة مصغرة: " + (link.title ?: link.url),
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 48.dp)
+                                .clip(RoundedCornerShape(10.dp)),
                         )
-                        Text(
-                            platformLabel(link.platform) + " · " + link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                link.title ?: link.url,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                platformLabel(link.platform) + " · " + formatRelativeRecentTime(link.updatedAtEpochMs),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+private fun formatRelativeRecentTime(epochMs: Long): String {
+    val age = System.currentTimeMillis() - epochMs
+    return when {
+        age < 60_000L -> "الآن"
+        age < 3_600_000L -> (age / 60_000L).toString() + " د"
+        age < 86_400_000L -> (age / 3_600_000L).toString() + " س"
+        else -> (age / 86_400_000L).toString() + " ي"
     }
 }
 

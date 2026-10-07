@@ -2,6 +2,9 @@ package com.ahdownload.app.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -35,7 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.BuildConfig
+import com.ahdownload.core.common.AudioBitratePreference
+import com.ahdownload.core.common.DownloadPreferences
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.VideoQualityPreference
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
@@ -57,6 +64,8 @@ fun SettingsRoute(
 ) {
     val context = LocalContext.current
     val location by store.location.collectAsState()
+    val preferencesStore = remember(context) { DownloadPreferencesStore(context) }
+    var preferences by remember { mutableStateOf(preferencesStore.read()) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var folderError by remember { mutableStateOf<String?>(null) }
@@ -192,6 +201,90 @@ fun SettingsRoute(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("التنزيل الذكي", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "احفظ اختياراتك مرة واحدة ودع التطبيق يطبقها على التنزيلات الجديدة.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("اختيار ذكي", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "اختيار أفضل مصدر صالح تلقائيًا",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            androidx.compose.material3.Switch(
+                                checked = preferences.smartDownload,
+                                onCheckedChange = {
+                                    preferencesStore.setSmartDownload(it)
+                                    preferences = preferences.copy(smartDownload = it)
+                                },
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Wi‑Fi فقط", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "تقييد التنزيلات الجديدة على شبكة Wi‑Fi",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            androidx.compose.material3.Switch(
+                                checked = preferences.wifiOnly,
+                                onCheckedChange = {
+                                    preferencesStore.setWifiOnly(it)
+                                    preferences = preferences.copy(wifiOnly = it)
+                                },
+                            )
+                        }
+                        Text("جودة الفيديو الافتراضية", style = MaterialTheme.typography.bodyLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(VideoQualityPreference.entries) { quality ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = preferences.videoQuality == quality,
+                                    onClick = {
+                                        preferencesStore.setVideoQuality(quality)
+                                        preferences = preferences.copy(videoQuality = quality)
+                                    },
+                                    label = { Text(quality.label) },
+                                )
+                            }
+                        }
+                        Text("جودة الصوت الافتراضية", style = MaterialTheme.typography.bodyLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(AudioBitratePreference.entries) { bitrate ->
+                                androidx.compose.material3.FilterChip(
+                                    selected = preferences.audioBitrate == bitrate,
+                                    onClick = {
+                                        preferencesStore.setAudioBitrate(bitrate)
+                                        preferences = preferences.copy(audioBitrate = bitrate)
+                                    },
+                                    label = { Text(bitrate.label) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text("تشخيص متقدم", style = MaterialTheme.typography.titleMedium)
@@ -297,5 +390,39 @@ fun SettingsRoute(
                 }
             },
         )
+    }
+}
+
+class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
+    private val preferences = context.applicationContext.getSharedPreferences(
+        "ahdownload_download_preferences",
+        android.content.Context.MODE_PRIVATE,
+    )
+
+    override fun read(): DownloadPreferences = DownloadPreferences(
+        smartDownload = preferences.getBoolean("smart_download", true),
+        wifiOnly = preferences.getBoolean("wifi_only", false),
+        videoQuality = VideoQualityPreference.entries.firstOrNull {
+            it.wireValue == preferences.getString("video_quality", "auto")
+        } ?: VideoQualityPreference.AUTO,
+        audioBitrate = AudioBitratePreference.entries.firstOrNull {
+            it.kbps == preferences.getInt("audio_bitrate", 0)
+        } ?: AudioBitratePreference.AUTO,
+    )
+
+    fun setSmartDownload(enabled: Boolean) {
+        preferences.edit().putBoolean("smart_download", enabled).apply()
+    }
+
+    fun setWifiOnly(enabled: Boolean) {
+        preferences.edit().putBoolean("wifi_only", enabled).apply()
+    }
+
+    fun setVideoQuality(value: VideoQualityPreference) {
+        preferences.edit().putString("video_quality", value.wireValue).apply()
+    }
+
+    fun setAudioBitrate(value: AudioBitratePreference) {
+        preferences.edit().putInt("audio_bitrate", value.kbps).apply()
     }
 }

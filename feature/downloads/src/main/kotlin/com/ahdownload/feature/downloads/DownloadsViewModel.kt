@@ -59,6 +59,43 @@ class DownloadsViewModel(
         }
     }
 
+    fun pauseAll() {
+        _records.value
+            .filter {
+                it.status in setOf(
+                    DownloadStatus.QUEUED,
+                    DownloadStatus.PREPARING,
+                    DownloadStatus.DOWNLOADING,
+                )
+            }
+            .forEach { controls.pause(it.task.id) }
+    }
+
+    fun resumeAll() {
+        _records.value
+            .filter {
+                it.status in setOf(
+                    DownloadStatus.PAUSED,
+                    DownloadStatus.CANCELLED,
+                    DownloadStatus.FAILED,
+                )
+            }
+            .forEach { controls.resume(it) }
+    }
+
+    fun cancelAll() {
+        _records.value
+            .filter {
+                it.status in setOf(
+                    DownloadStatus.QUEUED,
+                    DownloadStatus.PREPARING,
+                    DownloadStatus.DOWNLOADING,
+                    DownloadStatus.PAUSED,
+                )
+            }
+            .forEach { controls.cancel(it.task.id) }
+    }
+
     fun deleteHistory(record: DownloadRecord) {
         if (record.status !in setOf(
                 DownloadStatus.QUEUED,

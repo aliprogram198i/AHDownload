@@ -1,5 +1,8 @@
 package com.ahdownload.feature.downloads
 
+import android.content.ContentValues
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.text.format.DateUtils
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
@@ -66,6 +70,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +99,7 @@ import com.ahdownload.domain.model.MediaKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 
@@ -113,6 +119,7 @@ fun DownloadsRoute(
     onOpenDownload: (DownloadRecord) -> Unit,
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
+    onOpenDownloadFolder: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
@@ -196,6 +203,7 @@ fun DownloadsRoute(
     }
 
     DownloadsScreen(
+        repository = repository,
         records = records,
         onBack = onBack,
         onNavigateHome = onNavigateHome,
@@ -205,12 +213,16 @@ fun DownloadsRoute(
         missingFileIds = missingFiles,
         onPause = vm::pause,
         onResume = vm::resume,
+        onPauseAll = vm::pauseAll,
+        onResumeAll = vm::resumeAll,
+        onCancelAll = vm::cancelAll,
         onCancel = vm::cancel,
         onRetry = vm::retry,
         onDeleteHistory = vm::deleteHistory,
         onOpenDownload = onOpenDownload,
         onShareDownload = onShareDownload,
         onDeleteDownloadFile = onDeleteDownloadFile,
+        onOpenDownloadFolder = onOpenDownloadFolder,
         uiTraceLogger = uiTraceLogger,
     )
 }
@@ -218,6 +230,7 @@ fun DownloadsRoute(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DownloadsScreen(
+    repository: DownloadRepository,
     records: List<DownloadRecord>,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
@@ -227,19 +240,29 @@ private fun DownloadsScreen(
     missingFileIds: Set<String>,
     onPause: (DownloadRecord) -> Unit,
     onResume: (DownloadRecord) -> Unit,
+    onPauseAll: () -> Unit,
+    onResumeAll: () -> Unit,
+    onCancelAll: () -> Unit,
     onCancel: (DownloadRecord) -> Unit,
     onRetry: (DownloadRecord) -> Unit,
     onDeleteHistory: (DownloadRecord) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
+    onOpenDownloadFolder: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(DownloadFilter.All) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
+    var pendingRename by remember { mutableStateOf<DownloadRecord?>(null) }
+    var renameValue by remember { mutableStateOf("") }
+    var renameBusy by remember { mutableStateOf(false) }
+    var bulkMenuExpanded by remember { mutableStateOf(false) }
+    val renameScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(feedback) {
         val message = feedback ?: return@LaunchedEffect
@@ -297,6 +320,45 @@ private fun DownloadsScreen(
                         },
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
+                    }
+                },
+                actions = {
+                    if (activeCount > 0 || records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.CANCELLED) }) {
+                        Box {
+                            IconButton(onClick = { bulkMenuExpanded = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "إدارة التنزيلات")
+                            }
+                            DropdownMenu(
+                                expanded = bulkMenuExpanded,
+                                onDismissRequest = { bulkMenuExpanded = false },
+                            ) {
+                                if (activeCount > 0) {
+                                    DropdownMenuItem(
+                                        text = { Text("إيقاف الكل") },
+                                        onClick = {
+                                            bulkMenuExpanded = false
+                                            onPauseAll()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("إلغاء الكل") },
+                                        onClick = {
+                                            bulkMenuExpanded = false
+                                            onCancelAll()
+                                        },
+                                    )
+                                }
+                                if (records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.CANCELLED) }) {
+                                    DropdownMenuItem(
+                                        text = { Text("استئناف الكل") },
+                                        onClick = {
+                                            bulkMenuExpanded = false
+                                            onResumeAll()
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
                 },
             )
@@ -424,6 +486,10 @@ private fun DownloadsScreen(
                             onDeleteHistory = {
                                 pendingDelete = record
                             },
+                            onRenameDownload = {
+                                renameValue = record.task.displayName.orEmpty().substringBeforeLast('.', record.task.displayName.orEmpty())
+                                pendingRename = record
+                            },
                             onOpenDownload = {
                                 uiTraceLogger.interaction("DOWNLOADS", "open_control", "open")
                                 onOpenDownload(record)
@@ -435,6 +501,9 @@ private fun DownloadsScreen(
                             onDeleteDownloadFile = {
                                 val deleted = onDeleteDownloadFile(record)
                                 feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
+                            },
+                            onOpenDownloadFolder = {
+                                onOpenDownloadFolder(record)
                             },
                         )
                     }
@@ -465,6 +534,51 @@ private fun DownloadsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) {
+                    Text("إلغاء")
+                }
+            },
+        )
+    }
+
+    pendingRename?.let { record ->
+        AlertDialog(
+            onDismissRequest = { if (!renameBusy) pendingRename = null },
+            title = { Text("إعادة تسمية الملف") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("اسم الملف") },
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = renameValue.trim().isNotBlank() && !renameBusy,
+                    onClick = {
+                        renameBusy = true
+                        renameScope.launch {
+                            val renamed = renameDownloadRecord(
+                                repository = repository,
+                                context = context,
+                                record = record,
+                                requestedName = renameValue,
+                            )
+                            renameBusy = false
+                            pendingRename = null
+                            feedback = if (renamed) "تمت إعادة تسمية الملف." else "تعذر إعادة تسمية الملف."
+                        }
+                    },
+                ) {
+                    Text(if (renameBusy) "جارٍ الحفظ..." else "حفظ")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !renameBusy,
+                    onClick = { pendingRename = null },
+                ) {
                     Text("إلغاء")
                 }
             },
@@ -522,9 +636,11 @@ private fun DownloadRecordCard(
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onDeleteHistory: () -> Unit,
+    onRenameDownload: () -> Unit,
     onOpenDownload: () -> Unit,
     onShareDownload: () -> Unit,
     onDeleteDownloadFile: () -> Unit,
+    onOpenDownloadFolder: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val progress = record.totalBytes
@@ -635,6 +751,22 @@ private fun DownloadRecordCard(
                                 onClick = {
                                     menuExpanded = false
                                     onShareDownload()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("فتح مجلد الحفظ") },
+                                leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenDownloadFolder()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("إعادة التسمية") },
+                                leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRenameDownload()
                                 },
                             )
                             DropdownMenuItem(
@@ -826,6 +958,65 @@ private fun MediaThumbnail(
     }
 }
 
+private suspend fun renameDownloadRecord(
+    repository: DownloadRepository,
+    context: android.content.Context,
+    record: DownloadRecord,
+    requestedName: String,
+): Boolean {
+    val source = record.destinationUri?.takeIf { it.isNotBlank() }?.let(android.net.Uri::parse)
+    val extension = record.task.destinationPath
+        .substringAfterLast('.', "")
+        .takeIf { it.isNotBlank() }
+        ?.let { ".$it" }
+        .orEmpty()
+    val safeBase = requestedName
+        .replace(Regex("[\\/:*?\"<>|\\r\\n]+"), " ")
+        .trim()
+        .trimEnd('.')
+        .take(120)
+    if (safeBase.isBlank()) return false
+    val finalName = if (extension.isNotBlank() && !safeBase.endsWith(extension, ignoreCase = true)) {
+        safeBase + extension
+    } else {
+        safeBase
+    }
+
+    val renamed = runCatching {
+        when {
+            source?.scheme == "content" -> {
+                val displayUpdated = runCatching {
+                    context.contentResolver.update(
+                        source,
+                        ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, finalName) },
+                        null,
+                        null,
+                    ) > 0
+                }.getOrDefault(false)
+                displayUpdated || runCatching {
+                    DocumentsContract.renameDocument(context.contentResolver, source, finalName) != null
+                }.getOrDefault(false)
+            }
+            else -> {
+                val oldFile = File(record.task.destinationPath)
+                val newFile = File(oldFile.parentFile, finalName)
+                oldFile.exists() && (!newFile.exists()) && oldFile.renameTo(newFile)
+            }
+        }
+    }.getOrDefault(false)
+
+    if (!renamed) return false
+    repository.upsert(
+        record.copy(
+            task = record.task.copy(
+                displayName = finalName,
+                destinationPath = File(record.task.destinationPath).parent?.let { File(it, finalName).absolutePath } ?: record.task.destinationPath,
+            ),
+            updatedAtEpochMs = System.currentTimeMillis(),
+        ),
+    )
+    return true
+}
 private fun statusLabel(status: DownloadStatus): String = when (status) {
     DownloadStatus.QUEUED -> "في قائمة الانتظار"
     DownloadStatus.PREPARING -> "جاري التجهيز"
