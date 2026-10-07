@@ -429,4 +429,64 @@ class YouTubeResolverTest {
         )
     }
 
+
+    @Test
+    fun propagatesObservedPoTokenToBrowserAlignedUrl() = runBlocking {
+        val playerUrl =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=player"
+        val browserUrl =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=browser"
+
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                throw IllegalStateException("Sign in to confirm you’re not a bot")
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
+                YouTubeSessionSnapshot(
+                    cookies = null,
+                    videoUrls = emptyList(),
+                    audioUrls = listOf(browserUrl),
+                    playerResponse = """
+                        {
+                          "videoDetails":{"title":"PO Token Test","lengthSeconds":"8"},
+                          "playabilityStatus":{"status":"OK"},
+                          "streamingData":{"adaptiveFormats":[
+                            {
+                              "itag":"140",
+                              "mimeType":"audio/mp4; codecs=\"mp4a.40.2\"",
+                              "bitrate":128000,
+                              "url":"$playerUrl"
+                            }
+                          ]}
+                        }
+                    """.trimIndent(),
+                    authenticated = false,
+                    browserPoTokenObserved = true,
+                    browserPoToken = "pot-test-token",
+                )
+        }
+
+        val result = YouTubeResolver(
+            httpClient = client,
+            sessionProvider = session,
+        ).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/pot-test",
+                    normalizedUrl = "https://youtu.be/pot-test",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        result as ResolverResult.Success
+        assertEquals(
+            "$browserUrl&pot=pot-test-token",
+            result.candidates.single().sourceUrl,
+        )
+    }
+
 }
