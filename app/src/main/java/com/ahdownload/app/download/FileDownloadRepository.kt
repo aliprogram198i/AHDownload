@@ -48,10 +48,18 @@ class FileDownloadRepository(
         }
     }
 
+    override suspend fun delete(taskId: String) = withContext(Dispatchers.IO) {
+        synchronized(lock) {
+            val records = readLocked().filterNot { it.task.id == taskId }
+            if (records.size != readLocked().size) {
+                writeLocked(records)
+            }
+        }
+    }
+
     override suspend fun listHistory(): List<DownloadRecord> = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            readLocked()
-                .sortedByDescending { it.updatedAtEpochMs }
+            readLocked().sortedByDescending { it.updatedAtEpochMs }
         }
     }
 
@@ -95,9 +103,7 @@ class FileDownloadRepository(
                 val byId = recovered.associateBy { it.task.id }
                 for (index in records.indices) {
                     val replacement = byId[records[index].task.id]
-                    if (replacement != null) {
-                        records[index] = replacement
-                    }
+                    if (replacement != null) records[index] = replacement
                 }
                 writeLocked(records)
                 recovered
@@ -105,23 +111,15 @@ class FileDownloadRepository(
         }
 
     private fun readLocked(): List<DownloadRecord> {
-        if (!store.baseFile.exists()) {
-            return emptyList()
-        }
-
+        if (!store.baseFile.exists()) return emptyList()
         val bytes = store.readFully()
-        if (bytes.isEmpty()) {
-            return emptyList()
-        }
-
-        return codec.decode(String(bytes, StandardCharsets.UTF_8))
-            .distinctBy { it.task.id }
+        if (bytes.isEmpty()) return emptyList()
+        return codec.decode(String(bytes, StandardCharsets.UTF_8)).distinctBy { it.task.id }
     }
 
     private fun writeLocked(records: List<DownloadRecord>) {
-        val payload = codec.encode(
-            records.sortedByDescending { it.updatedAtEpochMs },
-        ).toByteArray(StandardCharsets.UTF_8)
+        val sorted = records.sortedByDescending { it.updatedAtEpochMs }
+        val payload = codec.encode(sorted).toByteArray(StandardCharsets.UTF_8)
 
         val output = store.startWrite()
         try {
@@ -133,9 +131,9 @@ class FileDownloadRepository(
             throw error
         }
 
-        historyFlow.value = records.sortedByDescending { it.updatedAtEpochMs }
+        historyFlow.value = sorted
     }
-    
+
     private companion object {
         val ACTIVE_STATUSES = setOf(
             DownloadStatus.QUEUED,
