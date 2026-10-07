@@ -312,12 +312,13 @@ class YouTubeResolver(
                     it.format.hasAudio
             }
         }
+        // A playable muxed video is sufficient for the normal unified card:
+        // audio extraction can use its embedded audio track, so do not delay the
+        // first result on a separate direct-audio representation.
         return candidates.any {
             it.format.kind == MediaKind.Video &&
                 it.format.hasVideo &&
                 it.format.hasAudio
-        } && candidates.any {
-            it.format.kind == MediaKind.Audio && it.format.hasAudio
         }
     }
 
