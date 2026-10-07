@@ -258,6 +258,7 @@ private fun DownloadsScreen(
     var bulkMenuExpanded by remember { mutableStateOf(false) }
     val renameScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(feedback) {
         val message = feedback ?: return@LaunchedEffect
@@ -526,6 +527,51 @@ private fun DownloadsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingDelete = null }) {
+                    Text("إلغاء")
+                }
+            },
+        )
+    }
+
+    pendingRename?.let { record ->
+        AlertDialog(
+            onDismissRequest = { if (!renameBusy) pendingRename = null },
+            title = { Text("إعادة تسمية الملف") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = renameValue,
+                    onValueChange = { renameValue = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("اسم الملف") },
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = renameValue.trim().isNotBlank() && !renameBusy,
+                    onClick = {
+                        renameBusy = true
+                        renameScope.launch {
+                            val renamed = renameDownloadRecord(
+                                repository = repository,
+                                context = context,
+                                record = record,
+                                requestedName = renameValue,
+                            )
+                            renameBusy = false
+                            pendingRename = null
+                            feedback = if (renamed) "تمت إعادة تسمية الملف." else "تعذر إعادة تسمية الملف."
+                        }
+                    },
+                ) {
+                    Text(if (renameBusy) "جارٍ الحفظ..." else "حفظ")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !renameBusy,
+                    onClick = { pendingRename = null },
+                ) {
                     Text("إلغاء")
                 }
             },
@@ -896,6 +942,65 @@ private fun MediaThumbnail(
     }
 }
 
+private suspend fun renameDownloadRecord(
+    repository: DownloadRepository,
+    context: android.content.Context,
+    record: DownloadRecord,
+    requestedName: String,
+): Boolean {
+    val source = record.destinationUri?.takeIf { it.isNotBlank() }?.let(android.net.Uri::parse)
+    val extension = record.task.destinationPath
+        .substringAfterLast('.', "")
+        .takeIf { it.isNotBlank() }
+        ?.let { ".$it" }
+        .orEmpty()
+    val safeBase = requestedName
+        .replace(Regex("[\\/:*?\"<>|\\r\\n]+"), " ")
+        .trim()
+        .trimEnd('.')
+        .take(120)
+    if (safeBase.isBlank()) return false
+    val finalName = if (extension.isNotBlank() && !safeBase.endsWith(extension, ignoreCase = true)) {
+        safeBase + extension
+    } else {
+        safeBase
+    }
+
+    val renamed = runCatching {
+        when {
+            source?.scheme == "content" -> {
+                val displayUpdated = runCatching {
+                    context.contentResolver.update(
+                        source,
+                        ContentValues().apply { put(MediaStore.MediaColumns.DISPLAY_NAME, finalName) },
+                        null,
+                        null,
+                    ) > 0
+                }.getOrDefault(false)
+                displayUpdated || runCatching {
+                    DocumentsContract.renameDocument(context.contentResolver, source, finalName) != null
+                }.getOrDefault(false)
+            }
+            else -> {
+                val oldFile = File(record.task.destinationPath)
+                val newFile = File(oldFile.parentFile, finalName)
+                oldFile.exists() && (!newFile.exists()) && oldFile.renameTo(newFile)
+            }
+        }
+    }.getOrDefault(false)
+
+    if (!renamed) return false
+    repository.upsert(
+        record.copy(
+            task = record.task.copy(
+                displayName = finalName,
+                destinationPath = record.task.destinationPath.substringBeforeLast(File.separatorChar, newSeparator = File.separatorChar) + File.separator + finalName,
+            ),
+            updatedAtEpochMs = System.currentTimeMillis(),
+        ),
+    )
+    return true
+}
 private fun statusLabel(status: DownloadStatus): String = when (status) {
     DownloadStatus.QUEUED -> "في قائمة الانتظار"
     DownloadStatus.PREPARING -> "جاري التجهيز"
