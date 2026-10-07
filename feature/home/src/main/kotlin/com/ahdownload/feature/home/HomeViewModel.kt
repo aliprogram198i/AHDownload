@@ -564,18 +564,25 @@ class HomeViewModel(
                     when (val refreshed = resolver.resolve(youtubeLink, validationOperationId)) {
                         is ResolverResult.Success -> {
                             val refreshedCandidates = refreshed.candidates
-                                .filter { it.format.kind == candidate.format.kind }
+                                .filter {
+                                    when {
+                                        !extractAudio -> it.format.kind == candidate.format.kind
+                                        it.format.kind == MediaKind.Audio -> it.format.hasAudio
+                                        it.format.kind == MediaKind.Video -> it.format.hasVideo && it.format.hasAudio
+                                        else -> false
+                                    }
+                                }
                                 .distinctBy { it.id }
                                 .sortedWith(
-                                    compareBy<MediaCandidate> { it.id == candidate.id }
+                                    compareBy<MediaCandidate> { it.id != candidate.id }
+                                        .thenBy { if (extractAudio && it.format.kind == MediaKind.Audio) 0 else 1 }
                                         .thenByDescending { it.id.startsWith("android-") }
                                         .thenByDescending { it.id.startsWith("embedded-") }
-                                        .thenByDescending { it.format.hasVideo }
                                         .thenByDescending { it.format.hasAudio }
                                         .thenByDescending { it.format.height ?: 0 }
                                         .thenByDescending { it.format.bitrateKbps ?: 0 },
                                 )
-                                .take(3)
+                                .take(if (extractAudio) 6 else 3)
 
                             logger.log(
                                 DiagnosticLevel.INFO,
