@@ -11,6 +11,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 
 enum class AHBottomNavDestination {
     HOME,
@@ -52,7 +53,7 @@ fun AHBottomNavigationBar(
 }
 
 private object AHBottomNavigationDefaults {
-    val Elevation = androidx.compose.ui.unit.dp(3f)
+    val Elevation = 3.dp
     val ItemColors: androidx.compose.material3.NavigationBarItemColors
         @Composable get() = NavigationBarItemDefaults.colors(
             selectedIconColor = MaterialTheme.colorScheme.onPrimary,
