@@ -29,7 +29,6 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
@@ -240,7 +239,7 @@ private fun DownloadsScreen(
                             onBack()
                         },
                     ) {
-                        Icon(Icons.Rounded.FolderOpen, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
             )
@@ -770,4 +769,5 @@ private val ACTIVE_STATUSES = setOf(
     DownloadStatus.QUEUED,
     DownloadStatus.PREPARING,
     DownloadStatus.DOWNLOADING,
+    DownloadStatus.PAUSED,
 )
