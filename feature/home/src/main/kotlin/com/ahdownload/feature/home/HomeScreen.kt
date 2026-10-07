@@ -126,6 +126,7 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
+        onDownloadBatch = viewModel::downloadBatch,
         onModeChanged = viewModel::setMode,
         onToggleShowAll = viewModel::toggleShowAll,
         onFilterChanged = viewModel::setResultFilter,
@@ -150,6 +151,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
+    onDownloadBatch: (List<String>) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
     onToggleShowAll: () -> Unit,
     onFilterChanged: (ResultFilter) -> Unit,
@@ -182,6 +184,9 @@ private fun HomeScreen(
         state.showAll,
         state.resultFilter,
         state.downloadQueued,
+        state.batchDownloading,
+        state.batchCompleted,
+        state.batchTotal,
     ) {
         val components = buildList {
             add("topbar")
@@ -201,6 +206,7 @@ private fun HomeScreen(
             }
             if (state.error != null) add("error_card")
             if (state.downloadQueued) add("download_success")
+            if (state.batchDownloading) add("batch_download_progress")
         }.joinToString(",")
 
         uiTraceLogger.snapshot(
@@ -659,6 +665,30 @@ private fun HomeScreen(
                         onSelect = onFilterChanged,
                         onToggleAll = { onToggleShowAll() },
                     )
+                }
+
+                item {
+                    OutlinedButton(
+                        enabled = !state.batchDownloading && filteredResults.isNotEmpty(),
+                        onClick = {
+                            val ids = buildList {
+                                resultSet.bestOverall?.candidate?.id?.let(::add)
+                                addAll(filteredResults.map { it.candidate.id })
+                            }.distinct()
+                            onDownloadBatch(ids)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = null)
+                        Spacer(Modifier.size(7.dp))
+                        Text(
+                            if (state.batchDownloading) {
+                                "جاري التنزيل " + state.batchCompleted + "/" + state.batchTotal
+                            } else {
+                                "تنزيل العناصر المكتشفة دفعة واحدة"
+                            },
+                        )
+                    }
                 }
 
                 if (filteredResults.isNotEmpty()) {
