@@ -23,6 +23,8 @@ import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
 import com.ahdownload.app.diagnostics.UiDiagnosticsRoute
 import com.ahdownload.app.download.DownloadLauncher
+import com.ahdownload.app.download.MediaAudioExtractor
+import com.ahdownload.app.favorites.FavoritesStore
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
@@ -34,6 +36,7 @@ import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
+import com.ahdownload.feature.studio.StudioRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 import java.io.File
 import kotlinx.coroutines.launch
@@ -44,6 +47,7 @@ private enum class RootDestination {
     Downloads,
     Diagnostics,
     Settings,
+    Studio,
     UiDiagnostics,
 }
 
@@ -56,6 +60,7 @@ class MainActivity : ComponentActivity() {
     private val uiTraceLogger by lazy { applicationServices.uiTraceLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val downloadPreferencesStore by lazy { DownloadPreferencesStore(applicationContext) }
+    private val favoritesStore by lazy { FavoritesStore(applicationContext) }
 
     private val folderPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -93,6 +98,8 @@ class MainActivity : ComponentActivity() {
                     onOpenDownloadFolder = ::openDownloadFolder,
                     downloadLocationStore = downloadLocationStore,
                     downloadPreferencesProvider = downloadPreferencesStore,
+                    favoriteRepository = favoritesStore,
+                    onExtractAudio = ::extractAndPublishAudio,
                     openDownloadsOnStart = openDownloadsOnStart,
                     onPickDownloadFolder = {
                         folderPicker.launch(downloadLocationStore.persistedUri())
@@ -128,6 +135,31 @@ class MainActivity : ComponentActivity() {
             else -> null
         }
         return raw?.trim()?.takeIf { it.isNotBlank() }
+    }
+
+    private suspend fun extractAndPublishAudio(record: DownloadRecord): Boolean {
+        val result = MediaAudioExtractor(applicationContext).extractAndPublish(record)
+        result.exceptionOrNull()?.let { error ->
+            diagnosticLogger.log(
+                DiagnosticLevel.WARNING,
+                "STUDIO_AUDIO_EXTRACTION_FAILED",
+                "تعذر استخراج الصوت من الملف المحلي",
+                "studio.extract_audio",
+                mapOf("task_id" to record.task.id),
+                error,
+            )
+        }
+        if (result.isSuccess) {
+            diagnosticLogger.log(
+                DiagnosticLevel.INFO,
+                "STUDIO_AUDIO_EXTRACTION_COMPLETED",
+                "تم استخراج الصوت الأصلي وحفظه",
+                "studio.extract_audio",
+                mapOf("task_id" to record.task.id),
+                null,
+            )
+        }
+        return result.isSuccess
     }
 
     private fun openCompletedDownload(record: DownloadRecord) {
@@ -310,10 +342,14 @@ private fun AHRoot(
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
+    favoriteRepository: com.ahdownload.domain.favorites.FavoriteRepository,
+    onExtractAudio: suspend (DownloadRecord) -> Boolean,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
+    var studioRecord by remember { mutableStateOf<DownloadRecord?>(null) }
+
     val activeDownloads = history.count {
         it.status in setOf(
             DownloadStatus.QUEUED,
@@ -375,6 +411,7 @@ private fun AHRoot(
         )
         RootDestination.Downloads -> DownloadsRoute(
             repository = downloadRepository,
+            favoriteRepository = favoriteRepository,
             onPauseDownload = onPauseDownload,
             onResumeDownload = onResumeDownload,
             onCancelDownload = onCancelDownload,
@@ -388,6 +425,21 @@ private fun AHRoot(
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
         )
+        RootDestination.Studio -> studioRecord?.let { record ->
+            StudioRoute(
+                record = record,
+                onOpen = { onOpenDownload(record) },
+                onShare = { onShareDownload(record) },
+                onExtractAudio = onExtractAudio,
+                onBack = {
+                    studioRecord = null
+                    popOrHome()
+                },
+                uiTraceLogger = uiTraceLogger,
+            )
+        } ?: run {
+            root(RootDestination.Downloads)
+        }
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
             onPickDownloadFolder = onPickDownloadFolder,
