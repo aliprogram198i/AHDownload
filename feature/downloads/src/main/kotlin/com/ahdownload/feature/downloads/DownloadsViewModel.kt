@@ -58,6 +58,7 @@ class DownloadsViewModel(
                 DownloadStatus.QUEUED,
                 DownloadStatus.PREPARING,
                 DownloadStatus.DOWNLOADING,
+                DownloadStatus.PAUSED,
             )
         ) {
             viewModelScope.launch {
