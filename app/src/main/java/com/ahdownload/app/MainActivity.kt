@@ -21,7 +21,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
-import com.ahdownload.app.download.DownloadControls
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
@@ -40,13 +39,6 @@ class MainActivity : ComponentActivity() {
     private val applicationServices by lazy { application as AHDownloadApplication }
     private val downloadWorkScheduler by lazy { applicationServices.downloadWorkScheduler }
     private val downloadRepository by lazy { applicationServices.downloadRepository }
-    private val downloadControls by lazy {
-        object : DownloadControls {
-            override fun pause(taskId: String) = downloadWorkScheduler.pause(taskId)
-            override fun resume(record: DownloadRecord) = downloadWorkScheduler.resume(record)
-            override fun cancel(taskId: String) = downloadWorkScheduler.cancel(taskId)
-        }
-    }
     private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -69,6 +61,10 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
                     onOpenYouTubeSession = ::openYouTubeSession,
+                    downloadRepository = downloadRepository,
+                    onPauseDownload = downloadWorkScheduler::pause,
+                    onResumeDownload = downloadWorkScheduler::resume,
+                    onCancelDownload = downloadWorkScheduler::cancel,
                     downloadLocationStore = downloadLocationStore,
                     onPickDownloadFolder = { folderPicker.launch(downloadLocationStore.persistedUri()) },
                 )
@@ -131,6 +127,10 @@ private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
+    downloadRepository: com.ahdownload.domain.download.DownloadRepository,
+    onPauseDownload: (String) -> Unit,
+    onResumeDownload: (DownloadRecord) -> Unit,
+    onCancelDownload: (String) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
 ) {
@@ -167,7 +167,9 @@ private fun AHRoot(
             )
             RootDestination.Downloads -> DownloadsRoute(
                 repository = downloadRepository,
-                controls = downloadControls,
+                onPauseDownload = onPauseDownload,
+                onResumeDownload = onResumeDownload,
+                onCancelDownload = onCancelDownload,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.Settings -> SettingsRoute(
