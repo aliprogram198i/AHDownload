@@ -686,7 +686,7 @@ private fun HomeScreen(
                                         (state.resultFilter == ResultFilter.Image && best.candidate.format.kind == MediaKind.Image) ||
                                         (state.resultFilter == ResultFilter.Other && best.group == MediaResultGroup.Other)
                                 )
-                                if (includeBest) best?.candidate?.id?.let(::add)
+                                if (includeBest) best.candidate.id.let(::add)
                                 addAll(filteredResults.map { it.candidate.id })
                             }.distinct()
                             onDownloadBatch(ids)
