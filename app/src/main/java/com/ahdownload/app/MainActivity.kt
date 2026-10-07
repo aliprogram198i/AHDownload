@@ -21,20 +21,31 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.app.download.DownloadControls
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 
-private enum class RootDestination { Welcome, Home, Diagnostics, Settings }
+private enum class RootDestination { Welcome, Home, Downloads, Diagnostics, Settings }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
-    private val downloadWorkScheduler by lazy { (application as AHDownloadApplication).downloadWorkScheduler }
+    private val applicationServices by lazy { application as AHDownloadApplication }
+    private val downloadWorkScheduler by lazy { applicationServices.downloadWorkScheduler }
+    private val downloadRepository by lazy { applicationServices.downloadRepository }
+    private val downloadControls by lazy {
+        object : DownloadControls {
+            override fun pause(taskId: String) = downloadWorkScheduler.pause(taskId)
+            override fun resume(record: com.ahdownload.domain.download.DownloadRecord) = downloadWorkScheduler.resume(record)
+            override fun cancel(taskId: String) = downloadWorkScheduler.cancel(taskId)
+        }
+    }
     private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -151,6 +162,11 @@ private fun AHRoot(
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
                 onOpenSettings = { destination = RootDestination.Settings },
+            )
+            RootDestination.Downloads -> DownloadsRoute(
+                repository = downloadRepository,
+                controls = downloadControls,
+                onBack = { destination = RootDestination.Home },
             )
             RootDestination.Settings -> SettingsRoute(
                 store = downloadLocationStore,
