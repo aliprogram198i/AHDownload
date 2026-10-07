@@ -38,9 +38,7 @@ class OkHttpMediaProbe(
         // YouTube media URLs can reject an unrestricted GET while accepting a
         // byte-range request. Probe the same transfer mode used by the downloader
         // before declaring a candidate invalid.
-        val range = "bytes=0-0"
-        val started = TimeSource.Monotonic.markNow()
-        var response = execute(url, "GET", headers, range)
+        // Use the same open-ended range semantics as the actual downloader.\n        // Some YouTube GVS endpoints reject a single-byte `0-0` probe with 403\n        // while accepting the real `0-` transfer request.\n        val range = "bytes=0-"\n        val started = TimeSource.Monotonic.markNow()\n        var response = execute(url, "GET", headers, range)
         logger.log(
             level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "MEDIA_PROBE_ATTEMPT",
@@ -88,6 +86,40 @@ class OkHttpMediaProbe(
                     operationId,
                 ) + mapOf(
                     "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_RANGE_RETRY",
+                    "removed_session_headers" to "Cookie,Origin,Referer",
+                ),
+                throwable = null,
+            )
+        }
+
+        // A few signed YouTube media URLs are hostile to Range entirely. The
+        // downloader has an equivalent no-Range retry, so validation mirrors
+        // that behavior instead of rejecting a source that can actually stream.
+        if (response.code == 403) {
+            response.close()
+            val noRangeHeaders = headers.filterKeys {
+                !it.equals("Cookie", ignoreCase = true) &&
+                    !it.equals("Origin", ignoreCase = true) &&
+                    !it.equals("Referer", ignoreCase = true)
+            }
+            val retryStarted = TimeSource.Monotonic.markNow()
+            response = execute(url, "GET", noRangeHeaders, null)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "youtube_403_no_range_retry",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    null,
+                    response.code,
+                    response.header("Content-Type"),
+                    retryStarted.elapsedNow().inWholeMilliseconds,
+                    noRangeHeaders,
+                    operationId,
+                ) + mapOf(
+                    "validation_mode" to "YOUTUBE_403_NO_RANGE_RETRY",
                     "removed_session_headers" to "Cookie,Origin,Referer",
                 ),
                 throwable = null,
