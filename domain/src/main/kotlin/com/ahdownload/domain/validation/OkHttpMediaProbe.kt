@@ -238,13 +238,17 @@ class OkHttpMediaProbe(
         headers: Map<String, String>,
         range: String?,
     ): okhttp3.Response {
-        val builder = baseRequest(url, headers)
+        val builder = baseRequest(url, headers, range)
         if (method == "HEAD") builder.head() else builder.get()
         range?.let { builder.header("Range", it) }
         return client.newCall(builder.build()).execute()
     }
 
-    private fun baseRequest(url: String, headers: Map<String, String>): Request.Builder =
+    private fun baseRequest(
+        url: String,
+        headers: Map<String, String>,
+        range: String?,
+    ): Request.Builder =
         Request.Builder()
             .url(url)
             .header("User-Agent", userAgentFor(url))
