@@ -345,7 +345,7 @@ private fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
                         FilterChip(
-                            selected = state.state.mode == HomeMode.Link,
+                            selected = state.mode == HomeMode.Link,
                             onClick = { onModeChanged(HomeMode.Link) },
                             label = { Text("رابط") },
                             leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
@@ -595,7 +595,7 @@ private fun HomeScreen(
             }
 
             if (
-                mode == HomeMode.Link &&
+                state.mode == HomeMode.Link &&
                 state.url.isBlank() &&
                 state.resolution == null &&
                 !state.analyzing &&
@@ -611,7 +611,7 @@ private fun HomeScreen(
                 }
             }
 
-            if (mode == HomeMode.Link) state.result?.let { link ->
+            if (state.mode == HomeMode.Link) state.result?.let { link ->
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AHStatusPill(platformLabel(link.platform.name))
@@ -652,7 +652,7 @@ private fun HomeScreen(
                     ResultFilterRow(
                         selected = state.resultFilter,
                         counts = counts,
-                        showAll = showAll,
+                        showAll = state.showAll,
                         onSelect = onFilterChanged,
                         onToggleAll = { onToggleShowAll() },
                     )
@@ -1073,7 +1073,7 @@ private fun ResultFilterRow(
             onClick = onToggleAll,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (state.showAll) "عرض الخيارات المقترحة فقط" else "عرض جميع الصيغ")
+            Text(if (showAll) "عرض الخيارات المقترحة فقط" else "عرض جميع الصيغ")
         }
     }
 }
