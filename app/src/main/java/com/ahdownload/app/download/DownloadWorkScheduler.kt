@@ -91,7 +91,10 @@ class DownloadWorkScheduler(
             .putString(DownloadWorker.KEY_SESSION_COOKIE_HOST, task.sessionCookieHost)
             .putString(DownloadWorker.KEY_SOURCE_PAGE_URL, task.sourcePageUrl)
             .putString(DownloadWorker.KEY_MEDIA_KIND, task.mediaKind?.name)
-            .putString(DownloadWorker.KEY_PROCESSING_MODE, task.processingMode.name)
+            .putString(
+                DownloadWorker.KEY_PROCESSING_MODE,
+                runCatching { task.processingMode }.getOrNull().name,
+            )
             .putBoolean(DownloadWorker.KEY_FORCE_REFRESH, forceRefresh)
             .apply {
                 task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
