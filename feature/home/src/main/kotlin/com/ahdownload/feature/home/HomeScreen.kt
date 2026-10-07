@@ -126,7 +126,9 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
-        onEnterSearchMode = viewModel::enterSearchMode,
+        onModeChanged = viewModel::setMode,
+        onToggleShowAll = viewModel::toggleShowAll,
+        onFilterChanged = viewModel::setResultFilter,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSearch = viewModel::searchContent,
         onSearchResultSelected = viewModel::openSearchResult,
@@ -135,20 +137,8 @@ fun HomeRoute(
         onRecentLinkSelected = viewModel::selectRecentLink,
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
+        activeDownloads = activeDownloads,
     )
-}
-
-private enum class HomeMode {
-    Link,
-    Search,
-}
-
-private enum class ResultFilter(val label: String) {
-    All("الكل"),
-    Video("فيديو"),
-    Audio("صوت"),
-    Image("صور"),
-    Other("ملفات"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -160,7 +150,9 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
-    onEnterSearchMode: () -> Unit,
+    onModeChanged: (HomeMode) -> Unit,
+    onToggleShowAll: () -> Unit,
+    onFilterChanged: (ResultFilter) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
     onSearchResultSelected: (ContentSearchItem) -> Unit,
@@ -169,20 +161,14 @@ private fun HomeScreen(
     onRecentLinkSelected: (RecentLink) -> Unit,
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    activeDownloads: Int = 0,
 ) {
-    var mode by remember { mutableStateOf(HomeMode.Link) }
+    val mode = state.mode
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
-    var showAll by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf(ResultFilter.All) }
     val uiContext = rememberUiTraceContext()
 
-    LaunchedEffect(mode) {
-        if (mode == HomeMode.Search) {
-            onEnterSearchMode()
-        }
-    }
 
     LaunchedEffect(
         state.url,
@@ -193,8 +179,8 @@ private fun HomeScreen(
         state.selectedCandidateId,
         state.validatingCandidateId,
         state.error,
-        showAll,
-        filter,
+        state.showAll,
+        state.resultFilter,
         state.downloadQueued,
     ) {
         val components = buildList {
@@ -209,7 +195,7 @@ private fun HomeScreen(
                 add("media_preview")
                 add("recommendation_card")
                 add("result_filters")
-                add(if (showAll) "all_results" else "recommended_results")
+                add(if (state.showAll) "all_results" else "recommended_results")
             } else if (state.url.isBlank() && state.recentLinks.isNotEmpty()) {
                 add("recent_links")
             }
@@ -359,18 +345,17 @@ private fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
                         FilterChip(
-                            selected = mode == HomeMode.Link,
-                            onClick = { mode = HomeMode.Link },
+                            selected = state.mode == HomeMode.Link,
+                            onClick = { onModeChanged(HomeMode.Link) },
                             label = { Text("رابط") },
                             leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                         )
                     }
                     item {
                         FilterChip(
-                            selected = mode == HomeMode.Search,
+                            selected = state.mode == HomeMode.Search,
                             onClick = {
-                                mode = HomeMode.Search
-                                onEnterSearchMode()
+                                onModeChanged(HomeMode.Search)
                             },
                             label = { Text("بحث YouTube") },
                             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
@@ -666,11 +651,11 @@ private fun HomeScreen(
 
                 item {
                     ResultFilterRow(
-                        selected = filter,
+                        selected = state.resultFilter,
                         counts = counts,
                         showAll = showAll,
-                        onSelect = { filter = it },
-                        onToggleAll = { showAll = !showAll },
+                        onSelect = onFilterChanged,
+                        onToggleAll = { onToggleShowAll() },
                     )
                 }
 
