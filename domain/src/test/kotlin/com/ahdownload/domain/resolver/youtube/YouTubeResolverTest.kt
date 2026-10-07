@@ -338,13 +338,13 @@ class YouTubeResolverTest {
 
 
     @Test
-    fun attachesSessionContextToAllFallbackCandidatesAfterPrimaryEnrichment() = runBlocking {
-        var postCount = 0
+    fun attachesSessionContextWithoutCloningBrowserPoTokenToOtherCandidates() = runBlocking {
+        val playerUrl = "https://rr1---sn.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4&source=player"
+        val browserUrl = "https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=browser&pot=pot-redacted"
+
         val client = object : HttpTextClient {
             override suspend fun get(url: String): String = """
                 {
-                  "INNERTUBE_API_KEY":"test-key",
-                  "INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"1"}},
                   "videoDetails":{"title":"Session Context Test","lengthSeconds":"8"},
                   "streamingData":{
                     "formats":[
@@ -353,58 +353,40 @@ class YouTubeResolverTest {
                         "mimeType":"video/mp4; codecs=\"avc1.4d401f, mp4a.40.2\"",
                         "width":640,
                         "height":360,
-                        "url":"https://rr1---sn.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4&source=primary"
+                        "url":"$playerUrl"
                       }
                     ]
                   }
                 }
             """.trimIndent()
-
-            override suspend fun postJson(url: String, body: String): String {
-                postCount++
-                return when (postCount) {
-                    1 -> """
-                        {
-                          "videoDetails":{"title":"Embedded","lengthSeconds":"8"},
-                          "playabilityStatus":{"status":"OK"},
-                          "streamingData":{"formats":[
-                            {"itag":"22","mimeType":"video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"","width":1280,"height":720,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=22&mime=video%2Fmp4&source=embedded"}
-                          ]}
-                        }
-                    """.trimIndent()
-                    else -> """
-                        {
-                          "videoDetails":{"title":"Android","lengthSeconds":"8"},
-                          "playabilityStatus":{"status":"OK"},
-                          "streamingData":{"formats":[
-                            {"itag":"249","mimeType":"video/webm; codecs=\"vp9, opus\"","width":1920,"height":1080,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=android"}
-                          ]}
-                        }
-                    """.trimIndent()
-                }
-            }
         }
 
         val session = object : YouTubeSessionProvider {
             override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
                 YouTubeSessionSnapshot(
                     cookies = "SID=redacted",
-                    videoUrls = listOf(
-                        "https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=browser&pot=pot-redacted",
-                    ),
+                    videoUrls = listOf(browserUrl),
                     audioUrls = emptyList(),
                     authenticated = true,
                     userAgent = "Mozilla/5.0 (Linux; Android 15)",
                     browserPoTokenObserved = true,
                     browserPoToken = "pot-redacted",
+                    browserRequestHeaders = mapOf(
+                        browserUrl to mapOf(
+                            "Referer" to "https://www.youtube.com/",
+                            "Origin" to "https://www.youtube.com",
+                            "X-YouTube-Client-Name" to "1",
+                            "X-YouTube-Client-Version" to "2",
+                        ),
+                    ),
+                    browserMediaObservedCount = 1,
                 )
         }
 
-        val resolver = YouTubeResolver(
+        val result = YouTubeResolver(
             httpClient = client,
             sessionProvider = session,
-        )
-        val result = resolver.resolve(
+        ).resolve(
             ResolverRequest(
                 link = MediaLink(
                     originalUrl = "https://youtu.be/session-context",
@@ -417,54 +399,54 @@ class YouTubeResolverTest {
 
         assertTrue(result is ResolverResult.Success)
         result as ResolverResult.Success
-        assertTrue(result.candidates.any { it.id == "18" })
-        assertTrue(result.candidates.any { it.id == "embedded-22" })
-        assertTrue(result.candidates.any { it.id == "android-249" })
-        assertTrue(result.candidates.all { it.requestHeaders["Cookie"] == "SID=redacted" })
-        assertTrue(result.candidates.all { it.requestHeaders["Referer"] == "https://www.youtube.com/" })
-        assertTrue(result.candidates.all { it.sourceUrl.contains("pot=pot-redacted") })
-        assertEquals(
-            "https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=browser&pot=pot-redacted",
-            result.candidates.first { it.id == "android-249" }.sourceUrl,
-        )
+        val player = result.candidates.single()
+
+        assertEquals(playerUrl, player.sourceUrl)
+        assertTrue(!player.sourceUrl.contains("pot=pot-redacted"))
+        assertEquals(com.ahdownload.domain.resolver.MediaSourceContext.RESOLVER_GENERATED, player.sourceContext)
+        assertEquals("SID=redacted", player.requestHeaders["Cookie"])
+        assertEquals("https://www.youtube.com/", player.requestHeaders["Referer"])
     }
 
-
     @Test
-    fun propagatesObservedPoTokenToBrowserAlignedUrl() = runBlocking {
-        val playerUrl =
-            "https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=player"
+    fun preservesExactBrowserUrlAndMarksBrowserObservedSource() = runBlocking {
         val browserUrl =
-            "https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=browser"
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=browser&pot=pot-test"
 
         val client = object : HttpTextClient {
-            override suspend fun get(url: String): String =
-                throw IllegalStateException("Sign in to confirm you’re not a bot")
+            override suspend fun get(url: String): String = """
+                {
+                  "videoDetails":{"title":"Browser Exact URL Test","lengthSeconds":"8"},
+                  "streamingData":{
+                    "adaptiveFormats":[
+                      {
+                        "itag":"140",
+                        "mimeType":"audio/mp4; codecs=\"mp4a.40.2\"",
+                        "bitrate":128000,
+                        "url":"https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=player"
+                      }
+                    ]
+                  }
+                }
+            """.trimIndent()
         }
         val session = object : YouTubeSessionProvider {
-            override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
-                YouTubeSessionSnapshot(
-                    cookies = null,
-                    videoUrls = emptyList(),
-                    audioUrls = listOf(browserUrl),
-                    playerResponse = """
-                        {
-                          "videoDetails":{"title":"PO Token Test","lengthSeconds":"8"},
-                          "playabilityStatus":{"status":"OK"},
-                          "streamingData":{"adaptiveFormats":[
-                            {
-                              "itag":"140",
-                              "mimeType":"audio/mp4; codecs=\"mp4a.40.2\"",
-                              "bitrate":128000,
-                              "url":"$playerUrl"
-                            }
-                          ]}
-                        }
-                    """.trimIndent(),
-                    authenticated = false,
-                    browserPoTokenObserved = true,
-                    browserPoToken = "pot-test-token",
-                )
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = emptyList(),
+                audioUrls = listOf(browserUrl),
+                authenticated = false,
+                browserRequestHeaders = mapOf(
+                    browserUrl to mapOf(
+                        "Referer" to "https://www.youtube.com/",
+                        "X-YouTube-Client-Name" to "56",
+                        "X-YouTube-Client-Version" to "2.20260708.00.00",
+                    ),
+                ),
+                browserMediaObservedCount = 1,
+                browserPoTokenObserved = true,
+                browserPoToken = "pot-test",
+            )
         }
 
         val result = YouTubeResolver(
@@ -473,8 +455,8 @@ class YouTubeResolverTest {
         ).resolve(
             ResolverRequest(
                 link = MediaLink(
-                    originalUrl = "https://youtu.be/pot-test",
-                    normalizedUrl = "https://youtu.be/pot-test",
+                    originalUrl = "https://youtu.be/browser-exact",
+                    normalizedUrl = "https://youtu.be/browser-exact",
                     platform = MediaPlatform.YouTube,
                     kind = MediaKind.Unknown,
                 ),
@@ -483,10 +465,12 @@ class YouTubeResolverTest {
 
         assertTrue(result is ResolverResult.Success)
         result as ResolverResult.Success
-        assertEquals(
-            "$browserUrl&pot=pot-test-token",
-            result.candidates.single().sourceUrl,
-        )
+        val candidate = result.candidates.single()
+
+        assertEquals(browserUrl, candidate.sourceUrl)
+        assertEquals(com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED, candidate.sourceContext)
+        assertEquals("56", candidate.requestHeaders["X-YouTube-Client-Name"])
+        assertEquals("2.20260708.00.00", candidate.requestHeaders["X-YouTube-Client-Version"])
     }
 
 }
