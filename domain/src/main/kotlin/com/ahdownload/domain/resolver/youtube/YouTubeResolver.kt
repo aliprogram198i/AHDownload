@@ -528,6 +528,7 @@ class YouTubeResolver(
 
     private fun sessionCandidates(snapshot: YouTubeSessionSnapshot): List<MediaCandidate> {
         val videos = snapshot.videoUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
+            val effectiveUrl = appendPoToken(url, snapshot.browserPoToken)
             MediaCandidate(
                 id = "webview-video-${index}-${url.hashCode().toUInt().toString(16)}",
                 sourceUrl = effectiveUrl,
