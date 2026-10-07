@@ -1261,7 +1261,7 @@ private fun AudioOnlyDownloadSection(
         )
 
         Button(
-            enabled = validatingCandidateId == null,
+            enabled = (bestAudio != null || hasVideoSource) && validatingCandidateId == null,
             onClick = onDownload,
             modifier = Modifier
                 .fillMaxWidth()
@@ -1272,10 +1272,10 @@ private fun AudioOnlyDownloadSection(
             Icon(Icons.Rounded.AudioFile, contentDescription = null)
             Spacer(Modifier.size(8.dp))
             Text(
-                if (validatingCandidateId != null) {
-                    "جارٍ تجهيز الصوت..."
-                } else {
-                    "تحميل الصوت"
+                when {
+                    validatingCandidateId != null -> "جارٍ تجهيز الصوت..."
+                    bestAudio == null && !hasVideoSource -> "الصوت غير متاح"
+                    else -> "تحميل الصوت"
                 },
             )
         }
