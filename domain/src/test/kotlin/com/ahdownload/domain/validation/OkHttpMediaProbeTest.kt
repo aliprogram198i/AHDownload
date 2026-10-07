@@ -215,7 +215,9 @@ class OkHttpMediaProbeTest {
         assertEquals(200, result.statusCode)
         assertEquals(2, requestHeaders.size)
         assertEquals("bytes=0-1048575", requestHeaders.first()["Range"])
-        assertEquals("bytes=0-1048575", requestHeaders[1]["Range"])
+        assertEquals(null, requestHeaders[1]["Range"])
+        assertEquals("mweb", requestHeaders[1]["X-YouTube-Client-Name"])
+        assertEquals("visitor", requestHeaders[1]["X-Goog-Visitor-Id"])
         assertTrue(requestHeaders[1].keys.any { it.equals("Cookie", ignoreCase = true) })
     }
 
