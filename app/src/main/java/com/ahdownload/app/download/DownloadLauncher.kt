@@ -3,6 +3,7 @@ package com.ahdownload.app.download
 import android.content.Context
 import android.os.Environment
 import com.ahdownload.app.settings.DownloadLocationStore
+import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
@@ -79,6 +80,7 @@ class DownloadLauncher(
 
     suspend fun enqueueAudioExtraction(
         candidate: MediaCandidate,
+        outputFormat: AudioOutputFormat,
         title: String?,
         sourcePageUrl: String? = null,
         thumbnailUrl: String? = null,
@@ -100,7 +102,7 @@ class DownloadLauncher(
             return DownloadEnqueueResult.DUPLICATE
         }
 
-        val file = uniqueFile(directory, baseName, ".m4a")
+        val file = uniqueFile(directory, baseName, outputFormat.extension)
         scheduler.enqueue(
             DownloadTask(
                 id = fingerprint.take(36),
@@ -117,6 +119,7 @@ class DownloadLauncher(
                 },
                 mediaKind = com.ahdownload.domain.model.MediaKind.Audio,
                 processingMode = DownloadProcessingMode.ExtractAudio,
+                audioOutputFormat = outputFormat,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
