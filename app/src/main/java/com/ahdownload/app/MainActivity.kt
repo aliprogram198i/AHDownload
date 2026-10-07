@@ -400,8 +400,10 @@ private fun AHRoot(
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
+    canOpenDownloadLocation: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
+    val hasCustomDownloadLocation = downloadLocationStore.persistedUri() != null
     val activeDownloads = history.count {
         it.status in setOf(
             DownloadStatus.QUEUED,
@@ -475,6 +477,7 @@ private fun AHRoot(
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
+            canOpenDownloadLocation = hasCustomDownloadLocation,
         )
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
