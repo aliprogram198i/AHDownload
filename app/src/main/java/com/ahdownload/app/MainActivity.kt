@@ -220,7 +220,6 @@ private fun AHRoot(
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
-                onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
                 uiTraceLogger = uiTraceLogger,
                 onOpenSettings = { destination = RootDestination.Settings },
                 onOpenDownloads = { destination = RootDestination.Downloads },
