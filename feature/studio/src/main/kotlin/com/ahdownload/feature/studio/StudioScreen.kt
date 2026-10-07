@@ -53,6 +53,7 @@ import com.ahdownload.core.common.snapshot
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.model.MediaKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class MediaInspection(
@@ -81,6 +82,7 @@ fun StudioRoute(
     var error by remember(record.task.id, record.updatedAtEpochMs) { mutableStateOf<String?>(null) }
     var extracting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val uiContext = com.ahdownload.core.designsystem.rememberUiTraceContext()
 
     LaunchedEffect(record.task.id, record.updatedAtEpochMs) {
         inspection = null
@@ -96,7 +98,7 @@ fun StudioRoute(
             component = "StudioScreen",
             components = "topbar,metadata,open,share,extract_audio",
             stateSummary = "inspection=" + (inspection != null) + ";error=" + (error != null),
-            context = com.ahdownload.core.designsystem.rememberUiTraceContext(),
+            context = uiContext,
         )
     }
 
@@ -280,7 +282,11 @@ private fun inspectMedia(context: Context, record: DownloadRecord): MediaInspect
             retriever.setDataSource(file.absolutePath)
         }
 
-        val trackInfo = extractTracks(retriever, descriptor)
+        val trackInfo = if (descriptor != null) {
+            extractTracks(descriptor.fileDescriptor)
+        } else {
+            extractTracks(record.task.destinationPath)
+        }
         return MediaInspection(
             mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE),
             sizeBytes = sizeBytes,
@@ -300,14 +306,13 @@ private fun inspectMedia(context: Context, record: DownloadRecord): MediaInspect
 
 private data class TrackInfo(val count: Int, val videoMime: String?, val audioMime: String?)
 
-private fun extractTracks(retriever: MediaMetadataRetriever, descriptor: android.os.ParcelFileDescriptor?): TrackInfo {
+private fun extractTracks(source: Any): TrackInfo {
     val extractor = MediaExtractor()
     return try {
-        if (descriptor != null) {
-            extractor.setDataSource(descriptor.fileDescriptor)
-        } else {
-            // MediaMetadataRetriever already validated the file; extractor will use the task path in caller only if needed.
-            return TrackInfo(0, null, null)
+        when (source) {
+            is java.io.FileDescriptor -> extractor.setDataSource(source)
+            is String -> extractor.setDataSource(source)
+            else -> return TrackInfo(0, null, null)
         }
         var video: String? = null
         var audio: String? = null
@@ -333,7 +338,7 @@ private fun formatBytes(bytes: Long): String {
         value /= 1024.0
         index++
     }
-    return java.util.Locale.US.format(java.util.Locale.US, "%.1f %s", value, units[index.coerceAtLeast(0)])
+    return String.format(java.util.Locale.US, "%.1f %s", value, units[index.coerceAtLeast(0)])
 }
 
 private fun formatDuration(durationMs: Long): String {
