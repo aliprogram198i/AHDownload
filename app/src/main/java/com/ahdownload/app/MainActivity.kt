@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateListOf
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
@@ -27,6 +28,7 @@ import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.domain.download.DownloadRecord
+import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
@@ -279,6 +281,15 @@ private fun AHRoot(
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
 ) {
+    val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
+    val activeDownloads = history.count {
+        it.status in setOf(
+            DownloadStatus.QUEUED,
+            DownloadStatus.PREPARING,
+            DownloadStatus.DOWNLOADING,
+            DownloadStatus.PAUSED,
+        )
+    }
     val backStack = remember {
         mutableStateListOf(
             if (initialUrl?.isNotBlank() == true) RootDestination.Home
@@ -323,6 +334,7 @@ private fun AHRoot(
             onOpenDownloads = { root(RootDestination.Downloads) },
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
+            activeDownloads = activeDownloads,
         )
         RootDestination.Downloads -> DownloadsRoute(
             repository = downloadRepository,
@@ -336,6 +348,7 @@ private fun AHRoot(
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateSettings = { root(RootDestination.Settings) },
+            activeDownloads = activeDownloads,
         )
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
@@ -346,6 +359,7 @@ private fun AHRoot(
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateDownloads = { root(RootDestination.Downloads) },
             uiTraceLogger = uiTraceLogger,
+            activeDownloads = activeDownloads,
         )
         RootDestination.Diagnostics -> DiagnosticsRoute(
             logger = logger,
