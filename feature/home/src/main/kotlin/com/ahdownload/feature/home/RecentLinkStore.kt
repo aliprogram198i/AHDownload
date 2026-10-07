@@ -8,8 +8,8 @@ data class RecentLink(
     val url: String,
     val title: String?,
     val platform: String,
-    val thumbnailUrl: String? = null,
     val updatedAtEpochMs: Long,
+    val thumbnailUrl: String? = null,
 )
 
 class RecentLinkStore(
