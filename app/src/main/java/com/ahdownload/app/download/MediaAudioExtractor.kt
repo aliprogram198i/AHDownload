@@ -18,17 +18,14 @@ class MediaAudioExtractor(
     private val appContext = context.applicationContext
 
     suspend fun extractAndPublish(record: DownloadRecord): Result<Uri> = withContext(Dispatchers.IO) {
-        val workFile = extractToLocalM4a(record).getOrElse { return@withContext Result.failure(it) }
-        MediaStorePublisher(appContext).publish(workFile)
-    }
-
-    private fun extractToLocalM4a(record: DownloadRecord): Result<File> {
         val outputDirectory = File(
             appContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC) ?: appContext.filesDir,
             "AHDownload/Studio",
         )
         if (!outputDirectory.exists() && !outputDirectory.mkdirs()) {
-            return Result.failure(IllegalStateException("Unable to create Studio output directory"))
+            return@withContext Result.failure(
+                IllegalStateException("Unable to create Studio output directory"),
+            )
         }
 
         val baseName = sanitize(
@@ -38,7 +35,23 @@ class MediaAudioExtractor(
                 .ifBlank { "AHDownload-${record.task.id.take(8)}" },
         )
         var index = 0
-        val output = generateOutputFile(outputDirectory, baseName) { index++ }
+        val workFile = generateOutputFile(outputDirectory, baseName) { index++ }
+        extractToLocalFile(record, workFile).getOrElse { return@withContext Result.failure(it) }
+        MediaStorePublisher(appContext).publish(workFile)
+    }
+
+    suspend fun extractToLocalFile(record: DownloadRecord, outputFile: File): Result<File> =
+        withContext(Dispatchers.IO) {
+            extractToLocalFileSync(record, outputFile)
+        }
+
+    private fun extractToLocalFileSync(record: DownloadRecord, output: File): Result<File> {
+        output.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs()) {
+                return Result.failure(IllegalStateException("Unable to create audio output directory"))
+            }
+        }
+        output.delete()
 
         val extractor = MediaExtractor()
         var outputMuxer: MediaMuxer? = null
