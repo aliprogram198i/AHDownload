@@ -377,7 +377,7 @@ class HomeViewModel(
                 when (val resolution = resolver.resolve(link, operationId)) {
                     is ResolverResult.Success -> {
                         val smart = SmartResultEngine().build(resolution.candidates)
-                        val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesStore.read())
+                        val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesProvider.read())
                         val updatedRecent = if (resolution.candidates.isNotEmpty()) {
                             recentLinkStore.add(
                                 url = link.normalizedUrl,
