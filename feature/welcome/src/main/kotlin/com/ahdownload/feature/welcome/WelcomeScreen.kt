@@ -43,18 +43,24 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.interaction
+import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHGradientPrimaryButton
+import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.core.designsystem.AHStatusPill
 
 @Composable
 fun WelcomeRoute(
     onContinue: () -> Unit,
+    uiTraceLogger: UiTraceLogger,
     viewModel: WelcomeViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     WelcomeScreen(
         ready = uiState.ready,
         onContinue = onContinue,
+        uiTraceLogger = uiTraceLogger,
     )
 }
 
@@ -62,8 +68,20 @@ fun WelcomeRoute(
 private fun WelcomeScreen(
     ready: Boolean,
     onContinue: () -> Unit,
+    uiTraceLogger: UiTraceLogger,
 ) {
     val transition = rememberInfiniteTransition(label = "welcomeMotion")
+
+    val uiContext = rememberUiTraceContext()
+    LaunchedEffect(ready) {
+        uiTraceLogger.snapshot(
+            screen = "WELCOME",
+            component = "WelcomeScreen",
+            components = "status_pill,security_icon,brand_mark,feature_marks,start_button,footer_text",
+            stateSummary = "ready=" + ready,
+            context = uiContext,
+        )
+    }
     val waveColor = MaterialTheme.colorScheme.secondary
     val orbScale by transition.animateFloat(
         initialValue = 0.92f,
@@ -221,7 +239,7 @@ private fun WelcomeScreen(
                 AHGradientPrimaryButton(
                     text = "ابدأ الآن",
                     enabled = ready,
-                    onClick = onContinue,
+                    onClick = { uiTraceLogger.interaction("WELCOME", "start_button", "continue"); onContinue() },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
