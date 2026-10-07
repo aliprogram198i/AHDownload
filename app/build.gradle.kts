@@ -84,6 +84,7 @@ dependencies {
     implementation(project(":feature:welcome"))
     implementation(project(":feature:home"))
     implementation(project(":feature:downloads"))
+    implementation(project(":feature:studio"))
     implementation(project(":domain"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
