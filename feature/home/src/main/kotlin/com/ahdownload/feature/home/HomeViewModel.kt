@@ -26,6 +26,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+enum class HomeMode {
+    Link,
+    Search,
+}
+
+enum class ResultFilter(val label: String) {
+    All("الكل"),
+    Video("فيديو"),
+    Audio("صوت"),
+    Image("صور"),
+    Other("ملفات"),
+}
+
 data class HomeUiState(
     val url: String = "",
     val analyzing: Boolean = false,
@@ -41,6 +54,9 @@ data class HomeUiState(
     val searching: Boolean = false,
     val searchResults: List<ContentSearchItem> = emptyList(),
     val searchError: String? = null,
+    val mode: HomeMode = HomeMode.Link,
+    val showAll: Boolean = false,
+    val resultFilter: ResultFilter = ResultFilter.All,
 )
 
 class HomeViewModel(
@@ -69,6 +85,9 @@ class HomeViewModel(
             url = value,
             recentLinks = _uiState.value.recentLinks,
             searchQuery = _uiState.value.searchQuery,
+            mode = _uiState.value.mode,
+            showAll = false,
+            resultFilter = ResultFilter.All,
         )
     }
 
@@ -119,6 +138,31 @@ class HomeViewModel(
         }
     }
 
+    fun setMode(mode: HomeMode) {
+        if (mode == HomeMode.Search) {
+            enterSearchMode()
+        } else {
+            analysisJob?.cancel()
+            searchJob?.cancel()
+            _uiState.value = _uiState.value.copy(
+                mode = HomeMode.Link,
+                searching = false,
+                searchResults = emptyList(),
+                searchError = null,
+                showAll = false,
+                resultFilter = ResultFilter.All,
+            )
+        }
+    }
+
+    fun toggleShowAll() {
+        _uiState.value = _uiState.value.copy(showAll = !_uiState.value.showAll)
+    }
+
+    fun setResultFilter(filter: ResultFilter) {
+        _uiState.value = _uiState.value.copy(resultFilter = filter)
+    }
+
     fun enterSearchMode() {
         analysisJob?.cancel()
         analysisJob = null
@@ -132,6 +176,9 @@ class HomeViewModel(
             validatingCandidateId = null,
             error = null,
             downloadQueued = false,
+            mode = HomeMode.Search,
+            showAll = false,
+            resultFilter = ResultFilter.All,
         )
     }
 
@@ -146,7 +193,7 @@ class HomeViewModel(
 
     fun openSearchResult(item: ContentSearchItem) {
         searchJob?.cancel()
-        _uiState.value = _uiState.value.copy(searchQuery = item.title)
+        _uiState.value = _uiState.value.copy(searchQuery = item.title, mode = HomeMode.Link)
         onUrlChanged(item.url)
         analyze()
     }
@@ -155,6 +202,9 @@ class HomeViewModel(
         _uiState.value = HomeUiState(
             url = link.url,
             recentLinks = _uiState.value.recentLinks,
+            mode = HomeMode.Link,
+            showAll = false,
+            resultFilter = ResultFilter.All,
         )
         analyze()
     }

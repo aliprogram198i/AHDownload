@@ -103,6 +103,7 @@ fun HomeRoute(
     onOpenDownloads: () -> Unit,
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    activeDownloads: Int = 0,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -125,7 +126,9 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
-        onEnterSearchMode = viewModel::enterSearchMode,
+        onModeChanged = viewModel::setMode,
+        onToggleShowAll = viewModel::toggleShowAll,
+        onFilterChanged = viewModel::setResultFilter,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSearch = viewModel::searchContent,
         onSearchResultSelected = viewModel::openSearchResult,
@@ -134,20 +137,8 @@ fun HomeRoute(
         onRecentLinkSelected = viewModel::selectRecentLink,
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
+        activeDownloads = activeDownloads,
     )
-}
-
-private enum class HomeMode {
-    Link,
-    Search,
-}
-
-private enum class ResultFilter(val label: String) {
-    All("الكل"),
-    Video("فيديو"),
-    Audio("صوت"),
-    Image("صور"),
-    Other("ملفات"),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -159,7 +150,9 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
-    onEnterSearchMode: () -> Unit,
+    onModeChanged: (HomeMode) -> Unit,
+    onToggleShowAll: () -> Unit,
+    onFilterChanged: (ResultFilter) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
     onSearchResultSelected: (ContentSearchItem) -> Unit,
@@ -168,20 +161,14 @@ private fun HomeScreen(
     onRecentLinkSelected: (RecentLink) -> Unit,
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    activeDownloads: Int = 0,
 ) {
-    var mode by remember { mutableStateOf(HomeMode.Link) }
+    val mode = state.mode
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
-    var showAll by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf(ResultFilter.All) }
     val uiContext = rememberUiTraceContext()
 
-    LaunchedEffect(mode) {
-        if (mode == HomeMode.Search) {
-            onEnterSearchMode()
-        }
-    }
 
     LaunchedEffect(
         state.url,
@@ -192,8 +179,8 @@ private fun HomeScreen(
         state.selectedCandidateId,
         state.validatingCandidateId,
         state.error,
-        showAll,
-        filter,
+        state.showAll,
+        state.resultFilter,
         state.downloadQueued,
     ) {
         val components = buildList {
@@ -208,7 +195,7 @@ private fun HomeScreen(
                 add("media_preview")
                 add("recommendation_card")
                 add("result_filters")
-                add(if (showAll) "all_results" else "recommended_results")
+                add(if (state.showAll) "all_results" else "recommended_results")
             } else if (state.url.isBlank() && state.recentLinks.isNotEmpty()) {
                 add("recent_links")
             }
@@ -228,8 +215,8 @@ private fun HomeScreen(
                 ";selected=" + (state.selectedCandidateId ?: "none") +
                 ";validating=" + (state.validatingCandidateId ?: "none") +
                 ";error=" + (state.error != null) +
-                ";show_all=" + showAll +
-                ";filter=" + filter.name +
+                ";show_all=" + state.showAll +
+                ";filter=" + state.resultFilter.name +
                 ";queued=" + state.downloadQueued,
             context = uiContext,
         )
@@ -255,14 +242,14 @@ private fun HomeScreen(
         }
     }
 
-    val filteredResults = remember(resultSet, filter, showAll) {
-        val result = when (filter) {
-            ResultFilter.All -> if (showAll) resultSet.all else resultSet.visible
-            ResultFilter.Video -> if (showAll) resultSet.video else resultSet.visible.filter { it.group == MediaResultGroup.Video }
-            ResultFilter.Audio -> if (showAll) resultSet.audio else resultSet.visible.filter { it.group == MediaResultGroup.Audio }
-            ResultFilter.Image -> if (showAll) resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
+    val filteredResults = remember(resultSet, state.resultFilter, state.showAll) {
+        val result = when (state.resultFilter) {
+            ResultFilter.All -> if (state.showAll) resultSet.all else resultSet.visible
+            ResultFilter.Video -> if (state.showAll) resultSet.video else resultSet.visible.filter { it.group == MediaResultGroup.Video }
+            ResultFilter.Audio -> if (state.showAll) resultSet.audio else resultSet.visible.filter { it.group == MediaResultGroup.Audio }
+            ResultFilter.Image -> if (state.showAll) resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
                 else resultSet.visible.filter { it.candidate.format.kind == MediaKind.Image }
-            ResultFilter.Other -> if (showAll) resultSet.other.filter { it.candidate.format.kind != MediaKind.Image }
+            ResultFilter.Other -> if (state.showAll) resultSet.other.filter { it.candidate.format.kind != MediaKind.Image }
                 else resultSet.visible.filter { it.group == MediaResultGroup.Other }
         }
         result.filterNot { it.candidate.id == resultSet.bestOverall?.candidate?.id }
@@ -309,6 +296,7 @@ private fun HomeScreen(
         bottomBar = {
             AHBottomNavigationBar(
                 selected = AHBottomNavDestination.HOME,
+                activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
                     when (destination) {
                         AHBottomNavDestination.HOME -> Unit
@@ -357,18 +345,17 @@ private fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
                         FilterChip(
-                            selected = mode == HomeMode.Link,
-                            onClick = { mode = HomeMode.Link },
+                            selected = state.mode == HomeMode.Link,
+                            onClick = { onModeChanged(HomeMode.Link) },
                             label = { Text("رابط") },
                             leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                         )
                     }
                     item {
                         FilterChip(
-                            selected = mode == HomeMode.Search,
+                            selected = state.mode == HomeMode.Search,
                             onClick = {
-                                mode = HomeMode.Search
-                                onEnterSearchMode()
+                                onModeChanged(HomeMode.Search)
                             },
                             label = { Text("بحث YouTube") },
                             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
@@ -377,7 +364,7 @@ private fun HomeScreen(
                 }
             }
 
-            if (mode == HomeMode.Link) {
+            if (state.mode == HomeMode.Link) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -392,8 +379,7 @@ private fun HomeScreen(
                         OutlinedTextField(
                             value = state.url,
                             onValueChange = {
-                                showAll = false
-                                onUrlChanged(it)
+                                                                onUrlChanged(it)
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -415,7 +401,7 @@ private fun HomeScreen(
                                                 ?.trim()
                                                 .orEmpty()
                                             if (pasted.isNotBlank()) {
-                                                showAll = false
+                                                
                                                 onUrlChanged(pasted)
                                             }
                                         },
@@ -426,7 +412,6 @@ private fun HomeScreen(
                                         IconButton(
                                             enabled = !state.analyzing && !state.resolving,
                                             onClick = {
-                                                showAll = false
                                                 onUrlChanged("")
                                             },
                                         ) {
@@ -568,7 +553,7 @@ private fun HomeScreen(
                             item = item,
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
-                                mode = HomeMode.Link
+                                onModeChanged(HomeMode.Link)
                                 onSearchResultSelected(item)
                             },
                         )
@@ -594,11 +579,11 @@ private fun HomeScreen(
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
                             Column {
                                 Text(
-                                    if (state.analyzing) "نتحقق من الرابط" else "نستخرج الصيغ المتاحة",
+                                    if (state.analyzing) "1/2 · التحقق من الرابط" else "2/2 · استخراج أفضل المصادر",
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    "قد يستغرق ذلك لحظات حسب المصدر والشبكة.",
+                                    "نختار مصادر صالحة ونرتبها حسب الجودة والحجم والتوافق.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -609,7 +594,7 @@ private fun HomeScreen(
             }
 
             if (
-                mode == HomeMode.Link &&
+                state.mode == HomeMode.Link &&
                 state.url.isBlank() &&
                 state.resolution == null &&
                 !state.analyzing &&
@@ -625,7 +610,7 @@ private fun HomeScreen(
                 }
             }
 
-            if (mode == HomeMode.Link) state.result?.let { link ->
+            if (state.mode == HomeMode.Link) state.result?.let { link ->
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AHStatusPill(platformLabel(link.platform.name))
@@ -651,6 +636,7 @@ private fun HomeScreen(
                     item {
                         SmartHeroCard(
                             model = best,
+                            audioAlternative = resultSet.audio.firstOrNull(),
                             selected = best.candidate.id == state.selectedCandidateId,
                             validating = best.candidate.id == state.validatingCandidateId,
                             onSelect = {
@@ -658,24 +644,27 @@ private fun HomeScreen(
                                 onSelectCandidate(best.candidate.id)
                             },
                             onDownload = { onDownloadCandidate(best.candidate.id) },
+                            onDownloadAudio = resultSet.audio.firstOrNull()?.let { audio ->
+                                { onDownloadCandidate(audio.candidate.id) }
+                            },
                         )
                     }
                 }
 
                 item {
                     ResultFilterRow(
-                        selected = filter,
+                        selected = state.resultFilter,
                         counts = counts,
-                        showAll = showAll,
-                        onSelect = { filter = it },
-                        onToggleAll = { showAll = !showAll },
+                        showAll = state.showAll,
+                        onSelect = onFilterChanged,
+                        onToggleAll = { onToggleShowAll() },
                     )
                 }
 
                 if (filteredResults.isNotEmpty()) {
                     item {
                         Text(
-                            if (showAll) "جميع الصيغ المتاحة" else "الصيغ المقترحة",
+                            if (state.showAll) "جميع الصيغ المتاحة" else "الصيغ المقترحة",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
@@ -993,10 +982,12 @@ private fun MediaThumbnail(
 @Composable
 private fun SmartHeroCard(
     model: MediaPresentationModel,
+    audioAlternative: MediaPresentationModel?,
     selected: Boolean,
     validating: Boolean,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
+    onDownloadAudio: (() -> Unit)? = null,
 ) {
     ElevatedCard(
         modifier = Modifier
@@ -1054,6 +1045,17 @@ private fun SmartHeroCard(
                 Icon(Icons.Rounded.Download, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
                 Text(if (validating) "جارٍ التحقق من المصدر..." else "تنزيل الآن")
+            }
+            if (audioAlternative != null && model.group == MediaResultGroup.Video && onDownloadAudio != null) {
+                OutlinedButton(
+                    enabled = !validating,
+                    onClick = onDownloadAudio,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.AudioFile, contentDescription = null)
+                    Spacer(Modifier.size(7.dp))
+                    Text("تنزيل الصوت · " + audioAlternative.qualityLabel)
+                }
             }
         }
     }

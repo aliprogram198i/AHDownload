@@ -3,10 +3,12 @@ package com.ahdownload.app.download
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import android.app.PendingIntent
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkManager
@@ -372,6 +374,17 @@ class DownloadWorker(
     private fun createForegroundInfo(state: DownloadState): ForegroundInfo {
         ensureNotificationChannel()
 
+        val openIntent = Intent(applicationContext, com.ahdownload.app.MainActivity::class.java).apply {
+            putExtra(com.ahdownload.app.MainActivity.EXTRA_OPEN_DOWNLOADS, true)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val contentIntent = PendingIntent.getActivity(
+            applicationContext,
+            notificationId,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_ahdownload)
             .setContentTitle("AHDownload")
@@ -383,6 +396,7 @@ class DownloadWorker(
                     state !is DownloadState.Paused,
             )
             .setOnlyAlertOnce(true)
+            .setContentIntent(contentIntent)
             .setProgress(
                 state.totalBytesOrNull()?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0,
                 state.bytesDownloadedOrNull()?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0,

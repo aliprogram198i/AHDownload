@@ -4,6 +4,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -23,6 +25,7 @@ enum class AHBottomNavDestination {
 fun AHBottomNavigationBar(
     selected: AHBottomNavDestination,
     onDestinationSelected: (AHBottomNavDestination) -> Unit,
+    activeDownloads: Int = 0,
 ) {
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -38,7 +41,17 @@ fun AHBottomNavigationBar(
         NavigationBarItem(
             selected = selected == AHBottomNavDestination.DOWNLOADS,
             onClick = { onDestinationSelected(AHBottomNavDestination.DOWNLOADS) },
-            icon = { Icon(Icons.Rounded.Download, contentDescription = "سجل التنزيلات") },
+            icon = {
+                if (activeDownloads > 0) {
+                    BadgedBox(badge = {
+                        Badge { Text(activeDownloads.coerceAtMost(99).toString()) }
+                    }) {
+                        Icon(Icons.Rounded.Download, contentDescription = "سجل التنزيلات")
+                    }
+                } else {
+                    Icon(Icons.Rounded.Download, contentDescription = "سجل التنزيلات")
+                }
+            },
             label = { Text("سجل التنزيلات") },
             colors = AHBottomNavigationDefaults.ItemColors,
         )

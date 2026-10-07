@@ -53,6 +53,7 @@ fun SettingsRoute(
     onNavigateHome: () -> Unit,
     onNavigateDownloads: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    activeDownloads: Int = 0,
 ) {
     val context = LocalContext.current
     val location by store.location.collectAsState()
@@ -99,6 +100,7 @@ fun SettingsRoute(
         bottomBar = {
             AHBottomNavigationBar(
                 selected = AHBottomNavDestination.SETTINGS,
+                activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
                     when (destination) {
                         AHBottomNavDestination.HOME -> {
