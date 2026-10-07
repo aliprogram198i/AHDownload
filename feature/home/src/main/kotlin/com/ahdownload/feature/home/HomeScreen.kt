@@ -1282,6 +1282,128 @@ private fun AudioOnlyDownloadSection(
     }
 }
 
+
+@Composable
+private fun MediaDownloadFormatSection(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: MediaPresentationModel,
+    options: List<MediaPresentationModel>,
+    expanded: Boolean,
+    validatingCandidateId: String?,
+    onExpand: () -> Unit,
+    onDismiss: () -> Unit,
+    onSelect: (MediaPresentationModel) -> Unit,
+    onDownload: (String) -> Unit,
+    buttonLabel: String,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(icon, contentDescription = null)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            if (selected.recommendation != MediaResultRecommendation.None) {
+                AHStatusPill(
+                    recommendationLabel(selected) ?: "",
+                    success = true,
+                )
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                enabled = options.size > 1 && validatingCandidateId == null,
+                onClick = onExpand,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        contentDescription = "اختيار جودة " + title
+                    },
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    Text(
+                        unifiedOptionLabel(selected),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        unifiedOptionDetail(selected),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+            }
+
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = onDismiss,
+                modifier = Modifier
+                    .widthIn(min = 220.dp, max = 360.dp)
+                    .heightIn(max = 360.dp),
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    unifiedOptionLabel(option),
+                                    fontWeight = if (option.candidate.id == selected.candidate.id) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Medium
+                                    },
+                                )
+                                Text(
+                                    unifiedOptionDetail(option),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        },
+                        onClick = { onSelect(option) },
+                    )
+                }
+            }
+        }
+
+        Button(
+            enabled = validatingCandidateId == null,
+            onClick = { onDownload(selected.candidate.id) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    contentDescription = buttonLabel
+                },
+        ) {
+            Icon(Icons.Rounded.Download, contentDescription = null)
+            Spacer(Modifier.size(8.dp))
+            Text(
+                if (validatingCandidateId == selected.candidate.id) {
+                    "جارٍ التحقق من المصدر..."
+                } else {
+                    buttonLabel + (selected.sizeLabel?.let { " · " + it } ?: "")
+                },
+            )
+        }
+    }
+}
+
 private fun unifiedOptionLabel(model: MediaPresentationModel): String {
     return buildQualityLine(model) + (model.sizeLabel?.let { " · " + it } ?: "")
 }
