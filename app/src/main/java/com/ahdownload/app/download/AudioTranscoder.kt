@@ -122,6 +122,8 @@ class AudioTranscoder {
 
             AudioOutputFormat.Wav -> base += listOf(
                 "-c:a", "pcm_s16le",
+                "-ar", "44100",
+                "-ac", "2",
                 "-f", "wav",
                 outputFile.absolutePath,
             )
