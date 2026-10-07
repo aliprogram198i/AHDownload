@@ -391,7 +391,7 @@ fun SettingsRoute(
             },
         )
     }
-
+}
 
 class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
     private val preferences = context.applicationContext.getSharedPreferences(
