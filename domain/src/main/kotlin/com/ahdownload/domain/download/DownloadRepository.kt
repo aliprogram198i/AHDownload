@@ -6,8 +6,8 @@ interface DownloadRepository {
     suspend fun listHistory(): List<DownloadRecord>
     suspend fun listActive(): List<DownloadRecord>
 
-    suspend fun findByContentFingerprint(fingerprint: String): DownloadRecord? =
-        if (fingerprint.isBlank()) null else listHistory().firstOrNull {
+    suspend fun findByContentFingerprint(fingerprint: String?): DownloadRecord? =
+        if (fingerprint.isNullOrBlank()) null else listHistory().firstOrNull {
             it.task.contentFingerprint == fingerprint
         }
 
