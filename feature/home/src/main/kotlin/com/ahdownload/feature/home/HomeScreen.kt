@@ -76,6 +76,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
@@ -104,10 +105,11 @@ fun HomeRoute(
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
+    preferencesProvider: DownloadPreferencesProvider,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
-        HomeViewModel.Factory(onDownloadRequested, logger, context)
+        HomeViewModel.Factory(onDownloadRequested, logger, context, preferencesProvider)
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
