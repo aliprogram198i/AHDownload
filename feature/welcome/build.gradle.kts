@@ -22,6 +22,7 @@ android {
 
 dependencies {
     implementation(project(":core:designsystem"))
+    implementation(project(":core:common"))
     implementation(libs.androidx.lifecycle.viewmodel.compose)
 
     val composeBom = platform(libs.compose.bom)

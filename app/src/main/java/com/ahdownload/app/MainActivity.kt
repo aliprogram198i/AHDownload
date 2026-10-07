@@ -28,7 +28,6 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
-import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
@@ -183,7 +182,7 @@ private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
-    uiTraceLogger: UiTraceLogger,
+    uiTraceLogger: PersistentUiTraceLogger,
     downloadRepository: com.ahdownload.domain.download.DownloadRepository,
     onPauseDownload: (String) -> Unit,
     onResumeDownload: (DownloadRecord) -> Unit,
@@ -213,6 +212,7 @@ private fun AHRoot(
         when (current) {
             RootDestination.Welcome -> WelcomeRoute(
                 onContinue = { destination = RootDestination.Home },
+                uiTraceLogger = uiTraceLogger,
             )
             RootDestination.Home -> HomeRoute(
                 initialUrl = initialUrl,
@@ -221,6 +221,7 @@ private fun AHRoot(
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
                 onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
+                uiTraceLogger = uiTraceLogger,
                 onOpenSettings = { destination = RootDestination.Settings },
                 onOpenDownloads = { destination = RootDestination.Downloads },
             )
@@ -230,19 +231,22 @@ private fun AHRoot(
                 onResumeDownload = onResumeDownload,
                 onCancelDownload = onCancelDownload,
                 onOpenDownload = onOpenDownload,
+                uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.Settings -> SettingsRoute(
                 store = downloadLocationStore,
                 onPickDownloadFolder = onPickDownloadFolder,
+                uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
+                uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
-                logger = uiTraceLogger as com.ahdownload.app.diagnostics.PersistentUiTraceLogger,
+                logger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
         }

@@ -35,6 +35,9 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.ahdownload.core.common.interaction
+import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.rememberUiTraceContext
 import androidx.compose.foundation.text.selection.SelectionContainer
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -46,22 +49,32 @@ fun UiDiagnosticsRoute(
     var events by remember { mutableStateOf(logger.list()) }
     LaunchedEffect(Unit) { events = logger.list() }
     val clipboard = LocalClipboardManager.current
+    val uiContext = rememberUiTraceContext()
     val report = remember(events) { logger.exportText() }
+    LaunchedEffect(events) {
+        logger.snapshot(
+            screen = "UI_DIAGNOSTICS",
+            component = "UiDiagnosticsScreen",
+            components = "topbar,summary,copy_button,refresh_button,clear_button,report_text",
+            stateSummary = "events=" + events.size + ";report_length=" + report.length,
+            context = uiContext,
+        )
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("سجل الواجهة المتقدم") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { logger.interaction("UI_DIAGNOSTICS", "back_button", "back"); onBack() }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { events = logger.list() }) {
+                    IconButton(onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh"); events = logger.list() }) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                     }
-                    IconButton(onClick = { logger.clear(); events = emptyList() }) {
+                    IconButton(onClick = { logger.interaction("UI_DIAGNOSTICS", "clear_button", "clear"); logger.clear(); events = emptyList() }) {
                         Icon(Icons.Rounded.DeleteSweep, contentDescription = "مسح سجل الواجهة")
                     }
                 },
@@ -91,7 +104,7 @@ fun UiDiagnosticsRoute(
             }
             item {
                 Button(
-                    onClick = { clipboard.setText(AnnotatedString(report)) },
+                    onClick = { logger.interaction("UI_DIAGNOSTICS", "copy_button", "copy_full_report"); clipboard.setText(AnnotatedString(report)) },
                     enabled = report.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
@@ -101,7 +114,7 @@ fun UiDiagnosticsRoute(
             }
             item {
                 OutlinedButton(
-                    onClick = { events = logger.list() },
+                    onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh_report"); events = logger.list() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Icon(Icons.Rounded.Refresh, contentDescription = null)

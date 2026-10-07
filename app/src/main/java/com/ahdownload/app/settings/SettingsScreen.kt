@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Settings
@@ -30,6 +31,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.LaunchedEffect
+import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.interaction
+import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.rememberUiTraceContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +43,7 @@ fun SettingsRoute(
     store: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
     onBack: () -> Unit,
+    uiTraceLogger: UiTraceLogger,
 ) {
     val context = LocalContext.current
     val location by store.location.collectAsState()
@@ -44,13 +51,39 @@ fun SettingsRoute(
     var folderName by remember { mutableStateOf("") }
     var folderError by remember { mutableStateOf<String?>(null) }
 
+    val uiContext = rememberUiTraceContext()
+    LaunchedEffect(location, showFolderDialog, folderError) {
+        val components = buildList {
+            add("topbar")
+            add("storage_card")
+            add("change_folder_button")
+            if (location.isCustom) {
+                add("reset_default_button")
+                add("create_folder_button")
+            }
+            if (showFolderDialog) add("create_folder_dialog")
+            if (folderError != null) add("folder_error")
+        }.joinToString(",")
+        uiTraceLogger.snapshot(
+            screen = "SETTINGS",
+            component = "SettingsScreen",
+            components = components,
+            stateSummary = "display_name=" + location.displayName +
+                ";custom=" + location.isCustom +
+                ";accessible=" + location.isAccessible +
+                ";dialog=" + showFolderDialog +
+                ";error=" + (folderError != null),
+            context = uiContext,
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.Settings, contentDescription = "رجوع")
+                    IconButton(onClick = { uiTraceLogger.interaction("SETTINGS", "back_button", "back"); onBack() }) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
             )
@@ -83,15 +116,15 @@ fun SettingsRoute(
                         color = if (location.isAccessible) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error,
                     )
-                    Button(onClick = onPickDownloadFolder, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder"); onPickDownloadFolder() }, modifier = Modifier.fillMaxWidth()) {
                         Text("تغيير مسار التنزيل")
                     }
                     if (location.isCustom) {
-                        OutlinedButton(onClick = store::resetToDefault, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset"); store.resetToDefault() }, modifier = Modifier.fillMaxWidth()) {
                             Text("العودة إلى المسار الافتراضي")
                         }
                         OutlinedButton(
-                            onClick = { folderError = null; showFolderDialog = true },
+                            onClick = { uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog"); folderError = null; showFolderDialog = true },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Icon(Icons.Rounded.CreateNewFolder, contentDescription = null)
