@@ -4,7 +4,7 @@ import com.ahdownload.domain.model.MediaKind
 import kotlin.math.roundToInt
 
 class SmartResultEngine {
-    fun build(candidates: List<MediaCandidate>, maxVideo: Int = 6, maxAudio: Int = 4): SmartResultSet {
+    fun build(candidates: List<MediaCandidate>, maxVideo: Int = 8, maxAudio: Int = 8): SmartResultSet {
         val normalized = candidates
             .filter { it.sourceUrl.startsWith("http://") || it.sourceUrl.startsWith("https://") }
             .map(::normalize)
