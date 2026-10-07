@@ -139,7 +139,9 @@ jobs:
           "$APKSIGNER" verify             --verbose             --print-certs             --min-sdk-version 24             "$APK" | tee apksigner-verify.txt
 
           grep -q "Verified" apksigner-verify.txt
-          grep -Eq "Verified using v[12-4] scheme .*: true" apksigner-verify.txt
+          grep -q "Verified using v1 scheme (JAR signing): true" apksigner-verify.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apksigner-verify.txt
+          grep -q "Verified using v3 scheme (APK Signature Scheme v3): true" apksigner-verify.txt
 
           KEY_CERT_SHA256="$(
             keytool -list -v               -keystore "$AH_KEYSTORE_FILE"               -storepass "$AH_KEYSTORE_PASSWORD"               -alias "$AH_KEY_ALIAS" |
@@ -185,6 +187,23 @@ jobs:
 
           echo "== APK checksum =="
           sha256sum "$APK" | tee app-release.apk.sha256
+
+      - name: Install and launch APK on Android 15 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r app/build/outputs/apk/release/app-release.apk
+            adb shell pm path com.ahdownload.app
+            adb shell monkey -p com.ahdownload.app 1
+            sleep 3
+            adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.3.3'
 
       - name: Package verification outputs
         run: |
