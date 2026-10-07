@@ -44,7 +44,7 @@ fun SettingsRoute(
     onPickDownloadFolder: () -> Unit,
     onBack: () -> Unit,
     uiTraceLogger: UiTraceLogger,
-)
+) {
     val context = LocalContext.current
     val location by store.location.collectAsState()
     var showFolderDialog by remember { mutableStateOf(false) }
@@ -116,11 +116,11 @@ fun SettingsRoute(
                         color = if (location.isAccessible) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error,
                     )
-                    Button(onClick = { uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder"); onPickDownloadFolder(), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder"); onPickDownloadFolder() }, modifier = Modifier.fillMaxWidth()) {
                         Text("تغيير مسار التنزيل")
                     }
                     if (location.isCustom) {
-                        OutlinedButton(onClick = { uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset"); store.resetToDefault(), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset"); store.resetToDefault() }, modifier = Modifier.fillMaxWidth()) {
                             Text("العودة إلى المسار الافتراضي")
                         }
                         OutlinedButton(
