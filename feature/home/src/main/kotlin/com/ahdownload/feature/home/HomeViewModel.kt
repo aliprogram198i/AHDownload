@@ -854,7 +854,7 @@ class HomeViewModel(
                         "source_mode" to "EXTRACT_FROM_VIDEO",
                         "source_quality" to (format.height?.let { it.toString() + "p" } ?: "video"),
                         "source_audio_codec" to (format.audioCodec ?: "unknown"),
-                        "output_container" to "M4A",
+                        "output_format" to _uiState.value.selectedAudioOutputFormat.name,
                     ),
                     null,
                 )
@@ -899,7 +899,7 @@ class HomeViewModel(
 
     class Factory(
         private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
-        private val onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+        private val onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
         private val preferencesProvider: DownloadPreferencesProvider,
