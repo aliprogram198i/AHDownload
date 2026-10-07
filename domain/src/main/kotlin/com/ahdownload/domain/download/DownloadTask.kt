@@ -9,4 +9,7 @@ data class DownloadTask(
      * Cookie headers must never be stored here; session cookies are resolved at execution time.
      */
     val requestHeaders: Map<String, String> = emptyMap(),
+    val displayName: String? = null,
+    val contentFingerprint: String? = null,
+    val sessionCookieHost: String? = null,
 )
