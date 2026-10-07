@@ -14,6 +14,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.interaction
+import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.*
 import java.util.Locale
 
@@ -24,6 +28,7 @@ fun DownloadsRoute(
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
+    uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
 ) {
     val controls = remember(repository, onPauseDownload, onResumeDownload, onCancelDownload) {
@@ -35,6 +40,32 @@ fun DownloadsRoute(
     }
     val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModel.Factory(repository, controls))
     val records by vm.records.collectAsStateWithLifecycle()
+
+    val uiContext = rememberUiTraceContext()
+    LaunchedEffect(records) {
+        val componentNames = buildList {
+            add("topbar")
+            if (records.isEmpty()) {
+                add("empty_state")
+            } else {
+                add("history_list")
+                add("download_cards")
+                if (records.any { it.status in setOf(DownloadStatus.QUEUED, DownloadStatus.PREPARING, DownloadStatus.DOWNLOADING) }) add("pause_controls")
+                if (records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.CANCELLED) }) add("resume_controls")
+                if (records.any { it.status == DownloadStatus.FAILED }) add("retry_controls")
+                if (records.any { it.destinationUri != null }) add("open_controls")
+            }
+        }.joinToString(",")
+        uiTraceLogger.snapshot(
+            screen = "DOWNLOADS",
+            component = "DownloadsScreen",
+            components = componentNames,
+            stateSummary = "records=" + records.size + ";active=" + records.count { it.status in setOf(DownloadStatus.QUEUED, DownloadStatus.PREPARING, DownloadStatus.DOWNLOADING) } +
+                ";completed=" + records.count { it.status == DownloadStatus.COMPLETED } +
+                ";failed=" + records.count { it.status == DownloadStatus.FAILED },
+            context = uiContext,
+        )
+    }
     DownloadsScreen(
         records = records,
         onBack = onBack,
@@ -56,13 +87,14 @@ private fun DownloadsScreen(
     onCancel: (DownloadRecord) -> Unit,
     onRetry: (DownloadRecord) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
+    uiTraceLogger: UiTraceLogger,
 ) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("التنزيلات") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { uiTraceLogger.interaction("DOWNLOADS", "back_button", "back"); onBack() }) {
                         Icon(Icons.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
@@ -154,29 +186,29 @@ private fun DownloadRecordCard(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (record.status) {
                     DownloadStatus.QUEUED, DownloadStatus.PREPARING, DownloadStatus.DOWNLOADING -> {
-                        IconButton(onClick = onPause) {
+                        IconButton(onClick = { uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause"); onPause() }) {
                             Icon(Icons.Rounded.Pause, contentDescription = "إيقاف مؤقت")
                         }
-                        OutlinedButton(onClick = onCancel) {
+                        OutlinedButton(onClick = { uiTraceLogger.interaction("DOWNLOADS", "cancel_control", "cancel"); onCancel() }) {
                             Icon(Icons.Rounded.Cancel, contentDescription = null)
                             Text("إلغاء")
                         }
                     }
                     DownloadStatus.PAUSED, DownloadStatus.CANCELLED -> {
-                        Button(onClick = onResume) {
+                        Button(onClick = { uiTraceLogger.interaction("DOWNLOADS", "resume_control", "resume"); onResume() }) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                             Text("استئناف")
                         }
                     }
                     DownloadStatus.FAILED -> {
-                        Button(onClick = onRetry) {
+                        Button(onClick = { uiTraceLogger.interaction("DOWNLOADS", "retry_control", "retry"); onRetry() }) {
                             Icon(Icons.Rounded.Refresh, contentDescription = null)
                             Text("إعادة المحاولة")
                         }
                     }
                     DownloadStatus.COMPLETED -> {
                         if (record.destinationUri != null) {
-                            OutlinedButton(onClick = onOpenDownload) {
+                            OutlinedButton(onClick = { uiTraceLogger.interaction("DOWNLOADS", "open_control", "open"); onOpenDownload() }) {
                                 Icon(Icons.Rounded.OpenInNew, contentDescription = null)
                                 Text("فتح")
                             }
