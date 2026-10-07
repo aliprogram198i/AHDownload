@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BugReport
@@ -22,6 +23,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -57,6 +60,8 @@ fun SettingsRoute(
 ) {
     val context = LocalContext.current
     val location by store.location.collectAsState()
+    val preferencesStore = remember { DownloadPreferencesStore(context.applicationContext) }
+    val downloadPreferences by preferencesStore.state.collectAsState()
     var showFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var folderError by remember { mutableStateOf<String?>(null) }
@@ -69,6 +74,7 @@ fun SettingsRoute(
             components = buildList {
                 add("topbar")
                 add("download_location")
+                add("smart_download_preferences")
                 add("advanced_diagnostics")
                 add("about")
                 add("bottom_navigation")
@@ -129,6 +135,70 @@ fun SettingsRoute(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
+            }
+
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text("التنزيل الذكي", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "حدد تفضيلاتك وسيستخدمها AHDownload تلقائيًا عند اختيار المصدر.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        Text("جودة الفيديو", style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            VideoQualityPreference.entries.forEach { option ->
+                                item {
+                                    FilterChip(
+                                        selected = downloadPreferences.videoQuality == option,
+                                        onClick = { preferencesStore.setVideoQuality(option) },
+                                        label = { Text(option.label) },
+                                    )
+                                }
+                            }
+                        }
+
+                        Text("جودة الصوت", style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.lazy.LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            AudioBitratePreference.entries.forEach { option ->
+                                item {
+                                    FilterChip(
+                                        selected = downloadPreferences.audioBitrate == option,
+                                        onClick = { preferencesStore.setAudioBitrate(option) },
+                                        label = { Text(option.label) },
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Wi‑Fi فقط", style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "لا تبدأ تنزيلات جديدة عبر بيانات الهاتف.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = downloadPreferences.wifiOnly,
+                                onCheckedChange = preferencesStore::setWifiOnly,
+                            )
+                        }
+                    }
+                }
             }
 
             item {
