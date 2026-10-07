@@ -49,7 +49,7 @@ class DownloadWorker(
     override suspend fun doWork(): Result {
         val inputTask = readTask() ?: return Result.failure()
         val audioExtractionRequested = inputTask.processingMode == DownloadProcessingMode.ExtractAudio
-        val extractionSuffix = ".source." + task.id.take(8)
+        val extractionSuffix = ".source." + inputTask.id.take(8)
         val extractionAlreadyStaged = audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
         var task = if (extractionAlreadyStaged) {
             inputTask.copy(destinationPath = inputTask.destinationPath.removeSuffix(extractionSuffix))
