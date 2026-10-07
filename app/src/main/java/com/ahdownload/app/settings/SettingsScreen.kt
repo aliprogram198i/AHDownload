@@ -15,12 +15,14 @@ import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -69,6 +71,7 @@ fun SettingsRoute(
     var showFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var folderError by remember { mutableStateOf<String?>(null) }
+    var storageInfo by remember(context) { mutableStateOf(StorageInfoReader.read(context)) }
     val uiContext = rememberUiTraceContext()
 
     LaunchedEffect(location, showFolderDialog, folderError) {
@@ -78,6 +81,7 @@ fun SettingsRoute(
             components = buildList {
                 add("topbar")
                 add("download_location")
+                add("storage_health")
                 add("advanced_diagnostics")
                 add("about")
                 add("bottom_navigation")
@@ -86,6 +90,7 @@ fun SettingsRoute(
             }.joinToString(","),
             stateSummary = "custom=" + location.isCustom +
                 ";accessible=" + location.isAccessible +
+                ";storage_free_percent=" + ((storageInfo.freeRatio * 100f).toInt()) +
                 ";dialog=" + showFolderDialog +
                 ";error=" + (folderError != null),
             context = uiContext,
@@ -193,6 +198,69 @@ fun SettingsRoute(
                                 Text("إنشاء مجلد داخل المسار")
                             }
                         }
+                    }
+                }
+            }
+
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("صحة التخزين", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "المساحة المتاحة على وحدة التخزين المستخدمة من AHDownload.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    uiTraceLogger.interaction("SETTINGS", "storage_refresh", "refresh")
+                                    storageInfo = StorageInfoReader.read(context)
+                                },
+                            ) {
+                                Icon(Icons.Rounded.Refresh, contentDescription = "تحديث مساحة التخزين")
+                            }
+                        }
+                        LinearProgressIndicator(
+                            progress = { storageInfo.freeRatio },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "متاح " + formatStorageBytes(storageInfo.freeBytes),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                            )
+                            Text(
+                                "من " + formatStorageBytes(storageInfo.totalBytes),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            if (storageInfo.isLow) {
+                                "المساحة المتاحة منخفضة. قد يفشل تنزيل الملفات الكبيرة."
+                            } else {
+                                "استخدام التخزين ضمن النطاق الطبيعي."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (storageInfo.isLow) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
                     }
                 }
             }
