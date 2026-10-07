@@ -81,6 +81,8 @@ fun StudioRoute(
     var inspection by remember(record.task.id, record.updatedAtEpochMs) { mutableStateOf<MediaInspection?>(null) }
     var error by remember(record.task.id, record.updatedAtEpochMs) { mutableStateOf<String?>(null) }
     var extracting by remember { mutableStateOf(false) }
+    var extractMessage by remember { mutableStateOf<String?>(null) }
+    var extractSucceeded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val uiContext = com.ahdownload.core.designsystem.rememberUiTraceContext()
 
@@ -201,6 +203,34 @@ fun StudioRoute(
                     }
                 }
 
+                extractMessage?.let { message ->
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    if (extractSucceeded) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = if (extractSucceeded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                )
+                                Text(
+                                    message,
+                                    color = if (extractSucceeded) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.error
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
                 val canExtractAudio = info.audioMimeType?.startsWith("audio/mp4a") == true ||
                     info.audioMimeType == "audio/aac"
                 if (record.task.mediaKind == MediaKind.Video && canExtractAudio) {
@@ -212,6 +242,12 @@ fun StudioRoute(
                                 scope.launch {
                                     val success = runCatching { onExtractAudio(record) }.getOrDefault(false)
                                     extracting = false
+                                    extractSucceeded = success
+                                    extractMessage = if (success) {
+                                        "تم استخراج الصوت الأصلي وحفظه في مجلد الموسيقى."
+                                    } else {
+                                        "تعذر استخراج الصوت من هذا الملف. لا يزال الملف الأصلي محفوظًا."
+                                    }
                                     uiTraceLogger.interaction("STUDIO", "extract_audio_button", if (success) "success" else "failed")
                                 }
                             },
