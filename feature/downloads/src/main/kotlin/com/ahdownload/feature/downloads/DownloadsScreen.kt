@@ -251,7 +251,11 @@ private fun DownloadsScreen(
     var filter by remember { mutableStateOf(DownloadFilter.All) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
+    var pendingRename by remember { mutableStateOf<DownloadRecord?>(null) }
+    var renameValue by remember { mutableStateOf("") }
+    var renameBusy by remember { mutableStateOf(false) }
     var bulkMenuExpanded by remember { mutableStateOf(false) }
+    val renameScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(feedback) {
