@@ -336,4 +336,91 @@ class YouTubeResolverTest {
         assertEquals(browserUrl, result.candidates.single().sourceUrl)
     }
 
+
+    @Test
+    fun attachesSessionContextToAllFallbackCandidatesAfterPrimaryEnrichment() = runBlocking {
+        var postCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                {
+                  "INNERTUBE_API_KEY":"test-key",
+                  "INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"1"}},
+                  "videoDetails":{"title":"Session Context Test","lengthSeconds":"8"},
+                  "streamingData":{
+                    "formats":[
+                      {
+                        "itag":"18",
+                        "mimeType":"video/mp4; codecs=\"avc1.4d401f, mp4a.40.2\"",
+                        "width":640,
+                        "height":360,
+                        "url":"https://rr1---sn.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4&source=primary"
+                      }
+                    ]
+                  }
+                }
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String): String {
+                postCount++
+                return when (postCount) {
+                    1 -> """
+                        {
+                          "videoDetails":{"title":"Embedded","lengthSeconds":"8"},
+                          "playabilityStatus":{"status":"OK"},
+                          "streamingData":{"formats":[
+                            {"itag":"22","mimeType":"video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"","width":1280,"height":720,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=22&mime=video%2Fmp4&source=embedded"}
+                          ]}
+                        }
+                    """.trimIndent()
+                    else -> """
+                        {
+                          "videoDetails":{"title":"Android","lengthSeconds":"8"},
+                          "playabilityStatus":{"status":"OK"},
+                          "streamingData":{"formats":[
+                            {"itag":"249","mimeType":"video/webm; codecs=\"vp9, opus\"","width":1920,"height":1080,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=android"}
+                          ]}
+                        }
+                    """.trimIndent()
+                }
+            }
+        }
+
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
+                YouTubeSessionSnapshot(
+                    cookies = "SID=redacted",
+                    videoUrls = emptyList(),
+                    audioUrls = emptyList(),
+                    authenticated = true,
+                    userAgent = "Mozilla/5.0 (Linux; Android 15)",
+                    browserPoTokenObserved = true,
+                    browserPoToken = "pot-redacted",
+                )
+        }
+
+        val resolver = YouTubeResolver(
+            httpClient = client,
+            sessionProvider = session,
+        )
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/session-context",
+                    normalizedUrl = "https://youtu.be/session-context",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        result as ResolverResult.Success
+        assertTrue(result.candidates.any { it.id == "18" })
+        assertTrue(result.candidates.any { it.id == "embedded-22" })
+        assertTrue(result.candidates.any { it.id == "android-249" })
+        assertTrue(result.candidates.all { it.requestHeaders["Cookie"] == "SID=redacted" })
+        assertTrue(result.candidates.all { it.requestHeaders["Referer"] == "https://www.youtube.com/" })
+        assertTrue(result.candidates.all { it.sourceUrl.contains("pot=pot-redacted") })
+    }
+
 }
