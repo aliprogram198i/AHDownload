@@ -196,7 +196,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
-    onDownloadAudio: () -> Unit,
+    onDownloadAudio: (String?) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
@@ -736,6 +736,7 @@ private fun HomeScreen(
                         primaryOptions = primaryOptions,
                         audioOptions = audioOptions,
                         selectedCandidateId = state.selectedCandidateId,
+                        selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
                         onSelect = {
                             logSelection(
@@ -744,6 +745,14 @@ private fun HomeScreen(
                                 state.selectedCandidateId,
                             )
                             onSelectCandidate(it.candidate.id)
+                        },
+                        onSelectAudio = {
+                            logSelection(
+                                logger,
+                                it,
+                                state.selectedAudioCandidateId,
+                            )
+                            onSelectAudioCandidate(it.candidate.id)
                         },
                         onDownload = { onDownloadCandidate(it) },
                         onDownloadAudio = onDownloadAudio,
@@ -1085,10 +1094,13 @@ private fun UnifiedDownloadResultCard(
     primaryOptions: List<MediaPresentationModel>,
     audioOptions: List<MediaPresentationModel>,
     selectedCandidateId: String?,
+    selectedAudioCandidateId: String?,
+
     validatingCandidateId: String?,
     onSelect: (MediaPresentationModel) -> Unit,
+    onSelectAudio: (MediaPresentationModel) -> Unit,
     onDownload: (String) -> Unit,
-    onDownloadAudio: () -> Unit,
+    onDownloadAudio: (String?) -> Unit,
 ) {
     var videoOptionsExpanded by remember { mutableStateOf(false) }
 
@@ -1215,9 +1227,12 @@ private fun UnifiedDownloadResultCard(
 
             if (showAudioSection) {
                 AudioOnlyDownloadSection(
+                    audioOptions = audioOptions,
+                    selectedAudioCandidateId = selectedAudioCandidateId,
                     bestAudio = bestAudio,
                     hasVideoSource = rawVideoAvailable,
                     validatingCandidateId = validatingCandidateId,
+                    onSelect = onSelectAudio,
                     onDownload = onDownloadAudio,
                 )
             }
@@ -1227,13 +1242,21 @@ private fun UnifiedDownloadResultCard(
 
 @Composable
 private fun AudioOnlyDownloadSection(
+    audioOptions: List<MediaPresentationModel>,
+    selectedAudioCandidateId: String?,
     bestAudio: MediaPresentationModel?,
     hasVideoSource: Boolean,
     validatingCandidateId: String?,
-    onDownload: () -> Unit,
+    onSelect: (MediaPresentationModel) -> Unit,
+    onDownload: (String?) -> Unit,
 ) {
+    val selectedAudio = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
+        ?: bestAudio
+        ?: audioOptions.firstOrNull()
+
     val detail = when {
-        bestAudio != null -> "أفضل جودة صوتية متاحة · " + bestAudio.qualityLabel
+        selectedAudio != null -> selectedAudio.qualityLabel + " · " +
+            containerLabel(selectedAudio.candidate.format.container)
         hasVideoSource -> "استخراج الصوت من الفيديو · M4A"
         else -> "الصوت فقط"
     }
@@ -1247,22 +1270,129 @@ private fun AudioOnlyDownloadSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(Icons.Rounded.AudioFile, contentDescription = null)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "الصوت",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    if (audioOptions.size > 1) {
+                        "اختر الجودة الصوتية المتاحة قبل التنزيل"
+                    } else {
+                        detail
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (selectedAudio != null && audioOptions.size > 1) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    enabled = validatingCandidateId == null,
+                    onClick = { /* menu opens through expanded state below */ },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        detail,
+                        modifier = Modifier.weight(1f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                }
+
+                // Keep the selection surface deterministic: the popup is opened
+                // by the dedicated state-backed button overlay.
+            }
+        }
+
+        if (selectedAudio != null && audioOptions.size > 1) {
+            var expanded by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    enabled = validatingCandidateId == null,
+                    onClick = { expanded = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Text(
+                            selectedAudio.qualityLabel + " · " + containerLabel(selectedAudio.candidate.format.container),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            unifiedOptionDetail(selectedAudio),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                }
+
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier
+                        .widthIn(min = 220.dp, max = 360.dp)
+                        .heightIn(max = 360.dp),
+                ) {
+                    audioOptions.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        option.qualityLabel + " · " + containerLabel(option.candidate.format.container),
+                                        fontWeight = if (option.candidate.id == selectedAudio.candidate.id) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Medium
+                                        },
+                                    )
+                                    Text(
+                                        buildList {
+                                            option.codecLabel?.let(::add)
+                                            option.sizeLabel?.let(::add)
+                                            add(kindPresentation(option))
+                                        }.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            },
+                            onClick = {
+                                expanded = false
+                                onSelect(option)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
+        if (selectedAudio == null && !hasVideoSource) {
             Text(
-                "الصوت",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                "لا يتوفر مصدر صوتي لهذا الرابط حاليًا.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
             )
         }
 
-        Text(
-            detail,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
         Button(
-            enabled = (bestAudio != null || hasVideoSource) && validatingCandidateId == null,
-            onClick = onDownload,
+            enabled = (selectedAudio != null || hasVideoSource) && validatingCandidateId == null,
+            onClick = {
+                onDownload(selectedAudio?.candidate?.id)
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics {
@@ -1274,14 +1404,14 @@ private fun AudioOnlyDownloadSection(
             Text(
                 when {
                     validatingCandidateId != null -> "جارٍ تجهيز الصوت..."
-                    bestAudio == null && !hasVideoSource -> "الصوت غير متاح"
-                    else -> "تحميل الصوت"
+                    selectedAudio == null && !hasVideoSource -> "الصوت غير متاح"
+                    selectedAudio != null -> "تحميل الصوت · " + selectedAudio.qualityLabel
+                    else -> "استخراج الصوت · M4A"
                 },
             )
         }
     }
 }
-
 
 @Composable
 private fun MediaDownloadFormatSection(
