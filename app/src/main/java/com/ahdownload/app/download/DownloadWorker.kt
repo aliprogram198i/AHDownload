@@ -25,6 +25,13 @@ import com.ahdownload.domain.download.LocalAtomicFileSink
 import com.ahdownload.domain.download.OkHttpDownloadByteStream
 import com.ahdownload.domain.download.PersistentDownloadQueue
 import com.ahdownload.domain.download.StreamingDownloadEngine
+import com.ahdownload.domain.analyzer.LinkAnalyzer
+import com.ahdownload.domain.model.MediaKind
+import com.ahdownload.domain.model.MediaPlatform
+import com.ahdownload.domain.resolver.CandidateRanker
+import com.ahdownload.domain.resolver.ResolverResult
+import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
+import com.ahdownload.feature.home.HomeResolver
 
 class DownloadWorker(
     appContext: Context,
@@ -34,11 +41,53 @@ class DownloadWorker(
     private val notificationId = id.hashCode().and(Int.MAX_VALUE).coerceAtLeast(1)
 
     override suspend fun doWork(): Result {
-        val task = readTask() ?: return Result.failure()
+        var task = readTask() ?: return Result.failure()
 
         setForeground(createForegroundInfo(DownloadState.Preparing))
 
-        val repository = FileDownloadRepository(applicationContext)
+        val application = applicationContext as com.ahdownload.app.AHDownloadApplication
+        val repository = application.downloadRepository
+        val diagnostics = diagnosticsLogger()
+        var refreshAttempted = false
+
+        if (shouldRefreshYouTubeTask(task, repository)) {
+            refreshAttempted = true
+            val refreshed = refreshYouTubeTask(task, diagnostics)
+            if (refreshed == null) {
+                diagnostics.log(
+                    DiagnosticLevel.ERROR,
+                    "YOUTUBE_RETRY_REFRESH_FAILED",
+                    "تعذر استخراج مصدر YouTube حديث لإعادة المحاولة",
+                    "download.refresh",
+                    mapOf(
+                        "task_id" to task.id,
+                        "run_attempt" to runAttemptCount.toString(),
+                        "source_page_present" to (!task.sourcePageUrl.isNullOrBlank()).toString(),
+                    ),
+                    null,
+                )
+                return Result.failure(
+                    workDataOf(
+                        KEY_FAILURE_CODE to "youtube_refresh_failed",
+                        KEY_FAILURE_DETAIL to "تعذر تحديث مصدر YouTube قبل إعادة المحاولة.",
+                    ),
+                )
+            }
+            task = refreshed
+            diagnostics.log(
+                DiagnosticLevel.INFO,
+                "YOUTUBE_RETRY_REFRESH_APPLIED",
+                "تم تحديث مصدر YouTube قبل إعادة المحاولة",
+                "download.refresh",
+                mapOf(
+                    "task_id" to task.id,
+                    "run_attempt" to runAttemptCount.toString(),
+                    "source_host" to hostOf(task.sourceUrl),
+                ),
+                null,
+            )
+        }
+
         val queue = PersistentDownloadQueue(repository)
         val engine = StreamingDownloadEngine(
             source = OkHttpDownloadByteStream(
@@ -54,7 +103,6 @@ class DownloadWorker(
             isPauseRequested = { controlStore.isPaused(task.id) },
         )
 
-        val diagnostics = diagnosticsLogger()
         diagnostics.log(
             DiagnosticLevel.INFO,
             "DOWNLOAD_STARTED",
@@ -177,7 +225,18 @@ class DownloadWorker(
         return when (record.status) {
             DownloadStatus.COMPLETED -> Result.success()
             DownloadStatus.FAILED -> {
-                if (record.failureCode == "network_error" || record.failureCode == "http_error" && isRetryableHttp(record.failureDetail)) {
+                val retryableYouTube403 =
+                    !refreshAttempted &&
+                        runAttemptCount == 0 &&
+                        isYouTubeTask(task) &&
+                        record.failureCode == "http_error" &&
+                        record.failureDetail == "403"
+
+                if (
+                    record.failureCode == "network_error" ||
+                    record.failureCode == "http_error" && isRetryableHttp(record.failureDetail) ||
+                    retryableYouTube403
+                ) {
                     Result.retry()
                 } else {
                     Result.failure(
@@ -207,7 +266,7 @@ class DownloadWorker(
         detail: String,
     ) {
         runCatching {
-            FileDownloadRepository(applicationContext).upsert(
+            (applicationContext as com.ahdownload.app.AHDownloadApplication).downloadRepository.upsert(
                 record.copy(
                     status = DownloadStatus.FAILED,
                     failureCode = "destination_storage_error",
@@ -226,7 +285,12 @@ class DownloadWorker(
         val host = hostOf(url)
         return buildMap {
             when {
-                isYouTubeMediaHost(url) -> put("Referer", "https://www.youtube.com/")
+                isYouTubeMediaHost(url) -> {
+                    put("Referer", "https://www.youtube.com/")
+                    CookieManager.getInstance().getCookie("https://www.youtube.com/")
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { put("Cookie", it) }
+                }
                 !sessionCookieHost.isNullOrBlank() && hostMatchesSession(host, sessionCookieHost) -> {
                     cookieManager.getCookie("https://$sessionCookieHost/")
                         ?.takeIf { it.isNotBlank() }
@@ -262,6 +326,9 @@ class DownloadWorker(
         val displayName = inputData.getString(KEY_DISPLAY_NAME)
         val contentFingerprint = inputData.getString(KEY_CONTENT_FINGERPRINT).orEmpty()
         val sessionCookieHost = inputData.getString(KEY_SESSION_COOKIE_HOST)
+        val sourcePageUrl = inputData.getString(KEY_SOURCE_PAGE_URL)
+        val mediaKind = inputData.getString(KEY_MEDIA_KIND)
+            ?.let { runCatching { MediaKind.valueOf(it) }.getOrNull() }
         val requestHeaders = buildMap {
             inputData.getString(KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -280,6 +347,8 @@ class DownloadWorker(
             displayName = displayName,
             contentFingerprint = contentFingerprint,
             sessionCookieHost = sessionCookieHost,
+            sourcePageUrl = sourcePageUrl,
+            mediaKind = mediaKind,
             requestHeaders = requestHeaders,
         )
     }
@@ -365,6 +434,75 @@ class DownloadWorker(
         else -> null
     }
 
+    private suspend fun shouldRefreshYouTubeTask(
+        task: DownloadTask,
+        repository: com.ahdownload.app.download.FileDownloadRepository,
+    ): Boolean {
+        if (!isYouTubeTask(task)) return false
+
+        val forced = inputData.getBoolean(KEY_FORCE_REFRESH, false) && runAttemptCount == 0
+        if (forced) return true
+        if (runAttemptCount != 1) return false
+
+        val previous = repository.get(task.id) ?: return false
+        return previous.failureCode == "http_error" && previous.failureDetail == "403"
+    }
+
+    private fun isYouTubeTask(task: DownloadTask): Boolean {
+        val pageUrl = task.sourcePageUrl ?: return false
+        if (task.mediaKind !in setOf(MediaKind.Video, MediaKind.Audio)) return false
+        return LinkAnalyzer().analyze(pageUrl)?.platform == MediaPlatform.YouTube
+    }
+
+    private suspend fun refreshYouTubeTask(
+        task: DownloadTask,
+        diagnostics: PersistentDiagnosticLogger,
+    ): DownloadTask? {
+        val pageUrl = task.sourcePageUrl
+            ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?: return null
+        val link = LinkAnalyzer().analyze(pageUrl)?.takeIf { it.platform == MediaPlatform.YouTube }
+            ?: return null
+        val expectedKind = task.mediaKind ?: return null
+
+        val resolver = HomeResolver(
+            logger = diagnostics,
+            sessionProvider = AndroidYouTubeSessionProvider(applicationContext),
+        )
+
+        val resolved = resolver.resolve(link, operationId = id.toString())
+        if (resolved !is ResolverResult.Success) return null
+
+        val candidates = CandidateRanker()
+            .rank(resolved.candidates, requestedKind = expectedKind)
+            .take(4)
+
+        for (candidate in candidates) {
+            val validation = resolver.validate(candidate, operationId = id.toString())
+            if (validation is com.ahdownload.domain.validation.CandidateValidationResult.Valid) {
+                return task.copy(
+                    sourceUrl = validation.finalUrl,
+                    sourcePageUrl = link.normalizedUrl,
+                    mediaKind = expectedKind,
+                    sessionCookieHost = validation.candidate.sessionCookieHost,
+                    requestHeaders = validation.candidate.requestHeaders.filterKeys { key ->
+                        !key.equals("Cookie", ignoreCase = true) &&
+                            (key.equals("User-Agent", ignoreCase = true) ||
+                                key.equals("Referer", ignoreCase = true) ||
+                                key.equals("Origin", ignoreCase = true) ||
+                                key.equals("Accept", ignoreCase = true) ||
+                                key.equals("Accept-Language", ignoreCase = true) ||
+                                key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
+                                key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
+                                key.equals("Sec-Fetch-Site", ignoreCase = true))
+                    },
+                )
+            }
+        }
+
+        return null
+    }
+
     private fun isRetryableHttp(detail: String?): Boolean {
         val code = detail?.toIntOrNull() ?: return false
         return code == 408 || code == 429 || code in 500..599
@@ -377,6 +515,9 @@ class DownloadWorker(
         const val KEY_DISPLAY_NAME = "display_name"
         const val KEY_CONTENT_FINGERPRINT = "content_fingerprint"
         const val KEY_SESSION_COOKIE_HOST = "session_cookie_host"
+        const val KEY_SOURCE_PAGE_URL = "source_page_url"
+        const val KEY_MEDIA_KIND = "media_kind"
+        const val KEY_FORCE_REFRESH = "force_refresh"
         const val KEY_USER_AGENT = "user_agent"
         const val KEY_REFERER = "referer"
         const val KEY_ORIGIN = "origin"
