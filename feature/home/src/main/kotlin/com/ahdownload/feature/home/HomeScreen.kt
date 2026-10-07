@@ -2,7 +2,6 @@ package com.ahdownload.feature.home
 
 import android.content.ClipboardManager
 import android.content.Context
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Link
@@ -37,13 +38,13 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoFile
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -191,8 +192,6 @@ private fun HomeScreen(
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
-    onToggleShowAll: () -> Unit,
-    onFilterChanged: (ResultFilter) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
     onSearchResultSelected: (ContentSearchItem) -> Unit,
@@ -239,10 +238,7 @@ private fun HomeScreen(
             add("paste_input_button")
             if (state.analyzing || state.resolving) add("loading_state")
             if (state.resolution != null) {
-                add("media_preview")
-                add("recommendation_card")
-                add("result_filters")
-                add(if (state.showAll) "all_results" else "recommended_results")
+                add("unified_download_result")
             } else if (state.url.isBlank() && state.recentLinks.isNotEmpty()) {
                 add("recent_links")
             }
@@ -289,28 +285,7 @@ private fun HomeScreen(
         }
     }
 
-    val filteredResults = remember(resultSet, state.resultFilter, state.showAll) {
-        val result = when (state.resultFilter) {
-            ResultFilter.All -> if (state.showAll) resultSet.all else resultSet.visible
-            ResultFilter.Video -> if (state.showAll) resultSet.video else resultSet.visible.filter { it.group == MediaResultGroup.Video }
-            ResultFilter.Audio -> if (state.showAll) resultSet.audio else resultSet.visible.filter { it.group == MediaResultGroup.Audio }
-            ResultFilter.Image -> if (state.showAll) resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
-                else resultSet.visible.filter { it.candidate.format.kind == MediaKind.Image }
-            ResultFilter.Other -> if (state.showAll) resultSet.other.filter { it.candidate.format.kind != MediaKind.Image }
-                else resultSet.visible.filter { it.group == MediaResultGroup.Other }
-        }
-        result.filterNot { it.candidate.id == resultSet.bestOverall?.candidate?.id }
-    }
 
-    val counts = remember(resultSet) {
-        mapOf(
-            ResultFilter.All to resultSet.all.size,
-            ResultFilter.Video to resultSet.video.size,
-            ResultFilter.Audio to resultSet.audio.size,
-            ResultFilter.Image to resultSet.other.count { it.candidate.format.kind == MediaKind.Image },
-            ResultFilter.Other to resultSet.other.count { it.candidate.format.kind != MediaKind.Image },
-        )
-    }
 
     Scaffold(
         topBar = {
@@ -738,7 +713,15 @@ private fun HomeScreen(
 
             if (mode == HomeMode.Link) state.resolution?.let { resolution ->
                 item {
-                    MediaPreviewCard(
+                    val resultKind = state.result?.kind ?: MediaKind.Unknown
+                    val primaryOptions = when (resultKind) {
+                        MediaKind.Video -> resultSet.video
+                        MediaKind.Audio -> resultSet.audio
+                        MediaKind.Image -> resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
+                        MediaKind.Unknown -> resultSet.all
+                    }.ifEmpty { resultSet.all }
+                    val audioOptions = resultSet.audio
+                    UnifiedDownloadResultCard(
                         title = resolution.title ?: "محتوى الوسائط",
                         thumbnailUrl = resolution.thumbnailUrl,
                         durationMs = resolution.durationMs,
@@ -746,70 +729,21 @@ private fun HomeScreen(
                         kind = state.result?.kind,
                         favorite = currentFavorite,
                         onToggleFavorite = onToggleFavorite,
+                        primaryOptions = primaryOptions,
+                        audioOptions = audioOptions,
+                        selectedCandidateId = state.selectedCandidateId,
+                        validatingCandidateId = state.validatingCandidateId,
+                        onSelect = {
+                            logSelection(
+                                logger,
+                                it,
+                                state.selectedCandidateId,
+                            )
+                            onSelectCandidate(it.candidate.id)
+                        },
+                        onDownload = { onDownloadCandidate(it) },
                     )
                 }
-
-                resultSet.bestOverall?.let { best ->
-                    item {
-                        SmartHeroCard(
-                            model = best,
-                            audioAlternative = resultSet.audio.firstOrNull(),
-                            selected = best.candidate.id == state.selectedCandidateId,
-                            validating = best.candidate.id == state.validatingCandidateId,
-                            onSelect = {
-                                logSelection(logger, best, state.selectedCandidateId)
-                                onSelectCandidate(best.candidate.id)
-                            },
-                            onDownload = { onDownloadCandidate(best.candidate.id) },
-                            onDownloadAudio = resultSet.audio.firstOrNull()?.let { audio ->
-                                { onDownloadCandidate(audio.candidate.id) }
-                            },
-                        )
-                    }
-                }
-
-                item {
-                    ResultFilterRow(
-                        selected = state.resultFilter,
-                        counts = counts,
-                        showAll = state.showAll,
-                        onSelect = onFilterChanged,
-                        onToggleAll = { onToggleShowAll() },
-                    )
-                }
-
-                if (filteredResults.isNotEmpty()) {
-                    item {
-                        Text(
-                            if (state.showAll) "جميع الصيغ المتاحة" else "الصيغ المقترحة",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    items(
-                        filteredResults,
-                        key = { "result-" + it.candidate.id },
-                    ) { model ->
-                        ResultOptionCard(
-                            model = model,
-                            selected = model.candidate.id == state.selectedCandidateId,
-                            validating = model.candidate.id == state.validatingCandidateId,
-                            onSelect = {
-                                logSelection(logger, model, state.selectedCandidateId)
-                                onSelectCandidate(model.candidate.id)
-                            },
-                            onDownload = { onDownloadCandidate(model.candidate.id) },
-                        )
-                    }
-                } else {
-                    item {
-                        Text(
-                            "لا توجد صيغ متاحة في هذا التصنيف.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
 
             state.error?.let { error ->
                 item {
@@ -1046,68 +980,6 @@ private fun formatRelativeRecentTime(epochMs: Long): String {
 }
 
 @Composable
-private fun MediaPreviewCard(
-    title: String,
-    thumbnailUrl: String?,
-    durationMs: Long?,
-    platform: String?,
-    kind: MediaKind?,
-    favorite: Boolean,
-    onToggleFavorite: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            MediaThumbnail(
-                url = thumbnailUrl,
-                contentDescription = "الصورة المصغرة: " + title,
-                modifier = Modifier
-                    .size(width = 120.dp, height = 84.dp)
-                    .clip(RoundedCornerShape(14.dp)),
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    platform?.let { item { AssistChip(onClick = {}, label = { Text(platformLabel(it)) }) } }
-                    durationMs?.let { item { AssistChip(onClick = {}, label = { Text(formatDuration(it)) }) } }
-                }
-                kind?.let {
-                    Text(
-                        kindLabel(it),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            IconButton(
-                onClick = onToggleFavorite,
-                modifier = Modifier.semantics {
-                    contentDescription = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
-                },
-            ) {
-                Icon(
-                    Icons.Rounded.Favorite,
-                    contentDescription = null,
-                    tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun FavoriteLinksCard(
     items: List<FavoriteItem>,
     onSelect: (FavoriteItem) -> Unit,
@@ -1196,229 +1068,279 @@ private fun MediaThumbnail(
 }
 
 @Composable
-private fun SmartHeroCard(
-    model: MediaPresentationModel,
-    audioAlternative: MediaPresentationModel?,
-    selected: Boolean,
-    validating: Boolean,
-    onSelect: () -> Unit,
-    onDownload: () -> Unit,
-    onDownloadAudio: (() -> Unit)? = null,
+private fun UnifiedDownloadResultCard(
+    title: String,
+    thumbnailUrl: String?,
+    durationMs: Long?,
+    platform: String?,
+    kind: MediaKind?,
+    favorite: Boolean,
+    onToggleFavorite: () -> Unit,
+    primaryOptions: List<MediaPresentationModel>,
+    audioOptions: List<MediaPresentationModel>,
+    selectedCandidateId: String?,
+    validatingCandidateId: String?,
+    onSelect: (MediaPresentationModel) -> Unit,
+    onDownload: (String) -> Unit,
 ) {
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !validating, onClick = onSelect),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surface
-            },
+    var optionsExpanded by remember { mutableStateOf(false) }
+    val selected = primaryOptions.firstOrNull { it.candidate.id == selectedCandidateId }
+        ?: primaryOptions.firstOrNull()
+    val fallback = selected ?: primaryOptions.firstOrNull() ?: audioOptions.firstOrNull()
+    val bestAudio = audioOptions.firstOrNull()
+    val isVideo = kind == MediaKind.Video || fallback?.candidate?.format?.hasVideo == true
+    val isAudio = kind == MediaKind.Audio || (!isVideo && fallback?.candidate?.format?.hasAudio == true)
+    val actionLabel = when {
+        isVideo -> "تحميل الفيديو"
+        isAudio -> "تحميل الصوت"
+        else -> "تحميل الملف"
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 3.dp),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                MediaThumbnail(
+                    url = thumbnailUrl,
+                    contentDescription = "الصورة المصغرة: " + title,
+                    modifier = Modifier
+                        .size(width = 118.dp, height = 82.dp)
+                        .clip(RoundedCornerShape(14.dp)),
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        platform?.let {
+                            item { AHStatusPill(platformLabel(it)) }
+                        }
+                        durationMs?.let {
+                            item { AHStatusPill(formatDuration(it)) }
+                        }
+                        kind?.takeIf { it != MediaKind.Unknown }?.let {
+                            item { AHStatusPill(kindLabel(it)) }
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = onToggleFavorite,
+                    modifier = Modifier.semantics {
+                        contentDescription = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
+                    },
+                ) {
+                    Icon(
+                        Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        tint = if (favorite) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AHStatusPill("موصى به", success = true)
-                recommendationLabel(model)?.takeIf { it != "الأفضل" }?.let { AHStatusPill(it) }
-                if (selected) AHStatusPill("محدد", success = true)
-            }
-            Text(
-                "أفضل اختيار للتنزيل",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                buildQualityLine(model),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                buildDetailLine(model),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                AHStatusPill("المصدر صالح", success = true)
-                if (model.candidate.format.container != com.ahdownload.domain.resolver.MediaContainer.Unknown) {
-                    AHStatusPill(containerLabel(model.candidate.format.container))
+                AHStatusPill("جاهز للتنزيل", success = true)
+                fallback?.let { model ->
+                    recommendationLabel(model)?.let { AHStatusPill(it) }
+                    model.sizeLabel?.let { AHStatusPill(it) }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                model.sizeLabel?.let { AHStatusPill(it) }
-                model.fpsLabel?.let { AHStatusPill(it) }
-                AHStatusPill(kindPresentation(model))
-            }
-            Button(
-                enabled = !validating,
-                onClick = onDownload,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = "تنزيل أفضل اختيار" },
-            ) {
-                Icon(Icons.Rounded.Download, contentDescription = null)
-                Spacer(Modifier.size(8.dp))
-                Text(if (validating) "جارٍ التحقق من المصدر..." else "تنزيل هذا الملف")
-            }
-            if (audioAlternative != null && model.group == MediaResultGroup.Video && onDownloadAudio != null) {
-                OutlinedButton(
-                    enabled = !validating,
-                    onClick = onDownloadAudio,
+
+            fallback?.let { model ->
+                Text(
+                    "اختيار التنزيل",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+
+                Box(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(Icons.Rounded.AudioFile, contentDescription = null)
-                    Spacer(Modifier.size(7.dp))
-                    Text("تنزيل الصوت · " + audioAlternative.qualityLabel)
+                    OutlinedButton(
+                        enabled = primaryOptions.isNotEmpty() && validatingCandidateId == null,
+                        onClick = { optionsExpanded = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics {
+                                contentDescription = "اختيار جودة وصيغة التنزيل"
+                            },
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.Start,
+                        ) {
+                            Text(
+                                unifiedOptionLabel(model),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            model.sizeLabel?.let {
+                                Text(
+                                    "الحجم: " + it,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                    }
+
+                    DropdownMenu(
+                        expanded = optionsExpanded,
+                        onDismissRequest = { optionsExpanded = false },
+                        modifier = Modifier
+                            .widthIn(min = 220.dp, max = 360.dp)
+                            .heightIn(max = 360.dp),
+                    ) {
+                        primaryOptions.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            unifiedOptionLabel(option),
+                                            fontWeight = if (option.candidate.id == selectedCandidateId) {
+                                                FontWeight.Bold
+                                            } else {
+                                                FontWeight.Medium
+                                            },
+                                        )
+                                        Text(
+                                            unifiedOptionDetail(option),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    optionsExpanded = false
+                                    onSelect(option)
+                                },
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    enabled = validatingCandidateId == null,
+                    onClick = { onDownload(model.candidate.id) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = actionLabel + " " + (model.sizeLabel ?: "")
+                        },
+                ) {
+                    Icon(Icons.Rounded.Download, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        if (validatingCandidateId == model.candidate.id) {
+                            "جارٍ التحقق من المصدر..."
+                        } else {
+                            actionLabel + (model.sizeLabel?.let { " · " + it } ?: "")
+                        }
+                    )
                 }
             }
-        }
-    }
-}
 
-@Composable
-private fun ResultFilterRow(
-    selected: ResultFilter,
-    counts: Map<ResultFilter, Int>,
-    showAll: Boolean,
-    onSelect: (ResultFilter) -> Unit,
-    onToggleAll: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("الصيغ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ResultFilter.entries.forEach { item ->
-                val count = counts[item] ?: 0
-                if (count > 0 || item == ResultFilter.All) {
-                    item {
-                        FilterChip(
-                            selected = item == selected,
-                            onClick = { onSelect(item) },
-                            label = { Text(item.label + " " + count) },
+            if (bestAudio != null && !isAudio && fallback?.candidate?.id != bestAudio.candidate.id) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            "🎵 الصوت",
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            unifiedOptionLabel(bestAudio),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(
+                        enabled = validatingCandidateId == null,
+                        onClick = { onDownload(bestAudio.candidate.id) },
+                        modifier = Modifier.semantics {
+                            contentDescription = "تحميل الصوت " + unifiedOptionLabel(bestAudio)
+                        },
+                    ) {
+                        Icon(Icons.Rounded.AudioFile, contentDescription = null)
+                        Spacer(Modifier.size(5.dp))
+                        Text(
+                            if (validatingCandidateId == bestAudio.candidate.id) {
+                                "جارٍ التحقق..."
+                            } else {
+                                "تحميل الصوت"
+                            },
                         )
                     }
                 }
             }
-        }
-        OutlinedButton(
-            onClick = onToggleAll,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (showAll) "عرض الخيارات المقترحة فقط" else "عرض جميع الصيغ")
-        }
-    }
-}
-
-@Composable
-private fun ResultOptionCard(
-    model: MediaPresentationModel,
-    selected: Boolean,
-    validating: Boolean,
-    onSelect: () -> Unit,
-    onDownload: () -> Unit,
-) {
-    val format = model.candidate.format
-    val border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !validating, onClick = onSelect),
-        border = border,
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            },
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                MediaTypeIcon(kind = format.kind, selected = selected)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        buildQualityLine(model),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        buildDetailLine(model),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                model.sizeLabel?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.End,
             ) {
-                recommendationLabel(model)?.let { AHStatusPill(it) }
-                AHStatusPill(containerLabel(format.container))
-                AHStatusPill(kindPresentation(model))
-            }
-
-            OutlinedButton(
-                enabled = !validating,
-                onClick = onDownload,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = "تنزيل " + buildQualityLine(model) },
-            ) {
-                Icon(Icons.Rounded.Download, contentDescription = null)
-                Spacer(Modifier.size(6.dp))
-                Text(if (validating) "جارٍ التحقق..." else "تنزيل")
+                TextButton(
+                    enabled = primaryOptions.size > 1 && validatingCandidateId == null,
+                    onClick = { optionsExpanded = true },
+                ) {
+                    Text(
+                        if (primaryOptions.size > 1) {
+                            "كل الصيغ (" + primaryOptions.size + ")"
+                        } else {
+                            "صيغة واحدة متاحة"
+                        }
+                    )
+                }
             }
         }
     }
 }
 
-@Composable
-private fun MediaTypeIcon(kind: MediaKind, selected: Boolean) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.size(46.dp),
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = when (kind) {
-                    MediaKind.Video -> Icons.Rounded.VideoFile
-                    MediaKind.Audio -> Icons.Rounded.AudioFile
-                    MediaKind.Image -> Icons.Rounded.Image
-                    else -> Icons.Rounded.Folder
-                },
-                contentDescription = kindLabel(kind),
-                tint = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun unifiedOptionLabel(model: MediaPresentationModel): String {
+    return buildQualityLine(model) + (model.sizeLabel?.let { " · " + it } ?: "")
+}
+
+private fun unifiedOptionDetail(model: MediaPresentationModel): String {
+    val details = buildList {
+        model.codecLabel?.let(::add)
+        model.fpsLabel?.let(::add)
+        add(kindPresentation(model))
     }
+    return details.joinToString(" · ")
 }
 
 private fun recommendationLabel(model: MediaPresentationModel): String? =
