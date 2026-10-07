@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
                     onPauseDownload = downloadWorkScheduler::pause,
                     onResumeDownload = downloadWorkScheduler::resume,
                     onCancelDownload = downloadWorkScheduler::cancel,
+                    onOpenDownload = ::openCompletedDownload,
                     downloadLocationStore = downloadLocationStore,
                     onPickDownloadFolder = { folderPicker.launch(downloadLocationStore.persistedUri()) },
                 )
@@ -94,6 +95,56 @@ class MainActivity : ComponentActivity() {
             ?.getStringExtra(Intent.EXTRA_TEXT)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+
+    private fun openCompletedDownload(record: DownloadRecord) {
+        val destination = record.destinationUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Uri::parse)
+            ?: return
+        val mimeType = contentResolver.getType(destination)
+            ?: mimeTypeFor(record.task.displayName ?: record.task.destinationPath)
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(destination, mimeType)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        }.onFailure { error ->
+            diagnosticLogger.log(
+                level = DiagnosticLevel.WARNING,
+                type = "download_open_failed",
+                reason = "Unable to open completed download",
+                operation = "main.open_download",
+                context = mapOf(
+                    "task_id" to record.task.id,
+                    "mime_type" to mimeType,
+                    "destination_uri_present" to "true",
+                ),
+                throwable = error,
+            )
+        }
+    }
+
+    private fun mimeTypeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
+        "mp4", "m4v" -> "video/mp4"
+        "webm" -> "video/webm"
+        "mkv" -> "video/x-matroska"
+        "mov" -> "video/quicktime"
+        "3gp" -> "video/3gpp"
+        "avi" -> "video/x-msvideo"
+        "mp3" -> "audio/mpeg"
+        "m4a" -> "audio/mp4"
+        "aac" -> "audio/aac"
+        "ogg" -> "audio/ogg"
+        "flac" -> "audio/flac"
+        "wav" -> "audio/wav"
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        else -> "application/octet-stream"
+    }
 
     private fun openYouTubeSession() {
         runCatching {
@@ -131,6 +182,7 @@ private fun AHRoot(
     onPauseDownload: (String) -> Unit,
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
+    onOpenDownload: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
 ) {
@@ -170,6 +222,7 @@ private fun AHRoot(
                 onPauseDownload = onPauseDownload,
                 onResumeDownload = onResumeDownload,
                 onCancelDownload = onCancelDownload,
+                onOpenDownload = onOpenDownload,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.Settings -> SettingsRoute(
