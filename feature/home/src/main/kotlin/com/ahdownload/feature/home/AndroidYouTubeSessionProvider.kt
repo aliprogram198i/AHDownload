@@ -98,6 +98,12 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         "sec-fetch-dest" -> put("Sec-Fetch-Dest", value)
                         "sec-fetch-mode" -> put("Sec-Fetch-Mode", value)
                         "sec-fetch-site" -> put("Sec-Fetch-Site", value)
+                        "sec-ch-ua" -> put("Sec-CH-UA", value)
+                        "sec-ch-ua-mobile" -> put("Sec-CH-UA-Mobile", value)
+                        "sec-ch-ua-platform" -> put("Sec-CH-UA-Platform", value)
+                        "x-goog-visitor-id" -> put("X-Goog-Visitor-Id", value)
+                        "x-youtube-client-name" -> put("X-YouTube-Client-Name", value)
+                        "x-youtube-client-version" -> put("X-YouTube-Client-Version", value)
                         "range" -> put("Range", value)
                     }
                 }
@@ -119,7 +125,12 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     browserPoTokenObserved.set(true)
                 }
 
-                val safeHeaders = safeBrowserHeaders(requestHeaders)
+                val safeHeaders = buildMap {
+                    putAll(safeBrowserHeaders(requestHeaders))
+                    CookieManager.getInstance().getCookie(resourceUrl)
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { put("Cookie", it) }
+                }
                 if (safeHeaders.isNotEmpty()) {
                     browserRequestHeaders[resourceUrl] = safeHeaders
                 }
