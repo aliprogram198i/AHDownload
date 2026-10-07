@@ -238,9 +238,31 @@ jobs:
           # Parse the already-verified aapt2 badging output explicitly.
           # This avoids relying on exact quoting/formatting around the markers
           # while keeping the compatibility check strict and deterministic.
-          PACKAGE_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*name='\\([^']*\\)'.*/\\1/p" | head -n1)"
-          MIN_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([^']*\\)'.*/\\1/p" | head -n1)"
-          TARGET_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([^']*\\)'.*/\\1/p" | head -n1)"
+          readarray -t PACKAGE_VALUES < <(
+            BADGING="$BADGING" python3 - <<'PY'
+import os
+import re
+
+badging = os.environ["BADGING"]
+
+def extract(key: str) -> str:
+    pattern = rf"(?:^|\\s){re.escape(key)}=(?:'([^']*)'|\"([^\"]*)\")"
+    match = re.search(pattern, badging, re.MULTILINE)
+    if not match:
+        raise SystemExit(f"Missing aapt2 badging marker: {key}")
+    return match.group(1) or match.group(2)
+
+print(extract("name"))
+print(extract("sdkVersion"))
+print(extract("targetSdkVersion"))
+PY
+          )
+
+          test "${#PACKAGE_VALUES[@]}" -eq 3
+
+          PACKAGE_NAME="${PACKAGE_VALUES[0]}"
+          MIN_SDK="${PACKAGE_VALUES[1]}"
+          TARGET_SDK="${PACKAGE_VALUES[2]}"
 
           test "$PACKAGE_NAME" = "com.ahdownload.app"
           test "$MIN_SDK" = "24"
