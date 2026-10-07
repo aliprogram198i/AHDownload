@@ -66,7 +66,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        requestNotificationPermissionIfNeeded()
         extractSharedUrl(intent)?.let { pendingSharedUrl = it }
         openDownloadsOnStart = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
 
@@ -76,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
                     onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
+                        requestNotificationPermissionIfNeeded()
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
                     },
                     onDeleteDownloadFile = ::deleteDownloadedFile,
