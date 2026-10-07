@@ -55,7 +55,7 @@ class YouTubeResolver(
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) {
                 val enriched = enrichWithSessionIfNeeded(direct, request)
-                return filterKind(augmentWithEmbeddedFallback(enriched, html, request), request)
+                return filterKind(augmentWithAndroidFallback(augmentWithEmbeddedFallback(enriched, html, request), html, request), request)
             }
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
@@ -64,7 +64,7 @@ class YouTubeResolver(
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) {
                     val enriched = enrichWithSessionIfNeeded(apiResult, request)
-                    return filterKind(augmentWithEmbeddedFallback(enriched, html, request), request)
+                    return filterKind(augmentWithAndroidFallback(augmentWithEmbeddedFallback(enriched, html, request), html, request), request)
                 }
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
@@ -294,6 +294,52 @@ class YouTubeResolver(
                 throwable = null,
             )
         }
+    }
+
+    private suspend fun augmentWithAndroidFallback(
+        result: ResolverResult.Success,
+        html: String,
+        request: ResolverRequest,
+    ): ResolverResult.Success {
+        if (result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
+
+        val videoId = extractVideoId(request.link.normalizedUrl).orEmpty()
+        val androidResponse = runCatching {
+            playerClient.fetchAndroidPlayerResponse(
+                html = html,
+                videoUrl = request.link.normalizedUrl,
+                operationId = request.operationId,
+            )
+        }.getOrNull() ?: return result
+        val androidResult = parser.parsePlayerResponse(androidResponse)
+        if (androidResult !is ResolverResult.Success) {
+            logPlayerFailure(videoId, androidResult, "android_player", request.operationId)
+            return result
+        }
+
+        val existingUrls = result.candidates.mapTo(linkedSetOf()) { it.sourceUrl }
+        val androidCandidates = androidResult.candidates
+            .filter { it.sourceUrl !in existingUrls && isYouTubeMediaHost(it.sourceUrl) }
+            .map { candidate ->
+                candidate.copy(
+                    id = "android-${candidate.id}",
+                    format = candidate.format.copy(id = "android-${candidate.format.id}"),
+                )
+            }
+        if (androidCandidates.isEmpty()) return result
+
+        logger.log(
+            DiagnosticLevel.INFO,
+            type = "youtube.android_fallback_candidates_added",
+            reason = "android_player_direct_media_fallback",
+            operation = "youtube.resolve",
+            context = diagnosticContext(videoId, request.operationId) + mapOf(
+                "primary_candidates" to result.candidates.size.toString(),
+                "android_candidates" to androidCandidates.size.toString(),
+            ),
+            throwable = null,
+        )
+        return result.copy(candidates = result.candidates + androidCandidates)
     }
 
     private suspend fun augmentWithEmbeddedFallback(
