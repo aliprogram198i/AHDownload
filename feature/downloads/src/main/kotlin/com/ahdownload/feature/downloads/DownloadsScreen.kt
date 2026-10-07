@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.MoreVert
@@ -696,6 +697,14 @@ private fun DownloadRecordCard(
                                 onClick = {
                                     menuExpanded = false
                                     onShareDownload()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("إعادة التسمية") },
+                                leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRenameDownload()
                                 },
                             )
                             DropdownMenuItem(
