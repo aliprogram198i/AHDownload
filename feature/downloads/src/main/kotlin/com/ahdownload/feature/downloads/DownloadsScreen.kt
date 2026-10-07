@@ -502,6 +502,9 @@ private fun DownloadsScreen(
                                 val deleted = onDeleteDownloadFile(record)
                                 feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
                             },
+                            onOpenDownloadFolder = {
+                                onOpenDownloadFolder(record)
+                            },
                         )
                     }
                 }
