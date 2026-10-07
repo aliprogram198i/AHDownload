@@ -97,7 +97,6 @@ import com.ahdownload.domain.favorites.FavoriteRepository
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaPresentationModel
-import com.ahdownload.domain.resolver.MediaResultGroup
 import com.ahdownload.domain.resolver.MediaResultRecommendation
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.search.ContentSearchItem
@@ -1358,21 +1357,6 @@ private fun buildQualityLine(model: MediaPresentationModel): String {
     }
 }
 
-private fun buildDetailLine(model: MediaPresentationModel): String {
-    val format = model.candidate.format
-    val parts = buildList {
-        model.codecLabel?.let(::add)
-        model.fpsLabel?.let(::add)
-        when {
-            format.hasVideo && format.hasAudio -> add("فيديو + صوت")
-            format.hasVideo -> add("فيديو فقط")
-            format.hasAudio -> add("صوت فقط")
-            format.kind == MediaKind.Image -> add("صورة")
-        }
-        if (model.sizeLabel == null) add("الحجم يحدد أثناء التنزيل")
-    }
-    return parts.joinToString(" · ")
-}
 
 private fun kindPresentation(model: MediaPresentationModel): String = when {
     model.candidate.format.hasVideo && model.candidate.format.hasAudio -> "فيديو + صوت"
