@@ -394,8 +394,9 @@ class YouTubeResolver(
         result: ResolverResult.Success,
         request: ResolverRequest,
     ): ResolverResult.Success {
-        if (result.candidates.isEmpty() || result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
-        if (result.candidates.any { it.requestHeaders.isNotEmpty() }) return result
+        val youtubeCandidates = result.candidates.filter { isYouTubeMediaHost(it.sourceUrl) }
+        if (youtubeCandidates.isEmpty()) return result
+        if (youtubeCandidates.none { it.requestHeaders.isEmpty() }) return result
         val provider = sessionProvider ?: return result
         val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrNull() ?: return result
         logger.log(
