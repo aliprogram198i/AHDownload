@@ -75,8 +75,14 @@ class SmartResultEngine {
         val score = (height * 2.2 + bitrate * 0.12 + fps * 3).roundToInt() + muxedBonus + containerBonus + codecBonus
         val group = candidate.resultGroup()
         val dedupeKey = listOf(
-            group.name, height, f.width ?: 0, f.container.name,
-            normalizeCodec(f.videoCodec), normalizeCodec(f.audioCodec), (bitrate / 16) * 16
+            group.name,
+            height,
+            f.width ?: 0,
+            f.container.name,
+            normalizeCodec(f.videoCodec),
+            normalizeCodec(f.audioCodec),
+            f.fps?.roundToInt() ?: 0,
+            (bitrate / 16) * 16
         ).joinToString("|")
         return MediaPresentationModel(
             candidate = candidate,
@@ -122,11 +128,46 @@ class SmartResultEngine {
     private val videoComparator = compareByDescending<MediaPresentationModel> { it.candidate.format.hasAudio }
         .thenByDescending { it.candidate.format.height ?: 0 }
         .thenByDescending { it.candidate.format.fps ?: 0.0 }
+        .thenByDescending { videoCodecCompatibility(it.candidate.format.videoCodec) }
+        .thenByDescending { audioCodecCompatibility(it.candidate.format.audioCodec) }
+        .thenByDescending { videoContainerCompatibility(it.candidate.format.container) }
         .thenByDescending { it.candidate.format.bitrateKbps ?: 0 }
-        .thenBy { it.candidate.format.container != MediaContainer.Mp4 }
+        .thenBy { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
 
     private val audioComparator = compareByDescending<MediaPresentationModel> { it.candidate.format.bitrateKbps ?: 0 }
-        .thenBy { it.candidate.format.container != MediaContainer.M4a }
+        .thenByDescending { audioContainerCompatibility(it.candidate.format.container) }
+        .thenByDescending { audioCodecCompatibility(it.candidate.format.audioCodec) }
+        .thenBy { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
+
+    private fun videoCodecCompatibility(codec: String?): Int = when (normalizeCodec(codec)) {
+        "H.264" -> 3
+        "VP9" -> 2
+        "AV1" -> 1
+        else -> 0
+    }
+
+    private fun audioCodecCompatibility(codec: String?): Int = when (normalizeCodec(codec)) {
+        "AAC" -> 3
+        "Opus" -> 2
+        "Vorbis" -> 1
+        else -> 0
+    }
+
+    private fun videoContainerCompatibility(container: MediaContainer): Int = when (container) {
+        MediaContainer.Mp4 -> 3
+        MediaContainer.Webm -> 2
+        MediaContainer.Mkv -> 1
+        else -> 0
+    }
+
+    private fun audioContainerCompatibility(container: MediaContainer): Int = when (container) {
+        MediaContainer.M4a -> 3
+        MediaContainer.Mp3 -> 2
+        MediaContainer.Aac -> 2
+        MediaContainer.Ogg -> 1
+        MediaContainer.Flac -> 1
+        else -> 0
+    }
 
     private fun formatBytes(bytes: Long): String = when {
         bytes < 1024L -> "$bytes B"
