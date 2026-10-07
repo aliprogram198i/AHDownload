@@ -994,7 +994,7 @@ private suspend fun renameDownloadRecord(
         record.copy(
             task = record.task.copy(
                 displayName = finalName,
-                destinationPath = record.task.destinationPath.substringBeforeLast(File.separatorChar, newSeparator = File.separatorChar) + File.separator + finalName,
+                destinationPath = File(record.task.destinationPath).parent?.let { File(it, finalName).absolutePath } ?: record.task.destinationPath,
             ),
             updatedAtEpochMs = System.currentTimeMillis(),
         ),
