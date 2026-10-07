@@ -472,6 +472,7 @@ private fun DownloadsScreen(
                             record = record,
                             fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
                             transferStats = transferStats[record.task.id],
+                            canOpenDownloadLocation = canOpenDownloadLocation,
                             onPause = {
                                 uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
                                 onPause(record)
@@ -629,6 +630,7 @@ private fun DownloadRecordCard(
     record: DownloadRecord,
     fileAvailable: Boolean = true,
     transferStats: TransferStats? = null,
+    canOpenDownloadLocation: Boolean = false,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -754,7 +756,7 @@ private fun DownloadRecordCard(
                                 )
                             }
                         }
-                        if (record.status == DownloadStatus.COMPLETED && record.destinationUri != null) {
+                        if (record.status == DownloadStatus.COMPLETED && fileAvailable && record.destinationUri != null) {
                             DropdownMenuItem(
                                 text = { Text("فتح") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null) },
