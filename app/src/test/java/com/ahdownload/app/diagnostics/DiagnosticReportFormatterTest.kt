@@ -220,7 +220,7 @@ class DiagnosticReportFormatterTest {
         val report = DiagnosticReportFormatter.format(logs)
 
         assertTrue(report.contains("error_type=DOWNLOAD"))
-        assertTrue(report.contains("root_cause=DOWNLOAD"))
+        assertTrue(report.contains("root_cause=HTTP_403"))
         assertTrue(report.contains("incident_events=3"))
         assertTrue(report.contains("status_code=403"))
         assertTrue(report.contains("new_failure"))
