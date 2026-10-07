@@ -134,6 +134,7 @@ class DownloadWorker(
             throw cancelled
         }
 
+        var completedRecord = record
         if (record.status == DownloadStatus.COMPLETED) {
             val locationStore = DownloadLocationStore(applicationContext)
             val treeUri = locationStore.persistedUri()
@@ -148,7 +149,12 @@ class DownloadWorker(
                     )
                 }
                 if (copied.isSuccess) {
+                    val destinationUri = copied.getOrThrow()
                     localFile.delete()
+                    completedRecord = record.copy(
+                        destinationUri = destinationUri.toString(),
+                        updatedAtEpochMs = System.currentTimeMillis(),
+                    )
                     diagnostics.log(
                         DiagnosticLevel.INFO,
                         "DOWNLOAD_DESTINATION_COMMITTED",
@@ -157,6 +163,7 @@ class DownloadWorker(
                         mapOf(
                             "task_id" to task.id,
                             "destination_mode" to "CUSTOM_DIRECTORY",
+                            "destination_uri_present" to "true",
                             "source_deleted_after_copy" to "true",
                         ),
                         null,
@@ -196,6 +203,13 @@ class DownloadWorker(
                         ),
                     )
                 }
+                completedRecord = record.copy(
+                    destinationUri = published.getOrThrow().toString(),
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+            }
+            if (completedRecord !== record) {
+                repository.upsert(completedRecord)
             }
         }
 
