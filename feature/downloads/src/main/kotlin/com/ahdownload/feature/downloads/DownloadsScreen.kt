@@ -127,7 +127,7 @@ fun DownloadsRoute(
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
-    onToggleFavorite: (DownloadRecord) -> Unit,
+    onOpenStudio: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
@@ -235,6 +235,7 @@ fun DownloadsRoute(
         onShareDownload = onShareDownload,
         onDeleteDownloadFile = onDeleteDownloadFile,
         onOpenDownloadFolder = onOpenDownloadFolder,
+        onOpenStudio = onOpenStudio,
         onToggleFavorite = { record ->
             val url = (record.task.sourcePageUrl ?: record.task.sourceUrl).trim()
             val key = FavoriteKey.fromUrl(url)
