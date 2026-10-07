@@ -464,13 +464,16 @@ class YouTubeResolver(
         val candidates = result.candidates.map { candidate ->
             val candidateItag = extractItag(candidate.sourceUrl) ?: candidate.id
             val browserUrl = browserUrlsByItag[candidateItag]
-            val tokenizedUrl = if (browserUrl == null) appendPoToken(candidate.sourceUrl, snapshot.browserPoToken) else candidate.sourceUrl
-            val effectiveUrl = browserUrl ?: tokenizedUrl
-            val browserHeaders = snapshot.browserRequestHeaders[effectiveUrl].orEmpty()
+            val effectiveUrl = if (browserUrl != null) {
+                appendPoToken(browserUrl, snapshot.browserPoToken)
+            } else {
+                appendPoToken(candidate.sourceUrl, snapshot.browserPoToken)
+            }
+            val browserHeaders = browserUrl?.let { snapshot.browserRequestHeaders[it].orEmpty() }.orEmpty()
             if (browserUrl != null && browserUrl != candidate.sourceUrl) {
                 replaced++
                 candidate.copy(
-                    sourceUrl = browserUrl,
+                    sourceUrl = effectiveUrl,
                     requestHeaders = candidate.requestHeaders + headers + browserHeaders,
                 )
             } else {
@@ -527,7 +530,7 @@ class YouTubeResolver(
         val videos = snapshot.videoUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
             MediaCandidate(
                 id = "webview-video-${index}-${url.hashCode().toUInt().toString(16)}",
-                sourceUrl = url,
+                sourceUrl = effectiveUrl,
                 format = MediaFormat(
                     id = "webview-video-${index}",
                     kind = MediaKind.Video,
