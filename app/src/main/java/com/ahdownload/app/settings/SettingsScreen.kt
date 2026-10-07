@@ -1,24 +1,20 @@
 package com.ahdownload.app.settings
 
-import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -27,7 +23,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,10 +32,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.widthIn
+import com.ahdownload.app.BuildConfig
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
@@ -60,7 +54,7 @@ fun SettingsRoute(
     onNavigateDownloads: () -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val location by store.location.collectAsState()
     var showFolderDialog by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
@@ -74,7 +68,7 @@ fun SettingsRoute(
             components = buildList {
                 add("topbar")
                 add("download_location")
-                add("diagnostics")
+                add("advanced_diagnostics")
                 add("about")
                 add("bottom_navigation")
                 if (showFolderDialog) add("create_folder_dialog")
@@ -93,12 +87,10 @@ fun SettingsRoute(
             TopAppBar(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            uiTraceLogger.interaction("SETTINGS", "back_button", "back")
-                            onBack()
-                        },
-                    ) {
+                    IconButton(onClick = {
+                        uiTraceLogger.interaction("SETTINGS", "back_button", "back")
+                        onBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
@@ -123,24 +115,17 @@ fun SettingsRoute(
             )
         },
     ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            androidx.compose.foundation.lazy.LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp)
-                    .widthIn(max = 760.dp)
-                    .align(Alignment.Center),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text("التفضيلات", style = MaterialTheme.typography.headlineSmall)
+                Text("الإعدادات", style = MaterialTheme.typography.headlineSmall)
                 Text(
-                    "تحكم في مكان حفظ الملفات وأدوات التشخيص دون ازدحام الصفحة الرئيسية.",
-                    modifier = Modifier.padding(top = 4.dp),
+                    "تحكم في مكان حفظ الملفات وأدوات التشخيص بدون تعطيل مسار التنزيل الأساسي.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
 
@@ -150,24 +135,14 @@ fun SettingsRoute(
                         modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Folder, contentDescription = null)
-                            Text(
-                                "مكان التنزيل",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(start = 10.dp),
-                            )
-                        }
-                        Text(
-                            location.displayName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Icon(Icons.Rounded.Folder, contentDescription = null)
+                        Text("مكان التنزيل", style = MaterialTheme.typography.titleMedium)
+                        Text(location.displayName, style = MaterialTheme.typography.bodyMedium)
                         Text(
                             when {
-                                !location.isAccessible -> "المجلد غير متاح — اختر مجلدًا آخر."
-                                location.isCustom -> "المجلد المخصص متاح للقراءة والكتابة."
-                                else -> "المجلد الافتراضي للتطبيق فعال."
+                                !location.isAccessible -> "غير متاح — أعد اختيار المجلد"
+                                location.isCustom -> "صلاحية القراءة والكتابة فعالة"
+                                else -> "المسار الافتراضي للتطبيق فعال"
                             },
                             color = if (location.isAccessible) {
                                 MaterialTheme.colorScheme.primary
@@ -177,7 +152,7 @@ fun SettingsRoute(
                         )
                         Button(
                             onClick = {
-                                uiTraceLogger.interaction("SETTINGS", "change_folder", "pick_folder")
+                                uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder")
                                 onPickDownloadFolder()
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -187,15 +162,16 @@ fun SettingsRoute(
                         if (location.isCustom) {
                             OutlinedButton(
                                 onClick = {
-                                    uiTraceLogger.interaction("SETTINGS", "reset_folder", "reset_default")
+                                    uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset")
                                     store.resetToDefault()
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Text("استخدام المجلد الافتراضي")
+                                Text("العودة للمجلد الافتراضي")
                             }
                             OutlinedButton(
                                 onClick = {
+                                    uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog")
                                     folderError = null
                                     folderName = ""
                                     showFolderDialog = true
@@ -203,40 +179,8 @@ fun SettingsRoute(
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(Icons.Rounded.CreateNewFolder, contentDescription = null)
-                                Text("إنشاء مجلد داخل المجلد المحدد", modifier = Modifier.padding(start = 6.dp))
+                                Text("إنشاء مجلد داخل المسار")
                             }
-                        }
-                        Text(
-                            "الفيديوهات والصور والصوتيات تُنشر في مجلدات Android المناسبة عند توفرها.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    ),
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Rounded.Info, contentDescription = null)
-                        Column(modifier = Modifier.padding(start = 12.dp)) {
-                            Text(
-                                "التنزيل في الخلفية",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            Text(
-                                "يستمر التنزيل عبر WorkManager مع إشعار حالة النظام ويمكن إيقافه أو استئنافه من سجل التنزيلات.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                         }
                     }
                 }
@@ -248,17 +192,10 @@ fun SettingsRoute(
                         modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.BugReport, contentDescription = null)
-                            Text(
-                                "التشخيص المتقدم",
-                                style = MaterialTheme.typography.titleMedium,
-                                modifier = Modifier.padding(start = 10.dp),
-                            )
-                        }
+                        Text("تشخيص متقدم", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "أدوات للمشاكل الفنية فقط. لا تظهر في الصفحة الرئيسية.",
-                            style = MaterialTheme.typography.bodySmall,
+                            "لا تظهر أدوات التشخيص في الصفحة الرئيسية؛ استخدمها عند فحص مشكلة محددة.",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         OutlinedButton(
@@ -268,6 +205,7 @@ fun SettingsRoute(
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
+                            Icon(Icons.Rounded.ErrorOutline, contentDescription = null)
                             Text("سجل الأخطاء")
                         }
                         OutlinedButton(
@@ -277,6 +215,7 @@ fun SettingsRoute(
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
+                            Icon(Icons.Rounded.BugReport, contentDescription = null)
                             Text("تشخيص الواجهة")
                         }
                     }
@@ -285,72 +224,73 @@ fun SettingsRoute(
 
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(18.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(Icons.Rounded.Settings, contentDescription = null)
-                        Column(modifier = Modifier.padding(start = 12.dp)) {
-                            Text("AHDownload", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "تنزيل محلي مع تحقق من المصادر وحفظ آمن عبر واجهات Android الحديثة.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        Icon(Icons.Rounded.Info, contentDescription = null)
+                        Text("حول AHDownload", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "الإصدار " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            "إدارة التنزيلات واختيار المصادر يتمان عبر طبقات التطبيق والتحقق قبل التنفيذ.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
-            }
         }
+    }
 
     if (showFolderDialog && location.isCustom && location.isAccessible) {
         AlertDialog(
             onDismissRequest = { showFolderDialog = false },
             title = { Text("إنشاء مجلد") },
             text = {
-                OutlinedTextField(
-                    value = folderName,
-                    onValueChange = {
-                        folderName = it
-                        folderError = null
-                    },
-                    label = { Text("اسم المجلد") },
-                    singleLine = true,
-                    isError = folderError != null,
-                )
-                folderError?.let {
-                    Text(
-                        it,
-                        modifier = Modifier.padding(top = 6.dp),
-                        color = MaterialTheme.colorScheme.error,
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = folderName,
+                        onValueChange = {
+                            folderName = it
+                            folderError = null
+                        },
+                        label = { Text("اسم المجلد") },
+                        singleLine = true,
+                        isError = folderError != null,
                     )
+                    folderError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             },
             confirmButton = {
                 Button(
+                    enabled = folderName.trim().isNotBlank(),
                     onClick = {
                         val created = runCatching {
                             SelectedDirectoryStorage.createFolder(
                                 context = context,
-                                treeUri = location.uri!!,
+                                treeUri = location.uri ?: error("Custom tree URI missing"),
                                 folderName = folderName,
                             )
                         }.getOrNull()
                         if (created != null) {
                             folderName = ""
+                            folderError = null
                             showFolderDialog = false
                         } else {
                             folderError = "تعذر إنشاء المجلد في هذا المسار."
                         }
                     },
-                    enabled = folderName.isNotBlank(),
                 ) {
                     Text("إنشاء")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showFolderDialog = false }) {
+                OutlinedButton(onClick = { showFolderDialog = false }) {
                     Text("إلغاء")
                 }
             },
