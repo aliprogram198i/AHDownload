@@ -6,6 +6,12 @@ enum class MediaPlatform {
     Facebook,
     TikTok,
     X,
+    Snapchat,
+    Pinterest,
+    Reddit,
+    Twitch,
+    Vimeo,
+    SocialWeb,
     DirectMedia,
     Unknown,
 }
