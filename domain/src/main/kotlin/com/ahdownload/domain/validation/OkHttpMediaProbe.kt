@@ -38,9 +38,12 @@ class OkHttpMediaProbe(
         // YouTube media URLs can reject an unrestricted GET while accepting a
         // byte-range request. Probe the same transfer mode used by the downloader
         // before declaring a candidate invalid.
-        val range = "bytes=0-0"
+        // Use the same open-ended range semantics as the actual downloader.
+        // Some YouTube GVS endpoints reject a single-byte 0-0 probe with 403
+        // while accepting the real 0- transfer request.
+        var effectiveRange: String? = "bytes=0-"
         val started = TimeSource.Monotonic.markNow()
-        var response = execute(url, "GET", headers, range)
+        var response = execute(url, "GET", headers, effectiveRange)
         logger.log(
             level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "MEDIA_PROBE_ATTEMPT",
@@ -49,7 +52,7 @@ class OkHttpMediaProbe(
             context = probeContext(
                 url,
                 "GET",
-                range,
+                effectiveRange,
                 response.code,
                 response.header("Content-Type"),
                 started.elapsedNow().inWholeMilliseconds,
@@ -71,7 +74,7 @@ class OkHttpMediaProbe(
                     !it.equals("Referer", ignoreCase = true)
             }
             val retryStarted = TimeSource.Monotonic.markNow()
-            response = execute(url, "GET", retryHeaders, range)
+            response = execute(url, "GET", retryHeaders, effectiveRange)
             logger.log(
                 level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
                 type = "MEDIA_PROBE_ATTEMPT",
@@ -80,7 +83,7 @@ class OkHttpMediaProbe(
                 context = probeContext(
                     url,
                     "GET",
-                    range,
+                    effectiveRange,
                     response.code,
                     response.header("Content-Type"),
                     retryStarted.elapsedNow().inWholeMilliseconds,
@@ -94,7 +97,42 @@ class OkHttpMediaProbe(
             )
         }
 
-        return response.toResult("GET", range)
+        // A few signed YouTube media URLs are hostile to Range entirely. The
+        // downloader has an equivalent no-Range retry, so validation mirrors
+        // that behavior instead of rejecting a source that can actually stream.
+        if (response.code == 403) {
+            response.close()
+            val noRangeHeaders = headers.filterKeys {
+                !it.equals("Cookie", ignoreCase = true) &&
+                    !it.equals("Origin", ignoreCase = true) &&
+                    !it.equals("Referer", ignoreCase = true)
+            }
+            val retryStarted = TimeSource.Monotonic.markNow()
+            effectiveRange = null
+            response = execute(url, "GET", noRangeHeaders, null)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "youtube_403_no_range_retry",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    null,
+                    response.code,
+                    response.header("Content-Type"),
+                    retryStarted.elapsedNow().inWholeMilliseconds,
+                    noRangeHeaders,
+                    operationId,
+                ) + mapOf(
+                    "validation_mode" to "YOUTUBE_403_NO_RANGE_RETRY",
+                    "removed_session_headers" to "Cookie,Origin,Referer",
+                ),
+                throwable = null,
+            )
+        }
+
+        return response.toResult("GET", effectiveRange)
     }
 
     private fun probeGeneric(

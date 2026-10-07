@@ -96,6 +96,7 @@ class HomeResolver(
                 "aac" -> MediaContainer.Aac
                 "ogg" -> MediaContainer.Ogg
                 "flac" -> MediaContainer.Flac
+                "wav" -> MediaContainer.Wav
                 else -> MediaContainer.Unknown
             }
         } else {

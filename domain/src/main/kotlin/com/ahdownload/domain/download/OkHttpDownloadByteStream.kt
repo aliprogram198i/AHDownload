@@ -41,7 +41,89 @@ class OkHttpDownloadByteStream(
         }
 
         val started = TimeSource.Monotonic.markNow()
-        val response = client.newCall(builder.build()).execute()
+        var response = client.newCall(builder.build()).execute()
+
+        if (response.code == 403 && isYouTubeMediaHost(url)) {
+            response.close()
+            val retryHeaders = mergedHeaders.filterKeys {
+                !it.equals("Cookie", ignoreCase = true) &&
+                    !it.equals("Origin", ignoreCase = true) &&
+                    !it.equals("Referer", ignoreCase = true)
+            }
+            val retryBuilder = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgentFor(url))
+                .header("Accept", "*/*")
+                .apply {
+                    retryHeaders.forEach { (name, value) ->
+                        if (!name.equals("Host", ignoreCase = true)) header(name, value)
+                    }
+                }
+            if (rangeStart > 0L) {
+                retryBuilder.header("Range", "bytes=$rangeStart-")
+            } else {
+                retryBuilder.header("Range", "bytes=0-")
+            }
+            val retryStarted = TimeSource.Monotonic.markNow()
+            response = client.newCall(retryBuilder.build()).execute()
+            logger.log(
+                if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                "DOWNLOAD_HTTP_RETRY",
+                "إعادة محاولة مصدر YouTube بعد 403",
+                "download.stream",
+                mapOf(
+                    "host" to hostOf(url),
+                    "status_code" to response.code.toString(),
+                    "range_start" to rangeStart.toString(),
+                    "range_header" to (response.request.header("Range") ?: "none"),
+                    "elapsed_ms" to retryStarted.elapsedNow().inWholeMilliseconds.toString(),
+                    "youtube_media_host" to "true",
+                    "cookie_present" to retryHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
+                    "referer_present" to retryHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
+                    "retry_mode" to "sanitized_headers",
+                ),
+                null,
+            )
+        }
+
+        if (response.code == 403 && isYouTubeMediaHost(url)) {
+            response.close()
+            val retryHeaders = mergedHeaders.filterKeys {
+                !it.equals("Cookie", ignoreCase = true) &&
+                    !it.equals("Origin", ignoreCase = true) &&
+                    !it.equals("Referer", ignoreCase = true)
+            }
+            val retryBuilder = Request.Builder()
+                .url(url)
+                .header("User-Agent", userAgentFor(url))
+                .header("Accept", "*/*")
+                .apply {
+                    retryHeaders.forEach { (name, value) ->
+                        if (!name.equals("Host", ignoreCase = true)) header(name, value)
+                    }
+                }
+            val retryStarted = TimeSource.Monotonic.markNow()
+            response = client.newCall(retryBuilder.build()).execute()
+            logger.log(
+                if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                "DOWNLOAD_HTTP_RETRY",
+                "إعادة محاولة مصدر YouTube بدون Range بعد 403",
+                "download.stream",
+                mapOf(
+                    "host" to hostOf(url),
+                    "status_code" to response.code.toString(),
+                    "range_start" to rangeStart.toString(),
+                    "range_header" to (response.request.header("Range") ?: "none"),
+                    "elapsed_ms" to retryStarted.elapsedNow().inWholeMilliseconds.toString(),
+                    "youtube_media_host" to "true",
+                    "cookie_present" to retryHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
+                    "referer_present" to retryHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
+                    "retry_mode" to "no_range",
+                ),
+                null,
+            )
+        }
+
         val contentRange = response.header("Content-Range")
         val totalBytes = contentRange
             ?.substringAfter('/', "")

@@ -38,7 +38,7 @@ enum class AudioOutputFormat(
     Opus(
         label = "OPUS",
         extension = ".opus",
-        mimeType = "audio/ogg",
+        mimeType = "audio/opus",
         defaultBitrateKbps = 128,
         qualityLabel = "128 kbps",
     ),

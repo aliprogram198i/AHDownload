@@ -1112,13 +1112,14 @@ private fun UnifiedDownloadResultCard(
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
 ) {
+    // Keep the result card focused on the four most useful playable qualities.
     val videoOptions = primaryOptions
         .filter {
             it.candidate.format.kind == MediaKind.Video &&
                 it.candidate.format.hasVideo &&
                 it.candidate.format.hasAudio
         }
-        .take(8)
+        .take(4)
 
     val directAudioOptions = audioOptions
         .filter {
@@ -1294,6 +1295,11 @@ private fun UnifiedDownloadResultCard(
                         }
                     }
 
+                    Text(
+                        "صيغة الإخراج",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     AudioOutputFormatGrid(
                         selected = selectedAudioOutputFormat,
                         enabled = validatingCandidateId == null,
@@ -1796,6 +1802,7 @@ private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContai
         com.ahdownload.domain.resolver.MediaContainer.Aac -> "AAC"
         com.ahdownload.domain.resolver.MediaContainer.Ogg -> "OGG"
         com.ahdownload.domain.resolver.MediaContainer.Flac -> "FLAC"
+        com.ahdownload.domain.resolver.MediaContainer.Wav -> "WAV"
         com.ahdownload.domain.resolver.MediaContainer.ThreeGp -> "3GP"
         com.ahdownload.domain.resolver.MediaContainer.Avi -> "AVI"
         com.ahdownload.domain.resolver.MediaContainer.Unknown -> "صيغة غير معروفة"
