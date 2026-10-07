@@ -63,6 +63,98 @@ class SmartResultEngineTest {
         assertEquals("video", result.visible.first().candidate.id)
     }
 
+    @Test
+    fun exposesOnlyMuxedVideoInVisibleVideoResults() {
+        val videoOnly = MediaCandidate(
+            id = "video-only",
+            sourceUrl = "https://cdn.example/video-only",
+            format = MediaFormat(
+                id = "video-only",
+                kind = MediaKind.Video,
+                container = MediaContainer.Webm,
+                videoCodec = "vp9",
+                height = 1080,
+                bitrateKbps = 5000,
+                hasVideo = true,
+                hasAudio = false,
+            ),
+        )
+        val muxed = MediaCandidate(
+            id = "muxed",
+            sourceUrl = "https://cdn.example/muxed",
+            format = MediaFormat(
+                id = "muxed",
+                kind = MediaKind.Video,
+                container = MediaContainer.Mp4,
+                videoCodec = "avc1.640028",
+                audioCodec = "mp4a.40.2",
+                height = 720,
+                bitrateKbps = 3000,
+                hasVideo = true,
+                hasAudio = true,
+            ),
+        )
+
+        val result = SmartResultEngine().build(listOf(videoOnly, muxed))
+
+        assertEquals(listOf("muxed"), result.visible.map { it.candidate.id })
+    }
+
+    @Test
+    fun prefersCompatibleVideoEncodingWithinSameQuality() {
+        val webm = MediaCandidate(
+            id = "webm-vp9",
+            sourceUrl = "https://cdn.example/webm",
+            format = MediaFormat(
+                id = "webm-vp9",
+                kind = MediaKind.Video,
+                container = MediaContainer.Webm,
+                videoCodec = "vp9",
+                audioCodec = "opus",
+                height = 1080,
+                fps = 30.0,
+                bitrateKbps = 5000,
+                hasVideo = true,
+                hasAudio = true,
+            ),
+        )
+        val mp4 = MediaCandidate(
+            id = "mp4-h264",
+            sourceUrl = "https://cdn.example/mp4",
+            format = MediaFormat(
+                id = "mp4-h264",
+                kind = MediaKind.Video,
+                container = MediaContainer.Mp4,
+                videoCodec = "avc1.640028",
+                audioCodec = "mp4a.40.2",
+                height = 1080,
+                fps = 30.0,
+                bitrateKbps = 4500,
+                hasVideo = true,
+                hasAudio = true,
+            ),
+        )
+
+        val result = SmartResultEngine().build(listOf(webm, mp4))
+
+        assertEquals(listOf("mp4-h264", "webm-vp9"), result.video.map { it.candidate.id })
+    }
+
+    @Test
+    fun keepsDifferentFrameRatesAsDistinctOptions() {
+        val fps30 = candidate("v1080-30", MediaKind.Video, 1080, 4500, 20000000).copy(
+            format = candidate("v1080-30", MediaKind.Video, 1080, 4500, 20000000).format.copy(fps = 30.0),
+        )
+        val fps60 = candidate("v1080-60", MediaKind.Video, 1080, 4500, 20000000).copy(
+            format = candidate("v1080-60", MediaKind.Video, 1080, 4500, 20000000).format.copy(fps = 60.0),
+        )
+
+        val result = SmartResultEngine().build(listOf(fps30, fps60))
+
+        assertEquals(2, result.video.size)
+        assertEquals(listOf("v1080-60", "v1080-30"), result.video.map { it.candidate.id })
+    }
+
     private fun candidate(
         id: String,
         kind: MediaKind,
