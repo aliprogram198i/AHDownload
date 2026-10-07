@@ -76,6 +76,9 @@ class HomeViewModel(
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
+    private val onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
+        DownloadEnqueueResult.REJECTED
+    },
     private val preferencesProvider: DownloadPreferencesProvider,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(recentLinks = recentLinkStore.list()))
@@ -458,7 +461,7 @@ class HomeViewModel(
         )
     }
 
-    fun downloadSelected() {
+    private fun downloadSelected(extractAudio: Boolean = false) {
         if (downloadJob?.isActive == true) return
 
         val state = _uiState.value
@@ -598,12 +601,21 @@ class HomeViewModel(
 
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
-                        val queued = onDownloadRequested(
-                            validation.candidate.copy(sourceUrl = validation.finalUrl),
-                            state.resolution.title,
-                            state.result?.normalizedUrl,
-                            state.resolution.thumbnailUrl,
-                        )
+                        val queued = if (extractAudio) {
+                            onAudioOnlyRequested(
+                                validation.candidate.copy(sourceUrl = validation.finalUrl),
+                                state.resolution.title,
+                                state.result?.normalizedUrl,
+                                state.resolution.thumbnailUrl,
+                            )
+                        } else {
+                            onDownloadRequested(
+                                validation.candidate.copy(sourceUrl = validation.finalUrl),
+                                state.resolution.title,
+                                state.result?.normalizedUrl,
+                                state.resolution.thumbnailUrl,
+                            )
+                        }
                         val message = when (queued) {
                             DownloadEnqueueResult.QUEUED -> null
                             DownloadEnqueueResult.DUPLICATE -> "هذا المحتوى موجود بالفعل في سجل التنزيلات."
@@ -614,7 +626,7 @@ class HomeViewModel(
                         if (queued != DownloadEnqueueResult.QUEUED) {
                             logger.log(
                                 DiagnosticLevel.ERROR,
-                                "QUEUE",
+                                if (extractAudio) "AUDIO_ONLY_QUEUE" else "QUEUE",
                                 queued.name,
                                 "download.queue",
                                 mapOf("candidate_id" to candidateToValidate.id),
@@ -717,23 +729,82 @@ class HomeViewModel(
     }
 
     fun downloadCandidate(id: String) {
-        if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
-        selectCandidate(id)
-        downloadSelected()
+        downloadCandidateInternal(id, extractAudio = false)
     }
 
     fun downloadAudio() {
-        val candidate = _uiState.value.resolution?.candidates?.firstOrNull {
-            it.format.kind == MediaKind.Audio
+        val state = _uiState.value
+        val candidates = state.resolution?.candidates.orEmpty()
+        if (candidates.isEmpty()) return
+
+        val smart = SmartResultEngine().build(candidates)
+        val directAudio = smart.audio.firstOrNull()
+        if (directAudio != null) {
+            logger.log(
+                DiagnosticLevel.INFO,
+                "AUDIO_ONLY_SOURCE_SELECTED",
+                "تم اختيار أفضل مصدر صوتي مباشر للرابط",
+                "ui.smart_center.audio_only",
+                mapOf(
+                    "candidate_id" to directAudio.candidate.id,
+                    "source_mode" to "DIRECT_AUDIO_SOURCE",
+                    "quality" to directAudio.qualityLabel,
+                ),
+                null,
+            )
+            downloadCandidateInternal(directAudio.candidate.id, extractAudio = false)
+            return
         }
-        if (candidate != null) {
-            selectCandidate(candidate.id)
-            downloadSelected()
+
+        val videoSource = smart.video.firstOrNull { model ->
+            model.candidate.format.hasVideo
+        }?.candidate
+        if (videoSource != null) {
+            logger.log(
+                DiagnosticLevel.INFO,
+                "AUDIO_ONLY_SOURCE_SELECTED",
+                "لا يوجد مسار صوتي مستقل؛ سيتم استخراج الصوت من مصدر الفيديو",
+                "ui.smart_center.audio_only",
+                mapOf(
+                    "candidate_id" to videoSource.id,
+                    "source_mode" to "EXTRACT_FROM_VIDEO",
+                    "source_quality" to (
+                        videoSource.format.height?.let { "${it}p" } ?: "video"
+                    ),
+                ),
+                null,
+            )
+            downloadCandidateInternal(videoSource.id, extractAudio = true)
+            return
         }
+
+        logger.log(
+            DiagnosticLevel.ERROR,
+            "AUDIO_ONLY_UNAVAILABLE",
+            "تعذر تحديد مصدر يمكن تحويله إلى صوت فقط",
+            "ui.smart_center.audio_only",
+            mapOf("candidate_count" to candidates.size.toString()),
+            null,
+        )
+        _uiState.value = _uiState.value.copy(
+            error = "لا يتوفر مصدر صوتي صالح لهذا الرابط حاليًا.",
+            downloadQueued = false,
+        )
+    }
+
+    private fun downloadCandidateInternal(id: String, extractAudio: Boolean) {
+        if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
+        _uiState.value = _uiState.value.copy(
+            selectedCandidateId = id,
+            error = null,
+            downloadQueued = false,
+        )
+        downloadSelected(extractAudio = extractAudio)
     }
 
     class Factory(
         private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+        private val onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
         private val preferencesProvider: DownloadPreferencesProvider,
@@ -751,6 +822,7 @@ class HomeViewModel(
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
                 preferencesProvider = preferencesProvider,
                 onDownloadRequested = onDownloadRequested,
+                onAudioOnlyRequested = onAudioOnlyRequested,
             ) as T
         }
     }
