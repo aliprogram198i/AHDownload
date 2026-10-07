@@ -383,6 +383,7 @@ class HomeViewModel(
                                 url = link.normalizedUrl,
                                 title = resolution.title,
                                 platform = link.platform.name,
+                                thumbnailUrl = resolution.thumbnailUrl,
                             )
                             recentLinkStore.list()
                         } else {
