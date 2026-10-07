@@ -1,8 +1,13 @@
 package com.ahdownload.app
 
 import android.content.Intent
+import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.DocumentsContract
+import android.provider.MediaStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
@@ -79,6 +84,8 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
                     },
                     onDeleteDownloadFile = ::deleteDownloadedFile,
+                    onRenameDownload = ::renameDownloadedFile,
+                    onOpenDownloadLocation = ::openDownloadLocation,
                     onShareDownload = ::shareCompletedDownload,
                     onConsumeInitialUrl = { pendingSharedUrl = null },
                     onOpenYouTubeSession = ::openYouTubeSession,
@@ -154,6 +161,111 @@ class MainActivity : ComponentActivity() {
                     "destination_uri_present" to "true",
                 ),
                 throwable = error,
+            )
+        }
+    }
+
+    private suspend fun renameDownloadedFile(record: DownloadRecord, requestedName: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val currentName = record.task.displayName?.takeIf { it.isNotBlank() }
+                ?: record.task.destinationPath.substringAfterLast(File.separatorChar)
+            val extension = currentName.substringAfterLast('.', "").takeIf { it.isNotBlank() }
+            val safeBase = requestedName
+                .trim()
+                .replace(Regex("""[\\/:*?"<>|\u0000-\u001F]+"""), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(120)
+            if (safeBase.isBlank()) return@withContext false
+            val finalName = if (extension != null && !safeBase.substringAfterLast('.', "").equals(extension, true)) {
+                safeBase + "." + extension
+            } else {
+                safeBase
+            }
+
+            val destination = record.destinationUri
+                ?.takeIf { it.isNotBlank() }
+                ?.let(Uri::parse)
+
+            val renamedUri = destination?.let { uri ->
+                runCatching {
+                    DocumentsContract.renameDocument(contentResolver, uri, finalName)
+                }.getOrNull()
+                    ?: runCatching {
+                        val values = ContentValues().apply {
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
+                        }
+                        contentResolver.update(uri, values, null, null)
+                            .takeIf { it > 0 }
+                            ?.let { uri }
+                    }.getOrNull()
+            }
+
+            if (destination != null && renamedUri == null) return@withContext false
+
+            var newPath = record.task.destinationPath
+            if (destination == null) {
+                val oldFile = File(record.task.destinationPath)
+                val parent = oldFile.parentFile ?: return@withContext false
+                val target = File(parent, finalName)
+                if (target.exists() && target.absolutePath != oldFile.absolutePath) return@withContext false
+                if (oldFile.absolutePath != target.absolutePath && !oldFile.renameTo(target)) {
+                    return@withContext false
+                }
+                newPath = target.absolutePath
+            }
+
+            val updatedTask = record.task.copy(
+                destinationPath = newPath,
+                displayName = finalName,
+            )
+            applicationServices.downloadRepository.upsert(
+                record.copy(
+                    task = updatedTask,
+                    destinationUri = renamedUri?.toString() ?: record.destinationUri,
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                ),
+            )
+            diagnosticLogger.log(
+                DiagnosticLevel.INFO,
+                "DOWNLOAD_RENAMED",
+                "تمت إعادة تسمية الملف",
+                "main.rename_download",
+                mapOf("task_id" to record.task.id),
+                null,
+            )
+            true
+        }
+
+    private fun openDownloadLocation(record: DownloadRecord) {
+        val treeUri = downloadLocationStore.persistedUri()
+        if (treeUri == null) {
+            diagnosticLogger.log(
+                DiagnosticLevel.INFO,
+                "DOWNLOAD_LOCATION_DEFAULT",
+                "المجلد الافتراضي مُدار بواسطة النظام",
+                "main.open_download_location",
+                mapOf("task_id" to record.task.id),
+                null,
+            )
+            return
+        }
+
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(treeUri, "vnd.android.document/directory")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                },
+            )
+        }.onFailure { error ->
+            diagnosticLogger.log(
+                DiagnosticLevel.WARNING,
+                "DOWNLOAD_LOCATION_OPEN_FAILED",
+                "تعذر فتح مجلد التنزيل المحدد",
+                "main.open_download_location",
+                mapOf("task_id" to record.task.id),
+                error,
             )
         }
     }
@@ -274,6 +386,8 @@ private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
+    onRenameDownload: suspend (DownloadRecord, String) -> Boolean,
+    onOpenDownloadLocation: (DownloadRecord) -> Unit,
     onShareDownload: (DownloadRecord) -> Unit,
     onConsumeInitialUrl: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
@@ -354,6 +468,8 @@ private fun AHRoot(
             onOpenDownload = onOpenDownload,
             onShareDownload = onShareDownload,
             onDeleteDownloadFile = onDeleteDownloadFile,
+            onRenameDownload = onRenameDownload,
+            onOpenDownloadLocation = onOpenDownloadLocation,
             uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
