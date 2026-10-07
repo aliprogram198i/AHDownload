@@ -6,6 +6,9 @@ import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.charset.StandardCharsets
@@ -20,10 +23,16 @@ class FileDownloadRepository(
     )
     private val store = AtomicFile(storeFile)
     private val codec = DownloadRecordJsonCodec()
+    private val historyFlow = MutableStateFlow<List<DownloadRecord>>(emptyList())
 
     init {
         storeFile.parentFile?.mkdirs()
+        historyFlow.value = runCatching {
+            synchronized(lock) { readLocked().sortedByDescending { it.updatedAtEpochMs } }
+        }.getOrDefault(emptyList())
     }
+
+    override fun observeHistory(): Flow<List<DownloadRecord>> = historyFlow.asStateFlow()
 
     override suspend fun upsert(record: DownloadRecord) = withContext(Dispatchers.IO) {
         synchronized(lock) {
@@ -123,6 +132,8 @@ class FileDownloadRepository(
             store.failWrite(output)
             throw error
         }
+
+        historyFlow.value = records.sortedByDescending { it.updatedAtEpochMs }
     }
     
     private companion object {

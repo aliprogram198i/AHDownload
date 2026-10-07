@@ -6,6 +6,7 @@ import com.ahdownload.domain.download.DownloadRecordMapper
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadTask
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -33,6 +34,20 @@ class FileDownloadRepositoryTest {
         requireNotNull(restored)
         assertEquals(task, restored.task)
         assertEquals(DownloadStatus.QUEUED, restored.status)
+    }
+
+    @Test
+    fun exposesLatestHistoryImmediatelyAfterPersist() = runTest {
+        val task = task()
+        val repository = FileDownloadRepository(context)
+        val record = DownloadRecordMapper.queued(task, 1000)
+
+        repository.upsert(record)
+
+        val observed = repository.observeHistory().first()
+
+        assertEquals(1, observed.size)
+        assertEquals(record, observed.single())
     }
 
     @Test

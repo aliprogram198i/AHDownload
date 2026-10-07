@@ -23,6 +23,7 @@ class DownloadRecordJsonCodecTest {
             totalBytes = 4096,
             failureCode = null,
             failureDetail = null,
+            destinationUri = "content://media/external/video/media/42",
             createdAtEpochMs = 1000,
             updatedAtEpochMs = 2000,
         )
@@ -31,6 +32,7 @@ class DownloadRecordJsonCodecTest {
 
         assertEquals(listOf(original), restored)
         assertNull(restored.single().failureCode)
+        assertEquals("content://media/external/video/media/42", restored.single().destinationUri)
     }
 
     @Test

@@ -23,6 +23,7 @@ fun DownloadsRoute(
     onPauseDownload: (String) -> Unit,
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
+    onOpenDownload: (DownloadRecord) -> Unit,
     onBack: () -> Unit,
 ) {
     val controls = remember(repository, onPauseDownload, onResumeDownload, onCancelDownload) {
@@ -41,6 +42,7 @@ fun DownloadsRoute(
         onResume = vm::resume,
         onCancel = vm::cancel,
         onRetry = vm::retry,
+        onOpenDownload = onOpenDownload,
     )
 }
 
@@ -53,6 +55,7 @@ private fun DownloadsScreen(
     onResume: (DownloadRecord) -> Unit,
     onCancel: (DownloadRecord) -> Unit,
     onRetry: (DownloadRecord) -> Unit,
+    onOpenDownload: (DownloadRecord) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -98,6 +101,7 @@ private fun DownloadsScreen(
                         onResume = { onResume(record) },
                         onCancel = { onCancel(record) },
                         onRetry = { onRetry(record) },
+                        onOpenDownload = { onOpenDownload(record) },
                     )
                 }
             }
@@ -112,6 +116,7 @@ private fun DownloadRecordCard(
     onResume: () -> Unit,
     onCancel: () -> Unit,
     onRetry: () -> Unit,
+    onOpenDownload: () -> Unit,
 ) {
     val progress = record.totalBytes?.takeIf { it > 0 }?.let {
         (record.bytesDownloaded.toFloat() / it.toFloat()).coerceIn(0f, 1f)
@@ -140,7 +145,7 @@ private fun DownloadRecordCard(
                 )
             }
             Text(
-                record.task.destinationPath,
+                destinationLabel(record),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -169,7 +174,14 @@ private fun DownloadRecordCard(
                             Text("إعادة المحاولة")
                         }
                     }
-                    DownloadStatus.COMPLETED -> Unit
+                    DownloadStatus.COMPLETED -> {
+                        if (record.destinationUri != null) {
+                            OutlinedButton(onClick = onOpenDownload) {
+                                Icon(Icons.Rounded.OpenInNew, contentDescription = null)
+                                Text("فتح")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -191,6 +203,12 @@ private fun statusColor(status: DownloadStatus) = when (status) {
     DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
     DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun destinationLabel(record: DownloadRecord): String = when {
+    record.destinationUri?.startsWith("content://") == true -> "الوجهة النهائية: تخزين الجهاز"
+    record.destinationUri != null -> "الوجهة النهائية: ${record.destinationUri}"
+    else -> "المسار الداخلي: ${record.task.destinationPath}"
 }
 
 private fun formatBytes(bytes: Long): String {
