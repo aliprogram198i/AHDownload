@@ -55,7 +55,12 @@ class YouTubeResolver(
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) {
                 val enriched = enrichWithSessionIfNeeded(direct, request)
-                return filterKind(augmentWithAndroidFallback(augmentWithEmbeddedFallback(enriched, html, request), html, request), request)
+                val augmented = augmentWithAndroidFallback(
+                    augmentWithEmbeddedFallback(enriched, html, request),
+                    html,
+                    request,
+                )
+                return filterKind(enrichWithSessionIfNeeded(augmented, request), request)
             }
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
@@ -64,7 +69,12 @@ class YouTubeResolver(
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) {
                     val enriched = enrichWithSessionIfNeeded(apiResult, request)
-                    return filterKind(augmentWithAndroidFallback(augmentWithEmbeddedFallback(enriched, html, request), html, request), request)
+                    val augmented = augmentWithAndroidFallback(
+                        augmentWithEmbeddedFallback(enriched, html, request),
+                        html,
+                        request,
+                    )
+                    return filterKind(enrichWithSessionIfNeeded(augmented, request), request)
                 }
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
@@ -394,8 +404,9 @@ class YouTubeResolver(
         result: ResolverResult.Success,
         request: ResolverRequest,
     ): ResolverResult.Success {
-        if (result.candidates.isEmpty() || result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
-        if (result.candidates.any { it.requestHeaders.isNotEmpty() }) return result
+        val youtubeCandidates = result.candidates.filter { isYouTubeMediaHost(it.sourceUrl) }
+        if (youtubeCandidates.isEmpty()) return result
+        if (youtubeCandidates.none { it.requestHeaders.isEmpty() }) return result
         val provider = sessionProvider ?: return result
         val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrNull() ?: return result
         logger.log(
@@ -451,7 +462,8 @@ class YouTubeResolver(
         var replaced = 0
         var poTokenAttached = 0
         val candidates = result.candidates.map { candidate ->
-            val browserUrl = browserUrlsByItag[candidate.id]
+            val candidateItag = extractItag(candidate.sourceUrl) ?: candidate.id
+            val browserUrl = browserUrlsByItag[candidateItag]
             val tokenizedUrl = if (browserUrl == null) appendPoToken(candidate.sourceUrl, snapshot.browserPoToken) else candidate.sourceUrl
             val effectiveUrl = browserUrl ?: tokenizedUrl
             val browserHeaders = snapshot.browserRequestHeaders[effectiveUrl].orEmpty()
