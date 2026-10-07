@@ -101,4 +101,57 @@ class OkHttpMediaProbeTest {
         assertEquals(listOf("HEAD", "GET"), methods)
         assertEquals(listOf(null, "bytes=0-0"), ranges)
     }
+
+    @Test
+    fun retriesYouTube403WithoutSessionHeaders() = runTest {
+        val requestHeaders = mutableListOf<Map<String, String>>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                requestHeaders += chain.request().headers.toMap()
+                val hasCookie = chain.request().header("Cookie") != null
+                val response = if (hasCookie) {
+                    Response.Builder()
+                        .request(chain.request())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(403)
+                        .message("Forbidden")
+                        .body(byteArrayOf().toResponseBody(null))
+                        .build()
+                } else {
+                    Response.Builder()
+                        .request(chain.request())
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .header("Content-Type", "audio/mp4")
+                        .header("Content-Length", "123")
+                        .body(
+                            byteArrayOf(0)
+                                .toString(Charsets.ISO_8859_1)
+                                .toResponseBody("audio/mp4".toMediaType()),
+                        )
+                        .build()
+                }
+                response
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://example.googlevideo.com/videoplayback?mime=audio%2Fmp4",
+            mapOf(
+                "Cookie" to "SID=redacted",
+                "Origin" to "https://www.youtube.com",
+                "Referer" to "https://www.youtube.com/",
+            ),
+            operationId = "op-youtube-403-retry",
+        )
+
+        assertEquals(200, result.statusCode)
+        assertEquals(2, requestHeaders.size)
+        assertTrue(requestHeaders.first().keys.any { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.none { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.none { it.equals("Origin", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.none { it.equals("Referer", ignoreCase = true) })
+    }
+
 }
