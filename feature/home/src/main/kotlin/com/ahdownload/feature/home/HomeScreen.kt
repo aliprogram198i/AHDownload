@@ -60,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +89,9 @@ import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.DownloadEnqueueResult
+import com.ahdownload.domain.favorites.FavoriteItem
+import com.ahdownload.domain.favorites.FavoriteKey
+import com.ahdownload.domain.favorites.FavoriteRepository
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaPresentationModel
@@ -107,8 +111,11 @@ fun HomeRoute(
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
+    favoriteRepository: FavoriteRepository,
 ) {
     val context = LocalContext.current
+    val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
+    val favoriteScope = rememberCoroutineScope()
     val factory = remember(onDownloadRequested, logger, context) {
         HomeViewModel.Factory(onDownloadRequested, logger, context, preferencesProvider)
     }
@@ -144,6 +151,30 @@ fun HomeRoute(
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
         activeDownloads = activeDownloads,
+        favoriteItems = favorites,
+        currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
+        onToggleFavorite = {
+            val result = state.result ?: return@HomeRoute
+            val url = result.normalizedUrl
+            val key = FavoriteKey.fromUrl(url)
+            val existing = favorites.any { FavoriteKey.fromUrl(it.url) == key }
+            favoriteScope.launch {
+                favoriteRepository.setFavorite(
+                    FavoriteItem(
+                        id = key,
+                        url = url,
+                        title = state.resolution?.title,
+                        thumbnailUrl = state.resolution?.thumbnailUrl,
+                        createdAtEpochMs = System.currentTimeMillis(),
+                    ),
+                    favorite = !existing,
+                )
+            }
+        },
+        onFavoriteSelected = { item ->
+            viewModel.onUrlChanged(item.url)
+            viewModel.analyze()
+        },
     )
 }
 
@@ -171,6 +202,10 @@ private fun HomeScreen(
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
+    favoriteItems: List<FavoriteItem> = emptyList(),
+    currentFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    onFavoriteSelected: (FavoriteItem) -> Unit = {},
 ) {
     val mode = state.mode
     val androidContext = LocalContext.current
@@ -370,6 +405,20 @@ private fun HomeScreen(
                             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
                         )
                     }
+                }
+            }
+
+            if (
+                state.mode == HomeMode.Link &&
+                state.url.isBlank() &&
+                state.resolution == null &&
+                favoriteItems.isNotEmpty()
+            ) {
+                item {
+                    FavoriteLinksCard(
+                        items = favoriteItems.take(4),
+                        onSelect = onFavoriteSelected,
+                    )
                 }
             }
 
@@ -692,6 +741,8 @@ private fun HomeScreen(
                         durationMs = resolution.durationMs,
                         platform = state.result?.platform?.name,
                         kind = state.result?.kind,
+                        favorite = currentFavorite,
+                        onToggleFavorite = onToggleFavorite,
                     )
                 }
 
@@ -998,6 +1049,8 @@ private fun MediaPreviewCard(
     durationMs: Long?,
     platform: String?,
     kind: MediaKind?,
+    favorite: Boolean,
+    onToggleFavorite: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -1033,6 +1086,73 @@ private fun MediaPreviewCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+            IconButton(
+                onClick = onToggleFavorite,
+                modifier = Modifier.semantics {
+                    contentDescription = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
+                },
+            ) {
+                Icon(
+                    Icons.Rounded.Star,
+                    contentDescription = null,
+                    tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FavoriteLinksCard(
+    items: List<FavoriteItem>,
+    onSelect: (FavoriteItem) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("المفضلة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "روابطك المحفوظة للعودة السريعة إليها.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            items.forEach { item ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(item) },
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MediaThumbnail(
+                            url = item.thumbnailUrl,
+                            contentDescription = "الصورة المصغرة: " + (item.title ?: item.url),
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 48.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                        )
+                        Text(
+                            item.title ?: item.url,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Icon(
+                            Icons.Rounded.Star,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
             }
         }
