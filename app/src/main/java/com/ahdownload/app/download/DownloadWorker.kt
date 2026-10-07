@@ -169,7 +169,7 @@ class DownloadWorker(
                 "download.audio_extraction",
                 mapOf(
                     "task_id" to task.id,
-                    "source_candidate_id" to task.id,
+                    "task_id" to task.id,
                     "processing_mode" to task.processingMode.name,
                     "source_file_present" to java.io.File(sourceTask.destinationPath).isFile.toString(),
                 ),
