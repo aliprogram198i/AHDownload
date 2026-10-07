@@ -9,4 +9,6 @@ data class MediaCandidate(
      * Never persist this field; in particular, Cookie values must stay in memory.
      */
     val requestHeaders: Map<String, String> = emptyMap(),
+    /** Host whose WebView cookie jar may be consulted transiently during execution. */
+    val sessionCookieHost: String? = null,
 )
