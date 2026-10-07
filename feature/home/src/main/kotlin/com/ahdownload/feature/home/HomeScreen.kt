@@ -106,6 +106,7 @@ import kotlinx.coroutines.launch
 fun HomeRoute(
     initialUrl: String? = null,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+    onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     logger: DiagnosticLogger,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
@@ -138,6 +139,7 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
+        onDownloadAudio = viewModel::downloadAudio,
         onModeChanged = viewModel::setMode,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSearch = viewModel::searchContent,
@@ -188,6 +190,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
+    onDownloadAudio: () -> Unit,
     onModeChanged: (HomeMode) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
     onSearch: () -> Unit,
@@ -737,6 +740,7 @@ private fun HomeScreen(
                             onSelectCandidate(it.candidate.id)
                         },
                         onDownload = { onDownloadCandidate(it) },
+                        onDownloadAudio = onDownloadAudio,
                     )
                 }
             }
