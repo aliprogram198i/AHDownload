@@ -177,8 +177,9 @@ class MainActivity : ComponentActivity() {
                 .trim()
                 .take(120)
             if (safeBase.isBlank()) return@withContext false
-            val finalName = if (extension != null && !safeBase.substringAfterLast('.', "").equals(extension, true)) {
-                safeBase + "." + extension
+            val finalName = if (extension != null) {
+                val dot = safeBase.lastIndexOf('.')
+                if (dot > 0) safeBase.substring(0, dot) + "." + extension else safeBase + "." + extension
             } else {
                 safeBase
             }
