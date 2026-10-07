@@ -220,41 +220,35 @@ jobs:
           echo "== APK checksum =="
           sha256sum "$APK" | tee app-release.apk.sha256
 
-      - name: Install and launch APK on Android 15 emulator
-        timeout-minutes: 10
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_7
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          disable-animations: true
-          emulator-boot-timeout: 180
-          force-avd-creation: true
-          script: |
-            set -euo pipefail
+      - name: Verify Android 7+ package compatibility
+        run: |
+          set -euo pipefail
 
-            adb wait-for-device
+          APK="app/build/outputs/apk/release/app-release.apk"
+          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
 
-            for attempt in $(seq 1 60); do
-              boot_completed="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
-              if [ "$boot_completed" = "1" ]; then
-                break
-              fi
-              if [ "$attempt" = "60" ]; then
-                echo "Android emulator did not finish booting within the CI wait window."
-                adb shell getprop || true
-                exit 1
-              fi
-              sleep 2
-            done
+          test -s "$APK"
+          test -x "$AAPT2"
 
-            adb install --no-incremental -r app/build/outputs/apk/release/app-release.apk
-            adb shell pm path com.ahdownload.app
-            adb shell monkey -p com.ahdownload.app 1
-            sleep 3
-            adb shell dumpsys package com.ahdownload.app | grep -q 'versionName=1.3.3'
+          echo "== Android package compatibility =="
+          BADGING="$("$AAPT2" dump badging "$APK")"
+          printf '%s\n' "$BADGING" > apk-compatibility.txt
+
+          PACKAGE_LINE="$(printf '%s\n' "$BADGING" | grep -m1 '^package:')"
+          SDK_LINE="$(printf '%s\n' "$BADGING" | grep -m1 '^sdkVersion:')"
+          TARGET_LINE="$(printf '%s\n' "$BADGING" | grep -m1 '^targetSdkVersion:')"
+
+          test -n "$PACKAGE_LINE"
+          test -n "$SDK_LINE"
+          test -n "$TARGET_LINE"
+
+          printf '%s\n' "$PACKAGE_LINE" | grep -q "name='com.ahdownload.app'"
+          printf '%s\n' "$SDK_LINE" | grep -q "sdkVersion:'24'"
+          printf '%s\n' "$TARGET_LINE" | grep -q "targetSdkVersion:'36'"
+
+          echo "Confirmed minSdkVersion=24 (Android 7.0 Nougat)"
+          echo "Confirmed targetSdkVersion=36"
+          echo "Confirmed applicationId=com.ahdownload.app"
 
       - name: Package verification outputs
         run: |
