@@ -166,6 +166,7 @@ class SmartResultEngine {
         MediaContainer.Aac -> 2
         MediaContainer.Ogg -> 1
         MediaContainer.Flac -> 1
+        MediaContainer.Wav -> 1
         else -> 0
     }
 
