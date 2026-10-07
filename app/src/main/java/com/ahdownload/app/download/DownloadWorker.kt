@@ -49,9 +49,20 @@ class DownloadWorker(
     override suspend fun doWork(): Result {
         var task = readTask() ?: return Result.failure()
         val audioExtractionRequested = task.processingMode == DownloadProcessingMode.ExtractAudio
+        val extractionSuffix = ".source." + task.id.take(8)
+        val extractionAlreadyStaged = audioExtractionRequested && task.destinationPath.endsWith(extractionSuffix)
+        var task = if (extractionAlreadyStaged) {
+            task.copy(destinationPath = task.destinationPath.removeSuffix(extractionSuffix))
+        } else {
+            task
+        }
         var sourceTask = if (audioExtractionRequested) {
             task.copy(
-                destinationPath = extractionSourcePath(task),
+                destinationPath = if (extractionAlreadyStaged) {
+                    task.destinationPath + extractionSuffix
+                } else {
+                    extractionSourcePath(task)
+                },
                 mediaKind = MediaKind.Video,
             )
         } else {
