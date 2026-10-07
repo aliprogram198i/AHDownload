@@ -238,41 +238,7 @@ jobs:
           # Parse the already-verified aapt2 badging output explicitly.
           # This avoids relying on exact quoting/formatting around the markers
           # while keeping the compatibility check strict and deterministic.
-          readarray -t PACKAGE_VALUES < <(
-            BADGING="$BADGING" python3 - <<'PY'
-import os
-import re
-
-badging = os.environ["BADGING"]
-
-def extract(key: str) -> str:
-    pattern = rf"(?:^|\\s){re.escape(key)}=(?:'([^']*)'|\"([^\"]*)\")"
-    match = re.search(pattern, badging, re.MULTILINE)
-    if not match:
-        raise SystemExit(f"Missing aapt2 badging marker: {key}")
-    return match.group(1) or match.group(2)
-
-print(extract("name"))
-print(extract("sdkVersion"))
-print(extract("targetSdkVersion"))
-PY
-          )
-
-          test "${#PACKAGE_VALUES[@]}" -eq 3
-
-          PACKAGE_NAME="${PACKAGE_VALUES[0]}"
-          MIN_SDK="${PACKAGE_VALUES[1]}"
-          TARGET_SDK="${PACKAGE_VALUES[2]}"
-
-          test "$PACKAGE_NAME" = "com.ahdownload.app"
-          test "$MIN_SDK" = "24"
-          test "$TARGET_SDK" = "36"
-
-          cp "$BADGING_FILE" apk-compatibility.txt
-
-          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"
-          echo "Confirmed targetSdkVersion=$TARGET_SDK"
-          echo "Confirmed applicationId=$PACKAGE_NAME"
+          # Extract exact aapt2 markers from the verified badging output.\n          # grep -m1 avoids brittle sed backreferences and handles the standard\n          # single-quoted aapt2 format deterministically.\n          PACKAGE_NAME="$(printf '%s\\n' "$BADGING" | grep -m1 -oE "name='[^']+'|name=\"[^\"]+\"" | cut -d= -f2- | tr -d "'\"'")"\n          MIN_SDK="$(printf '%s\\n' "$BADGING" | grep -m1 -oE "sdkVersion='[^']+'|sdkVersion=\"[^\"]+\"" | cut -d= -f2- | tr -d "'\"'")"\n          TARGET_SDK="$(printf '%s\\n' "$BADGING" | grep -m1 -oE "targetSdkVersion='[^']+'|targetSdkVersion=\"[^\"]+\"" | cut -d= -f2- | tr -d "'\"'")"\n\n          test -n "$PACKAGE_NAME"\n          test -n "$MIN_SDK"\n          test -n "$TARGET_SDK"\n\n          test "$PACKAGE_NAME" = "com.ahdownload.app"\n          test "$MIN_SDK" = "24"\n          test "$TARGET_SDK" = "36"\n\n          cp "$BADGING_FILE" apk-compatibility.txt\n\n          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"\n          echo "Confirmed targetSdkVersion=$TARGET_SDK"\n          echo "Confirmed applicationId=$PACKAGE_NAME"
 
       - name: Package verification outputs
         run: |
