@@ -47,14 +47,14 @@ class DownloadWorker(
     private var notificationBytesPerSecond = 0L
 
     override suspend fun doWork(): Result {
-        var task = readTask() ?: return Result.failure()
-        val audioExtractionRequested = task.processingMode == DownloadProcessingMode.ExtractAudio
+        val inputTask = readTask() ?: return Result.failure()
+        val audioExtractionRequested = inputTask.processingMode == DownloadProcessingMode.ExtractAudio
         val extractionSuffix = ".source." + task.id.take(8)
-        val extractionAlreadyStaged = audioExtractionRequested && task.destinationPath.endsWith(extractionSuffix)
+        val extractionAlreadyStaged = audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
         var task = if (extractionAlreadyStaged) {
-            task.copy(destinationPath = task.destinationPath.removeSuffix(extractionSuffix))
+            inputTask.copy(destinationPath = inputTask.destinationPath.removeSuffix(extractionSuffix))
         } else {
-            task
+            inputTask
         }
         var sourceTask = if (audioExtractionRequested) {
             task.copy(
