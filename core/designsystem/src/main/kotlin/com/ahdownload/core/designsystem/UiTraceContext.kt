@@ -5,9 +5,11 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.LocalLayoutDirection
 import kotlin.math.roundToInt
 
 @Composable
@@ -30,7 +32,7 @@ fun rememberUiTraceContext(): Map<String, String> {
             else -> "portrait"
         },
         "theme_mode" to if (darkTheme) "dark" else "light",
-        "layout_direction" to when (LayoutDirectionAmbient.current) {
+        "layout_direction" to when (LocalLayoutDirection.current) {
             LayoutDirection.Rtl -> "RTL"
             else -> "LTR"
         },
@@ -59,15 +61,4 @@ fun rememberUiTraceContext(): Map<String, String> {
     )
 }
 
-private object LayoutDirectionAmbient {
-    @Composable
-    val current: LayoutDirection
-        get() = androidx.compose.ui.unit.LayoutDirection.Ltr
-}
-
-private fun Color.toHex(): String = buildString {
-    append('#')
-    append((value shr 16 and 0xFF).toString(16).padStart(2, '0'))
-    append((value shr 8 and 0xFF).toString(16).padStart(2, '0'))
-    append((value and 0xFF).toString(16).padStart(2, '0'))
-}
+private fun Color.toHex(): String = String.format("%08X", toArgb())
