@@ -85,8 +85,7 @@ class DownloadLauncher(
 
     private fun sanitize(value: String?): String =
         value.orEmpty()
-            .replace(Regex("""[\/:*?"<>|
-]+"""), " ")
+            .replace(Regex("""[\\/:*?"<>|\r\n]+"""), " ")
             .trim()
             .take(120)
 
