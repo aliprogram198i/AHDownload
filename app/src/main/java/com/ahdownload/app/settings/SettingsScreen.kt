@@ -38,7 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.BuildConfig
+import com.ahdownload.core.common.AudioBitratePreference
+import com.ahdownload.core.common.DownloadPreferences
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.VideoQualityPreference
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
@@ -388,37 +392,14 @@ fun SettingsRoute(
         )
     }
 
-enum class VideoQualityPreference(val wireValue: String, val label: String, val maxHeight: Int?) {
-    AUTO("auto", "تلقائي", null),
-    P2160("2160", "2160p", 2160),
-    P1440("1440", "1440p", 1440),
-    P1080("1080", "1080p", 1080),
-    P720("720", "720p", 720),
-    P480("480", "480p", 480),
-}
 
-enum class AudioBitratePreference(val kbps: Int, val label: String) {
-    AUTO(0, "تلقائي"),
-    K320(320, "320 kbps"),
-    K256(256, "256 kbps"),
-    K192(192, "192 kbps"),
-    K128(128, "128 kbps"),
-}
-
-data class DownloadPreferences(
-    val smartDownload: Boolean = true,
-    val wifiOnly: Boolean = false,
-    val videoQuality: VideoQualityPreference = VideoQualityPreference.AUTO,
-    val audioBitrate: AudioBitratePreference = AudioBitratePreference.AUTO,
-)
-
-class DownloadPreferencesStore(context: android.content.Context) {
+class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
     private val preferences = context.applicationContext.getSharedPreferences(
         "ahdownload_download_preferences",
         android.content.Context.MODE_PRIVATE,
     )
 
-    fun read(): DownloadPreferences = DownloadPreferences(
+    override fun read(): DownloadPreferences = DownloadPreferences(
         smartDownload = preferences.getBoolean("smart_download", true),
         wifiOnly = preferences.getBoolean("wifi_only", false),
         videoQuality = VideoQualityPreference.entries.firstOrNull {
@@ -444,6 +425,4 @@ class DownloadPreferencesStore(context: android.content.Context) {
     fun setAudioBitrate(value: AudioBitratePreference) {
         preferences.edit().putInt("audio_bitrate", value.kbps).apply()
     }
-}
-
 }
