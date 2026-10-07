@@ -63,7 +63,7 @@ fun DiagnosticsRoute(
             context = uiContext,
         )
     }
-    DiagnosticsScreen(logs, clipboard, onBack, { uiTraceLogger.interaction("DIAGNOSTICS", "refresh_button", "refresh"); logs = logger.list() }, { uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear"); logger.clear(); logs = emptyList() })
+    DiagnosticsScreen(logs, clipboard, uiTraceLogger, onBack, { uiTraceLogger.interaction("DIAGNOSTICS", "refresh_button", "refresh"); logs = logger.list() }, { uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear"); logger.clear(); logs = emptyList() })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,6 +71,7 @@ fun DiagnosticsRoute(
 private fun DiagnosticsScreen(
     logs: List<DiagnosticLog>,
     clipboard: ClipboardManager,
+    uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
     onRefresh: () -> Unit,
     onClear: () -> Unit,
@@ -93,7 +94,7 @@ private fun DiagnosticsScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { clipboard.setText(AnnotatedString(exportText)) },
+                        onClick = { uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_full_report"); clipboard.setText(AnnotatedString(exportText)) },
                         enabled = logs.isNotEmpty(),
                     ) {
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل الكامل")
@@ -163,7 +164,7 @@ private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
                     Text(formatTime(log.timestampEpochMs), style = MaterialTheme.typography.labelMedium)
                 }
                 IconButton(
-                    onClick = { clipboard.setText(AnnotatedString(formatDiagnostic(log))) },
+                    onClick = { uiTraceLogger.interaction("DIAGNOSTICS", "copy_error_button", "copy_single"); clipboard.setText(AnnotatedString(formatDiagnostic(log))) },
                 ) {
                     Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الخطأ")
                 }
