@@ -164,7 +164,7 @@ private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
                     Text(formatTime(log.timestampEpochMs), style = MaterialTheme.typography.labelMedium)
                 }
                 IconButton(
-                    onClick = { uiTraceLogger.interaction("DIAGNOSTICS", "copy_error_button", "copy_single"); clipboard.setText(AnnotatedString(formatDiagnostic(log))) },
+                    onClick = { clipboard.setText(AnnotatedString(formatDiagnostic(log))) },
                 ) {
                     Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الخطأ")
                 }
