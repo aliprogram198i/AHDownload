@@ -408,6 +408,7 @@ private fun AHRoot(
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
             preferencesProvider = downloadPreferencesProvider,
+            favoriteRepository = favoriteRepository,
         )
         RootDestination.Downloads -> DownloadsRoute(
             repository = downloadRepository,
