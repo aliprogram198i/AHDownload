@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
@@ -197,6 +198,8 @@ fun DownloadsRoute(
         onNavigateHome = onNavigateHome,
         onNavigateSettings = onNavigateSettings,
         activeDownloads = activeDownloads,
+        transferStats = transferStats,
+        missingFileIds = missingFiles,
         onPause = vm::pause,
         onResume = vm::resume,
         onCancel = vm::cancel,
@@ -217,6 +220,8 @@ private fun DownloadsScreen(
     onNavigateHome: () -> Unit,
     onNavigateSettings: () -> Unit,
     activeDownloads: Int,
+    transferStats: Map<String, TransferStats>,
+    missingFileIds: Set<String>,
     onPause: (DownloadRecord) -> Unit,
     onResume: (DownloadRecord) -> Unit,
     onCancel: (DownloadRecord) -> Unit,
@@ -395,7 +400,7 @@ private fun DownloadsScreen(
                     items(filtered, key = { it.task.id }) { record ->
                         DownloadRecordCard(
                             record = record,
-                            fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFiles,
+                            fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
                             onPause = {
                                 uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
                                 onPause(record)
@@ -507,6 +512,7 @@ private fun EmptyDownloads(
 private fun DownloadRecordCard(
     record: DownloadRecord,
     fileAvailable: Boolean = true,
+    transferStats: TransferStats? = null,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -655,9 +661,7 @@ private fun DownloadRecordCard(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val stats = remember(transferStats[record.task.id], record.totalBytes) {
-                    transferStats[record.task.id]
-                }
+                val stats = transferStats
                 Text(
                     buildString {
                         append((progress * 100).toInt())
