@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
                     onOpenYouTubeSession = ::openYouTubeSession,
+                    onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
                     downloadRepository = downloadRepository,
                     onPauseDownload = downloadWorkScheduler::pause,
                     onResumeDownload = downloadWorkScheduler::resume,
@@ -218,6 +219,7 @@ private fun AHRoot(
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
+                onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
                 onOpenSettings = { destination = RootDestination.Settings },
                 onOpenDownloads = { destination = RootDestination.Downloads },
             )
