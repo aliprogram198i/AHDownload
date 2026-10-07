@@ -271,16 +271,12 @@ private fun DownloadsScreen(
                 onGoHome = onNavigateHome,
             )
         } else {
-            Box(
-                Modifier.fillMaxSize(),
-            ) {
-                LazyColumn(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(horizontal = 16.dp)
-                        .widthIn(max = 760.dp)
-                        .align(Alignment.Center),
+            LazyColumn(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+                    .widthIn(max = 760.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
@@ -383,9 +379,9 @@ private fun DownloadsScreen(
                         )
                     }
                 }
-                }
             }
         }
+    }
 
     pendingDelete?.let { record ->
         AlertDialog(
