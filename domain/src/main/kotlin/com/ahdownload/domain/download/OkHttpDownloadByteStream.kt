@@ -33,10 +33,12 @@ class OkHttpDownloadByteStream(
             if (!name.equals("Host", ignoreCase = true)) builder.header(name, value)
         }
 
+        val browserContext = isYouTubeMediaHost(url) && isBrowserAlignedContext(mergedHeaders)
+
         if (rangeStart > 0L) {
             builder.header("Range", "bytes=$rangeStart-")
-        } else if (isYouTubeMediaHost(url)) {
-            // Match validation/browser-friendly transfer semantics for YouTube GVS.
+        } else if (isYouTubeMediaHost(url) && !browserContext) {
+            // Non-browser GVS candidates still use the validator-aligned transfer mode.
             builder.header("Range", "bytes=0-")
         }
 
@@ -45,31 +47,113 @@ class OkHttpDownloadByteStream(
 
         if (response.code == 403 && isYouTubeMediaHost(url)) {
             response.close()
-            val retryHeaders = mergedHeaders.filterKeys {
-                !it.equals("Cookie", ignoreCase = true) &&
-                    !it.equals("Origin", ignoreCase = true) &&
-                    !it.equals("Referer", ignoreCase = true)
+
+            if (browserContext) {
+                // Keep the exact browser/session headers and URL intact. For a fresh
+                // transfer, retry without an invented Range before changing context.
+                val retryBuilder = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", userAgentFor(url))
+                    .header("Accept", "*/*")
+                    .apply {
+                        mergedHeaders.forEach { (name, value) ->
+                            if (!name.equals("Host", ignoreCase = true)) header(name, value)
+                        }
+                    }
+                if (rangeStart > 0L) {
+                    retryBuilder.header("Range", "bytes=$rangeStart-")
+                }
+                val retryStarted = TimeSource.Monotonic.markNow()
+                response = client.newCall(retryBuilder.build()).execute()
+                logger.log(
+                    if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                    "DOWNLOAD_HTTP_RETRY",
+                    "إعادة محاولة مصدر YouTube بسياق المتصفح بعد 403",
+                    "download.stream",
+                    mapOf(
+                        "host" to hostOf(url),
+                        "status_code" to response.code.toString(),
+                        "range_start" to rangeStart.toString(),
+                        "range_header" to (response.request.header("Range") ?: "none"),
+                        "elapsed_ms" to retryStarted.elapsedNow().inWholeMilliseconds.toString(),
+                        "youtube_media_host" to "true",
+                        "cookie_present" to mergedHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
+                        "referer_present" to mergedHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
+                        "retry_mode" to "browser_context_preserved",
+                    ),
+                    null,
+                )
+            } else {
+                val retryHeaders = mergedHeaders.filterKeys {
+                    !it.equals("Cookie", ignoreCase = true) &&
+                        !it.equals("Origin", ignoreCase = true) &&
+                        !it.equals("Referer", ignoreCase = true)
+                }
+                val retryBuilder = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", userAgentFor(url))
+                    .header("Accept", "*/*")
+                    .apply {
+                        retryHeaders.forEach { (name, value) ->
+                            if (!name.equals("Host", ignoreCase = true)) header(name, value)
+                        }
+                    }
+                if (rangeStart > 0L) {
+                    retryBuilder.header("Range", "bytes=$rangeStart-")
+                } else {
+                    retryBuilder.header("Range", "bytes=0-")
+                }
+                val retryStarted = TimeSource.Monotonic.markNow()
+                response = client.newCall(retryBuilder.build()).execute()
+                logger.log(
+                    if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                    "DOWNLOAD_HTTP_RETRY",
+                    "إعادة محاولة مصدر YouTube بعد 403",
+                    "download.stream",
+                    mapOf(
+                        "host" to hostOf(url),
+                        "status_code" to response.code.toString(),
+                        "range_start" to rangeStart.toString(),
+                        "range_header" to (response.request.header("Range") ?: "none"),
+                        "elapsed_ms" to retryStarted.elapsedNow().inWholeMilliseconds.toString(),
+                        "youtube_media_host" to "true",
+                        "cookie_present" to retryHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
+                        "referer_present" to retryHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
+                        "retry_mode" to "sanitized_headers",
+                    ),
+                    null,
+                )
+            }
+        }
+
+        if (response.code == 403 && isYouTubeMediaHost(url) && browserContext) {
+            response.close()
+            val stableHeaders = mergedHeaders.filterKeys {
+                !it.equals("Sec-Fetch-Dest", ignoreCase = true) &&
+                    !it.equals("Sec-Fetch-Mode", ignoreCase = true) &&
+                    !it.equals("Sec-Fetch-Site", ignoreCase = true) &&
+                    !it.equals("Sec-CH-UA", ignoreCase = true) &&
+                    !it.equals("Sec-CH-UA-Mobile", ignoreCase = true) &&
+                    !it.equals("Sec-CH-UA-Platform", ignoreCase = true)
             }
             val retryBuilder = Request.Builder()
                 .url(url)
                 .header("User-Agent", userAgentFor(url))
                 .header("Accept", "*/*")
                 .apply {
-                    retryHeaders.forEach { (name, value) ->
+                    stableHeaders.forEach { (name, value) ->
                         if (!name.equals("Host", ignoreCase = true)) header(name, value)
                     }
                 }
             if (rangeStart > 0L) {
                 retryBuilder.header("Range", "bytes=$rangeStart-")
-            } else {
-                retryBuilder.header("Range", "bytes=0-")
             }
             val retryStarted = TimeSource.Monotonic.markNow()
             response = client.newCall(retryBuilder.build()).execute()
             logger.log(
                 if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
                 "DOWNLOAD_HTTP_RETRY",
-                "إعادة محاولة مصدر YouTube بعد 403",
+                "إعادة محاولة مصدر YouTube بسياق جلسة ثابت بعد 403",
                 "download.stream",
                 mapOf(
                     "host" to hostOf(url),
@@ -78,52 +162,13 @@ class OkHttpDownloadByteStream(
                     "range_header" to (response.request.header("Range") ?: "none"),
                     "elapsed_ms" to retryStarted.elapsedNow().inWholeMilliseconds.toString(),
                     "youtube_media_host" to "true",
-                    "cookie_present" to retryHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
-                    "referer_present" to retryHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
-                    "retry_mode" to "sanitized_headers",
+                    "cookie_present" to stableHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
+                    "referer_present" to stableHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
+                    "retry_mode" to "stable_browser_session",
                 ),
                 null,
             )
         }
-
-        if (response.code == 403 && isYouTubeMediaHost(url)) {
-            response.close()
-            val retryHeaders = mergedHeaders.filterKeys {
-                !it.equals("Cookie", ignoreCase = true) &&
-                    !it.equals("Origin", ignoreCase = true) &&
-                    !it.equals("Referer", ignoreCase = true)
-            }
-            val retryBuilder = Request.Builder()
-                .url(url)
-                .header("User-Agent", userAgentFor(url))
-                .header("Accept", "*/*")
-                .apply {
-                    retryHeaders.forEach { (name, value) ->
-                        if (!name.equals("Host", ignoreCase = true)) header(name, value)
-                    }
-                }
-            val retryStarted = TimeSource.Monotonic.markNow()
-            response = client.newCall(retryBuilder.build()).execute()
-            logger.log(
-                if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
-                "DOWNLOAD_HTTP_RETRY",
-                "إعادة محاولة مصدر YouTube بدون Range بعد 403",
-                "download.stream",
-                mapOf(
-                    "host" to hostOf(url),
-                    "status_code" to response.code.toString(),
-                    "range_start" to rangeStart.toString(),
-                    "range_header" to (response.request.header("Range") ?: "none"),
-                    "elapsed_ms" to retryStarted.elapsedNow().inWholeMilliseconds.toString(),
-                    "youtube_media_host" to "true",
-                    "cookie_present" to retryHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString(),
-                    "referer_present" to retryHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
-                    "retry_mode" to "no_range",
-                ),
-                null,
-            )
-        }
-
         val contentRange = response.header("Content-Range")
         val totalBytes = contentRange
             ?.substringAfter('/', "")
@@ -167,6 +212,15 @@ class OkHttpDownloadByteStream(
         val host = hostOf(url)
         return host == "googlevideo.com" || host.endsWith(".googlevideo.com")
     }
+
+    private fun isBrowserAlignedContext(headers: Map<String, String>): Boolean =
+        headers.keys.any {
+            it.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
+                it.equals("X-YouTube-Client-Name", ignoreCase = true) ||
+                it.equals("X-YouTube-Client-Version", ignoreCase = true) ||
+                it.equals("Sec-Fetch-Dest", ignoreCase = true) ||
+                it.equals("Sec-CH-UA", ignoreCase = true)
+        }
 
     private fun userAgentFor(url: String): String =
         if (isYouTubeMediaHost(url)) YOUTUBE_USER_AGENT else DEFAULT_USER_AGENT
