@@ -215,8 +215,8 @@ private fun HomeScreen(
                 ";selected=" + (state.selectedCandidateId ?: "none") +
                 ";validating=" + (state.validatingCandidateId ?: "none") +
                 ";error=" + (state.error != null) +
-                ";show_all=" + showAll +
-                ";filter=" + filter.name +
+                ";show_all=" + state.showAll +
+                ";filter=" + state.resultFilter.name +
                 ";queued=" + state.downloadQueued,
             context = uiContext,
         )
@@ -242,14 +242,14 @@ private fun HomeScreen(
         }
     }
 
-    val filteredResults = remember(resultSet, filter, showAll) {
-        val result = when (filter) {
-            ResultFilter.All -> if (showAll) resultSet.all else resultSet.visible
-            ResultFilter.Video -> if (showAll) resultSet.video else resultSet.visible.filter { it.group == MediaResultGroup.Video }
-            ResultFilter.Audio -> if (showAll) resultSet.audio else resultSet.visible.filter { it.group == MediaResultGroup.Audio }
-            ResultFilter.Image -> if (showAll) resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
+    val filteredResults = remember(resultSet, state.resultFilter, state.showAll) {
+        val result = when (state.resultFilter) {
+            ResultFilter.All -> if (state.showAll) resultSet.all else resultSet.visible
+            ResultFilter.Video -> if (state.showAll) resultSet.video else resultSet.visible.filter { it.group == MediaResultGroup.Video }
+            ResultFilter.Audio -> if (state.showAll) resultSet.audio else resultSet.visible.filter { it.group == MediaResultGroup.Audio }
+            ResultFilter.Image -> if (state.showAll) resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
                 else resultSet.visible.filter { it.candidate.format.kind == MediaKind.Image }
-            ResultFilter.Other -> if (showAll) resultSet.other.filter { it.candidate.format.kind != MediaKind.Image }
+            ResultFilter.Other -> if (state.showAll) resultSet.other.filter { it.candidate.format.kind != MediaKind.Image }
                 else resultSet.visible.filter { it.group == MediaResultGroup.Other }
         }
         result.filterNot { it.candidate.id == resultSet.bestOverall?.candidate?.id }
@@ -345,7 +345,7 @@ private fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
                         FilterChip(
-                            selected = state.mode == HomeMode.Link,
+                            selected = state.state.mode == HomeMode.Link,
                             onClick = { onModeChanged(HomeMode.Link) },
                             label = { Text("رابط") },
                             leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
@@ -364,7 +364,7 @@ private fun HomeScreen(
                 }
             }
 
-            if (mode == HomeMode.Link) {
+            if (state.mode == HomeMode.Link) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -379,8 +379,7 @@ private fun HomeScreen(
                         OutlinedTextField(
                             value = state.url,
                             onValueChange = {
-                                showAll = false
-                                onUrlChanged(it)
+                                                                onUrlChanged(it)
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -402,7 +401,7 @@ private fun HomeScreen(
                                                 ?.trim()
                                                 .orEmpty()
                                             if (pasted.isNotBlank()) {
-                                                showAll = false
+                                                
                                                 onUrlChanged(pasted)
                                             }
                                         },
@@ -555,7 +554,7 @@ private fun HomeScreen(
                             item = item,
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
-                                mode = HomeMode.Link
+                                onModeChanged(HomeMode.Link)
                                 onSearchResultSelected(item)
                             },
                         )
@@ -662,7 +661,7 @@ private fun HomeScreen(
                 if (filteredResults.isNotEmpty()) {
                     item {
                         Text(
-                            if (showAll) "جميع الصيغ المتاحة" else "الصيغ المقترحة",
+                            if (state.showAll) "جميع الصيغ المتاحة" else "الصيغ المقترحة",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
@@ -1074,7 +1073,7 @@ private fun ResultFilterRow(
             onClick = onToggleAll,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (showAll) "عرض الخيارات المقترحة فقط" else "عرض جميع الصيغ")
+            Text(if (state.showAll) "عرض الخيارات المقترحة فقط" else "عرض جميع الصيغ")
         }
     }
 }
