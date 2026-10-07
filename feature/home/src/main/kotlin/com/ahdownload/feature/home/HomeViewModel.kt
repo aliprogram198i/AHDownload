@@ -11,6 +11,7 @@ import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.ResolverResult
+import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.validation.CandidateValidationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -36,7 +37,7 @@ class HomeViewModel(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
     private val resolver: HomeResolver,
-    private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean = { _, _, _ -> false },
+    private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> com.ahdownload.domain.download.DownloadEnqueueResult = { _, _, _ -> com.ahdownload.domain.download.DownloadEnqueueResult.STORAGE_UNAVAILABLE },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -102,7 +103,12 @@ class HomeViewModel(
                         _uiState.value = _uiState.value.copy(
                             resolving = false,
                             resolution = resolution,
-                            selectedCandidateId = resolution.candidates.firstOrNull()?.id,
+                            selectedCandidateId = run {
+                                val ranked = SmartResultEngine().build(resolution.candidates)
+                                ranked.bestOverall?.candidate?.id
+                                    ?: ranked.bestQuality?.candidate?.id
+                                    ?: resolution.candidates.firstOrNull()?.id
+                            },
                             error = if (resolution.candidates.isEmpty()) {
                                 "لم يتم العثور على وسائط قابلة للتنزيل."
                             } else {
@@ -311,25 +317,31 @@ class HomeViewModel(
 
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
-                        val queued = onDownloadRequested(
+                        val enqueueResult = onDownloadRequested(
                             validation.candidate.copy(sourceUrl = validation.finalUrl),
                             state.resolution.title,
                             state.result?.normalizedUrl,
                         )
+                        val queued = enqueueResult == com.ahdownload.domain.download.DownloadEnqueueResult.QUEUED
                         if (!queued) {
                             logger.log(
                                 DiagnosticLevel.ERROR,
                                 "QUEUE",
-                                "QUEUE_REJECTED",
+                                enqueueResult.name,
                                 "download.queue",
-                                emptyMap(),
+                                mapOf("result" to enqueueResult.name),
                                 null,
                             )
                         }
                         _uiState.value = _uiState.value.copy(
                             validatingCandidateId = null,
                             downloadQueued = queued,
-                            error = if (queued) null else "تعذر إضافة التنزيل إلى قائمة الانتظار.",
+                            error = when (enqueueResult) {
+                                com.ahdownload.domain.download.DownloadEnqueueResult.QUEUED -> null
+                                com.ahdownload.domain.download.DownloadEnqueueResult.DUPLICATE -> "هذا الملف موجود بالفعل في سجل التنزيلات."
+                                com.ahdownload.domain.download.DownloadEnqueueResult.INVALID_DESTINATION -> "مجلد التنزيل المحدد غير متاح. غيّره من الإعدادات."
+                                com.ahdownload.domain.download.DownloadEnqueueResult.STORAGE_UNAVAILABLE -> "تعذر تجهيز مساحة التخزين للتنزيل."
+                            },
                         )
                     }
 
@@ -391,7 +403,7 @@ class HomeViewModel(
     }
 
     class Factory(
-        private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
+        private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> com.ahdownload.domain.download.DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
     ) : ViewModelProvider.Factory {
