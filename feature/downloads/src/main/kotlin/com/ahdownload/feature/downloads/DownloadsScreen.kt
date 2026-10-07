@@ -511,8 +511,6 @@ private fun DownloadsScreen(
                             onOpenDownloadLocation = {
                                 onOpenDownloadLocation(record)
                             },
-                                feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
-                            },
                         )
                     }
                 }
@@ -988,7 +986,7 @@ private fun kindLabel(kind: MediaKind): String = when (kind) {
     MediaKind.Unknown -> "ملف"
 }
 
-private val ACTIVE_STATUSES = setOf(
+internal val ACTIVE_STATUSES = setOf(
     DownloadStatus.QUEUED,
     DownloadStatus.PREPARING,
     DownloadStatus.DOWNLOADING,
