@@ -137,6 +137,7 @@ private fun DownloadsScreen(
                         onCancel = { onCancel(record) },
                         onRetry = { onRetry(record) },
                         onOpenDownload = { onOpenDownload(record) },
+                        uiTraceLogger = uiTraceLogger,
                     )
                 }
             }
@@ -147,6 +148,7 @@ private fun DownloadsScreen(
 @Composable
 private fun DownloadRecordCard(
     record: DownloadRecord,
+    uiTraceLogger: UiTraceLogger,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
