@@ -165,10 +165,15 @@ jobs:
           echo "== APK signature =="
           "$APKSIGNER" verify             --verbose             --print-certs             --min-sdk-version 24             "$APK" | tee apksigner-verify.txt
 
-          grep -q "Verified" apksigner-verify.txt
-          grep -q "Verified using v1 scheme (JAR signing): true" apksigner-verify.txt
+          grep -q "^Verifies$" apksigner-verify.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" apksigner-verify.txt
           grep -q "Verified using v3 scheme (APK Signature Scheme v3): true" apksigner-verify.txt
+
+          # With minSdk=24, apksigner may report V1 as false because Android N+
+          # verifies V2/V3 when those stronger schemes are present. The APK is
+          # still required to carry V1 signing entries for backward compatibility.
+          unzip -l "$APK" | grep -Eq "META-INF/[^/]+\.SF"
+          unzip -l "$APK" | grep -Eq "META-INF/[^/]+\.(RSA|DSA|EC)"
 
           KEY_CERT_SHA256="$(
             keytool -list -v               -keystore "$AH_KEYSTORE_FILE"               -storepass "$AH_KEYSTORE_PASSWORD"               -alias "$AH_KEY_ALIAS" |
