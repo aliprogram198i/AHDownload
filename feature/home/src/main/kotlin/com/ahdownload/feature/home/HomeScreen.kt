@@ -81,6 +81,7 @@ import coil3.request.ImageRequest
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
@@ -107,10 +108,11 @@ fun HomeRoute(
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
+    downloadPreferencesProvider: DownloadPreferencesProvider,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
-        HomeViewModel.Factory(onDownloadRequested, logger, context)
+        HomeViewModel.Factory(onDownloadRequested, logger, context, downloadPreferencesProvider)
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
