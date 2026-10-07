@@ -229,6 +229,7 @@ class HomeViewModel(
                                 .distinctBy { it.id }
                                 .sortedWith(
                                     compareBy<MediaCandidate> { it.id == candidate.id }
+                                         .thenByDescending { it.id.startsWith("android-") }
                                         .thenByDescending { it.id.startsWith("embedded-") }
                                         .thenByDescending { it.format.hasVideo }
                                         .thenByDescending { it.format.hasAudio }
