@@ -36,7 +36,7 @@ class HomeViewModel(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
     private val resolver: HomeResolver,
-    private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean = { _, _ -> false },
+    private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean = { _, _, _ -> false },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -314,6 +314,7 @@ class HomeViewModel(
                         val queued = onDownloadRequested(
                             validation.candidate.copy(sourceUrl = validation.finalUrl),
                             state.resolution.title,
+                            state.result?.normalizedUrl,
                         )
                         if (!queued) {
                             logger.log(
@@ -390,7 +391,7 @@ class HomeViewModel(
     }
 
     class Factory(
-        private val onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
+        private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
         private val logger: DiagnosticLogger,
         private val context: Context,
     ) : ViewModelProvider.Factory {

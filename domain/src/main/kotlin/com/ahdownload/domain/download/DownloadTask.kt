@@ -1,5 +1,7 @@
 package com.ahdownload.domain.download
 
+import com.ahdownload.domain.model.MediaKind
+
 data class DownloadTask(
     val id: String,
     val sourceUrl: String,
@@ -12,4 +14,8 @@ data class DownloadTask(
     val displayName: String? = null,
     val contentFingerprint: String? = null,
     val sessionCookieHost: String? = null,
+    /** Original page URL used to resolve this media source; required for refreshable sources such as YouTube. */
+    val sourcePageUrl: String? = null,
+    /** Media kind is persisted so a refreshed candidate can be selected deterministically. */
+    val mediaKind: MediaKind? = null,
 )

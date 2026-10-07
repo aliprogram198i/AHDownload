@@ -67,14 +67,14 @@ class MediaStorePublisher(
     )
 
     private fun metadataFor(name: String): MediaMetadata {
-        val extension = name.substringBeforeLast('.', "").lowercase()
+        val extension = name.substringAfterLast('.', "").lowercase()
         return when (extension) {
             "mp4", "m4v", "webm", "mkv", "mov", "3gp", "avi" -> MediaMetadata(
                 collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 mimeType = when (extension) {
                     "mp4" -> "video/mp4"
-                   "webm" -> "video/webm"
-                   "mov" -> "video/quicktime"
+                    "webm" -> "video/webm"
+                    "mov" -> "video/quicktime"
                     "mkv" -> "video/x-matroska"
                     "avi" -> "video/x-msvideo"
                     "3gp" -> "video/3gpp"

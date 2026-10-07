@@ -24,6 +24,32 @@ class PersistentDownloadQueueTest {
         assertEquals(1, repository.records.size)
     }
 
+
+    @Test
+    fun enqueueReplacesTaskPayloadWhenSameIdIsRefreshed() = runTest {
+        val repository = FakeDownloadRepository()
+        val queue = PersistentDownloadQueue(repository)
+        queue.enqueue(task, 1000)
+        queue.applyState(
+            taskId = task.id,
+            state = DownloadState.Failed(DownloadFailure.HttpError(403)),
+            nowEpochMs = 1100,
+        )
+
+        val refreshedTask = task.copy(
+            sourceUrl = "https://cdn.example/fresh-video.mp4",
+            sourcePageUrl = "https://www.youtube.com/watch?v=abc1234",
+        )
+        val updated = queue.enqueue(refreshedTask, 1200)
+
+        assertEquals(refreshedTask, updated.task)
+        assertEquals(1200, updated.updatedAtEpochMs)
+        assertEquals(null, updated.failureCode)
+        assertEquals(null, updated.failureDetail)
+        assertEquals(refreshedTask, repository.records[task.id]?.task)
+    }
+
+
     @Test
     fun applyStatePersistsEngineProgress() = runTest {
         val repository = FakeDownloadRepository()

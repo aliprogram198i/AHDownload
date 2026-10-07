@@ -5,10 +5,21 @@ class PersistentDownloadQueue(
 ) {
     suspend fun enqueue(task: DownloadTask, nowEpochMs: Long): DownloadRecord {
         val existing = repository.get(task.id)
-            ?: repository.findByContentFingerprint(task.contentFingerprint)
         if (existing != null) {
+            if (existing.task != task) {
+                val refreshed = existing.copy(
+                    task = task,
+                    failureCode = null,
+                    failureDetail = null,
+                    updatedAtEpochMs = nowEpochMs,
+                )
+                repository.upsert(refreshed)
+                return refreshed
+            }
             return existing
         }
+
+        repository.findByContentFingerprint(task.contentFingerprint)?.let { return it }
 
         val record = DownloadRecordMapper.queued(task, nowEpochMs)
         repository.upsert(record)

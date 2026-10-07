@@ -17,7 +17,11 @@ class DownloadLauncher(
     private val repository = application.downloadRepository
     private val locationStore = DownloadLocationStore(appContext)
 
-    suspend fun enqueue(candidate: MediaCandidate, title: String?): Boolean {
+    suspend fun enqueue(
+        candidate: MediaCandidate,
+        title: String?,
+        sourcePageUrl: String? = null,
+    ): Boolean {
         if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) return false
         val directory = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return false
         if (!directory.exists() && !directory.mkdirs()) return false
@@ -37,6 +41,8 @@ class DownloadLauncher(
                 displayName = title?.trim()?.takeIf { it.isNotBlank() } ?: baseName,
                 contentFingerprint = fingerprint,
                 sessionCookieHost = candidate.sessionCookieHost,
+                sourcePageUrl = sourcePageUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
+                mediaKind = candidate.format.kind,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
