@@ -55,7 +55,7 @@ import com.ahdownload.domain.resolver.SmartResultEngine
 @Composable
 fun HomeRoute(
     initialUrl: String? = null,
-    onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
+    onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     logger: DiagnosticLogger,
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
