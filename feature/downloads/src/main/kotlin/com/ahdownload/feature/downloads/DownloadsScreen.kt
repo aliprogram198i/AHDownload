@@ -86,6 +86,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
+import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
@@ -134,6 +135,7 @@ fun DownloadsRoute(
     val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModel.Factory(repository, controls))
     val records by vm.records.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val downloadLocationStore = remember(context) { DownloadLocationStore(context) }
     val transferStats = remember { mutableStateMapOf<String, TransferStats>() }
     val lastSamples = remember { mutableMapOf<String, TransferSample>() }
     var refreshTick by remember { mutableLongStateOf(0L) }
@@ -745,6 +747,22 @@ private fun DownloadRecordCard(
                                     onShareDownload()
                                 },
                             )
+                            if (downloadLocationStore.persistedUri() != null) {
+                                DropdownMenuItem(
+                                    text = { Text("فتح مجلد الحفظ") },
+                                    leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        val opened = openDownloadFolder(
+                                            context,
+                                            downloadLocationStore.persistedUri(),
+                                        )
+                                        if (!opened) {
+                                            // No-op: the menu remains safe when a file manager cannot handle the tree URI.
+                                        }
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("إعادة التسمية") },
                                 leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) },
@@ -1001,6 +1019,18 @@ private suspend fun renameDownloadRecord(
     )
     return true
 }
+private fun openDownloadFolder(context: android.content.Context, treeUri: android.net.Uri?): Boolean {
+    val uri = treeUri ?: return false
+    return runCatching {
+        context.startActivity(
+            android.content.Intent(android.content.Intent.ACTION_VIEW, uri).apply {
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            },
+        )
+        true
+    }.getOrDefault(false)
+}
+
 private fun statusLabel(status: DownloadStatus): String = when (status) {
     DownloadStatus.QUEUED -> "في قائمة الانتظار"
     DownloadStatus.PREPARING -> "جاري التجهيز"
