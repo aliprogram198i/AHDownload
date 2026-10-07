@@ -231,6 +231,7 @@ private fun HomeScreen(
         state.resolution?.title,
         candidates.size,
         state.selectedCandidateId,
+        state.selectedAudioCandidateId,
         state.validatingCandidateId,
         state.error,
         state.downloadQueued,
@@ -1184,7 +1185,7 @@ private fun UnifiedDownloadResultCard(
                 }
             }
 
-            AHStatusPill("المصادر المتاحة", success = true)
+            AHStatusPill("تم العثور على خيارات متاحة", success = true)
 
             if (showVideoSection) {
                 MediaDownloadFormatSection(
