@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.core.common.DownloadPreferencesProvider
+import com.ahdownload.core.common.AudioBitratePreference
+import com.ahdownload.core.common.VideoQualityPreference
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
@@ -18,9 +21,6 @@ import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
 import com.ahdownload.domain.search.ContentSearchItem
 import com.ahdownload.domain.search.ContentSearchProvider
 import com.ahdownload.domain.validation.CandidateValidationResult
-import com.ahdownload.app.settings.AudioBitratePreference
-import com.ahdownload.app.settings.DownloadPreferencesStore
-import com.ahdownload.app.settings.VideoQualityPreference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +71,7 @@ class HomeViewModel(
     private val resolver: HomeResolver,
     private val recentLinkStore: RecentLinkStore,
     private val searchProvider: ContentSearchProvider,
-    private val downloadPreferencesStore: DownloadPreferencesStore,
+    private val downloadPreferencesProvider: DownloadPreferencesProvider,
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
@@ -608,7 +608,7 @@ class HomeViewModel(
         candidates: List<MediaCandidate>,
         detectedKind: MediaKind,
     ): String? {
-        val preferences = downloadPreferencesStore.current()
+        val preferences = downloadPreferencesProvider.current()
         val videos = candidates.filter { it.format.kind == MediaKind.Video }
         val audio = candidates.filter { it.format.kind == MediaKind.Audio }
 
@@ -675,6 +675,7 @@ class HomeViewModel(
         private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
+        private val downloadPreferencesProvider: DownloadPreferencesProvider,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -687,7 +688,7 @@ class HomeViewModel(
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
-                downloadPreferencesStore = DownloadPreferencesStore(context.applicationContext),
+                downloadPreferencesProvider = downloadPreferencesProvider,
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
