@@ -10,6 +10,10 @@ class AHDownloadApplication : Application() {
         PersistentDiagnosticLogger(this)
     }
 
+    val downloadRepository: FileDownloadRepository by lazy {
+        FileDownloadRepository(this)
+    }
+
     val downloadWorkScheduler: DownloadWorkScheduler by lazy {
         DownloadWorkScheduler(this)
     }
