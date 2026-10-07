@@ -21,25 +21,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
+import com.ahdownload.app.diagnostics.UiDiagnosticsRoute
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 
-private enum class RootDestination { Welcome, Home, Downloads, Diagnostics, Settings }
+private enum class RootDestination { Welcome, Home, Downloads, Diagnostics, Settings, UiDiagnostics }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
     private val applicationServices by lazy { application as AHDownloadApplication }
     private val downloadWorkScheduler by lazy { applicationServices.downloadWorkScheduler }
     private val downloadRepository by lazy { applicationServices.downloadRepository }
-    private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
+    private val diagnosticLogger by lazy { applicationServices.diagnosticLogger }
+    private val uiTraceLogger by lazy { applicationServices.uiTraceLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) downloadLocationStore.saveTreeUri(uri)
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
                     onOpenYouTubeSession = ::openYouTubeSession,
+                    uiTraceLogger = uiTraceLogger,
                     downloadRepository = downloadRepository,
                     onPauseDownload = downloadWorkScheduler::pause,
                     onResumeDownload = downloadWorkScheduler::resume,
@@ -178,6 +183,7 @@ private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
+    uiTraceLogger: UiTraceLogger,
     downloadRepository: com.ahdownload.domain.download.DownloadRepository,
     onPauseDownload: (String) -> Unit,
     onResumeDownload: (DownloadRecord) -> Unit,
@@ -214,6 +220,7 @@ private fun AHRoot(
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
+                onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
                 onOpenSettings = { destination = RootDestination.Settings },
                 onOpenDownloads = { destination = RootDestination.Downloads },
             )
@@ -232,6 +239,10 @@ private fun AHRoot(
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
+                onBack = { destination = RootDestination.Home },
+            )
+            RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
+                logger = uiTraceLogger as com.ahdownload.app.diagnostics.PersistentUiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
         }

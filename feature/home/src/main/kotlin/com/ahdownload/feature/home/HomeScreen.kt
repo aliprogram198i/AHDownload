@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Link
@@ -61,6 +62,7 @@ fun HomeRoute(
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
+    onOpenUiDiagnostics: () -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -84,6 +86,7 @@ fun HomeRoute(
         onOpenYouTubeSession = onOpenYouTubeSession,
         onOpenSettings = onOpenSettings,
         onOpenDownloads = onOpenDownloads,
+        onOpenUiDiagnostics = onOpenUiDiagnostics,
     )
 }
 
@@ -100,6 +103,7 @@ private fun HomeScreen(
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
+    onOpenUiDiagnostics: () -> Unit,
 ) {
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
@@ -147,6 +151,9 @@ private fun HomeScreen(
                 actions = {
                     IconButton(onClick = onOpenDownloads) {
                         Icon(Icons.Rounded.Download, contentDescription = "التنزيلات")
+                    }
+                    IconButton(onClick = onOpenUiDiagnostics) {
+                        Icon(Icons.Rounded.BugReport, contentDescription = "سجل الواجهة")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات")
