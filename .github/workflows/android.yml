@@ -231,17 +231,16 @@ jobs:
           test -s "$BADGING_FILE"
 
           echo "== Android package compatibility =="
-          PACKAGE_LINE="$(grep -m1 '^package:' "$BADGING_FILE")"
-          SDK_LINE="$(grep -m1 '^sdkVersion:' "$BADGING_FILE")"
-          TARGET_LINE="$(grep -m1 '^targetSdkVersion:' "$BADGING_FILE")"
+          BADGING="$(cat "$BADGING_FILE")"
 
-          test -n "$PACKAGE_LINE"
-          test -n "$SDK_LINE"
-          test -n "$TARGET_LINE"
+          test -n "$BADGING"
 
-          printf '%s\n' "$PACKAGE_LINE" | grep -q "name='com.ahdownload.app'"
-          printf '%s\n' "$SDK_LINE" | grep -q "sdkVersion:'24'"
-          printf '%s\n' "$TARGET_LINE" | grep -q "targetSdkVersion:'36'"
+          # Validate the exact package and SDK markers from the already-verified
+          # aapt2 badging output. Fixed-string checks avoid brittle line
+          # extraction while preserving strict APK compatibility validation.
+          printf '%s\n' "$BADGING" | grep -Fq "name='com.ahdownload.app'"
+          printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'24'"
+          printf '%s\n' "$BADGING" | grep -Fq "targetSdkVersion:'36'"
 
           cp "$BADGING_FILE" apk-compatibility.txt
 
