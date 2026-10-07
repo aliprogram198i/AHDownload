@@ -8,6 +8,8 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.DownloadEnqueueResult
+import com.ahdownload.app.settings.DownloadPreferences
+import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.MediaCandidate
@@ -68,6 +70,7 @@ class HomeViewModel(
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
+    private val preferencesStore: DownloadPreferencesStore,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(recentLinks = recentLinkStore.list()))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -266,9 +269,7 @@ class HomeViewModel(
                 when (val resolution = resolver.resolve(link, operationId)) {
                     is ResolverResult.Success -> {
                         val smart = SmartResultEngine().build(resolution.candidates)
-                        val selectedId = smart.bestOverall?.candidate?.id
-                            ?: smart.bestQuality?.candidate?.id
-                            ?: resolution.candidates.firstOrNull()?.id
+                        val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesStore.read())
                         val updatedRecent = if (resolution.candidates.isNotEmpty()) {
                             recentLinkStore.add(
                                 url = link.normalizedUrl,
@@ -565,6 +566,47 @@ class HomeViewModel(
         }
     }
 
+    private fun chooseDefaultCandidate(
+        candidates: List<MediaCandidate>,
+        smart: com.ahdownload.domain.resolver.SmartResultSet,
+        preferences: DownloadPreferences,
+    ): String? {
+        if (!preferences.smartDownload) {
+            return smart.bestOverall?.candidate?.id
+                ?: smart.bestQuality?.candidate?.id
+                ?: candidates.firstOrNull()?.id
+        }
+
+        val video = candidates
+            .filter { it.format.kind == MediaKind.Video }
+            .sortedWith(
+                compareByDescending<MediaCandidate> { it.format.height ?: 0 }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 },
+            )
+        val audio = candidates
+            .filter { it.format.kind == MediaKind.Audio }
+            .sortedByDescending { it.format.bitrateKbps ?: 0 }
+
+        val preferredHeight = preferences.videoQuality.maxHeight
+        val preferredVideo = if (preferredHeight == null) {
+            video.firstOrNull()
+        } else {
+            video.firstOrNull { (it.format.height ?: 0) <= preferredHeight } ?: video.lastOrNull()
+        }
+        val preferredBitrate = preferences.audioBitrate.kbps
+        val preferredAudio = if (preferredBitrate <= 0) {
+            audio.firstOrNull()
+        } else {
+            audio.firstOrNull { (it.format.bitrateKbps ?: 0) <= preferredBitrate } ?: audio.lastOrNull()
+        }
+
+        return when {
+            preferredVideo != null -> preferredVideo.id
+            preferredAudio != null -> preferredAudio.id
+            else -> smart.bestOverall?.candidate?.id ?: candidates.firstOrNull()?.id
+        }
+    }
+
     fun downloadCandidate(id: String) {
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         selectCandidate(id)
@@ -597,6 +639,7 @@ class HomeViewModel(
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
+                preferencesStore = DownloadPreferencesStore(context.applicationContext),
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
