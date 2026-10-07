@@ -1446,7 +1446,6 @@ private fun MediaChoiceRow(
     audioOnly: Boolean = false,
     extractionOnly: Boolean = false,
 ) {
-    val format = model.candidate.format
     val leadingIcon = when {
         selected -> Icons.Rounded.CheckCircle
         audioOnly || extractionOnly -> Icons.Rounded.AudioFile
