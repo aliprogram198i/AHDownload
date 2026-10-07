@@ -676,7 +676,15 @@ private fun HomeScreen(
                         enabled = !state.batchDownloading && filteredResults.isNotEmpty(),
                         onClick = {
                             val ids = buildList {
-                                resultSet.bestOverall?.candidate?.id?.let(::add)
+                                val best = resultSet.bestOverall
+                                val includeBest = best != null && (
+                                    state.resultFilter == ResultFilter.All ||
+                                        (state.resultFilter == ResultFilter.Video && best.group == MediaResultGroup.Video) ||
+                                        (state.resultFilter == ResultFilter.Audio && best.group == MediaResultGroup.Audio) ||
+                                        (state.resultFilter == ResultFilter.Image && best.candidate.format.kind == MediaKind.Image) ||
+                                        (state.resultFilter == ResultFilter.Other && best.group == MediaResultGroup.Other)
+                                )
+                                if (includeBest) best?.candidate?.id?.let(::add)
                                 addAll(filteredResults.map { it.candidate.id })
                             }.distinct()
                             onDownloadBatch(ids)
