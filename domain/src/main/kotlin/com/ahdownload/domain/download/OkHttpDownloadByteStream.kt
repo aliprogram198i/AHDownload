@@ -15,7 +15,7 @@ class OkHttpDownloadByteStream(
         .followSslRedirects(true)
         .build(),
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
-    private val dynamicHeaders: (String) -> Map<String, String> = { emptyMap() },
+    private val dynamicHeaders: (String, Map<String, String>) -> Map<String, String> = { _, _ -> emptyMap() },
 ) : DownloadByteStream {
 
     override suspend fun open(
@@ -23,7 +23,7 @@ class OkHttpDownloadByteStream(
         rangeStart: Long,
         headers: Map<String, String>,
     ): DownloadResponse = withContext(Dispatchers.IO) {
-        val mergedHeaders = dynamicHeaders(url) + headers
+        val mergedHeaders = dynamicHeaders(url, headers) + headers
         val builder = Request.Builder()
             .url(url)
             .header("User-Agent", userAgentFor(url))
