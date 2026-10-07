@@ -94,6 +94,56 @@ internal class YouTubePlayerClient(
         }
     }
 
+    /**
+     * Uses the first-party Android Innertube client as a download-oriented fallback.
+     * This is intentionally after WEB/embedded because YouTube can selectively force
+     * SABR on web clients, while the Android client can still expose direct GVS URLs.
+     */
+    suspend fun fetchAndroidPlayerResponse(
+        html: String,
+        videoUrl: String,
+        headers: Map<String, String> = emptyMap(),
+        operationId: String? = null,
+    ): String? {
+        val videoId = extractVideoId(videoUrl) ?: return null
+        val contextJson = extractObject(html, "INNERTUBE_CONTEXT") ?: return null
+        val context = runCatching { JsonParser.parseString(contextJson).asJsonObject.deepCopy() }.getOrElse { error ->
+            logFailure("youtube.android_context_parse_failed", "تعذر تجهيز سياق YouTube Android: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
+            return null
+        }
+        val client = context.getAsJsonObject("client") ?: JsonObject().also { context.add("client", it) }
+        client.addProperty("clientName", ANDROID_CLIENT_NAME)
+        client.addProperty("clientVersion", ANDROID_CLIENT_VERSION)
+        client.addProperty("androidSdkVersion", ANDROID_SDK_VERSION)
+        client.addProperty("userAgent", ANDROID_USER_AGENT)
+        client.addProperty("osName", "Android")
+        client.addProperty("osVersion", "11")
+        context.remove("thirdParty")
+
+        val payload = JsonObject().apply {
+            add("context", context)
+            addProperty("videoId", videoId)
+            addProperty("contentCheckOk", true)
+            addProperty("racyCheckOk", true)
+        }
+        val apiKey = extractQuotedValue(html, "INNERTUBE_API_KEY") ?: return null
+        val endpoint = "https://www.youtube.com/youtubei/v1/player?key=" +
+            URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
+        val requestHeaders = buildMap {
+            putAll(headers)
+            put("X-YouTube-Client-Name", ANDROID_CLIENT_NAME)
+            put("X-YouTube-Client-Version", ANDROID_CLIENT_VERSION)
+            put("User-Agent", ANDROID_USER_AGENT)
+            put("Origin", "https://www.youtube.com")
+            put("Referer", "https://www.youtube.com/")
+        }
+
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders) }.getOrElse { error ->
+            logFailure("youtube.android_player_failed", "فشل مسار YouTube Android Player: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
+            null
+        }
+    }
+
     private fun logFailure(type: String, reason: String, videoId: String?, operationId: String?, error: Throwable? = null) {
         logger.log(
             DiagnosticLevel.WARNING,
