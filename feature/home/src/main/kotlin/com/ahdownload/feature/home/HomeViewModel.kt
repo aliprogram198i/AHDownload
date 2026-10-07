@@ -403,6 +403,12 @@ class HomeViewModel(
                         val defaultAudioId = chooseDefaultAudioCandidate(
                             resolution.candidates,
                             preferences,
+                        ) ?: defaultVideoId?.takeIf { id ->
+                            resolution.candidates.firstOrNull { it.id == id }?.let {
+                                it.format.kind == MediaKind.Video &&
+                                    it.format.hasVideo &&
+                                    it.format.hasAudio
+                            } == true
                         )
                         _uiState.value = _uiState.value.copy(
                             analyzing = false,
