@@ -238,6 +238,8 @@ private fun AHRoot(
             RootDestination.Settings -> SettingsRoute(
                 store = downloadLocationStore,
                 onPickDownloadFolder = onPickDownloadFolder,
+                onOpenDiagnostics = { destination = RootDestination.Diagnostics },
+                onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
                 uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
                 onNavigateHome = { destination = RootDestination.Home },
