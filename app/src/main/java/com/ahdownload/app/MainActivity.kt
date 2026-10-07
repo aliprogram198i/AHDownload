@@ -53,8 +53,8 @@ class MainActivity : ComponentActivity() {
                 AHRoot(
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
-                    onDownloadRequested = { candidate, title ->
-                        downloadLauncher.enqueue(candidate, title)
+                    onDownloadRequested = { candidate, title, sourcePageUrl ->
+                        downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
                     onOpenYouTubeSession = ::openYouTubeSession,
                     downloadLocationStore = downloadLocationStore,
@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
-    onDownloadRequested: suspend (MediaCandidate, String?) -> Boolean,
+    onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
