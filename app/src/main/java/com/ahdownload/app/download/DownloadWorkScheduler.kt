@@ -96,6 +96,7 @@ class DownloadWorkScheduler(
                 DownloadWorker.KEY_PROCESSING_MODE,
                 (runCatching { task.processingMode }.getOrNull() ?: DownloadProcessingMode.Direct).name,
             )
+            .putString(DownloadWorker.KEY_AUDIO_OUTPUT_FORMAT, task.audioOutputFormat?.name)
             .putBoolean(DownloadWorker.KEY_FORCE_REFRESH, forceRefresh)
             .apply {
                 task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
