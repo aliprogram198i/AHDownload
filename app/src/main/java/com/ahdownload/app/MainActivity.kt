@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
     private val diagnosticLogger by lazy { applicationServices.diagnosticLogger }
     private val uiTraceLogger by lazy { applicationServices.uiTraceLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
+    private val downloadPreferencesStore by lazy { com.ahdownload.app.settings.DownloadPreferencesStore(applicationContext) }
 
     private val folderPicker =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
