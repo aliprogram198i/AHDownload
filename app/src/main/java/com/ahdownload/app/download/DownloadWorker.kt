@@ -661,11 +661,7 @@ class DownloadWorker(
             ?: return null
         val link = LinkAnalyzer().analyze(pageUrl)?.takeIf { it.platform == MediaPlatform.YouTube }
             ?: return null
-        val expectedKind = if (task.processingMode == DownloadProcessingMode.ExtractAudio) {
-            MediaKind.Video
-        } else {
-            task.mediaKind ?: return null
-        }
+        val expectedKind = task.mediaKind ?: return null
 
         val resolver = HomeResolver(
             logger = diagnostics,
@@ -675,9 +671,41 @@ class DownloadWorker(
         val resolved = resolver.resolve(link, operationId = id.toString())
         if (resolved !is ResolverResult.Success) return null
 
-        val candidates = CandidateRanker()
-            .rank(resolved.candidates, requestedKind = expectedKind)
-            .take(4)
+        val candidates = if (task.processingMode == DownloadProcessingMode.ExtractAudio) {
+            val directAudio = CandidateRanker()
+                .rank(
+                    resolved.candidates.filter {
+                        it.format.kind == MediaKind.Audio && it.format.hasAudio
+                    },
+                    requestedKind = MediaKind.Audio,
+                )
+                .take(6)
+            val muxedVideo = CandidateRanker()
+                .rank(
+                    resolved.candidates.filter {
+                        it.format.kind == MediaKind.Video &&
+                            it.format.hasVideo &&
+                            it.format.hasAudio
+                    },
+                    requestedKind = MediaKind.Video,
+                )
+                .take(4)
+            (directAudio + muxedVideo).distinctBy { it.id }
+        } else {
+            CandidateRanker()
+                .rank(
+                    resolved.candidates.filter {
+                        it.format.kind == expectedKind &&
+                            when (it.format.kind) {
+                                MediaKind.Video -> it.format.hasVideo && it.format.hasAudio
+                                MediaKind.Audio -> it.format.hasAudio
+                                else -> false
+                            }
+                    },
+                    requestedKind = expectedKind,
+                )
+                .take(4)
+        }
 
         for (candidate in candidates) {
             val validation = resolver.validate(candidate, operationId = id.toString())
