@@ -128,7 +128,9 @@ class DownloadWorker(
         val engine = StreamingDownloadEngine(
             source = OkHttpDownloadByteStream(
                 logger = diagnosticsLogger(),
-                dynamicHeaders = { url, _ -> dynamicHeadersFor(url, task.sessionCookieHost) },
+                dynamicHeaders = { url, headers ->
+                    dynamicHeadersFor(url, task.sessionCookieHost, headers)
+                },
             ),
             sink = LocalAtomicFileSink(),
         )
@@ -409,13 +411,19 @@ class DownloadWorker(
     private fun diagnosticsLogger(): com.ahdownload.app.diagnostics.PersistentDiagnosticLogger =
         (applicationContext as com.ahdownload.app.AHDownloadApplication).diagnosticLogger
 
-    private fun dynamicHeadersFor(url: String, sessionCookieHost: String?): Map<String, String> {
+    private fun dynamicHeadersFor(
+        url: String,
+        sessionCookieHost: String?,
+        requestHeaders: Map<String, String>,
+    ): Map<String, String> {
         val cookieManager = CookieManager.getInstance()
         val host = hostOf(url)
         return buildMap {
             when {
                 isYouTubeMediaHost(url) -> {
-                    put("Referer", "https://www.youtube.com/")
+                    if (requestHeaders.keys.none { it.equals("Referer", ignoreCase = true) }) {
+                        put("Referer", "https://www.youtube.com/")
+                    }
                     CookieManager.getInstance().getCookie("https://www.youtube.com/")
                         ?.takeIf { it.isNotBlank() }
                         ?.let { put("Cookie", it) }
@@ -473,6 +481,12 @@ class DownloadWorker(
             inputData.getString(KEY_SEC_FETCH_DEST)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Dest", it) }
             inputData.getString(KEY_SEC_FETCH_MODE)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Mode", it) }
             inputData.getString(KEY_SEC_FETCH_SITE)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Site", it) }
+            inputData.getString(KEY_X_GOOG_VISITOR_ID)?.takeIf { it.isNotBlank() }?.let { put("X-Goog-Visitor-Id", it) }
+            inputData.getString(KEY_YOUTUBE_CLIENT_NAME)?.takeIf { it.isNotBlank() }?.let { put("X-YouTube-Client-Name", it) }
+            inputData.getString(KEY_YOUTUBE_CLIENT_VERSION)?.takeIf { it.isNotBlank() }?.let { put("X-YouTube-Client-Version", it) }
+            inputData.getString(KEY_SEC_CH_UA)?.takeIf { it.isNotBlank() }?.let { put("Sec-CH-UA", it) }
+            inputData.getString(KEY_SEC_CH_UA_MOBILE)?.takeIf { it.isNotBlank() }?.let { put("Sec-CH-UA-Mobile", it) }
+            inputData.getString(KEY_SEC_CH_UA_PLATFORM)?.takeIf { it.isNotBlank() }?.let { put("Sec-CH-UA-Platform", it) }
         }
 
         return DownloadTask(
@@ -725,7 +739,13 @@ class DownloadWorker(
                                 key.equals("Accept-Language", ignoreCase = true) ||
                                 key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
                                 key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
-                                key.equals("Sec-Fetch-Site", ignoreCase = true))
+                                key.equals("Sec-Fetch-Site", ignoreCase = true) ||
+                            key.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Name", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Version", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Mobile", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Platform", ignoreCase = true) )
                     },
                 )
             }
@@ -760,6 +780,12 @@ class DownloadWorker(
         const val KEY_SEC_FETCH_DEST = "sec_fetch_dest"
         const val KEY_SEC_FETCH_MODE = "sec_fetch_mode"
         const val KEY_SEC_FETCH_SITE = "sec_fetch_site"
+        const val KEY_X_GOOG_VISITOR_ID = "x_goog_visitor_id"
+        const val KEY_YOUTUBE_CLIENT_NAME = "youtube_client_name"
+        const val KEY_YOUTUBE_CLIENT_VERSION = "youtube_client_version"
+        const val KEY_SEC_CH_UA = "sec_ch_ua"
+        const val KEY_SEC_CH_UA_MOBILE = "sec_ch_ua_mobile"
+        const val KEY_SEC_CH_UA_PLATFORM = "sec_ch_ua_platform"
         const val KEY_FAILURE_CODE = "failure_code"
         const val KEY_FAILURE_DETAIL = "failure_detail"
         const val TAG = "ahdownload-download-worker"

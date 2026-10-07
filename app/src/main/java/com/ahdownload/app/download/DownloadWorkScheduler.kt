@@ -115,6 +115,18 @@ class DownloadWorkScheduler(
                     ?.value?.let { putString(DownloadWorker.KEY_SEC_FETCH_MODE, it) }
                 task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-Fetch-Site", ignoreCase = true) }
                     ?.value?.let { putString(DownloadWorker.KEY_SEC_FETCH_SITE, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("X-Goog-Visitor-Id", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_X_GOOG_VISITOR_ID, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("X-YouTube-Client-Name", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_YOUTUBE_CLIENT_NAME, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("X-YouTube-Client-Version", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_YOUTUBE_CLIENT_VERSION, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-CH-UA", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_SEC_CH_UA, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-CH-UA-Mobile", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_SEC_CH_UA_MOBILE, it) }
+                task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-CH-UA-Platform", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_SEC_CH_UA_PLATFORM, it) }
             }
             .build()
 

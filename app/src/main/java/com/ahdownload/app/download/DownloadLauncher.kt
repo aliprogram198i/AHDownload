@@ -71,7 +71,13 @@ class DownloadLauncher(
                             key.equals("Accept-Language", ignoreCase = true) ||
                             key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
                             key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
-                            key.equals("Sec-Fetch-Site", ignoreCase = true))
+                            key.equals("Sec-Fetch-Site", ignoreCase = true) ||
+                            key.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Name", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Version", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Mobile", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Platform", ignoreCase = true) )
                 },
             ),
         )
@@ -129,7 +135,13 @@ class DownloadLauncher(
                             key.equals("Accept-Language", ignoreCase = true) ||
                             key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
                             key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
-                            key.equals("Sec-Fetch-Site", ignoreCase = true))
+                            key.equals("Sec-Fetch-Site", ignoreCase = true) ||
+                            key.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Name", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Version", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Mobile", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Platform", ignoreCase = true))
                 },
             ),
         )

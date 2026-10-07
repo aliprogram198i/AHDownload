@@ -35,38 +35,80 @@ class OkHttpMediaProbe(
         headers: Map<String, String>,
         operationId: String?,
     ): MediaProbeResult {
-        // YouTube media URLs can reject an unrestricted GET while accepting a
-        // byte-range request. Probe the same transfer mode used by the downloader
-        // before declaring a candidate invalid.
-        // Use the same open-ended range semantics as the actual downloader.
-        // Some YouTube GVS endpoints reject a single-byte 0-0 probe with 403
-        // while accepting the real 0- transfer request.
-        var effectiveRange: String? = "bytes=0-"
+        // Prefer the exact Range header captured from WebView when present. The
+        // GVS URL and request context are session-bound; validation must not invent
+        // a different transfer context before deciding that a browser-observed
+        // source is invalid.
+        val explicitRange = headers.entries
+            .firstOrNull { it.key.equals("Range", ignoreCase = true) }
+            ?.value
+        val browserContext = headers.keys.any {
+            it.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
+                it.equals("X-YouTube-Client-Name", ignoreCase = true) ||
+                it.equals("X-YouTube-Client-Version", ignoreCase = true) ||
+                it.equals("Sec-Fetch-Dest", ignoreCase = true) ||
+                it.equals("Sec-CH-UA", ignoreCase = true)
+        }
+        val initialRange = explicitRange ?: "bytes=0-"
         val started = TimeSource.Monotonic.markNow()
-        var response = execute(url, "GET", headers, effectiveRange)
+        var response = execute(url, "GET", headers, initialRange)
+
         logger.log(
             level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "MEDIA_PROBE_ATTEMPT",
-            reason = "youtube_range_get_response",
+            reason = if (browserContext) "youtube_browser_context_response" else "youtube_range_get_response",
             operation = "download.validate",
             context = probeContext(
                 url,
                 "GET",
-                effectiveRange,
+                initialRange,
                 response.code,
                 response.header("Content-Type"),
                 started.elapsedNow().inWholeMilliseconds,
                 headers,
                 operationId,
-            ) + mapOf("validation_mode" to "YOUTUBE_RANGE_ALIGNED"),
+            ) + mapOf(
+                "validation_mode" to if (browserContext) "YOUTUBE_BROWSER_ALIGNED" else "YOUTUBE_RANGE_ALIGNED",
+                "range_source" to if (explicitRange != null) "CAPTURED_BROWSER" else "VALIDATOR_DEFAULT",
+            ),
             throwable = null,
         )
 
-        if (response.code == 403 && headers.keys.any {
-                it.equals("Cookie", ignoreCase = true) ||
-                    it.equals("Origin", ignoreCase = true) ||
-                    it.equals("Referer", ignoreCase = true)
-            }) {
+        if (response.code == 403) {
+            response.close()
+
+            // First fallback: preserve the browser/session headers and exact URL,
+            // but remove Range. This tests whether the endpoint rejects probing
+            // semantics rather than rejecting the authenticated source itself.
+            val noRangeStarted = TimeSource.Monotonic.markNow()
+            response = execute(url, "GET", headers, null)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "youtube_403_browser_context_no_range_retry",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    null,
+                    response.code,
+                    response.header("Content-Type"),
+                    noRangeStarted.elapsedNow().inWholeMilliseconds,
+                    headers,
+                    operationId,
+                ) + mapOf(
+                    "validation_mode" to if (browserContext) {
+                        "YOUTUBE_BROWSER_ALIGNED_NO_RANGE"
+                    } else {
+                        "YOUTUBE_403_NO_RANGE_RETRY"
+                    },
+                    "removed_session_headers" to "none",
+                ),
+                throwable = null,
+            )
+        }
+
+        if (response.code == 403 && !browserContext) {
             response.close()
             val retryHeaders = headers.filterKeys {
                 !it.equals("Cookie", ignoreCase = true) &&
@@ -74,46 +116,11 @@ class OkHttpMediaProbe(
                     !it.equals("Referer", ignoreCase = true)
             }
             val retryStarted = TimeSource.Monotonic.markNow()
-            response = execute(url, "GET", retryHeaders, effectiveRange)
+            response = execute(url, "GET", retryHeaders, null)
             logger.log(
                 level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
                 type = "MEDIA_PROBE_ATTEMPT",
-                reason = "youtube_403_header_sanitized_range_retry",
-                operation = "download.validate",
-                context = probeContext(
-                    url,
-                    "GET",
-                    effectiveRange,
-                    response.code,
-                    response.header("Content-Type"),
-                    retryStarted.elapsedNow().inWholeMilliseconds,
-                    retryHeaders,
-                    operationId,
-                ) + mapOf(
-                    "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_RANGE_RETRY",
-                    "removed_session_headers" to "Cookie,Origin,Referer",
-                ),
-                throwable = null,
-            )
-        }
-
-        // A few signed YouTube media URLs are hostile to Range entirely. The
-        // downloader has an equivalent no-Range retry, so validation mirrors
-        // that behavior instead of rejecting a source that can actually stream.
-        if (response.code == 403) {
-            response.close()
-            val noRangeHeaders = headers.filterKeys {
-                !it.equals("Cookie", ignoreCase = true) &&
-                    !it.equals("Origin", ignoreCase = true) &&
-                    !it.equals("Referer", ignoreCase = true)
-            }
-            val retryStarted = TimeSource.Monotonic.markNow()
-            effectiveRange = null
-            response = execute(url, "GET", noRangeHeaders, null)
-            logger.log(
-                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
-                type = "MEDIA_PROBE_ATTEMPT",
-                reason = "youtube_403_no_range_retry",
+                reason = "youtube_403_header_sanitized_no_range_retry",
                 operation = "download.validate",
                 context = probeContext(
                     url,
@@ -122,17 +129,53 @@ class OkHttpMediaProbe(
                     response.code,
                     response.header("Content-Type"),
                     retryStarted.elapsedNow().inWholeMilliseconds,
-                    noRangeHeaders,
+                    retryHeaders,
                     operationId,
                 ) + mapOf(
-                    "validation_mode" to "YOUTUBE_403_NO_RANGE_RETRY",
+                    "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_NO_RANGE_RETRY",
                     "removed_session_headers" to "Cookie,Origin,Referer",
                 ),
                 throwable = null,
             )
         }
 
-        return response.toResult("GET", effectiveRange)
+        if (response.code == 403 && browserContext) {
+            // Final browser-aligned fallback: remove only fetch/client hints that
+            // can become stale while keeping the URL, Cookie, Origin and Referer.
+            response.close()
+            val stableHeaders = headers.filterKeys {
+                !it.equals("Sec-Fetch-Dest", ignoreCase = true) &&
+                    !it.equals("Sec-Fetch-Mode", ignoreCase = true) &&
+                    !it.equals("Sec-Fetch-Site", ignoreCase = true) &&
+                    !it.equals("Sec-CH-UA", ignoreCase = true) &&
+                    !it.equals("Sec-CH-UA-Mobile", ignoreCase = true) &&
+                    !it.equals("Sec-CH-UA-Platform", ignoreCase = true)
+            }
+            val retryStarted = TimeSource.Monotonic.markNow()
+            response = execute(url, "GET", stableHeaders, null)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "youtube_403_stable_session_no_range_retry",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    null,
+                    response.code,
+                    response.header("Content-Type"),
+                    retryStarted.elapsedNow().inWholeMilliseconds,
+                    stableHeaders,
+                    operationId,
+                ) + mapOf(
+                    "validation_mode" to "YOUTUBE_BROWSER_STABLE_SESSION_RETRY",
+                    "removed_session_headers" to "Sec-Fetch-*,Sec-CH-UA-*",
+                ),
+                throwable = null,
+            )
+        }
+
+        return response.toResult("GET", response.request.header("Range"))
     }
 
     private fun probeGeneric(
@@ -195,22 +238,36 @@ class OkHttpMediaProbe(
         headers: Map<String, String>,
         range: String?,
     ): okhttp3.Response {
-        val builder = baseRequest(url, headers)
+        val builder = baseRequest(url, headers, range)
         if (method == "HEAD") builder.head() else builder.get()
         range?.let { builder.header("Range", it) }
         return client.newCall(builder.build()).execute()
     }
 
-    private fun baseRequest(url: String, headers: Map<String, String>): Request.Builder =
+    private fun baseRequest(
+        url: String,
+        headers: Map<String, String>,
+        range: String?,
+    ): Request.Builder =
         Request.Builder()
             .url(url)
             .header("User-Agent", userAgentFor(url))
             .header("Accept", "*/*")
             .apply {
                 headers.forEach { (name, value) ->
-                    if (!name.equals("Host", ignoreCase = true)) header(name, value)
+                    if (
+                        !name.equals("Host", ignoreCase = true) &&
+                        !(range == null && name.equals("Range", ignoreCase = true))
+                    ) {
+                        header(name, value)
+                    }
                 }
-                if (isYouTubeMediaHost(url) && headers.keys.none { it.equals("Referer", ignoreCase = true) }) {
+                if (
+                    isYouTubeMediaHost(url) &&
+                    headers.keys.none { it.equals("Referer", ignoreCase = true) } &&
+                    headers.keys.none { it.equals("X-Goog-Visitor-Id", ignoreCase = true) } &&
+                    headers.keys.none { it.equals("X-YouTube-Client-Name", ignoreCase = true) }
+                ) {
                     header("Referer", "https://www.youtube.com/")
                 }
             }
