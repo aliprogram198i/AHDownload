@@ -48,6 +48,7 @@ data class HomeUiState(
     val result: MediaLink? = null,
     val resolution: ResolverResult.Success? = null,
     val selectedCandidateId: String? = null,
+    val selectedAudioCandidateId: String? = null,
     val validatingCandidateId: String? = null,
     val error: String? = null,
     val downloadQueued: Boolean = false,
@@ -191,6 +192,7 @@ class HomeViewModel(
             result = null,
             resolution = null,
             selectedCandidateId = null,
+            selectedAudioCandidateId = null,
             validatingCandidateId = null,
             error = null,
             downloadQueued = false,
@@ -398,6 +400,10 @@ class HomeViewModel(
                             resolving = false,
                             resolution = resolution,
                             selectedCandidateId = selectedId,
+                            selectedAudioCandidateId = chooseDefaultAudioCandidate(
+                                resolution.candidates,
+                                preferencesProvider.read(),
+                            ),
                             recentLinks = updatedRecent,
                             error = if (resolution.candidates.isEmpty()) {
                                 "لم يتم العثور على وسائط قابلة للتنزيل."
@@ -456,6 +462,16 @@ class HomeViewModel(
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         _uiState.value = _uiState.value.copy(
             selectedCandidateId = id,
+            error = null,
+            downloadQueued = false,
+        )
+    }
+
+    fun selectAudioCandidate(id: String) {
+        val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
+        if (candidate.format.kind != MediaKind.Audio) return
+        _uiState.value = _uiState.value.copy(
+            selectedAudioCandidateId = id,
             error = null,
             downloadQueued = false,
         )
@@ -739,13 +755,15 @@ class HomeViewModel(
         downloadCandidateInternal(id, extractAudio = false)
     }
 
-    fun downloadAudio() {
+    fun downloadAudio(candidateId: String? = _uiState.value.selectedAudioCandidateId) {
         val state = _uiState.value
         val candidates = state.resolution?.candidates.orEmpty()
         if (candidates.isEmpty()) return
 
         val smart = SmartResultEngine().build(candidates)
-        val directAudio = smart.audio.firstOrNull()
+        val directAudio = candidateId
+            ?.let { id -> smart.audio.firstOrNull { it.candidate.id == id } }
+            ?: smart.audio.firstOrNull()
         if (directAudio != null) {
             logger.log(
                 DiagnosticLevel.INFO,
@@ -807,6 +825,25 @@ class HomeViewModel(
             error = "لا يتوفر مصدر صوتي صالح لهذا الرابط حاليًا.",
             downloadQueued = false,
         )
+    }
+
+    private fun chooseDefaultAudioCandidate(
+        candidates: List<MediaCandidate>,
+        preferences: DownloadPreferences,
+    ): String? {
+        val audio = SmartResultEngine()
+            .build(candidates, maxVideo = 0, maxAudio = 8)
+            .audio
+
+        if (audio.isEmpty()) return null
+
+        val preferredBitrate = preferences.audioBitrate.kbps
+        return if (preferredBitrate <= 0) {
+            audio.first().candidate.id
+        } else {
+            audio.firstOrNull { (it.candidate.format.bitrateKbps ?: 0) <= preferredBitrate }?.candidate?.id
+                ?: audio.last().candidate.id
+        }
     }
 
     private fun downloadCandidateInternal(id: String, extractAudio: Boolean) {
