@@ -197,6 +197,10 @@ internal class YouTubePlayerClient(
     private companion object {
         const val EMBEDDED_CLIENT_NAME = "56"
         const val EMBEDDED_CLIENT_VERSION = "2.20260708.00.00"
+        const val ANDROID_CLIENT_NAME = "3"
+        const val ANDROID_CLIENT_VERSION = "21.26.364"
+        const val ANDROID_SDK_VERSION = 30
+        const val ANDROID_USER_AGENT = "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip"
     }
 
     private fun findJsonObjectEnd(text: String, start: Int): Int {
