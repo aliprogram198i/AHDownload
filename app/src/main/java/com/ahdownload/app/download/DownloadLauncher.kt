@@ -21,16 +21,23 @@ class DownloadLauncher(
         candidate: MediaCandidate,
         title: String?,
         sourcePageUrl: String? = null,
-    ): Boolean {
-        if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) return false
-        val directory = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return false
-        if (!directory.exists() && !directory.mkdirs()) return false
+    ): com.ahdownload.domain.download.DownloadEnqueueResult {
+        if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) {
+            return com.ahdownload.domain.download.DownloadEnqueueResult.INVALID_DESTINATION
+        }
+        val directory = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: return com.ahdownload.domain.download.DownloadEnqueueResult.STORAGE_UNAVAILABLE
+        if (!directory.exists() && !directory.mkdirs()) {
+            return com.ahdownload.domain.download.DownloadEnqueueResult.STORAGE_UNAVAILABLE
+        }
 
         val extension = extensionFor(candidate)
         val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
         val fingerprint = fingerprint(candidate)
         val taskId = fingerprint.take(36)
-        if (repository.findByContentFingerprint(fingerprint) != null) return false
+        if (repository.findByContentFingerprint(fingerprint) != null) {
+            return com.ahdownload.domain.download.DownloadEnqueueResult.DUPLICATE
+        }
         val file = uniqueFile(directory, baseName, extension)
 
         scheduler.enqueue(
@@ -56,7 +63,7 @@ class DownloadLauncher(
                 },
             ),
         )
-        return true
+        return com.ahdownload.domain.download.DownloadEnqueueResult.QUEUED
     }
 
     private fun fingerprint(candidate: MediaCandidate): String {

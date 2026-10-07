@@ -10,6 +10,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -44,6 +46,8 @@ import com.ahdownload.core.designsystem.rememberUiTraceContext
 fun SettingsRoute(
     store: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onOpenUiDiagnostics: () -> Unit,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     onNavigateDownloads: () -> Unit,
@@ -153,6 +157,34 @@ fun SettingsRoute(
                             Icon(Icons.Rounded.CreateNewFolder, contentDescription = null)
                             Text("إنشاء مجلد داخل المسار")
                         }
+                    }
+                }
+            }
+            
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("متقدم", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "أدوات التشخيص مخصصة للتحقق من مشاكل الواجهة والتنزيل عند الحاجة.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = { uiTraceLogger.interaction("SETTINGS", "diagnostics_button", "open_diagnostics"); onOpenDiagnostics() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.ErrorOutline, contentDescription = null)
+                        Text("سجل الأخطاء")
+                    }
+                    OutlinedButton(
+                        onClick = { uiTraceLogger.interaction("SETTINGS", "ui_diagnostics_button", "open_ui_diagnostics"); onOpenUiDiagnostics() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.BugReport, contentDescription = null)
+                        Text("تشخيص الواجهة")
                     }
                 }
             }
