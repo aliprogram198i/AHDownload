@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
+import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.core.common.DownloadPreferences
 import com.ahdownload.core.common.DownloadPreferencesProvider
@@ -49,6 +50,7 @@ data class HomeUiState(
     val resolution: ResolverResult.Success? = null,
     val selectedCandidateId: String? = null,
     val selectedAudioCandidateId: String? = null,
+    val selectedAudioOutputFormat: AudioOutputFormat = AudioOutputFormat.Mp3,
     val validatingCandidateId: String? = null,
     val error: String? = null,
     val downloadQueued: Boolean = false,
@@ -77,7 +79,7 @@ class HomeViewModel(
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
-    private val onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
+    private val onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
     private val preferencesProvider: DownloadPreferencesProvider,
@@ -193,6 +195,7 @@ class HomeViewModel(
             resolution = null,
             selectedCandidateId = null,
             selectedAudioCandidateId = null,
+            selectedAudioOutputFormat = AudioOutputFormat.Mp3,
             validatingCandidateId = null,
             error = null,
             downloadQueued = false,
@@ -493,6 +496,15 @@ class HomeViewModel(
             downloadQueued = false,
         )
     }
+
+    fun selectAudioOutputFormat(format: AudioOutputFormat) {
+        if (_uiState.value.selectedAudioOutputFormat == format) return
+        _uiState.value = _uiState.value.copy(
+            selectedAudioOutputFormat = format,
+            error = null,
+            downloadQueued = false,
+        )
+    }
     private fun downloadSelected(extractAudio: Boolean = false) {
         if (downloadJob?.isActive == true) return
 
@@ -636,6 +648,7 @@ class HomeViewModel(
                         val queued = if (extractAudio) {
                             onAudioOnlyRequested(
                                 validation.candidate.copy(sourceUrl = validation.finalUrl),
+                                outputFormat,
                                 state.resolution.title,
                                 state.result?.normalizedUrl,
                                 state.resolution.thumbnailUrl,
@@ -780,12 +793,16 @@ class HomeViewModel(
         downloadCandidateInternal(id, extractAudio = false)
     }
 
-    fun downloadAudio(candidateId: String? = null) {
+    fun downloadAudio(
+        candidateId: String? = null,
+        outputFormat: AudioOutputFormat = _uiState.value.selectedAudioOutputFormat,
+    ) {
         val state = _uiState.value
         val id = candidateId?.takeIf { it.isNotBlank() }
+            ?: state.selectedAudioCandidateId?.takeIf { it.isNotBlank() }
         if (id == null) {
             _uiState.value = _uiState.value.copy(
-                error = "اختر خيار الصوت أولًا.",
+                error = "تعذر تحديد مصدر صوت صالح لهذا الرابط.",
                 downloadQueued = false,
             )
             return
