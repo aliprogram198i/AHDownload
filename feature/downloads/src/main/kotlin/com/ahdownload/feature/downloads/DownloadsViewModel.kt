@@ -50,7 +50,13 @@ class DownloadsViewModel(
     }
 
     fun retry(record: DownloadRecord) {
-        if (record.status == DownloadStatus.FAILED) controls.resume(record)
+        if (
+            record.status == DownloadStatus.FAILED ||
+            record.status == DownloadStatus.CANCELLED ||
+            record.status == DownloadStatus.COMPLETED
+        ) {
+            controls.resume(record)
+        }
     }
 
     fun deleteHistory(record: DownloadRecord) {
