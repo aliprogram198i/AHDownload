@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
