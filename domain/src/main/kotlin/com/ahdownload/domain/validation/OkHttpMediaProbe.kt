@@ -38,7 +38,12 @@ class OkHttpMediaProbe(
         // YouTube media URLs can reject an unrestricted GET while accepting a
         // byte-range request. Probe the same transfer mode used by the downloader
         // before declaring a candidate invalid.
-        // Use the same open-ended range semantics as the actual downloader.\n        // Some YouTube GVS endpoints reject a single-byte `0-0` probe with 403\n        // while accepting the real `0-` transfer request.\n        val range = "bytes=0-"\n        val started = TimeSource.Monotonic.markNow()\n        var response = execute(url, "GET", headers, range)
+        // Use the same open-ended range semantics as the actual downloader.
+        // Some YouTube GVS endpoints reject a single-byte 0-0 probe with 403
+        // while accepting the real 0- transfer request.
+        var effectiveRange: String? = "bytes=0-"
+        val started = TimeSource.Monotonic.markNow()
+        var response = execute(url, "GET", headers, effectiveRange)
         logger.log(
             level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "MEDIA_PROBE_ATTEMPT",
@@ -69,7 +74,7 @@ class OkHttpMediaProbe(
                     !it.equals("Referer", ignoreCase = true)
             }
             val retryStarted = TimeSource.Monotonic.markNow()
-            response = execute(url, "GET", retryHeaders, range)
+            response = execute(url, "GET", retryHeaders, effectiveRange)
             logger.log(
                 level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
                 type = "MEDIA_PROBE_ATTEMPT",
@@ -103,6 +108,7 @@ class OkHttpMediaProbe(
                     !it.equals("Referer", ignoreCase = true)
             }
             val retryStarted = TimeSource.Monotonic.markNow()
+            effectiveRange = null
             response = execute(url, "GET", noRangeHeaders, null)
             logger.log(
                 level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
@@ -126,7 +132,7 @@ class OkHttpMediaProbe(
             )
         }
 
-        return response.toResult("GET", range)
+        return response.toResult("GET", effectiveRange)
     }
 
     private fun probeGeneric(
