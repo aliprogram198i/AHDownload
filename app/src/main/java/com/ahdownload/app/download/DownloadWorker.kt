@@ -466,7 +466,21 @@ class DownloadWorker(
                 } else {
                     0L
                 }
-                "جاري التنزيل — $percent%"
+                buildString {
+                    append("جاري التنزيل — ")
+                    append(percent)
+                    append("%")
+                    if (notificationBytesPerSecond > 0L) {
+                        append(" · ")
+                        append(formatBytes(notificationBytesPerSecond))
+                        append("/s")
+                        if (total > bytesDownloaded) {
+                            val etaSeconds = (total - bytesDownloaded) / notificationBytesPerSecond
+                            append(" · ")
+                            append(formatEta(etaSeconds))
+                        }
+                    }
+                }
             } ?: "جاري التنزيل"
         }
         DownloadState.Paused -> "تم الإيقاف المؤقت"
@@ -483,6 +497,20 @@ class DownloadWorker(
     private fun DownloadState.bytesDownloadedOrNull(): Long? = when (this) {
         is DownloadState.Downloading -> bytesDownloaded
         else -> null
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes < 1024L -> "$bytes B"
+        bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+        bytes < 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
+        else -> "${bytes / (1024L * 1024L * 1024L)} GB"
+    }
+
+    private fun formatEta(seconds: Long): String {
+        val safe = seconds.coerceAtLeast(0L)
+        val minutes = safe / 60L
+        val secs = safe % 60L
+        return if (minutes > 0L) "${minutes}د ${secs.toString()}ث" else "${secs}ث"
     }
 
     private suspend fun shouldRefreshYouTubeTask(
