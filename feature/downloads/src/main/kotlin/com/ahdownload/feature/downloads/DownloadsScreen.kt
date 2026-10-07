@@ -306,6 +306,45 @@ private fun DownloadsScreen(
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
+                actions = {
+                    if (activeCount > 0 || records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.CANCELLED) }) {
+                        Box {
+                            IconButton(onClick = { bulkMenuExpanded = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "إدارة التنزيلات")
+                            }
+                            DropdownMenu(
+                                expanded = bulkMenuExpanded,
+                                onDismissRequest = { bulkMenuExpanded = false },
+                            ) {
+                                if (activeCount > 0) {
+                                    DropdownMenuItem(
+                                        text = { Text("إيقاف الكل") },
+                                        onClick = {
+                                            bulkMenuExpanded = false
+                                            onPauseAll()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("إلغاء الكل") },
+                                        onClick = {
+                                            bulkMenuExpanded = false
+                                            onCancelAll()
+                                        },
+                                    )
+                                }
+                                if (records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.CANCELLED) }) {
+                                    DropdownMenuItem(
+                                        text = { Text("استئناف الكل") },
+                                        onClick = {
+                                            bulkMenuExpanded = false
+                                            onResumeAll()
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
             )
         },
         bottomBar = {
