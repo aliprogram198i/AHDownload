@@ -615,6 +615,7 @@ class YouTubeResolver(
             value.contains("mp3") -> MediaContainer.Mp3
             value.contains("aac") -> MediaContainer.Aac
             value.contains("ogg") -> MediaContainer.Ogg
+            value.contains("wav") -> MediaContainer.Wav
             value.contains("mov") -> MediaContainer.Mov
             else -> MediaContainer.Unknown
         }
