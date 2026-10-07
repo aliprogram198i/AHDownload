@@ -55,6 +55,9 @@ class YouTubeResolver(
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) {
                 val enriched = enrichWithSessionIfNeeded(direct, request)
+                if (hasSufficientCandidates(enriched, request)) {
+                    return filterKind(enriched, request)
+                }
                 val augmented = augmentWithAndroidFallback(
                     augmentWithEmbeddedFallback(enriched, html, request),
                     html,
@@ -291,6 +294,31 @@ class YouTubeResolver(
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
             context = diagnosticContext(videoId, request.operationId),
         )
+    }
+
+    private fun hasSufficientCandidates(
+        result: ResolverResult.Success,
+        request: ResolverRequest,
+    ): Boolean {
+        val candidates = result.candidates
+        val requestedKind = request.requestedKind
+        if (requestedKind == MediaKind.Audio) {
+            return candidates.any { it.format.kind == MediaKind.Audio && it.format.hasAudio }
+        }
+        if (requestedKind == MediaKind.Video) {
+            return candidates.any {
+                it.format.kind == MediaKind.Video &&
+                    it.format.hasVideo &&
+                    it.format.hasAudio
+            }
+        }
+        return candidates.any {
+            it.format.kind == MediaKind.Video &&
+                it.format.hasVideo &&
+                it.format.hasAudio
+        } && candidates.any {
+            it.format.kind == MediaKind.Audio && it.format.hasAudio
+        }
     }
 
     private fun logPlayerFailure(videoId: String, result: ResolverResult, fallback: String, operationId: String?) {
