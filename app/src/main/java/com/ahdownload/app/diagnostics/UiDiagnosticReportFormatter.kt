@@ -47,16 +47,16 @@ object UiDiagnosticReportFormatter {
             appendLine()
             appendLine("INTERACTIONS")
             appendLine("count=${interactions.size}")
-            interactions.take(MAX_TIMELINE).forEach(::appendEvent)
+            interactions.take(MAX_TIMELINE).forEach { appendEvent(it) }
             if (interactions.isEmpty()) appendLine("- none")
             appendLine()
             appendLine("ERRORS")
             appendLine("count=${errors.size}")
-            errors.take(MAX_TIMELINE).forEach(::appendEvent)
+            errors.take(MAX_TIMELINE).forEach { appendEvent(it) }
             if (errors.isEmpty()) appendLine("- none")
             appendLine()
             appendLine("TIMELINE")
-            sessionEvents.sortedBy { it.timestampEpochMs }.takeLast(MAX_TIMELINE).forEach(::appendEvent)
+            sessionEvents.sortedBy { it.timestampEpochMs }.takeLast(MAX_TIMELINE).forEach { appendEvent(it) }
         }.trimEnd()
     }
 
