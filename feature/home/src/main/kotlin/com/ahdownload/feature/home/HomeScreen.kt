@@ -1087,7 +1087,6 @@ private fun MediaThumbnail(
 }
 
 @Composable
-@Composable
 private fun UnifiedDownloadResultCard(
     title: String,
     thumbnailUrl: String?,
