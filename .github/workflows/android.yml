@@ -221,6 +221,7 @@ jobs:
           sha256sum "$APK" | tee app-release.apk.sha256
 
       - name: Install and launch APK on Android 15 emulator
+        timeout-minutes: 10
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -229,9 +230,27 @@ jobs:
           profile: pixel_7
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           disable-animations: true
+          emulator-boot-timeout: 180
+          force-avd-creation: true
           script: |
             set -euo pipefail
-            adb install -r app/build/outputs/apk/release/app-release.apk
+
+            adb wait-for-device
+
+            for attempt in $(seq 1 60); do
+              boot_completed="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+              if [ "$boot_completed" = "1" ]; then
+                break
+              fi
+              if [ "$attempt" = "60" ]; then
+                echo "Android emulator did not finish booting within the CI wait window."
+                adb shell getprop || true
+                exit 1
+              fi
+              sleep 2
+            done
+
+            adb install --no-incremental -r app/build/outputs/apk/release/app-release.apk
             adb shell pm path com.ahdownload.app
             adb shell monkey -p com.ahdownload.app 1
             sleep 3
