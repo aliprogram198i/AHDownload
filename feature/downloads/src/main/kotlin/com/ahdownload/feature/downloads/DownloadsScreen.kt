@@ -401,6 +401,7 @@ private fun DownloadsScreen(
                         DownloadRecordCard(
                             record = record,
                             fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
+                            transferStats = transferStats[record.task.id],
                             onPause = {
                                 uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
                                 onPause(record)
