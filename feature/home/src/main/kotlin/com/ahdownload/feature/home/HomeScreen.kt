@@ -44,6 +44,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.interaction
+import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
 import com.ahdownload.domain.model.MediaKind
@@ -63,6 +67,7 @@ fun HomeRoute(
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenUiDiagnostics: () -> Unit,
+    uiTraceLogger: UiTraceLogger,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -87,6 +92,7 @@ fun HomeRoute(
         onOpenSettings = onOpenSettings,
         onOpenDownloads = onOpenDownloads,
         onOpenUiDiagnostics = onOpenUiDiagnostics,
+        uiTraceLogger = uiTraceLogger,
     )
 }
 
@@ -104,6 +110,7 @@ private fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenUiDiagnostics: () -> Unit,
+    uiTraceLogger: UiTraceLogger,
 ) {
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
@@ -111,6 +118,63 @@ private fun HomeScreen(
     val resultSet = remember(candidates) { engine.build(candidates) }
     var showAll by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf(MediaResultGroup.Video) }
+
+    val uiContext = rememberUiTraceContext()
+    LaunchedEffect(
+        state.url,
+        state.analyzing,
+        state.resolving,
+        state.resolution?.title,
+        candidates.size,
+        state.selectedCandidateId,
+        state.validatingCandidateId,
+        state.error,
+        showAll,
+        filter,
+    ) {
+        val components = buildList {
+            add("topbar")
+            add("download_button")
+            add("ui_diagnostics_button")
+            add("settings_button")
+            add("youtube_session_button")
+            add("diagnostics_button")
+            add("url_input")
+            add("paste_button")
+            if (state.url.isNotBlank()) add("clear_button")
+            add("analyze_button")
+            if (state.analyzing || state.resolving) add("loading_indicator")
+            if (state.result != null) add("platform_kind_pills")
+            if (state.resolution != null) {
+                add("result_summary")
+                if (resultSet.bestOverall != null) add("smart_hero")
+                if (resultSet.bestQuality != null || resultSet.smallestSize != null) add("smart_alternatives")
+                add("filter_row")
+                add(if (showAll) "all_options" else "recommended_options")
+            }
+            if (state.error != null) add("error_card")
+            if (state.downloadQueued) add("download_queued_pill")
+            add("validation_disclaimer")
+        }.joinToString(",")
+        val stateSummary =
+            "url_empty=" + state.url.isBlank() +
+                ";analyzing=" + state.analyzing +
+                ";resolving=" + state.resolving +
+                ";platform=" + (state.result?.platform?.name ?: "none") +
+                ";candidates=" + candidates.size +
+                ";selected=" + (state.selectedCandidateId ?: "none") +
+                ";validating=" + (state.validatingCandidateId ?: "none") +
+                ";error=" + (state.error != null) +
+                ";show_all=" + showAll +
+                ";filter=" + filter.name
+        uiTraceLogger.snapshot(
+            screen = "HOME",
+            component = "HomeScreen",
+            components = components,
+            stateSummary = stateSummary,
+            context = uiContext,
+        )
+    }
 
     LaunchedEffect(
         state.analyzing,
@@ -149,19 +213,19 @@ private fun HomeScreen(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                 actions = {
-                    IconButton(onClick = onOpenDownloads) {
+                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "download_button", "open_downloads"); onOpenDownloads() }) {
                         Icon(Icons.Rounded.Download, contentDescription = "التنزيلات")
                     }
-                    IconButton(onClick = onOpenUiDiagnostics) {
+                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "ui_diagnostics_button", "open_ui_diagnostics"); onOpenUiDiagnostics() }) {
                         Icon(Icons.Rounded.BugReport, contentDescription = "سجل الواجهة")
                     }
-                    IconButton(onClick = onOpenSettings) {
+                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "settings_button", "open_settings"); onOpenSettings() }) {
                         Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات")
                     }
-                    IconButton(onClick = onOpenYouTubeSession) {
+                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "youtube_session_button", "open_youtube_session"); onOpenYouTubeSession() }) {
                         Icon(Icons.Rounded.AccountCircle, contentDescription = "جلسة YouTube")
                     }
-                    IconButton(onClick = onOpenDiagnostics) {
+                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "diagnostics_button", "open_diagnostics"); onOpenDiagnostics() }) {
                         Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء")
                     }
                 },
