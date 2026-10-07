@@ -49,7 +49,7 @@ class DownloadWorker(
     override suspend fun doWork(): Result {
         var task = readTask() ?: return Result.failure()
         val audioExtractionRequested = task.processingMode == DownloadProcessingMode.ExtractAudio
-        val sourceTask = if (audioExtractionRequested) {
+        var sourceTask = if (audioExtractionRequested) {
             task.copy(
                 destinationPath = extractionSourcePath(task),
                 mediaKind = MediaKind.Video,
@@ -88,7 +88,16 @@ class DownloadWorker(
                     ),
                 )
             }
-            task = refreshed
+            sourceTask = refreshed.copy(
+                destinationPath = sourceTask.destinationPath,
+                processingMode = task.processingMode,
+                mediaKind = sourceTask.mediaKind,
+            )
+            task = if (audioExtractionRequested) task.copy(
+                sourceUrl = sourceTask.sourceUrl,
+                sessionCookieHost = sourceTask.sessionCookieHost,
+                requestHeaders = sourceTask.requestHeaders,
+            ) else refreshed
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "YOUTUBE_RETRY_REFRESH_APPLIED",
@@ -97,7 +106,7 @@ class DownloadWorker(
                 mapOf(
                     "task_id" to task.id,
                     "run_attempt" to runAttemptCount.toString(),
-                    "source_host" to hostOf(task.sourceUrl),
+                    "source_host" to hostOf(sourceTask.sourceUrl),
                 ),
                 null,
             )
@@ -134,7 +143,7 @@ class DownloadWorker(
         )
 
         val record = try {
-            coordinator.execute(task) { state ->
+            coordinator.execute(sourceTask) { state ->
                 updateNotificationSpeed(state)
                 setForeground(createForegroundInfo(state))
             }
@@ -238,7 +247,7 @@ class DownloadWorker(
                 if (copied.isSuccess) {
                     val destinationUri = copied.getOrThrow()
                     localFile.delete()
-                    completedRecord = record.copy(
+                    completedRecord = completedRecord.copy(
                         destinationUri = destinationUri.toString(),
                         updatedAtEpochMs = System.currentTimeMillis(),
                     )
@@ -269,7 +278,7 @@ class DownloadWorker(
                         ),
                         copied.exceptionOrNull(),
                     )
-                    persistDestinationFailure(record, "تعذر الكتابة في مجلد التنزيل المحدد.")
+                    persistDestinationFailure(completedRecord, "تعذر الكتابة في مجلد التنزيل المحدد.")
                     return Result.failure(
                         workDataOf(
                             KEY_FAILURE_CODE to "destination_storage_error",
@@ -282,7 +291,7 @@ class DownloadWorker(
                 val published = MediaStorePublisher(applicationContext).publish(localFile)
                 if (published.isFailure) {
                     val detail = "تم تنزيل الملف، لكن تعذر حفظه في مكتبة الوسائط. بقيت نسخة استرداد محلية."
-                    persistDestinationFailure(record, detail)
+                    persistDestinationFailure(completedRecord, detail)
                     return Result.failure(
                         workDataOf(
                             KEY_FAILURE_CODE to "destination_storage_error",
@@ -290,7 +299,7 @@ class DownloadWorker(
                         ),
                     )
                 }
-                completedRecord = record.copy(
+                completedRecord = completedRecord.copy(
                     destinationUri = published.getOrThrow().toString(),
                     updatedAtEpochMs = System.currentTimeMillis(),
                 )
