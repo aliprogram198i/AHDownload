@@ -353,21 +353,25 @@ private fun HomeScreen(
 
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = mode == HomeMode.Link,
-                        onClick = { mode = HomeMode.Link },
-                        label = { Text("رابط") },
-                        leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
-                    )
-                    FilterChip(
-                        selected = mode == HomeMode.Search,
-                        onClick = {
-                            mode = HomeMode.Search
-                            onEnterSearchMode()
-                        },
-                        label = { Text("بحث YouTube") },
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                    )
+                    item {
+                        FilterChip(
+                            selected = mode == HomeMode.Link,
+                            onClick = { mode = HomeMode.Link },
+                            label = { Text("رابط") },
+                            leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = mode == HomeMode.Search,
+                            onClick = {
+                                mode = HomeMode.Search
+                                onEnterSearchMode()
+                            },
+                            label = { Text("بحث YouTube") },
+                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        )
+                    }
                 }
             }
 

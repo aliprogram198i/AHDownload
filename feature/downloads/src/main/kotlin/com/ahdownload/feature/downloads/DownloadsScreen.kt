@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.AutoMirrored
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -558,7 +560,7 @@ private fun DownloadRecordCard(
                         if (record.status == DownloadStatus.COMPLETED && record.destinationUri != null) {
                             DropdownMenuItem(
                                 text = { Text("فتح") },
-                                leadingIcon = { Icon(Icons.Rounded.OpenInNew, contentDescription = null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null) },
                                 onClick = {
                                     menuExpanded = false
                                     onOpenDownload()
