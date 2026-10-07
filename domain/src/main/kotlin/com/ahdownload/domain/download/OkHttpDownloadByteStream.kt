@@ -61,6 +61,8 @@ class OkHttpDownloadByteStream(
                 }
             if (rangeStart > 0L) {
                 retryBuilder.header("Range", "bytes=$rangeStart-")
+            } else {
+                retryBuilder.header("Range", "bytes=0-")
             }
             val retryStarted = TimeSource.Monotonic.markNow()
             response = client.newCall(retryBuilder.build()).execute()
