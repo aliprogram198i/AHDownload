@@ -72,9 +72,6 @@ class MainActivity : ComponentActivity() {
                     onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
                     },
-                    onDownloadDeletedFromHistory = {
-                        applicationServices.downloadRepository.delete(it.task.id)
-                    },
                     onDeleteDownloadFile = ::deleteDownloadedFile,
                     onShareDownload = ::shareCompletedDownload,
                     onConsumeInitialUrl = { pendingSharedUrl = null },

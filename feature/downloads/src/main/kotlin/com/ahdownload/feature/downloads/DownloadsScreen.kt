@@ -71,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.widthIn
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
@@ -270,11 +271,16 @@ private fun DownloadsScreen(
                 onGoHome = onNavigateHome,
             )
         } else {
-            LazyColumn(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
+            Box(
+                Modifier.fillMaxSize(),
+            ) {
+                LazyColumn(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .padding(horizontal = 16.dp)
+                        .widthIn(max = 760.dp)
+                        .align(Alignment.Center),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
@@ -377,9 +383,9 @@ private fun DownloadsScreen(
                         )
                     }
                 }
+                }
             }
         }
-    }
 
     pendingDelete?.let { record ->
         AlertDialog(
