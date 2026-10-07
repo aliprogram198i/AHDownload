@@ -28,7 +28,6 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
-import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
@@ -183,7 +182,7 @@ private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
-    uiTraceLogger: UiTraceLogger,
+    uiTraceLogger: PersistentUiTraceLogger,
     downloadRepository: com.ahdownload.domain.download.DownloadRepository,
     onPauseDownload: (String) -> Unit,
     onResumeDownload: (DownloadRecord) -> Unit,
