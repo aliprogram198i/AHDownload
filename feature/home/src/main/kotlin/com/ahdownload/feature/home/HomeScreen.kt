@@ -99,6 +99,7 @@ import com.ahdownload.domain.resolver.MediaResultGroup
 import com.ahdownload.domain.resolver.MediaResultRecommendation
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.search.ContentSearchItem
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeRoute(
