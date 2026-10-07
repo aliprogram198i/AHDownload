@@ -17,7 +17,8 @@ internal class DownloadRecordJsonCodec(
         (gson.fromJson<List<DownloadRecord>>(json, type) ?: emptyList()).map { record ->
             record.copy(
                 task = record.task.copy(
-                    processingMode = runCatching { record.task.processingMode }.getOrNull()
+                    requestHeaders = runCatching { record.task.requestHeaders }.getOrNull() ?: emptyMap(),
+                processingMode = runCatching { record.task.processingMode }.getOrNull()
                         ?: DownloadProcessingMode.Direct,
                 ),
             )
