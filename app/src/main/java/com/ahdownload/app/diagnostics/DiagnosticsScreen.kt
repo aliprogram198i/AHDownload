@@ -33,6 +33,10 @@ import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.interaction
+import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
 import java.time.Instant
@@ -41,11 +45,25 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DiagnosticsRoute(logger: PersistentDiagnosticLogger, onBack: () -> Unit) {
+fun DiagnosticsRoute(
+    logger: PersistentDiagnosticLogger,
+    uiTraceLogger: UiTraceLogger,
+    onBack: () -> Unit,
+) {
     var logs by remember { mutableStateOf(logger.list()) }
     val clipboard = LocalClipboardManager.current
     LaunchedEffect(Unit) { logs = logger.list() }
-    DiagnosticsScreen(logs, clipboard, onBack, { logs = logger.list() }, { logger.clear(); logs = emptyList() })
+    LaunchedEffect(logs) {
+        val uiContext = rememberUiTraceContext()
+        uiTraceLogger.snapshot(
+            screen = "DIAGNOSTICS",
+            component = "DiagnosticsScreen",
+            components = "topbar,copy_button,clear_button,refresh_button,summary,diagnostic_list",
+            stateSummary = "logs=" + logs.size + ";errors=" + logs.count { it.level == DiagnosticLevel.ERROR } + ";warnings=" + logs.count { it.level == DiagnosticLevel.WARNING },
+            context = uiContext,
+        )
+    }
+    DiagnosticsScreen(logs, clipboard, onBack, { uiTraceLogger.interaction("DIAGNOSTICS", "refresh_button", "refresh"); logs = logger.list() }, { uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear"); logger.clear(); logs = emptyList() })
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,7 +87,7 @@ private fun DiagnosticsScreen(
             TopAppBar(
                 title = { Text("سجل الأخطاء والتشخيص") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = { uiTraceLogger.interaction("DIAGNOSTICS", "back_button", "back"); onBack() }) {
                         Text("‹", style = MaterialTheme.typography.headlineMedium)
                     }
                 },
