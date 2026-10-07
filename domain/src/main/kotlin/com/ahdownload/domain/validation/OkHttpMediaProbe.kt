@@ -52,7 +52,7 @@ class OkHttpMediaProbe(
             context = probeContext(
                 url,
                 "GET",
-                range,
+                effectiveRange,
                 response.code,
                 response.header("Content-Type"),
                 started.elapsedNow().inWholeMilliseconds,
@@ -83,7 +83,7 @@ class OkHttpMediaProbe(
                 context = probeContext(
                     url,
                     "GET",
-                    range,
+                    effectiveRange,
                     response.code,
                     response.header("Content-Type"),
                     retryStarted.elapsedNow().inWholeMilliseconds,
