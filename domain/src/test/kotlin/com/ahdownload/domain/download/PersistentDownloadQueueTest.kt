@@ -1,5 +1,8 @@
 package com.ahdownload.domain.download
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -83,10 +86,14 @@ class PersistentDownloadQueueTest {
 
     private class FakeDownloadRepository : DownloadRepository {
         val records = linkedMapOf<String, DownloadRecord>()
+        private val historyFlow = MutableStateFlow<List<DownloadRecord>>(emptyList())
 
         override suspend fun upsert(record: DownloadRecord) {
             records[record.task.id] = record
+            historyFlow.value = records.values.sortedByDescending { it.updatedAtEpochMs }
         }
+
+        override fun observeHistory(): Flow<List<DownloadRecord>> = historyFlow.asStateFlow()
 
         override suspend fun get(taskId: String): DownloadRecord? =
             records[taskId]
