@@ -278,6 +278,7 @@ private fun DownloadsScreen(
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
+    onOpenStudio: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
     var query by remember { mutableStateOf("") }
@@ -537,6 +538,10 @@ private fun DownloadsScreen(
                             onOpenDownloadFolder = {
                                 onOpenDownloadFolder(record)
                             },
+                            onOpenStudio = {
+                                uiTraceLogger.interaction("DOWNLOADS", "studio_control", "open_studio")
+                                onOpenStudio(record)
+                            },
                             favorite = FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites,
                             onToggleFavorite = {
                                 uiTraceLogger.interaction("DOWNLOADS", "favorite_control", "toggle")
@@ -678,6 +683,7 @@ private fun DownloadRecordCard(
     onShareDownload: () -> Unit,
     onDeleteDownloadFile: () -> Unit,
     onOpenDownloadFolder: () -> Unit,
+    onOpenStudio: () -> Unit,
     favorite: Boolean,
     onToggleFavorite: () -> Unit,
 ) {
@@ -789,6 +795,16 @@ private fun DownloadRecordCard(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
+                        if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
+                            DropdownMenuItem(
+                                text = { Text("Smart Studio") },
+                                leadingIcon = { Icon(Icons.Rounded.VideoFile, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onOpenStudio()
+                                },
+                            )
+                        }
                         if (record.status == DownloadStatus.COMPLETED && fileAvailable && record.destinationUri != null) {
                             DropdownMenuItem(
                                 text = { Text("فتح") },
