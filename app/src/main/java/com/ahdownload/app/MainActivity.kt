@@ -63,7 +63,6 @@ class MainActivity : ComponentActivity() {
                     onDownloadRequested = { candidate, title, sourcePageUrl ->
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
-                    onOpenYouTubeSession = ::openYouTubeSession,
                     uiTraceLogger = uiTraceLogger,
                     downloadRepository = downloadRepository,
                     onPauseDownload = downloadWorkScheduler::pause,
@@ -180,8 +179,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
-    onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
-    onOpenYouTubeSession: () -> Unit,
+    onDownloadRequested: suspend (MediaCandidate, String?, String?) -> com.ahdownload.domain.download.DownloadEnqueueResult,
     uiTraceLogger: PersistentUiTraceLogger,
     downloadRepository: com.ahdownload.domain.download.DownloadRepository,
     onPauseDownload: (String) -> Unit,
@@ -219,7 +217,6 @@ private fun AHRoot(
                 onDownloadRequested = onDownloadRequested,
                 logger = logger,
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = onOpenYouTubeSession,
                 uiTraceLogger = uiTraceLogger,
                 onOpenSettings = { destination = RootDestination.Settings },
                 onOpenDownloads = { destination = RootDestination.Downloads },
