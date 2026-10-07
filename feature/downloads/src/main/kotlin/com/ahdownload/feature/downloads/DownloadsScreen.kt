@@ -75,6 +75,8 @@ fun DownloadsRoute(
     DownloadsScreen(
         records = records,
         onBack = onBack,
+        onNavigateHome = onNavigateHome,
+        onNavigateSettings = onNavigateSettings,
         onPause = vm::pause,
         onResume = vm::resume,
         onCancel = vm::cancel,
