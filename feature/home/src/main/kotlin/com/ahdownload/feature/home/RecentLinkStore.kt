@@ -8,6 +8,7 @@ data class RecentLink(
     val url: String,
     val title: String?,
     val platform: String,
+    val thumbnailUrl: String? = null,
     val updatedAtEpochMs: Long,
 )
 
@@ -31,6 +32,7 @@ class RecentLinkStore(
                             url = url,
                             title = item.optString("title").takeIf { it.isNotBlank() },
                             platform = item.optString("platform").ifBlank { "Unknown" },
+                            thumbnailUrl = item.optString("thumbnailUrl").takeIf { it.startsWith("http://") || it.startsWith("https://") },
                             updatedAtEpochMs = item.optLong("updatedAt", 0L),
                         ),
                     )
@@ -40,7 +42,7 @@ class RecentLinkStore(
     }
 
     @Synchronized
-    fun add(url: String, title: String?, platform: String) {
+    fun add(url: String, title: String?, platform: String, thumbnailUrl: String? = null) {
         val cleaned = url.trim()
         if (cleaned.isBlank()) return
         val now = System.currentTimeMillis()
@@ -53,6 +55,7 @@ class RecentLinkStore(
                 url = cleaned,
                 title = title?.trim()?.takeIf { it.isNotBlank() },
                 platform = platform,
+                thumbnailUrl = thumbnailUrl?.trim()?.takeIf { it.startsWith("http://") || it.startsWith("https://") },
                 updatedAtEpochMs = now,
             ),
         )
@@ -72,6 +75,7 @@ class RecentLinkStore(
                     put("url", item.url)
                     put("title", item.title.orEmpty())
                     put("platform", item.platform)
+                    put("thumbnailUrl", item.thumbnailUrl.orEmpty())
                     put("updatedAt", item.updatedAtEpochMs)
                 },
             )
