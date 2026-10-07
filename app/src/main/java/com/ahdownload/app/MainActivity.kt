@@ -213,6 +213,7 @@ private fun AHRoot(
         when (current) {
             RootDestination.Welcome -> WelcomeRoute(
                 onContinue = { destination = RootDestination.Home },
+                uiTraceLogger = uiTraceLogger,
             )
             RootDestination.Home -> HomeRoute(
                 initialUrl = initialUrl,
@@ -221,6 +222,7 @@ private fun AHRoot(
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
                 onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
+                uiTraceLogger = uiTraceLogger,
                 onOpenSettings = { destination = RootDestination.Settings },
                 onOpenDownloads = { destination = RootDestination.Downloads },
             )
@@ -230,19 +232,22 @@ private fun AHRoot(
                 onResumeDownload = onResumeDownload,
                 onCancelDownload = onCancelDownload,
                 onOpenDownload = onOpenDownload,
+                uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.Settings -> SettingsRoute(
                 store = downloadLocationStore,
                 onPickDownloadFolder = onPickDownloadFolder,
+                uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
+                uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
             RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
-                logger = uiTraceLogger as com.ahdownload.app.diagnostics.PersistentUiTraceLogger,
+                logger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
             )
         }
