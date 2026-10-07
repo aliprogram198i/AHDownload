@@ -452,7 +452,8 @@ class YouTubeResolver(
         var replaced = 0
         var poTokenAttached = 0
         val candidates = result.candidates.map { candidate ->
-            val browserUrl = browserUrlsByItag[candidate.id]
+            val candidateItag = extractItag(candidate.sourceUrl) ?: candidate.id
+            val browserUrl = browserUrlsByItag[candidateItag]
             val tokenizedUrl = if (browserUrl == null) appendPoToken(candidate.sourceUrl, snapshot.browserPoToken) else candidate.sourceUrl
             val effectiveUrl = browserUrl ?: tokenizedUrl
             val browserHeaders = snapshot.browserRequestHeaders[effectiveUrl].orEmpty()
