@@ -35,6 +35,9 @@ class OkHttpDownloadByteStream(
 
         if (rangeStart > 0L) {
             builder.header("Range", "bytes=$rangeStart-")
+        } else if (isYouTubeMediaHost(url)) {
+            // Match validation/browser-friendly transfer semantics for YouTube GVS.
+            builder.header("Range", "bytes=0-")
         }
 
         val started = TimeSource.Monotonic.markNow()
