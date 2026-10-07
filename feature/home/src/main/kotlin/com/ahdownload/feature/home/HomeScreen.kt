@@ -542,11 +542,63 @@ private fun HomeScreen(
 
                 if (state.searchResults.isNotEmpty()) {
                     item {
-                        Text(
-                            "نتائج البحث",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "نتائج البحث",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (state.selectedSearchIds.isNotEmpty()) {
+                                TextButton(onClick = onClearSearchSelection) { Text("مسح التحديد") }
+                            }
+                        }
+                    }
+                    if (state.selectedSearchIds.isNotEmpty() || state.batchDownloading || state.batchError != null) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = if (state.batchDownloading) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primaryContainer),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    if (state.batchDownloading) {
+                                        Text(
+                                            "جاري تجهيز التنزيل الجماعي " + state.batchIndex + "/" + state.batchTotal,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        LinearProgressIndicator(
+                                            progress = {
+                                                if (state.batchTotal > 0) state.batchIndex.toFloat() / state.batchTotal.toFloat() else 0f
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        )
+                                        Text(
+                                            "تمت إضافة " + state.batchQueued + " عناصر إلى قائمة التنزيل.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else if (state.batchError != null) {
+                                        Text(state.batchError, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                    }
+                                    if (!state.batchDownloading && state.selectedSearchIds.isNotEmpty()) {
+                                        Button(
+                                            onClick = { onBatchDownload(state.searchResults) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                        ) {
+                                            Icon(Icons.Rounded.Download, contentDescription = null)
+                                            Spacer(Modifier.size(6.dp))
+                                            Text("تنزيل " + state.selectedSearchIds.size + " عناصر")
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     items(
                         state.searchResults,
@@ -554,6 +606,8 @@ private fun HomeScreen(
                     ) { item ->
                         SearchResultCard(
                             item = item,
+                            selected = item.id in state.selectedSearchIds,
+                            onToggleSelection = { onSearchSelectionToggle(item.id) },
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
                                 onModeChanged(HomeMode.Link)
@@ -797,6 +851,8 @@ private fun HomeScreen(
 @Composable
 private fun SearchResultCard(
     item: ContentSearchItem,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
     onClick: () -> Unit,
 ) {
     Card(
@@ -843,6 +899,11 @@ private fun SearchResultCard(
                     )
                 }
             }
+            androidx.compose.material3.FilterChip(
+                selected = selected,
+                onClick = onToggleSelection,
+                label = { Text(if (selected) "محدد" else "تحديد") },
+            )
         }
     }
 }
