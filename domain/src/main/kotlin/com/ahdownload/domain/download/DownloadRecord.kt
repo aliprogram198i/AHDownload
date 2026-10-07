@@ -7,6 +7,8 @@ data class DownloadRecord(
     val totalBytes: Long?,
     val failureCode: String?,
     val failureDetail: String?,
+    /** Final user-visible destination URI after publication/copy, when available. */
+    val destinationUri: String? = null,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
 ) {
