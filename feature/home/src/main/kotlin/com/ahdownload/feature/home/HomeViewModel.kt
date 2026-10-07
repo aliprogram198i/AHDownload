@@ -409,7 +409,7 @@ class HomeViewModel(
                                     it.format.hasVideo &&
                                     it.format.hasAudio
                             } == true
-                        )
+                        }
                         _uiState.value = _uiState.value.copy(
                             analyzing = false,
                             resolving = false,
