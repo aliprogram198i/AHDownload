@@ -26,15 +26,19 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 
-private enum class RootDestination { Welcome, Home, Diagnostics, Settings }
+private enum class RootDestination { Welcome, Home, Downloads, Diagnostics, Settings }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
-    private val downloadWorkScheduler by lazy { (application as AHDownloadApplication).downloadWorkScheduler }
+    private val applicationServices by lazy { application as AHDownloadApplication }
+    private val downloadWorkScheduler by lazy { applicationServices.downloadWorkScheduler }
+    private val downloadRepository by lazy { applicationServices.downloadRepository }
     private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -57,6 +61,10 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
                     onOpenYouTubeSession = ::openYouTubeSession,
+                    downloadRepository = downloadRepository,
+                    onPauseDownload = downloadWorkScheduler::pause,
+                    onResumeDownload = downloadWorkScheduler::resume,
+                    onCancelDownload = downloadWorkScheduler::cancel,
                     downloadLocationStore = downloadLocationStore,
                     onPickDownloadFolder = { folderPicker.launch(downloadLocationStore.persistedUri()) },
                 )
@@ -119,6 +127,10 @@ private fun AHRoot(
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
     onOpenYouTubeSession: () -> Unit,
+    downloadRepository: com.ahdownload.domain.download.DownloadRepository,
+    onPauseDownload: (String) -> Unit,
+    onResumeDownload: (DownloadRecord) -> Unit,
+    onCancelDownload: (String) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
 ) {
@@ -151,6 +163,14 @@ private fun AHRoot(
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
                 onOpenSettings = { destination = RootDestination.Settings },
+                onOpenDownloads = { destination = RootDestination.Downloads },
+            )
+            RootDestination.Downloads -> DownloadsRoute(
+                repository = downloadRepository,
+                onPauseDownload = onPauseDownload,
+                onResumeDownload = onResumeDownload,
+                onCancelDownload = onCancelDownload,
+                onBack = { destination = RootDestination.Home },
             )
             RootDestination.Settings -> SettingsRoute(
                 store = downloadLocationStore,

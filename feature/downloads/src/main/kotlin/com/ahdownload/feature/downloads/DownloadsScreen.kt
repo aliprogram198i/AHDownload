@@ -8,6 +8,7 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -19,9 +20,18 @@ import java.util.Locale
 @Composable
 fun DownloadsRoute(
     repository: DownloadRepository,
-    controls: DownloadControls,
+    onPauseDownload: (String) -> Unit,
+    onResumeDownload: (DownloadRecord) -> Unit,
+    onCancelDownload: (String) -> Unit,
     onBack: () -> Unit,
 ) {
+    val controls = remember(repository, onPauseDownload, onResumeDownload, onCancelDownload) {
+        object : DownloadControls {
+            override fun pause(taskId: String) = onPauseDownload(taskId)
+            override fun resume(record: DownloadRecord) = onResumeDownload(record)
+            override fun cancel(taskId: String) = onCancelDownload(taskId)
+        }
+    }
     val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModel.Factory(repository, controls))
     val records by vm.records.collectAsStateWithLifecycle()
     DownloadsScreen(
