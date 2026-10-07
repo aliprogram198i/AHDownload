@@ -542,9 +542,10 @@ class YouTubeResolver(
             )
         }
         val audio = snapshot.audioUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
+            val effectiveUrl = appendPoToken(url, snapshot.browserPoToken)
             MediaCandidate(
                 id = "webview-audio-${index}-${url.hashCode().toUInt().toString(16)}",
-                sourceUrl = url,
+                sourceUrl = effectiveUrl,
                 format = MediaFormat(
                     id = "webview-audio-${index}",
                     kind = MediaKind.Audio,
