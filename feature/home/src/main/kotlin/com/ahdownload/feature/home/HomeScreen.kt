@@ -739,6 +739,7 @@ private fun HomeScreen(
                         onDownload = { onDownloadCandidate(it) },
                     )
                 }
+            }
 
             state.error?.let { error ->
                 item {
