@@ -12,6 +12,7 @@ enum class MediaContainer {
     Aac,
     Ogg,
     Flac,
+    Wav,
     ThreeGp,
     Avi,
     Unknown,
