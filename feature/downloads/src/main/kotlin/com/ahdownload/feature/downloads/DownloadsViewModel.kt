@@ -6,11 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class DownloadsViewModel(
@@ -22,10 +20,7 @@ class DownloadsViewModel(
 
     init {
         viewModelScope.launch {
-            while (isActive) {
-                runCatching { repository.listHistory() }.onSuccess { _records.value = it }
-                delay(700L)
-            }
+            repository.observeHistory().collect { _records.value = it }
         }
     }
 
