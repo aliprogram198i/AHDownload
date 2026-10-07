@@ -22,8 +22,8 @@ fun interface UiTraceLogger {
         screen: String,
         component: String,
         event: String,
-        state: String? = null,
-        context: Map<String, String> = emptyMap(),
-        level: DiagnosticLevel = DiagnosticLevel.INFO,
+        state: String?,
+        context: Map<String, String>,
+        level: DiagnosticLevel,
     )
 }
