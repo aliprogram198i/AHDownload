@@ -393,12 +393,29 @@ class HomeViewModel(
                             _uiState.value.recentLinks
                         }
 
+                        val preferences = preferencesProvider.read()
+                        val smart = SmartResultEngine().build(resolution.candidates)
+                        val defaultVideoId = chooseDefaultCandidate(
+                            resolution.candidates,
+                            smart,
+                            preferences,
+                        )
+                        val defaultAudioId = chooseDefaultAudioCandidate(
+                            resolution.candidates,
+                            preferences,
+                        ) ?: defaultVideoId?.takeIf { id ->
+                            resolution.candidates.firstOrNull { it.id == id }?.let {
+                                it.format.kind == MediaKind.Video &&
+                                    it.format.hasVideo &&
+                                    it.format.hasAudio
+                            } == true
+                        }
                         _uiState.value = _uiState.value.copy(
                             analyzing = false,
                             resolving = false,
                             resolution = resolution,
-                            selectedCandidateId = null,
-                            selectedAudioCandidateId = null,
+                            selectedCandidateId = defaultVideoId,
+                            selectedAudioCandidateId = defaultAudioId,
                             recentLinks = updatedRecent,
                             error = if (resolution.candidates.isEmpty()) {
                                 "لم يتم العثور على وسائط قابلة للتنزيل."
