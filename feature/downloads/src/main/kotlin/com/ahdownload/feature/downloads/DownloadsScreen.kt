@@ -200,6 +200,7 @@ fun DownloadsRoute(
     }
 
     DownloadsScreen(
+        repository = repository,
         records = records,
         onBack = onBack,
         onNavigateHome = onNavigateHome,
@@ -225,6 +226,7 @@ fun DownloadsRoute(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DownloadsScreen(
+    repository: DownloadRepository,
     records: List<DownloadRecord>,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
