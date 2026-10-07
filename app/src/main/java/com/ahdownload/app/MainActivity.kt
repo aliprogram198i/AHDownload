@@ -34,6 +34,7 @@ private enum class RootDestination { Welcome, Home, Diagnostics, Settings }
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
+    private val downloadWorkScheduler by lazy { (application as AHDownloadApplication).downloadWorkScheduler }
     private val diagnosticLogger by lazy { (application as AHDownloadApplication).diagnosticLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->

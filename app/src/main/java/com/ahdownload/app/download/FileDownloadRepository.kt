@@ -46,6 +46,14 @@ class FileDownloadRepository(
         }
     }
 
+    override suspend fun findByContentFingerprint(fingerprint: String?): DownloadRecord? =
+        withContext(Dispatchers.IO) {
+            if (fingerprint.isNullOrBlank()) return@withContext null
+            synchronized(lock) {
+                readLocked().firstOrNull { it.task.contentFingerprint == fingerprint }
+            }
+        }
+
     override suspend fun listActive(): List<DownloadRecord> = withContext(Dispatchers.IO) {
         synchronized(lock) {
             readLocked()

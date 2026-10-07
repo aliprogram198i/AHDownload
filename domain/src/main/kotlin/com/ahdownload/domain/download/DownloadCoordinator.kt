@@ -7,6 +7,7 @@ class DownloadCoordinator(
     private val queue: PersistentDownloadQueue,
     private val clock: DownloadExecutionClock = SystemDownloadExecutionClock,
     private val progressPersistIntervalMs: Long = DEFAULT_PROGRESS_PERSIST_INTERVAL_MS,
+    private val isPauseRequested: () -> Boolean = { false },
 ) {
     init {
         require(progressPersistIntervalMs >= 0) {
@@ -29,6 +30,7 @@ class DownloadCoordinator(
                 val shouldPersist = when (state) {
                     DownloadState.Queued,
                     DownloadState.Preparing,
+                    DownloadState.Paused,
                     DownloadState.Completed,
                     is DownloadState.Failed,
                     DownloadState.Cancelled -> true
@@ -54,12 +56,9 @@ class DownloadCoordinator(
                 }
             }
         } catch (cancelled: CancellationException) {
-            latestRecord = queue.applyState(
-                task.id,
-                DownloadState.Cancelled,
-                clock.nowEpochMs(),
-            )
-            onPersistedState(DownloadState.Cancelled)
+            val state = if (isPauseRequested()) DownloadState.Paused else DownloadState.Cancelled
+            latestRecord = queue.applyState(task.id, state, clock.nowEpochMs())
+            onPersistedState(state)
             throw cancelled
         }
 

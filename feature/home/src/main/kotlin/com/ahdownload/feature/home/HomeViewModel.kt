@@ -400,6 +400,7 @@ class HomeViewModel(
                 resolver = HomeResolver(
                     logger = logger,
                     sessionProvider = AndroidYouTubeSessionProvider(context.applicationContext),
+                    browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
                 ),
                 onDownloadRequested = onDownloadRequested,
             ) as T

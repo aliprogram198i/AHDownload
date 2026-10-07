@@ -22,15 +22,25 @@ class LinkAnalyzer {
         val platform = when {
             host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" ->
                 MediaPlatform.YouTube
-            host == "instagram.com" || host.endsWith(".instagram.com") ->
+            host == "instagram.com" || host.endsWith(".instagram.com") || host == "l.instagram.com" ->
                 MediaPlatform.Instagram
             host == "facebook.com" || host.endsWith(".facebook.com") || host == "fb.watch" ->
                 MediaPlatform.Facebook
             host == "tiktok.com" || host.endsWith(".tiktok.com") ->
                 MediaPlatform.TikTok
             host == "x.com" || host.endsWith(".x.com") ||
-                host == "twitter.com" || host.endsWith(".twitter.com") ->
+                host == "twitter.com" || host.endsWith(".twitter.com") || host == "t.co" ->
                 MediaPlatform.X
+            host == "snapchat.com" || host.endsWith(".snapchat.com") ->
+                MediaPlatform.Snapchat
+            host == "pinterest.com" || host.endsWith(".pinterest.com") || host == "pin.it" ->
+                MediaPlatform.Pinterest
+            host == "reddit.com" || host.endsWith(".reddit.com") || host == "redd.it" ->
+                MediaPlatform.Reddit
+            host == "twitch.tv" || host.endsWith(".twitch.tv") ->
+                MediaPlatform.Twitch
+            host == "vimeo.com" || host.endsWith(".vimeo.com") ->
+                MediaPlatform.Vimeo
             kind != MediaKind.Unknown -> MediaPlatform.DirectMedia
             else -> MediaPlatform.Unknown
         }

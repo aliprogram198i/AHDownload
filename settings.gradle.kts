@@ -23,3 +23,5 @@ include(":domain")
 include(":feature:welcome")
 
 include(":feature:home")
+
+include(":feature:downloads")

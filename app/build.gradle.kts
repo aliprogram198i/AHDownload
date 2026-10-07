@@ -15,8 +15,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 10
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -83,6 +83,7 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":feature:welcome"))
     implementation(project(":feature:home"))
+    implementation(project(":feature:downloads"))
     implementation(project(":domain"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

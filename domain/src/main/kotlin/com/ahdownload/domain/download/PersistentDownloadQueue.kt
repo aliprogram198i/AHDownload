@@ -5,6 +5,7 @@ class PersistentDownloadQueue(
 ) {
     suspend fun enqueue(task: DownloadTask, nowEpochMs: Long): DownloadRecord {
         val existing = repository.get(task.id)
+            ?: repository.findByContentFingerprint(task.contentFingerprint)
         if (existing != null) {
             return existing
         }

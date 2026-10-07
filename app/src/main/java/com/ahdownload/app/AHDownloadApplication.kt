@@ -4,10 +4,15 @@ import android.app.Application
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.app.download.DownloadWorkScheduler
+import com.ahdownload.app.download.FileDownloadRepository
 
 class AHDownloadApplication : Application() {
     val diagnosticLogger: PersistentDiagnosticLogger by lazy {
         PersistentDiagnosticLogger(this)
+    }
+
+    val downloadRepository: FileDownloadRepository by lazy {
+        FileDownloadRepository(this)
     }
 
     val downloadWorkScheduler: DownloadWorkScheduler by lazy {

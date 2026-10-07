@@ -31,6 +31,11 @@ object DownloadRecordMapper {
                 failureCode = null,
                 failureDetail = null,
             )
+            DownloadState.Paused -> current.copy(
+                status = DownloadStatus.PAUSED,
+                failureCode = null,
+                failureDetail = null,
+            )
             is DownloadState.Downloading -> current.copy(
                 status = DownloadStatus.DOWNLOADING,
                 bytesDownloaded = state.bytesDownloaded,
