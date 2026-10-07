@@ -10,7 +10,9 @@ class DownloadControlStore(context: Context) {
         preferences.edit().putBoolean(key(taskId), true).apply()
     }
 
-    fun`w clearPaused(taskId: String) { preferences.edit().remove(key(taskId)).apply() }
+    fun clearPaused(taskId: String) {
+        preferences.edit().remove(key(taskId)).apply()
+    }
 
     fun isPaused(taskId: String): Boolean = preferences.getBoolean(key(taskId), false)
 
