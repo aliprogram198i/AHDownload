@@ -233,12 +233,16 @@ private fun AHRoot(
                 onOpenDownload = onOpenDownload,
                 uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
+                onNavigateHome = { destination = RootDestination.Home },
+                onNavigateSettings = { destination = RootDestination.Settings },
             )
             RootDestination.Settings -> SettingsRoute(
                 store = downloadLocationStore,
                 onPickDownloadFolder = onPickDownloadFolder,
                 uiTraceLogger = uiTraceLogger,
                 onBack = { destination = RootDestination.Home },
+                onNavigateHome = { destination = RootDestination.Home },
+                onNavigateDownloads = { destination = RootDestination.Downloads },
             )
             RootDestination.Diagnostics -> DiagnosticsRoute(
                 logger = logger,
