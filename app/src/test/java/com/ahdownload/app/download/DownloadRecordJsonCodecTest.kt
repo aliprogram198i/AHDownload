@@ -31,6 +31,7 @@ class DownloadRecordJsonCodecTest {
 
         assertEquals(listOf(original), restored)
         assertNull(restored.single().failureCode)
+        assertEquals("content://media/external/video/media/42", restored.single().destinationUri)
     }
 
     @Test
