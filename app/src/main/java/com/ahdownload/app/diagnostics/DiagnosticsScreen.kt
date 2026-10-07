@@ -52,9 +52,9 @@ fun DiagnosticsRoute(
 ) {
     var logs by remember { mutableStateOf(logger.list()) }
     val clipboard = LocalClipboardManager.current
+    val uiContext = rememberUiTraceContext()
     LaunchedEffect(Unit) { logs = logger.list() }
     LaunchedEffect(logs) {
-        val uiContext = rememberUiTraceContext()
         uiTraceLogger.snapshot(
             screen = "DIAGNOSTICS",
             component = "DiagnosticsScreen",
