@@ -19,6 +19,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.AHBottomNavDestination
+import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.*
 import java.util.Locale
@@ -32,6 +34,8 @@ fun DownloadsRoute(
     onOpenDownload: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onNavigateSettings: () -> Unit,
 ) {
     val controls = remember(repository, onPauseDownload, onResumeDownload, onCancelDownload) {
         object : DownloadControls {
@@ -71,6 +75,8 @@ fun DownloadsRoute(
     DownloadsScreen(
         records = records,
         onBack = onBack,
+        onNavigateHome = onNavigateHome,
+        onNavigateSettings = onNavigateSettings,
         onPause = vm::pause,
         onResume = vm::resume,
         onCancel = vm::cancel,
@@ -85,6 +91,8 @@ fun DownloadsRoute(
 private fun DownloadsScreen(
     records: List<DownloadRecord>,
     onBack: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onNavigateSettings: () -> Unit,
     onPause: (DownloadRecord) -> Unit,
     onResume: (DownloadRecord) -> Unit,
     onCancel: (DownloadRecord) -> Unit,
@@ -99,6 +107,24 @@ private fun DownloadsScreen(
                 navigationIcon = {
                     IconButton(onClick = { uiTraceLogger.interaction("DOWNLOADS", "back_button", "back"); onBack() }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            AHBottomNavigationBar(
+                selected = AHBottomNavDestination.DOWNLOADS,
+                onDestinationSelected = { destination ->
+                    when (destination) {
+                        AHBottomNavDestination.HOME -> {
+                            uiTraceLogger.interaction("DOWNLOADS", "bottom_nav_home", "open_home")
+                            onNavigateHome()
+                        }
+                        AHBottomNavDestination.DOWNLOADS -> Unit
+                        AHBottomNavDestination.SETTINGS -> {
+                            uiTraceLogger.interaction("DOWNLOADS", "bottom_nav_settings", "open_settings")
+                            onNavigateSettings()
+                        }
                     }
                 },
             )

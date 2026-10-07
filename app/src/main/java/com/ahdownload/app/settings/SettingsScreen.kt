@@ -35,6 +35,8 @@ import androidx.compose.runtime.LaunchedEffect
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
+import com.ahdownload.core.designsystem.AHBottomNavDestination
+import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,6 +45,8 @@ fun SettingsRoute(
     store: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
     onBack: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onNavigateDownloads: () -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
     val context = LocalContext.current
@@ -57,6 +61,7 @@ fun SettingsRoute(
             add("topbar")
             add("storage_card")
             add("change_folder_button")
+            add("bottom_navigation")
             if (location.isCustom) {
                 add("reset_default_button")
                 add("create_folder_button")
@@ -84,6 +89,24 @@ fun SettingsRoute(
                 navigationIcon = {
                     IconButton(onClick = { uiTraceLogger.interaction("SETTINGS", "back_button", "back"); onBack() }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            AHBottomNavigationBar(
+                selected = AHBottomNavDestination.SETTINGS,
+                onDestinationSelected = { destination ->
+                    when (destination) {
+                        AHBottomNavDestination.HOME -> {
+                            uiTraceLogger.interaction("SETTINGS", "bottom_nav_home", "open_home")
+                            onNavigateHome()
+                        }
+                        AHBottomNavDestination.DOWNLOADS -> {
+                            uiTraceLogger.interaction("SETTINGS", "bottom_nav_downloads", "open_downloads")
+                            onNavigateDownloads()
+                        }
+                        AHBottomNavDestination.SETTINGS -> Unit
                     }
                 },
             )

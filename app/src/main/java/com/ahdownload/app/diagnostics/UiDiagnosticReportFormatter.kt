@@ -20,17 +20,24 @@ object UiDiagnosticReportFormatter {
         val interactions = sessionEvents.filter { it.event == "UI_INTERACTION" }
         val errors = sessionEvents.filter { it.level == DiagnosticLevel.ERROR }
         val screens = sessionEvents.map { it.screen }.distinct().joinToString(",")
+        val contextValue: (String) -> String = { key ->
+            sessionEvents.asSequence()
+                .sortedByDescending { it.timestampEpochMs }
+                .mapNotNull { it.context[key] }
+                .firstOrNull { it.isNotBlank() }
+                ?: "unknown"
+        }
         val first = sessionEvents.minByOrNull { it.timestampEpochMs }
         val durationMs = if (first == null) 0L else latest.timestampEpochMs - first.timestampEpochMs
 
         return buildString {
             appendLine("AHDownload UI Diagnostic")
             appendLine("ui_schema=$SCHEMA")
-            appendLine("app=${latest.context["app_package"] ?: "unknown"} version=${latest.context["app_version_name"] ?: "unknown"} (${latest.context["app_version_code"] ?: "unknown"}) build=${latest.context["app_build_type"] ?: "unknown"}")
-            appendLine("android=${latest.context["android_release"] ?: "unknown"} sdk=${latest.context["android_sdk"] ?: "unknown"} targetSdk=${latest.context["app_target_sdk"] ?: "unknown"}")
-            appendLine("device=${latest.context["device_manufacturer"] ?: "unknown"} ${latest.context["device_model"] ?: "unknown"}")
-            appendLine("viewport=${latest.context["viewport_width_px"] ?: "unknown"}x${latest.context["viewport_height_px"] ?: "unknown"} density=${latest.context["density"] ?: "unknown"} fontScale=${latest.context["font_scale"] ?: "unknown"} orientation=${latest.context["orientation"] ?: "unknown"}")
-            appendLine("theme=${latest.context["theme_mode"] ?: "unknown"} layoutDirection=${latest.context["layout_direction"] ?: "unknown"} locale=${latest.context["locale"] ?: "unknown"}")
+            appendLine("app=${contextValue("app_package")} version=${contextValue("app_version_name")} (${contextValue("app_version_code")}) build=${contextValue("app_build_type")}")
+            appendLine("android=${contextValue("android_release")} sdk=${contextValue("android_sdk")} targetSdk=${contextValue("app_target_sdk")}")
+            appendLine("device=${contextValue("device_manufacturer")} ${contextValue("device_model")}")
+            appendLine("viewport=${contextValue("viewport_width_px")}x${contextValue("viewport_height_px")}px (${contextValue("viewport_width_dp")}x${contextValue("viewport_height_dp")}dp) density=${contextValue("density")} fontScale=${contextValue("font_scale")} orientation=${contextValue("orientation")}")
+            appendLine("theme=${contextValue("theme_mode")} layoutDirection=${contextValue("layout_direction")} locale=${contextValue("locale")}")
             appendLine("session=${latest.sessionId} events=${sessionEvents.size} duration_ms=$durationMs")
             appendLine("screens=$screens")
             appendLine()
