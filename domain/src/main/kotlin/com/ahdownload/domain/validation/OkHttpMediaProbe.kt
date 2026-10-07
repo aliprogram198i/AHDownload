@@ -251,7 +251,12 @@ class OkHttpMediaProbe(
             .header("Accept", "*/*")
             .apply {
                 headers.forEach { (name, value) ->
-                    if (!name.equals("Host", ignoreCase = true)) header(name, value)
+                    if (
+                        !name.equals("Host", ignoreCase = true) &&
+                        !(range == null && name.equals("Range", ignoreCase = true))
+                    ) {
+                        header(name, value)
+                    }
                 }
                 if (
                     isYouTubeMediaHost(url) &&
