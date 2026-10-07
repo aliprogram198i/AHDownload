@@ -256,7 +256,7 @@ private fun HomeScreen(
     }
 
     val filteredResults = remember(resultSet, filter, showAll) {
-        when (filter) {
+        val result = when (filter) {
             ResultFilter.All -> if (showAll) resultSet.all else resultSet.visible
             ResultFilter.Video -> if (showAll) resultSet.video else resultSet.visible.filter { it.group == MediaResultGroup.Video }
             ResultFilter.Audio -> if (showAll) resultSet.audio else resultSet.visible.filter { it.group == MediaResultGroup.Audio }
@@ -265,6 +265,7 @@ private fun HomeScreen(
             ResultFilter.Other -> if (showAll) resultSet.other.filter { it.candidate.format.kind != MediaKind.Image }
                 else resultSet.visible.filter { it.group == MediaResultGroup.Other }
         }
+        result.filterNot { it.candidate.id == resultSet.bestOverall?.candidate?.id }
     }
 
     val counts = remember(resultSet) {
@@ -726,7 +727,7 @@ private fun HomeScreen(
                                     tint = MaterialTheme.colorScheme.error,
                                 )
                                 Text(
-                                    "تعذر إكمال العملية",
+                                    if (state.resolution != null) "تعذر بدء التنزيل" else "تعذر تجهيز المحتوى",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                 )
