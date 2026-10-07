@@ -103,6 +103,7 @@ fun HomeRoute(
     onOpenDownloads: () -> Unit,
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    activeDownloads: Int = 0,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -309,6 +310,7 @@ private fun HomeScreen(
         bottomBar = {
             AHBottomNavigationBar(
                 selected = AHBottomNavDestination.HOME,
+                activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
                     when (destination) {
                         AHBottomNavDestination.HOME -> Unit
