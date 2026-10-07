@@ -55,7 +55,12 @@ class YouTubeResolver(
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) {
                 val enriched = enrichWithSessionIfNeeded(direct, request)
-                return filterKind(augmentWithAndroidFallback(augmentWithEmbeddedFallback(enriched, html, request), html, request), request)
+                val augmented = augmentWithAndroidFallback(
+                    augmentWithEmbeddedFallback(enriched, html, request),
+                    html,
+                    request,
+                )
+                return filterKind(enrichWithSessionIfNeeded(augmented, request), request)
             }
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
@@ -64,7 +69,12 @@ class YouTubeResolver(
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) {
                     val enriched = enrichWithSessionIfNeeded(apiResult, request)
-                    return filterKind(augmentWithAndroidFallback(augmentWithEmbeddedFallback(enriched, html, request), html, request), request)
+                    val augmented = augmentWithAndroidFallback(
+                        augmentWithEmbeddedFallback(enriched, html, request),
+                        html,
+                        request,
+                    )
+                    return filterKind(enrichWithSessionIfNeeded(augmented, request), request)
                 }
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
