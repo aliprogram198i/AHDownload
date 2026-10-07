@@ -60,6 +60,9 @@ data class HomeUiState(
     val mode: HomeMode = HomeMode.Link,
     val showAll: Boolean = false,
     val resultFilter: ResultFilter = ResultFilter.All,
+    val batchDownloading: Boolean = false,
+    val batchCompleted: Int = 0,
+    val batchTotal: Int = 0,
 )
 
 class HomeViewModel(
@@ -355,7 +358,7 @@ class HomeViewModel(
     }
 
     fun downloadSelected() {
-        if (downloadJob?.isActive == true || batchJob?.isActive == true) return
+        if (downloadJob?.isActive == true) return
 
         val state = _uiState.value
         val candidate = state.resolution?.candidates
@@ -579,55 +582,77 @@ class HomeViewModel(
         if (uniqueIds.isEmpty()) return
 
         batchJob = viewModelScope.launch {
-            for (id in uniqueIds) {
-                selectCandidate(id)
-                downloadSelected()
-                downloadJob?.join()
+            _uiState.value = _uiState.value.copy(
+                batchDownloading = true,
+                batchCompleted = 0,
+                batchTotal = uniqueIds.size,
+                error = null,
+                downloadQueued = false,
+            )
+            try {
+                for ((index, id) in uniqueIds.withIndex()) {
+                    selectCandidate(id)
+                    downloadSelected()
+                    downloadJob?.join()
+                    _uiState.value = _uiState.value.copy(batchCompleted = index + 1)
+                }
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    batchDownloading = false,
+                )
             }
         }
     }
 
     private fun preferredCandidateId(
         candidates: List<MediaCandidate>,
-        kind: MediaKind,
+        detectedKind: MediaKind,
     ): String? {
         val preferences = downloadPreferencesStore.current()
-        return when (kind) {
-            MediaKind.Video -> {
-                val videos = candidates.filter { it.format.kind == MediaKind.Video }
-                val target = preferences.videoQuality.height
-                when {
-                    videos.isEmpty() -> null
-                    target == null -> null
-                    else -> videos
-                        .sortedWith(
-                            compareByDescending<MediaCandidate> { (it.format.height ?: 0) <= target }
-                                .thenByDescending { minOf(it.format.height ?: 0, target) }
-                                .thenByDescending { it.format.height ?: 0 }
-                                .thenByDescending { it.format.hasAudio }
-                        )
-                        .firstOrNull()
-                        ?.id
-                }
-            }
-            MediaKind.Audio -> {
-                val audio = candidates.filter { it.format.kind == MediaKind.Audio }
-                val target = preferences.audioBitrate.bitrateKbps
-                when {
-                    audio.isEmpty() -> null
-                    target == null -> null
-                    else -> audio
-                        .sortedWith(
-                            compareByDescending<MediaCandidate> { (it.format.bitrateKbps ?: 0) <= target }
-                                .thenByDescending { minOf(it.format.bitrateKbps ?: 0, target) }
-                                .thenByDescending { it.format.bitrateKbps ?: 0 }
-                        )
-                        .firstOrNull()
-                        ?.id
-                }
-            }
+        val videos = candidates.filter { it.format.kind == MediaKind.Video }
+        val audio = candidates.filter { it.format.kind == MediaKind.Audio }
+
+        return when {
+            detectedKind == MediaKind.Audio -> preferredAudio(audio, preferences.audioBitrate.bitrateKbps)
+            detectedKind == MediaKind.Video -> preferredVideo(videos, preferences.videoQuality.height)
+            preferences.videoQuality.height != null && videos.isNotEmpty() ->
+                preferredVideo(videos, preferences.videoQuality.height)
+            preferences.audioBitrate.bitrateKbps != null && audio.isNotEmpty() && videos.isEmpty() ->
+                preferredAudio(audio, preferences.audioBitrate.bitrateKbps)
             else -> null
         }
+    }
+
+    private fun preferredVideo(
+        candidates: List<MediaCandidate>,
+        target: Int?,
+    ): String? {
+        if (target == null) return null
+        return candidates
+            .sortedWith(
+                compareByDescending<MediaCandidate> { (it.format.height ?: 0) <= target }
+                    .thenByDescending { minOf(it.format.height ?: 0, target) }
+                    .thenByDescending { it.format.height ?: 0 }
+                    .thenByDescending { it.format.hasAudio }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 }
+            )
+            .firstOrNull()
+            ?.id
+    }
+
+    private fun preferredAudio(
+        candidates: List<MediaCandidate>,
+        target: Int?,
+    ): String? {
+        if (target == null) return null
+        return candidates
+            .sortedWith(
+                compareByDescending<MediaCandidate> { (it.format.bitrateKbps ?: 0) <= target }
+                    .thenByDescending { minOf(it.format.bitrateKbps ?: 0, target) }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 }
+            )
+            .firstOrNull()
+            ?.id
     }
 
     fun downloadCandidate(id: String) {
