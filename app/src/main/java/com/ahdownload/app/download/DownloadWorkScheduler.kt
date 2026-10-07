@@ -9,6 +9,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.ahdownload.domain.download.DownloadRecord
+import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.domain.download.DownloadTask
 import java.util.concurrent.TimeUnit
 
@@ -18,6 +19,7 @@ class DownloadWorkScheduler(
     private val appContext = context.applicationContext
     private val workManager = WorkManager.getInstance(appContext)
     private val controlStore = DownloadControlStore(appContext)
+    private val preferencesStore = DownloadPreferencesStore(appContext)
 
     fun enqueue(task: DownloadTask) {
         enqueueInternal(task, forceRefresh = false)
@@ -34,7 +36,9 @@ class DownloadWorkScheduler(
             .setInputData(input)
             .setConstraints(
                 Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .setRequiredNetworkType(
+                        if (preferencesStore.current().wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED,
+                    )
                     .build(),
             )
             .setBackoffCriteria(
