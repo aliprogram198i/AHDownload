@@ -1112,13 +1112,14 @@ private fun UnifiedDownloadResultCard(
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
 ) {
+    // Keep the result card focused on the four most useful playable qualities.
     val videoOptions = primaryOptions
         .filter {
             it.candidate.format.kind == MediaKind.Video &&
                 it.candidate.format.hasVideo &&
                 it.candidate.format.hasAudio
         }
-        .take(8)
+        .take(4)
 
     val directAudioOptions = audioOptions
         .filter {
@@ -1294,6 +1295,11 @@ private fun UnifiedDownloadResultCard(
                         }
                     }
 
+                    Text(
+                        "صيغة الإخراج",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                     AudioOutputFormatGrid(
                         selected = selectedAudioOutputFormat,
                         enabled = validatingCandidateId == null,
