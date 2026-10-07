@@ -44,7 +44,7 @@ class MediaAudioExtractor(
         var outputMuxer: MediaMuxer? = null
         var descriptor: android.os.ParcelFileDescriptor? = null
         var started = false
-        try {
+        return try {
             val rawUri = record.destinationUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
             if (rawUri != null) {
                 descriptor = appContext.contentResolver.openFileDescriptor(rawUri, "r")
