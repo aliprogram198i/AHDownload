@@ -2,33 +2,41 @@ package com.ahdownload.app.download
 
 import android.content.Context
 import android.os.Environment
-import com.ahdownload.domain.download.DownloadTask
 import com.ahdownload.app.settings.DownloadLocationStore
+import com.ahdownload.domain.download.DownloadTask
 import com.ahdownload.domain.resolver.MediaCandidate
 import java.io.File
-import java.util.UUID
+import java.security.MessageDigest
 
 class DownloadLauncher(
     context: Context,
 ) {
     private val appContext = context.applicationContext
-    private val scheduler = (appContext as com.ahdownload.app.AHDownloadApplication).downloadWorkScheduler
+    private val application = appContext as com.ahdownload.app.AHDownloadApplication
+    private val scheduler = application.downloadWorkScheduler
+    private val repository = application.downloadRepository
     private val locationStore = DownloadLocationStore(appContext)
 
-    fun enqueue(candidate: MediaCandidate, title: String?): Boolean {
+    suspend fun enqueue(candidate: MediaCandidate, title: String?): Boolean {
         if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) return false
         val directory = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return false
         if (!directory.exists() && !directory.mkdirs()) return false
 
         val extension = extensionFor(candidate)
         val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
+        val fingerprint = fingerprint(candidate)
+        val taskId = fingerprint.take(36)
+        if (repository.findByContentFingerprint(fingerprint) != null) return false
         val file = uniqueFile(directory, baseName, extension)
 
         scheduler.enqueue(
             DownloadTask(
-                id = UUID.randomUUID().toString(),
+                id = taskId,
                 sourceUrl = candidate.sourceUrl,
                 destinationPath = file.absolutePath,
+                displayName = title?.trim()?.takeIf { it.isNotBlank() } ?: baseName,
+                contentFingerprint = fingerprint,
+                sessionCookieHost = candidate.sessionCookieHost,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
@@ -43,6 +51,20 @@ class DownloadLauncher(
             ),
         )
         return true
+    }
+
+    private fun fingerprint(candidate: MediaCandidate): String {
+        val raw = listOf(
+            candidate.sourceUrl,
+            candidate.format.id,
+            candidate.format.kind.name,
+            candidate.format.container.name,
+            candidate.format.width ?: 0,
+            candidate.format.height ?: 0,
+            candidate.format.bitrateKbps ?: 0,
+        ).joinToString("|")
+        val digest = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     private fun uniqueFile(directory: File, baseName: String, extension: String): File {
