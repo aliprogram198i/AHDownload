@@ -128,6 +128,7 @@ class PersistentDownloadQueueTest {
                 }
 
             recovered.forEach { records[it.task.id] = it }
+            historyFlow.value = records.values.sortedByDescending { it.updatedAtEpochMs }
             return recovered
         }
     }
