@@ -36,7 +36,7 @@ class OkHttpMediaProbe(
         operationId: String?,
     ): MediaProbeResult {
         val started = TimeSource.Monotonic.markNow()
-        val response = execute(url, "GET", headers, null)
+        var response = execute(url, "GET", headers, null)
         logger.log(
             level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "MEDIA_PROBE_ATTEMPT",
@@ -54,6 +54,42 @@ class OkHttpMediaProbe(
             ) + mapOf("validation_mode" to "YOUTUBE_DOWNLOAD_ALIGNED"),
             throwable = null,
         )
+
+        if (response.code == 403 && headers.keys.any {
+                it.equals("Cookie", ignoreCase = true) ||
+                    it.equals("Origin", ignoreCase = true) ||
+                    it.equals("Referer", ignoreCase = true)
+            }) {
+            response.close()
+            val retryHeaders = headers.filterKeys {
+                !it.equals("Cookie", ignoreCase = true) &&
+                    !it.equals("Origin", ignoreCase = true) &&
+                    !it.equals("Referer", ignoreCase = true)
+            }
+            val retryStarted = TimeSource.Monotonic.markNow()
+            response = execute(url, "GET", retryHeaders, null)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "youtube_403_header_sanitized_retry",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    null,
+                    response.code,
+                    response.header("Content-Type"),
+                    retryStarted.elapsedNow().inWholeMilliseconds,
+                    retryHeaders,
+                    operationId,
+                ) + mapOf(
+                    "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_RETRY",
+                    "removed_session_headers" to "Cookie,Origin,Referer",
+                ),
+                throwable = null,
+            )
+        }
+
         return response.toResult("GET", null)
     }
 
