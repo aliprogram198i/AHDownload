@@ -22,6 +22,7 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.domain.download.DownloadCoordinator
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
 import com.ahdownload.domain.download.LocalAtomicFileSink
 import com.ahdownload.domain.download.OkHttpDownloadByteStream
@@ -46,7 +47,27 @@ class DownloadWorker(
     private var notificationBytesPerSecond = 0L
 
     override suspend fun doWork(): Result {
-        var task = readTask() ?: return Result.failure()
+        val inputTask = readTask() ?: return Result.failure()
+        val audioExtractionRequested = inputTask.processingMode == DownloadProcessingMode.ExtractAudio
+        val extractionSuffix = ".source." + inputTask.id.take(8)
+        val extractionAlreadyStaged = audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
+        var task = if (extractionAlreadyStaged) {
+            inputTask.copy(destinationPath = inputTask.destinationPath.removeSuffix(extractionSuffix))
+        } else {
+            inputTask
+        }
+        var sourceTask = if (audioExtractionRequested) {
+            task.copy(
+                destinationPath = if (extractionAlreadyStaged) {
+                    task.destinationPath + extractionSuffix
+                } else {
+                    extractionSourcePath(task)
+                },
+                mediaKind = MediaKind.Video,
+            )
+        } else {
+            task
+        }
 
         setForeground(createForegroundInfo(DownloadState.Preparing))
 
@@ -55,9 +76,9 @@ class DownloadWorker(
         val diagnostics = diagnosticsLogger()
         var refreshAttempted = false
 
-        if (shouldRefreshYouTubeTask(task, repository)) {
+        if (shouldRefreshYouTubeTask(sourceTask, repository)) {
             refreshAttempted = true
-            val refreshed = refreshYouTubeTask(task, diagnostics)
+            val refreshed = refreshYouTubeTask(sourceTask, diagnostics)
             if (refreshed == null) {
                 diagnostics.log(
                     DiagnosticLevel.ERROR,
@@ -78,7 +99,16 @@ class DownloadWorker(
                     ),
                 )
             }
-            task = refreshed
+            sourceTask = refreshed.copy(
+                destinationPath = sourceTask.destinationPath,
+                processingMode = task.processingMode,
+                mediaKind = sourceTask.mediaKind,
+            )
+            task = if (audioExtractionRequested) task.copy(
+                sourceUrl = sourceTask.sourceUrl,
+                sessionCookieHost = sourceTask.sessionCookieHost,
+                requestHeaders = sourceTask.requestHeaders,
+            ) else refreshed
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "YOUTUBE_RETRY_REFRESH_APPLIED",
@@ -87,7 +117,7 @@ class DownloadWorker(
                 mapOf(
                     "task_id" to task.id,
                     "run_attempt" to runAttemptCount.toString(),
-                    "source_host" to hostOf(task.sourceUrl),
+                    "source_host" to hostOf(sourceTask.sourceUrl),
                 ),
                 null,
             )
@@ -124,7 +154,7 @@ class DownloadWorker(
         )
 
         val record = try {
-            coordinator.execute(task) { state ->
+            coordinator.execute(sourceTask) { state ->
                 updateNotificationSpeed(state)
                 setForeground(createForegroundInfo(state))
             }
@@ -141,7 +171,78 @@ class DownloadWorker(
         }
 
         var completedRecord = record
-        if (record.status == DownloadStatus.COMPLETED) {
+        if (record.status == DownloadStatus.COMPLETED && audioExtractionRequested) {
+            setForeground(createForegroundInfo(DownloadState.Preparing))
+            diagnostics.log(
+                DiagnosticLevel.INFO,
+                "AUDIO_EXTRACTION_STARTED",
+                "اكتمل تنزيل المصدر وبدأ استخراج الصوت فقط",
+                "download.audio_extraction",
+                mapOf(
+                    "task_id" to task.id,
+                    "task_id" to task.id,
+                    "processing_mode" to task.processingMode.name,
+                    "source_file_present" to java.io.File(sourceTask.destinationPath).isFile.toString(),
+                ),
+                null,
+            )
+
+            val outputFile = java.io.File(task.destinationPath)
+            val extraction = MediaAudioExtractor(applicationContext)
+                .extractToLocalFile(record, outputFile)
+
+            if (extraction.isFailure) {
+                val error = extraction.exceptionOrNull()
+                val detail = error?.message?.takeIf { it.isNotBlank() } ?: "تعذر استخراج مسار صوت صالح من المصدر."
+                diagnostics.log(
+                    DiagnosticLevel.ERROR,
+                    "AUDIO_EXTRACTION_FAILED",
+                    "فشل استخراج الصوت من الوسيط الذي تم تنزيله",
+                    "download.audio_extraction",
+                    mapOf(
+                        "task_id" to task.id,
+                        "processing_mode" to task.processingMode.name,
+                        "source_file_present" to java.io.File(sourceTask.destinationPath).isFile.toString(),
+                        "output_file_present" to outputFile.isFile.toString(),
+                    ),
+                    error,
+                )
+                completedRecord = record.copy(
+                    task = task,
+                    status = DownloadStatus.FAILED,
+                    failureCode = "audio_extraction_error",
+                    failureDetail = detail,
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+                repository.upsert(completedRecord)
+                return Result.failure(
+                    workDataOf(
+                        KEY_FAILURE_CODE to "audio_extraction_error",
+                        KEY_FAILURE_DETAIL to detail,
+                    ),
+                )
+            }
+
+            runCatching { java.io.File(sourceTask.destinationPath).delete() }
+            completedRecord = record.copy(
+                task = task,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
+            diagnostics.log(
+                DiagnosticLevel.INFO,
+                "AUDIO_EXTRACTION_COMPLETED",
+                "تم استخراج الصوت فقط بنجاح",
+                "download.audio_extraction",
+                mapOf(
+                    "task_id" to task.id,
+                    "output_file_present" to java.io.File(task.destinationPath).isFile.toString(),
+                    "output_size_bytes" to java.io.File(task.destinationPath).length().toString(),
+                ),
+                null,
+            )
+        }
+
+        if (completedRecord.status == DownloadStatus.COMPLETED) {
             val locationStore = DownloadLocationStore(applicationContext)
             val treeUri = locationStore.persistedUri()
             if (treeUri != null) {
@@ -157,7 +258,7 @@ class DownloadWorker(
                 if (copied.isSuccess) {
                     val destinationUri = copied.getOrThrow()
                     localFile.delete()
-                    completedRecord = record.copy(
+                    completedRecord = completedRecord.copy(
                         destinationUri = destinationUri.toString(),
                         updatedAtEpochMs = System.currentTimeMillis(),
                     )
@@ -188,7 +289,7 @@ class DownloadWorker(
                         ),
                         copied.exceptionOrNull(),
                     )
-                    persistDestinationFailure(record, "تعذر الكتابة في مجلد التنزيل المحدد.")
+                    persistDestinationFailure(completedRecord, "تعذر الكتابة في مجلد التنزيل المحدد.")
                     return Result.failure(
                         workDataOf(
                             KEY_FAILURE_CODE to "destination_storage_error",
@@ -201,7 +302,7 @@ class DownloadWorker(
                 val published = MediaStorePublisher(applicationContext).publish(localFile)
                 if (published.isFailure) {
                     val detail = "تم تنزيل الملف، لكن تعذر حفظه في مكتبة الوسائط. بقيت نسخة استرداد محلية."
-                    persistDestinationFailure(record, detail)
+                    persistDestinationFailure(completedRecord, detail)
                     return Result.failure(
                         workDataOf(
                             KEY_FAILURE_CODE to "destination_storage_error",
@@ -209,7 +310,7 @@ class DownloadWorker(
                         ),
                     )
                 }
-                completedRecord = record.copy(
+                completedRecord = completedRecord.copy(
                     destinationUri = published.getOrThrow().toString(),
                     updatedAtEpochMs = System.currentTimeMillis(),
                 )
@@ -219,7 +320,7 @@ class DownloadWorker(
             }
         }
 
-        if (record.status == DownloadStatus.FAILED) {
+        if (completedRecord.status == DownloadStatus.FAILED) {
             diagnostics.log(
                 level = DiagnosticLevel.ERROR,
                 type = "DOWNLOAD",
@@ -231,7 +332,7 @@ class DownloadWorker(
                 },
                 throwable = null,
             )
-        } else if (record.status == DownloadStatus.CANCELLED) {
+        } else if (completedRecord.status == DownloadStatus.CANCELLED) {
             diagnostics.log(
                 level = DiagnosticLevel.WARNING,
                 type = "DOWNLOAD",
@@ -242,27 +343,27 @@ class DownloadWorker(
             )
         }
 
-        return when (record.status) {
+        return when (completedRecord.status) {
             DownloadStatus.COMPLETED -> Result.success()
             DownloadStatus.FAILED -> {
                 val retryableYouTube403 =
                     !refreshAttempted &&
                         runAttemptCount == 0 &&
                         isYouTubeTask(task) &&
-                        record.failureCode == "http_error" &&
-                        record.failureDetail == "403"
+                        completedRecord.failureCode == "http_error" &&
+                        completedRecord.failureDetail == "403"
 
                 if (
-                    record.failureCode == "network_error" ||
-                    record.failureCode == "http_error" && isRetryableHttp(record.failureDetail) ||
+                    completedRecord.failureCode == "network_error" ||
+                    completedRecord.failureCode == "http_error" && isRetryableHttp(completedRecord.failureDetail) ||
                     retryableYouTube403
                 ) {
                     Result.retry()
                 } else {
                     Result.failure(
                         workDataOf(
-                            KEY_FAILURE_CODE to record.failureCode,
-                            KEY_FAILURE_DETAIL to record.failureDetail,
+                            KEY_FAILURE_CODE to completedRecord.failureCode,
+                            KEY_FAILURE_DETAIL to completedRecord.failureDetail,
                         ),
                     )
                 }
@@ -350,6 +451,9 @@ class DownloadWorker(
         val sourcePageUrl = inputData.getString(KEY_SOURCE_PAGE_URL)
         val mediaKind = inputData.getString(KEY_MEDIA_KIND)
             ?.let { runCatching { MediaKind.valueOf(it) }.getOrNull() }
+        val processingMode = inputData.getString(KEY_PROCESSING_MODE)
+            ?.let { runCatching { DownloadProcessingMode.valueOf(it) }.getOrNull() }
+            ?: DownloadProcessingMode.Direct
         val requestHeaders = buildMap {
             inputData.getString(KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -371,6 +475,7 @@ class DownloadWorker(
             sessionCookieHost = sessionCookieHost,
             sourcePageUrl = sourcePageUrl,
             mediaKind = mediaKind,
+            processingMode = processingMode,
             requestHeaders = requestHeaders,
         )
     }
@@ -513,6 +618,9 @@ class DownloadWorker(
         return if (minutes > 0L) "${minutes}د ${secs.toString()}ث" else "${secs}ث"
     }
 
+    private fun extractionSourcePath(task: DownloadTask): String =
+        task.destinationPath + ".source." + task.id.take(8)
+
     private suspend fun shouldRefreshYouTubeTask(
         task: DownloadTask,
         repository: com.ahdownload.app.download.FileDownloadRepository,
@@ -542,7 +650,11 @@ class DownloadWorker(
             ?: return null
         val link = LinkAnalyzer().analyze(pageUrl)?.takeIf { it.platform == MediaPlatform.YouTube }
             ?: return null
-        val expectedKind = task.mediaKind ?: return null
+        val expectedKind = if (task.processingMode == DownloadProcessingMode.ExtractAudio) {
+            MediaKind.Video
+        } else {
+            task.mediaKind ?: return null
+        }
 
         val resolver = HomeResolver(
             logger = diagnostics,
@@ -562,7 +674,8 @@ class DownloadWorker(
                 return task.copy(
                     sourceUrl = validation.finalUrl,
                     sourcePageUrl = link.normalizedUrl,
-                    mediaKind = expectedKind,
+                    mediaKind = task.mediaKind,
+                    processingMode = task.processingMode,
                     sessionCookieHost = validation.candidate.sessionCookieHost,
                     requestHeaders = validation.candidate.requestHeaders.filterKeys { key ->
                         !key.equals("Cookie", ignoreCase = true) &&
@@ -597,6 +710,7 @@ class DownloadWorker(
         const val KEY_SESSION_COOKIE_HOST = "session_cookie_host"
         const val KEY_SOURCE_PAGE_URL = "source_page_url"
         const val KEY_MEDIA_KIND = "media_kind"
+        const val KEY_PROCESSING_MODE = "processing_mode"
         const val KEY_FORCE_REFRESH = "force_refresh"
         const val KEY_USER_AGENT = "user_agent"
         const val KEY_REFERER = "referer"

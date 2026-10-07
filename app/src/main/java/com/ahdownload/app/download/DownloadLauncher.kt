@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Environment
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.domain.download.DownloadEnqueueResult
+import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
 import com.ahdownload.domain.resolver.MediaCandidate
 import java.io.File
@@ -76,8 +77,68 @@ class DownloadLauncher(
         return DownloadEnqueueResult.QUEUED
     }
 
-    private fun fingerprint(candidate: MediaCandidate): String {
+    suspend fun enqueueAudioExtraction(
+        candidate: MediaCandidate,
+        title: String?,
+        sourcePageUrl: String? = null,
+        thumbnailUrl: String? = null,
+    ): DownloadEnqueueResult {
+        if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) {
+            return DownloadEnqueueResult.INVALID_CUSTOM_LOCATION
+        }
+
+        val directory = appContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: return DownloadEnqueueResult.STORAGE_UNAVAILABLE
+
+        if (!directory.exists() && !directory.mkdirs()) {
+            return DownloadEnqueueResult.STORAGE_UNAVAILABLE
+        }
+
+        val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
+        val fingerprint = fingerprint(candidate, DownloadProcessingMode.ExtractAudio)
+        if (repository.findByContentFingerprint(fingerprint) != null) {
+            return DownloadEnqueueResult.DUPLICATE
+        }
+
+        val file = uniqueFile(directory, baseName, ".m4a")
+        scheduler.enqueue(
+            DownloadTask(
+                id = fingerprint.take(36),
+                sourceUrl = candidate.sourceUrl,
+                destinationPath = file.absolutePath,
+                displayName = title?.trim()?.takeIf { it.isNotBlank() }?.let { "$it - Audio" } ?: baseName + " - Audio",
+                thumbnailUrl = thumbnailUrl?.trim()?.takeIf {
+                    it.startsWith("http://") || it.startsWith("https://")
+                },
+                contentFingerprint = fingerprint,
+                sessionCookieHost = candidate.sessionCookieHost,
+                sourcePageUrl = sourcePageUrl?.trim()?.takeIf {
+                    it.startsWith("http://") || it.startsWith("https://")
+                },
+                mediaKind = com.ahdownload.domain.model.MediaKind.Audio,
+                processingMode = DownloadProcessingMode.ExtractAudio,
+                requestHeaders = candidate.requestHeaders.filterKeys { key ->
+                    !key.equals("Cookie", ignoreCase = true) &&
+                        (key.equals("User-Agent", ignoreCase = true) ||
+                            key.equals("Referer", ignoreCase = true) ||
+                            key.equals("Origin", ignoreCase = true) ||
+                            key.equals("Accept", ignoreCase = true) ||
+                            key.equals("Accept-Language", ignoreCase = true) ||
+                            key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
+                            key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
+                            key.equals("Sec-Fetch-Site", ignoreCase = true))
+                },
+            ),
+        )
+        return DownloadEnqueueResult.QUEUED
+    }
+
+    private fun fingerprint(
+        candidate: MediaCandidate,
+        processingMode: DownloadProcessingMode = DownloadProcessingMode.Direct,
+    ): String {
         val raw = listOf(
+            processingMode.name,
             candidate.sourceUrl,
             candidate.format.id,
             candidate.format.kind.name,

@@ -14,11 +14,13 @@ class SmartResultEngine {
         val video = normalized.filter { it.group == MediaResultGroup.Video }.sortedWith(videoComparator)
         val audio = normalized.filter { it.group == MediaResultGroup.Audio }.sortedWith(audioComparator)
         val other = normalized.filter { it.group == MediaResultGroup.Other }
+        val playableVideo = video.filter { it.candidate.format.hasVideo && it.candidate.format.hasAudio }
+        val presentationVideo = playableVideo.ifEmpty { video }
 
-        val bestOverall = video.firstOrNull()
+        val bestOverall = presentationVideo.firstOrNull()
             ?: audio.firstOrNull()
             ?: normalized.firstOrNull()
-        val bestQuality = video.maxWithOrNull(
+        val bestQuality = presentationVideo.maxWithOrNull(
             compareBy<MediaPresentationModel> { it.candidate.format.height ?: 0 }
                 .thenBy { it.candidate.format.fps ?: 0.0 }
                 .thenBy { it.candidate.format.bitrateKbps ?: 0 }
@@ -41,7 +43,7 @@ class SmartResultEngine {
         val finalSmallest = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.SmallestSize }
         val visibleIds = buildList {
             finalBestOverall?.candidate?.id?.let(::add)
-            addAll(video.take(maxVideo).map { it.candidate.id })
+            addAll(presentationVideo.take(maxVideo).map { it.candidate.id })
             addAll(audio.take(maxAudio).map { it.candidate.id })
         }.toSet()
 

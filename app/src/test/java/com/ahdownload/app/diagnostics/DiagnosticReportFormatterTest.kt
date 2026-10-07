@@ -99,7 +99,7 @@ class DiagnosticReportFormatterTest {
 
         val report = DiagnosticReportFormatter.format(logs)
 
-        assertTrue(report.contains("diagnostic_schema=2"))
+        assertTrue(report.contains("diagnostic_schema=3"))
         assertTrue(report.contains("version=0.1.1"))
         assertTrue(report.contains("build=debug"))
         assertTrue(report.contains("status=FAILED"))
@@ -181,6 +181,50 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("requests=2"))
         assertTrue(report.contains("candidates=2"))
         assertTrue(report.contains("rejected=2"))
+    }
+
+    @Test
+    fun latestErrorWithoutOperationIdScopesToEventsSincePreviousError() {
+        val session = "session-window"
+        val logs = listOf(
+            event(
+                time = 1_000L, sequence = "1", type = "DOWNLOAD_ERROR",
+                level = DiagnosticLevel.ERROR, reason = "old", session = session, operation = "old",
+                context = mapOf("failure_code" to "old_failure"),
+            ),
+            event(
+                time = 2_000L, sequence = "2", type = "DOWNLOAD_STARTED",
+                level = DiagnosticLevel.INFO, reason = "new", session = session, operation = "new",
+            ).copy(context = event(
+                time = 2_000L, sequence = "2", type = "DOWNLOAD_STARTED",
+                level = DiagnosticLevel.INFO, reason = "new", session = session, operation = "new",
+            ).context - "operation_id"),
+            event(
+                time = 3_000L, sequence = "3", type = "HTTP_REQUEST",
+                level = DiagnosticLevel.WARNING, reason = "403", session = session, operation = "new",
+                context = mapOf("status_code" to "403"),
+            ).copy(context = event(
+                time = 3_000L, sequence = "3", type = "HTTP_REQUEST",
+                level = DiagnosticLevel.WARNING, reason = "403", session = session, operation = "new",
+                context = mapOf("status_code" to "403"),
+            ).context - "operation_id"),
+            event(
+                time = 4_000L, sequence = "4", type = "DOWNLOAD",
+                level = DiagnosticLevel.ERROR, reason = "new_failure", session = session, operation = "new",
+            ).copy(context = event(
+                time = 4_000L, sequence = "4", type = "DOWNLOAD",
+                level = DiagnosticLevel.ERROR, reason = "new_failure", session = session, operation = "new",
+            ).context - "operation_id"),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("error_type=DOWNLOAD"))
+        assertTrue(report.contains("root_cause=HTTP_403"))
+        assertTrue(report.contains("incident_events=3"))
+        assertTrue(report.contains("status_code=403"))
+        assertTrue(report.contains("new_failure"))
+        assertTrue(!report.contains("old_failure"))
     }
 
     @Test

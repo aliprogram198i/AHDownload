@@ -7,8 +7,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 object DiagnosticReportFormatter {
-    private const val DEFAULT_MAX_EVENTS = 36
-    private const val DIAGNOSTIC_SCHEMA = 2
+    private const val DEFAULT_MAX_EVENTS = 120
+    private const val DIAGNOSTIC_SCHEMA = 3
 
     fun format(logs: List<DiagnosticLog>, maxEvents: Int = DEFAULT_MAX_EVENTS): String {
         if (logs.isEmpty()) return "AHDownload Diagnostic Report\nstatus=NO_LOGS"
@@ -22,10 +22,19 @@ object DiagnosticReportFormatter {
         }
         val anchor = latestError ?: sessionEvents.first()
         val operationId = anchor.context["operation_id"]
-        val operationEvents = if (!operationId.isNullOrBlank()) {
-            sessionEvents.filter { it.context["operation_id"] == operationId }
-        } else sessionEvents
-        val scopedEvents = operationEvents.ifEmpty { sessionEvents }
+        val scopedEvents = if (latestError == null) {
+            sessionEvents
+        } else if (!operationId.isNullOrBlank()) {
+            sessionEvents.filter { it.context["operation_id"] == operationId }.ifEmpty { sessionEvents }
+        } else {
+            val previousErrorTime = sessionEvents
+                .filter { it.level == DiagnosticLevel.ERROR && it.timestampEpochMs < anchor.timestampEpochMs }
+                .maxOfOrNull { it.timestampEpochMs }
+            sessionEvents.filter { event ->
+                event.timestampEpochMs <= anchor.timestampEpochMs &&
+                    (previousErrorTime == null || event.timestampEpochMs > previousErrorTime)
+            }
+        }
         val chronological = scopedEvents.sortedBy { it.timestampEpochMs }
         val durationMs = chronological.takeIf { it.size >= 2 }?.let {
             it.last().timestampEpochMs - it.first().timestampEpochMs
@@ -80,9 +89,11 @@ object DiagnosticReportFormatter {
             else -> rootCause
         }
 
-        val significant = chronological.filterNot {
-            it.type == "SMART_CENTER_OPTION_VISIBLE" || it.type == "SMART_CENTER_OPTION_HIDDEN"
-        }.takeLast(maxEvents)
+        val significant = chronological
+            .filterNot {
+                it.type == "SMART_CENTER_OPTION_VISIBLE" || it.type == "SMART_CENTER_OPTION_HIDDEN"
+            }
+            .takeLast(maxEvents.coerceAtLeast(1))
 
         return buildString {
             appendLine("AHDownload Diagnostic")
@@ -102,7 +113,7 @@ object DiagnosticReportFormatter {
                 "device=${anchor.context["device_manufacturer"] ?: "unknown"} " +
                     "${anchor.context["device_model"] ?: "unknown"}",
             )
-            appendLine("session=${sessionId ?: "unknown"} events=${sessionEvents.size}")
+            appendLine("session=${sessionId ?: "unknown"} session_events=${sessionEvents.size} incident_events=${scopedEvents.size}")
             operationId?.let { appendLine("operation=$it") }
             durationMs?.let { appendLine("duration_ms=$it") }
 
@@ -114,6 +125,24 @@ object DiagnosticReportFormatter {
             appendLine("root_cause=$rootCause")
             appendLine("failure=$failure")
             appendLine("action=$action")
+
+            if (latestError != null) {
+                appendLine()
+                appendLine("INCIDENT")
+                appendLine("timestamp=${formatTime(latestError.timestampEpochMs)}")
+                appendLine("error_type=${latestError.type}")
+                appendLine("reason=${latestError.reason}")
+                appendLine("operation=${latestError.operation}")
+                appendLine("what_happened=${whatHappened(rootCause, failure, latestError)}")
+                latestError.throwableType?.let { appendLine("exception_type=$it") }
+                latestError.throwableMessage?.let { appendLine("exception_message=$it") }
+                latestError.throwableStackTrace?.let {
+                    appendLine("stack_trace:")
+                    appendLine(it)
+                }
+                appendLine("error_context:")
+                formatContext(latestError.context).forEach { appendLine("  $it") }
+            }
 
             appendLine()
             appendLine("PIPELINE")
@@ -281,20 +310,45 @@ object DiagnosticReportFormatter {
     }
 
     private fun formatEvent(log: DiagnosticLog): String {
-        val contextKeys = listOf(
-            "resolver", "provider", "candidate_id", "candidate_format_id",
-            "status_code", "http_status", "content_type", "duration_ms",
-            "attempt", "attempts", "validation_result", "failure_code", "result",
-        )
-        val context = contextKeys.mapNotNull { key ->
-            log.context[key]?.takeIf(String::isNotBlank)?.let { "$key=$it" }
-        }.joinToString(" ")
+        val context = formatContext(log.context).joinToString(" ")
         val sequence = log.context["event_sequence"] ?: "-"
         val base =
             "$sequence | ${formatTime(log.timestampEpochMs)} | ${log.level} | " +
                 "${log.type} | ${log.operation} | ${log.reason}"
         return if (context.isBlank()) base else "$base | $context"
     }
+
+    private fun formatContext(context: Map<String, String>): List<String> =
+        context
+            .filterKeys { !isEnvironmentKey(it) }
+            .toSortedMap()
+            .mapNotNull { (key, value) ->
+                value.takeIf { it.isNotBlank() }?.let { "$key=$it" }
+            }
+
+    private fun isEnvironmentKey(key: String): Boolean = key in setOf(
+        "app_package", "app_version_name", "app_version_code", "app_build_type",
+        "app_target_sdk", "app_first_install_ms", "app_last_update_ms",
+        "android_sdk", "android_release", "device_manufacturer", "device_model",
+        "device_brand", "device_product", "locale", "timezone", "is_24_hour_format",
+        "process_id", "available_memory_bytes", "low_memory", "app_uptime_ms",
+        "diagnostic_session_id", "event_sequence", "process_uptime_ms",
+        "thread", "thread_id", "operation_id",
+    )
+
+    private fun whatHappened(rootCause: String, failure: String, error: DiagnosticLog): String =
+        when {
+            failure == "NO_VALID_MEDIA_SOURCE" ->
+                "تم تحليل الرابط واستخراج المرشحين، ثم رُفضت المصادر أثناء التحقق حتى انتهى المسار دون مصدر وسائط صالح."
+            rootCause == "HTTP_403" ->
+                "وصل الطلب إلى مرحلة جلب أو التحقق من المصدر، لكن الخادم رفض الطلب بـ HTTP 403، ثم انتهى المسار الحالي قبل بدء تنزيل صالح."
+            error.type == "AUDIO_EXTRACTION_FAILED" ->
+                "تم تنزيل المصدر بنجاح، ثم فشل استخراج المسار الصوتي من الملف المحلي."
+            rootCause.startsWith("HTTP_") ->
+                "تعذر إكمال العملية بسبب رفض أو خطأ HTTP أثناء الوصول إلى المصدر."
+            else ->
+                "حدث خطأ في مرحلة ${stageOf(error)}؛ التقرير يضم تسلسل الحادثة وسياقها الكامل قبل الفشل."
+        }
 
     private fun formatTime(epochMs: Long): String =
         DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(

@@ -61,6 +61,8 @@ class YouTubePlayerResponseParserTest {
         assertEquals("https://img.example.com/2.jpg", result.thumbnailUrl)
         assertEquals(2, result.candidates.size)
         assertEquals(MediaKind.Video, result.candidates[0].format.kind)
+        assertTrue(result.candidates[0].format.hasVideo)
+        assertTrue(result.candidates[0].format.hasAudio)
         assertEquals(MediaKind.Audio, result.candidates[1].format.kind)
     }
 
