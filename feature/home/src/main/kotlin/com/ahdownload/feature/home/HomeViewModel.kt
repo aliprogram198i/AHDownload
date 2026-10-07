@@ -381,8 +381,6 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(analyzing = false, resolving = true)
                 when (val resolution = resolver.resolve(link, operationId)) {
                     is ResolverResult.Success -> {
-                        val smart = SmartResultEngine().build(resolution.candidates)
-                        val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesProvider.read())
                         val updatedRecent = if (resolution.candidates.isNotEmpty()) {
                             recentLinkStore.add(
                                 url = link.normalizedUrl,
@@ -399,11 +397,8 @@ class HomeViewModel(
                             analyzing = false,
                             resolving = false,
                             resolution = resolution,
-                            selectedCandidateId = selectedId,
-                            selectedAudioCandidateId = chooseDefaultAudioCandidate(
-                                resolution.candidates,
-                                preferencesProvider.read(),
-                            ),
+                            selectedCandidateId = null,
+                            selectedAudioCandidateId = null,
                             recentLinks = updatedRecent,
                             error = if (resolution.candidates.isEmpty()) {
                                 "لم يتم العثور على وسائط قابلة للتنزيل."
@@ -459,7 +454,9 @@ class HomeViewModel(
     }
 
     fun selectCandidate(id: String) {
-        if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
+        val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
+        val format = candidate.format
+        if (format.kind != MediaKind.Video || !format.hasVideo || !format.hasAudio) return
         _uiState.value = _uiState.value.copy(
             selectedCandidateId = id,
             error = null,
@@ -469,14 +466,16 @@ class HomeViewModel(
 
     fun selectAudioCandidate(id: String) {
         val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
-        if (candidate.format.kind != MediaKind.Audio) return
+        val format = candidate.format
+        val selectable = format.kind == MediaKind.Audio ||
+            (format.kind == MediaKind.Video && format.hasVideo && format.hasAudio)
+        if (!selectable) return
         _uiState.value = _uiState.value.copy(
             selectedAudioCandidateId = id,
             error = null,
             downloadQueued = false,
         )
     }
-
     private fun downloadSelected(extractAudio: Boolean = false) {
         if (downloadJob?.isActive == true) return
 
@@ -752,81 +751,82 @@ class HomeViewModel(
     }
 
     fun downloadCandidate(id: String) {
+        val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
+        val format = candidate.format
+        if (format.kind != MediaKind.Video || !format.hasVideo || !format.hasAudio) {
+            _uiState.value = _uiState.value.copy(
+                error = "اختر خيار فيديو يحتوي على الصورة والصوت معًا.",
+                downloadQueued = false,
+            )
+            return
+        }
         downloadCandidateInternal(id, extractAudio = false)
     }
 
-    fun downloadAudio(candidateId: String? = _uiState.value.selectedAudioCandidateId) {
+    fun downloadAudio(candidateId: String? = null) {
         val state = _uiState.value
-        val candidates = state.resolution?.candidates.orEmpty()
-        if (candidates.isEmpty()) return
-
-        val smart = SmartResultEngine().build(candidates)
-        val directAudio = candidateId
-            ?.let { id -> smart.audio.firstOrNull { it.candidate.id == id } }
-            ?: smart.audio.firstOrNull()
-        if (directAudio != null) {
-            logger.log(
-                DiagnosticLevel.INFO,
-                "AUDIO_ONLY_SOURCE_SELECTED",
-                "تم اختيار أفضل مصدر صوتي مباشر للرابط",
-                "ui.smart_center.audio_only",
-                mapOf(
-                    "candidate_id" to directAudio.candidate.id,
-                    "source_mode" to "DIRECT_AUDIO_SOURCE",
-                    "quality" to directAudio.qualityLabel,
-                ),
-                null,
+        val id = candidateId?.takeIf { it.isNotBlank() }
+        if (id == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "اختر خيار الصوت أولًا.",
+                downloadQueued = false,
             )
-            downloadCandidateInternal(directAudio.candidate.id, extractAudio = false)
             return
         }
 
-        val videoSource = smart.video.firstOrNull { model ->
-            val format = model.candidate.format
-            format.hasVideo &&
-                format.hasAudio &&
-                (
-                    format.audioCodec?.startsWith("mp4a", ignoreCase = true) == true ||
-                        format.container == com.ahdownload.domain.resolver.MediaContainer.Mp4
-                )
-        }?.candidate ?: smart.video.firstOrNull { model ->
-            model.candidate.format.hasVideo && model.candidate.format.hasAudio
-        }?.candidate ?: smart.video.firstOrNull { model ->
-            model.candidate.format.hasVideo
-        }?.candidate
-        if (videoSource != null) {
-            logger.log(
-                DiagnosticLevel.INFO,
-                "AUDIO_ONLY_SOURCE_SELECTED",
-                "لا يوجد مسار صوتي مستقل؛ سيتم استخراج الصوت من مصدر الفيديو",
-                "ui.smart_center.audio_only",
-                mapOf(
-                    "candidate_id" to videoSource.id,
-                    "source_mode" to "EXTRACT_FROM_VIDEO",
-                    "source_quality" to (
-                        videoSource.format.height?.let { "${it}p" } ?: "video"
+        val candidate = state.resolution?.candidates?.firstOrNull { it.id == id }
+        if (candidate == null) {
+            _uiState.value = _uiState.value.copy(
+                error = "خيار الصوت المحدد غير متاح.",
+                downloadQueued = false,
+            )
+            return
+        }
+
+        val format = candidate.format
+        when {
+            format.kind == MediaKind.Audio -> {
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "AUDIO_ONLY_SOURCE_SELECTED",
+                    "اختار المستخدم مصدر الصوت مباشرة",
+                    "ui.smart_center.audio_only",
+                    mapOf(
+                        "candidate_id" to candidate.id,
+                        "source_mode" to "DIRECT_AUDIO_SOURCE",
+                        "quality" to (format.bitrateKbps?.let { it.toString() + " kbps" } ?: "audio"),
+                        "container" to format.container.name,
+                        "codec" to (format.audioCodec ?: "unknown"),
                     ),
-                ),
-                null,
-            )
-            downloadCandidateInternal(videoSource.id, extractAudio = true)
-            return
+                    null,
+                )
+                downloadCandidateInternal(candidate.id, extractAudio = false)
+            }
+            format.kind == MediaKind.Video && format.hasVideo && format.hasAudio -> {
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "AUDIO_ONLY_SOURCE_SELECTED",
+                    "اختار المستخدم مصدر فيديو لاستخراج الصوت منه",
+                    "ui.smart_center.audio_only",
+                    mapOf(
+                        "candidate_id" to candidate.id,
+                        "source_mode" to "EXTRACT_FROM_VIDEO",
+                        "source_quality" to (format.height?.let { it.toString() + "p" } ?: "video"),
+                        "source_audio_codec" to (format.audioCodec ?: "unknown"),
+                        "output_container" to "M4A",
+                    ),
+                    null,
+                )
+                downloadCandidateInternal(candidate.id, extractAudio = true)
+            }
+            else -> {
+                _uiState.value = _uiState.value.copy(
+                    error = "المصدر المحدد لا يمكن استخدامه لتنزيل الصوت فقط.",
+                    downloadQueued = false,
+                )
+            }
         }
-
-        logger.log(
-            DiagnosticLevel.ERROR,
-            "AUDIO_ONLY_UNAVAILABLE",
-            "تعذر تحديد مصدر يمكن تحويله إلى صوت فقط",
-            "ui.smart_center.audio_only",
-            mapOf("candidate_count" to candidates.size.toString()),
-            null,
-        )
-        _uiState.value = _uiState.value.copy(
-            error = "لا يتوفر مصدر صوتي صالح لهذا الرابط حاليًا.",
-            downloadQueued = false,
-        )
     }
-
     private fun chooseDefaultAudioCandidate(
         candidates: List<MediaCandidate>,
         preferences: DownloadPreferences,
