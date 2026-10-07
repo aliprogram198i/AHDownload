@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.core.common.DownloadPreferencesProvider
+import com.ahdownload.core.common.AudioBitratePreference
+import com.ahdownload.core.common.VideoQualityPreference
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
@@ -57,6 +60,9 @@ data class HomeUiState(
     val mode: HomeMode = HomeMode.Link,
     val showAll: Boolean = false,
     val resultFilter: ResultFilter = ResultFilter.All,
+    val batchDownloading: Boolean = false,
+    val batchCompleted: Int = 0,
+    val batchTotal: Int = 0,
 )
 
 class HomeViewModel(
@@ -65,6 +71,7 @@ class HomeViewModel(
     private val resolver: HomeResolver,
     private val recentLinkStore: RecentLinkStore,
     private val searchProvider: ContentSearchProvider,
+    private val downloadPreferencesProvider: DownloadPreferencesProvider,
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
@@ -75,6 +82,7 @@ class HomeViewModel(
     private var analysisJob: Job? = null
     private var searchJob: Job? = null
     private var downloadJob: Job? = null
+    private var batchJob: Job? = null
 
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
@@ -274,6 +282,7 @@ class HomeViewModel(
                                 url = link.normalizedUrl,
                                 title = resolution.title,
                                 platform = link.platform.name,
+                                thumbnailUrl = resolution.thumbnailUrl,
                             )
                             recentLinkStore.list()
                         } else {
@@ -565,6 +574,87 @@ class HomeViewModel(
         }
     }
 
+    fun downloadBatch(ids: List<String>) {
+        if (batchJob?.isActive == true || downloadJob?.isActive == true) return
+        val uniqueIds = ids.distinct().filter { id ->
+            _uiState.value.resolution?.candidates?.any { it.id == id } == true
+        }
+        if (uniqueIds.isEmpty()) return
+
+        batchJob = viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(
+                batchDownloading = true,
+                batchCompleted = 0,
+                batchTotal = uniqueIds.size,
+                error = null,
+                downloadQueued = false,
+            )
+            try {
+                for ((index, id) in uniqueIds.withIndex()) {
+                    selectCandidate(id)
+                    downloadSelected()
+                    downloadJob?.join()
+                    _uiState.value = _uiState.value.copy(batchCompleted = index + 1)
+                }
+            } finally {
+                _uiState.value = _uiState.value.copy(
+                    batchDownloading = false,
+                )
+            }
+        }
+    }
+
+    private fun preferredCandidateId(
+        candidates: List<MediaCandidate>,
+        detectedKind: MediaKind,
+    ): String? {
+        val preferences = downloadPreferencesProvider.current()
+        val videos = candidates.filter { it.format.kind == MediaKind.Video }
+        val audio = candidates.filter { it.format.kind == MediaKind.Audio }
+
+        return when {
+            detectedKind == MediaKind.Audio -> preferredAudio(audio, preferences.audioBitrate.bitrateKbps)
+            detectedKind == MediaKind.Video -> preferredVideo(videos, preferences.videoQuality.height)
+            preferences.videoQuality.height != null && videos.isNotEmpty() ->
+                preferredVideo(videos, preferences.videoQuality.height)
+            preferences.audioBitrate.bitrateKbps != null && audio.isNotEmpty() && videos.isEmpty() ->
+                preferredAudio(audio, preferences.audioBitrate.bitrateKbps)
+            else -> null
+        }
+    }
+
+    private fun preferredVideo(
+        candidates: List<MediaCandidate>,
+        target: Int?,
+    ): String? {
+        if (target == null) return null
+        return candidates
+            .sortedWith(
+                compareByDescending<MediaCandidate> { (it.format.height ?: 0) <= target }
+                    .thenByDescending { minOf(it.format.height ?: 0, target) }
+                    .thenByDescending { it.format.height ?: 0 }
+                    .thenByDescending { it.format.hasAudio }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 }
+            )
+            .firstOrNull()
+            ?.id
+    }
+
+    private fun preferredAudio(
+        candidates: List<MediaCandidate>,
+        target: Int?,
+    ): String? {
+        if (target == null) return null
+        return candidates
+            .sortedWith(
+                compareByDescending<MediaCandidate> { (it.format.bitrateKbps ?: 0) <= target }
+                    .thenByDescending { minOf(it.format.bitrateKbps ?: 0, target) }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 }
+            )
+            .firstOrNull()
+            ?.id
+    }
+
     fun downloadCandidate(id: String) {
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         selectCandidate(id)
@@ -585,6 +675,7 @@ class HomeViewModel(
         private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
+        private val downloadPreferencesProvider: DownloadPreferencesProvider,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -597,6 +688,7 @@ class HomeViewModel(
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
+                downloadPreferencesProvider = downloadPreferencesProvider,
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }

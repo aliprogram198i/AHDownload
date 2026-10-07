@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
@@ -68,9 +69,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.text.format.DateUtils
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
@@ -78,6 +81,7 @@ import coil3.request.ImageRequest
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.core.common.UiTraceLogger
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
@@ -104,10 +108,11 @@ fun HomeRoute(
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
+    downloadPreferencesProvider: DownloadPreferencesProvider,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
-        HomeViewModel.Factory(onDownloadRequested, logger, context)
+        HomeViewModel.Factory(onDownloadRequested, logger, context, downloadPreferencesProvider)
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -126,6 +131,7 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
+        onDownloadBatch = viewModel::downloadBatch,
         onModeChanged = viewModel::setMode,
         onToggleShowAll = viewModel::toggleShowAll,
         onFilterChanged = viewModel::setResultFilter,
@@ -150,6 +156,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
+    onDownloadBatch: (List<String>) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
     onToggleShowAll: () -> Unit,
     onFilterChanged: (ResultFilter) -> Unit,
@@ -182,6 +189,9 @@ private fun HomeScreen(
         state.showAll,
         state.resultFilter,
         state.downloadQueued,
+        state.batchDownloading,
+        state.batchCompleted,
+        state.batchTotal,
     ) {
         val components = buildList {
             add("topbar")
@@ -201,6 +211,7 @@ private fun HomeScreen(
             }
             if (state.error != null) add("error_card")
             if (state.downloadQueued) add("download_success")
+            if (state.batchDownloading) add("batch_download_progress")
         }.joinToString(",")
 
         uiTraceLogger.snapshot(
@@ -481,7 +492,8 @@ private fun HomeScreen(
                                 },
                                 label = { Text("ابحث في YouTube") },
                                 placeholder = { Text("مثال: football highlights") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { if (state.searchQuery.isNotBlank() && !state.searching) onSearch() }),
                             )
                             Button(
                                 onClick = {
@@ -659,6 +671,38 @@ private fun HomeScreen(
                         onSelect = onFilterChanged,
                         onToggleAll = { onToggleShowAll() },
                     )
+                }
+
+                item {
+                    OutlinedButton(
+                        enabled = !state.batchDownloading && filteredResults.isNotEmpty(),
+                        onClick = {
+                            val ids = buildList {
+                                val best = resultSet.bestOverall
+                                val includeBest = best != null && (
+                                    state.resultFilter == ResultFilter.All ||
+                                        (state.resultFilter == ResultFilter.Video && best.group == MediaResultGroup.Video) ||
+                                        (state.resultFilter == ResultFilter.Audio && best.group == MediaResultGroup.Audio) ||
+                                        (state.resultFilter == ResultFilter.Image && best.candidate.format.kind == MediaKind.Image) ||
+                                        (state.resultFilter == ResultFilter.Other && best.group == MediaResultGroup.Other)
+                                )
+                                if (includeBest) best?.candidate?.id?.let(::add)
+                                addAll(filteredResults.map { it.candidate.id })
+                            }.distinct()
+                            onDownloadBatch(ids)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Download, contentDescription = null)
+                        Spacer(Modifier.size(7.dp))
+                        Text(
+                            if (state.batchDownloading) {
+                                "جاري التنزيل " + state.batchCompleted + "/" + state.batchTotal
+                            } else {
+                                "تنزيل العناصر المكتشفة دفعة واحدة"
+                            },
+                        )
+                    }
                 }
 
                 if (filteredResults.isNotEmpty()) {
@@ -877,20 +921,36 @@ private fun RecentLinksCard(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            link.title ?: link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold,
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MediaThumbnail(
+                            url = link.thumbnailUrl,
+                            contentDescription = "صورة مصغرة: " + (link.title ?: link.url),
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 50.dp)
+                                .clip(RoundedCornerShape(10.dp)),
                         )
-                        Text(
-                            platformLabel(link.platform) + " · " + link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                link.title ?: link.url,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                platformLabel(link.platform) + " · " + relativeRecentTime(link.updatedAtEpochMs),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -1275,6 +1335,8 @@ private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContai
         com.ahdownload.domain.resolver.MediaContainer.Avi -> "AVI"
         com.ahdownload.domain.resolver.MediaContainer.Unknown -> "صيغة غير معروفة"
     }
+
+private fun relativeRecentTime(epochMs: Long): String = DateUtils.getRelativeTimeSpanString(epochMs, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
 
 private fun platformLabel(platform: String): String = when (platform) {
     "YouTube" -> "YouTube"
