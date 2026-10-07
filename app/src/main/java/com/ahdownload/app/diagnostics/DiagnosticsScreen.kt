@@ -7,14 +7,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,20 +29,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.core.common.DiagnosticLog
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.rememberUiTraceContext
-import com.ahdownload.core.common.DiagnosticLevel
-import com.ahdownload.core.common.DiagnosticLog
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,17 +54,34 @@ fun DiagnosticsRoute(
     var logs by remember { mutableStateOf(logger.list()) }
     val clipboard = LocalClipboardManager.current
     val uiContext = rememberUiTraceContext()
+
     LaunchedEffect(Unit) { logs = logger.list() }
     LaunchedEffect(logs) {
+        val latestError = logs.firstOrNull { it.level == DiagnosticLevel.ERROR }
         uiTraceLogger.snapshot(
             screen = "DIAGNOSTICS",
             component = "DiagnosticsScreen",
-            components = "topbar,copy_button,clear_button,refresh_button,summary,diagnostic_list",
-            stateSummary = "logs=" + logs.size + ";errors=" + logs.count { it.level == DiagnosticLevel.ERROR } + ";warnings=" + logs.count { it.level == DiagnosticLevel.WARNING },
+            components = "topbar,latest_error_summary,incident_report,refresh_button,copy_button,clear_button",
+            stateSummary = "latest_error=" + (latestError != null) + ";stored_events=" + logs.size,
             context = uiContext,
         )
     }
-    DiagnosticsScreen(logs, clipboard, uiTraceLogger, onBack, { uiTraceLogger.interaction("DIAGNOSTICS", "refresh_button", "refresh"); logs = logger.list() }, { uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear"); logger.clear(); logs = emptyList() })
+
+    DiagnosticsScreen(
+        logs = logs,
+        clipboard = clipboard,
+        uiTraceLogger = uiTraceLogger,
+        onBack = onBack,
+        onRefresh = {
+            uiTraceLogger.interaction("DIAGNOSTICS", "refresh_button", "refresh")
+            logs = logger.list()
+        },
+        onClear = {
+            uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear")
+            logger.clear()
+            logs = emptyList()
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,118 +94,121 @@ private fun DiagnosticsScreen(
     onRefresh: () -> Unit,
     onClear: () -> Unit,
 ) {
-    val exportText = remember(logs) { DiagnosticReportFormatter.format(logs) }
-    val errors = logs.count { it.level == DiagnosticLevel.ERROR }
-    val warnings = logs.count { it.level == DiagnosticLevel.WARNING }
-    val infos = logs.count { it.level == DiagnosticLevel.INFO }
-    val sessions = logs.mapNotNull { it.context["diagnostic_session_id"] }.distinct().size
-    val operations = logs.mapNotNull { it.operation.takeIf(String::isNotBlank) }.distinct().size
+    val latestError = remember(logs) { logs.firstOrNull { it.level == DiagnosticLevel.ERROR } }
+    val report = remember(logs) { DiagnosticReportFormatter.format(logs, maxEvents = 120) }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("سجل الأخطاء والتشخيص") },
+                title = { Text("آخر خطأ") },
                 navigationIcon = {
-                    IconButton(onClick = { uiTraceLogger.interaction("DIAGNOSTICS", "back_button", "back"); onBack() }) {
+                    IconButton(onClick = {
+                        uiTraceLogger.interaction("DIAGNOSTICS", "back_button", "back")
+                        onBack()
+                    }) {
                         Text("‹", style = MaterialTheme.typography.headlineMedium)
                     }
                 },
                 actions = {
                     IconButton(
-                        onClick = { uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_full_report"); clipboard.setText(AnnotatedString(exportText)) },
-                        enabled = logs.isNotEmpty(),
+                        onClick = {
+                            uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_latest_incident")
+                            clipboard.setText(AnnotatedString(report))
+                        },
+                        enabled = latestError != null,
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل الكامل")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ تفاصيل آخر خطأ")
+                    }
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                     }
                     IconButton(onClick = onClear, enabled = logs.isNotEmpty()) {
-                        Icon(Icons.Rounded.DeleteSweep, contentDescription = "مسح السجل")
+                        Icon(Icons.Rounded.DeleteSweep, contentDescription = "مسح التشخيص")
                     }
                 },
             )
         },
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(
-                    "سجل مركزي واحد لكل عمليات التطبيق. تُحفظ الأحداث محليًا مع إخفاء بيانات الاعتماد وعدم حفظ استعلامات الروابط.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (logs.isNotEmpty()) {
-                    Text(
-                        "الإجمالي: ${logs.size}  •  أخطاء: $errors  •  تحذيرات: $warnings  •  معلومات: $infos",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    Text(
-                        "الجلسات: $sessions  •  العمليات: $operations",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (logs.isNotEmpty()) {
-                    Button(
-                        onClick = onRefresh,
-                        modifier = Modifier.padding(top = 8.dp),
-                    ) { Text("تحديث") }
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (latestError != null) MaterialTheme.colorScheme.errorContainer
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (latestError != null) Icons.Rounded.ErrorOutline else Icons.Rounded.Warning,
+                            contentDescription = null,
+                            tint = if (latestError != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                if (latestError != null) "تم التقاط آخر حادثة فشل" else "لا توجد أخطاء مسجلة",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                if (latestError != null) "يُعرض هنا الخطأ الأخير فقط، مع كل الأحداث المرتبطة به قبل نقطة الفشل."
+                                else "سجل الأحداث الداخلي موجود للتشخيص، لكن لا توجد حادثة خطأ أخيرة لعرضها.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
-            if (logs.isEmpty()) {
-                item { Text("لا توجد أخطاء مسجلة حاليًا.", style = MaterialTheme.typography.titleMedium) }
-            }
-            items(logs, key = { it.id }) { log ->
-                DiagnosticCard(log, clipboard)
+
+            if (latestError != null) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text("ملخص الخطأ", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(latestError.type, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text("السبب: " + latestError.reason)
+                            Text("العملية: " + latestError.operation, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            latestError.context["stage"]?.let { Text("المرحلة: " + it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            latestError.context["operation_id"]?.let { Text("معرّف العملية: " + it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text("التقرير الكامل للحادثة", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            SelectionContainer {
+                                Text(
+                                    report,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
-
-@Composable
-private fun DiagnosticCard(log: DiagnosticLog, clipboard: ClipboardManager) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Icon(
-                    if (log.level == DiagnosticLevel.ERROR) Icons.Rounded.ErrorOutline else Icons.Rounded.Info,
-                    contentDescription = null,
-                )
-                Column(
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(log.type, style = MaterialTheme.typography.titleMedium)
-                    Text(formatTime(log.timestampEpochMs), style = MaterialTheme.typography.labelMedium)
-                }
-                IconButton(
-                    onClick = { clipboard.setText(AnnotatedString(formatDiagnostic(log))) },
-                ) {
-                    Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الخطأ")
-                }
-            }
-            Text("السبب: " + log.reason)
-            Text("العملية: " + log.operation, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            log.context.forEach { (key, value) ->
-                Text(key + ": " + value, style = MaterialTheme.typography.bodySmall)
-            }
-            log.throwableType?.let { Text("Exception: " + it, style = MaterialTheme.typography.bodySmall) }
-            log.throwableMessage?.let { Text("تفاصيل: " + it, style = MaterialTheme.typography.bodySmall) }
-            log.throwableStackTrace?.let {
-                Text("StackTrace:", style = MaterialTheme.typography.labelMedium)
-                Text(it, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}
-
-private fun formatDiagnostic(log: DiagnosticLog): String =
-    DiagnosticReportFormatter.format(listOf(log))
-
-private fun formatTime(epochMs: Long): String =
-    DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(
-        Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()),
-    )
