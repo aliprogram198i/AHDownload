@@ -119,8 +119,14 @@ fun HomeRoute(
     val context = LocalContext.current
     val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
     val favoriteScope = rememberCoroutineScope()
-    val factory = remember(onDownloadRequested, logger, context) {
-        HomeViewModel.Factory(onDownloadRequested, logger, context, preferencesProvider)
+    val factory = remember(onDownloadRequested, onAudioOnlyRequested, logger, context, preferencesProvider) {
+        HomeViewModel.Factory(
+            onDownloadRequested = onDownloadRequested,
+            onAudioOnlyRequested = onAudioOnlyRequested,
+            logger = logger,
+            context = context,
+            preferencesProvider = preferencesProvider,
+        )
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -1082,19 +1088,26 @@ private fun UnifiedDownloadResultCard(
     validatingCandidateId: String?,
     onSelect: (MediaPresentationModel) -> Unit,
     onDownload: (String) -> Unit,
+    onDownloadAudio: () -> Unit,
 ) {
     var videoOptionsExpanded by remember { mutableStateOf(false) }
-    var audioOptionsExpanded by remember { mutableStateOf(false) }
 
-    val selectedVideo = primaryOptions.firstOrNull { it.candidate.id == selectedCandidateId }
-        ?: primaryOptions.firstOrNull()
-    val selectedAudio = audioOptions.firstOrNull { it.candidate.id == selectedCandidateId }
-        ?: audioOptions.firstOrNull()
-
-    val hasVideo = primaryOptions.any { it.candidate.format.hasVideo }
-    val hasAudio = audioOptions.isNotEmpty()
-    val showVideoSection = hasVideo || kind == MediaKind.Video
-    val showAudioSection = hasAudio || kind == MediaKind.Audio
+    val videoOptions = primaryOptions.filter {
+        it.candidate.format.kind == MediaKind.Video &&
+            it.candidate.format.hasVideo &&
+            it.candidate.format.hasAudio
+    }
+    val rawVideoAvailable = primaryOptions.any {
+        it.candidate.format.kind == MediaKind.Video &&
+            it.candidate.format.hasVideo
+    }
+    val selectedVideo = videoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
+        ?: videoOptions.firstOrNull()
+    val bestAudio = audioOptions.firstOrNull()
+    val showVideoSection = rawVideoAvailable || kind == MediaKind.Video
+    val showAudioSection = kind == MediaKind.Video ||
+        kind == MediaKind.Audio ||
+        bestAudio != null
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1160,41 +1173,52 @@ private fun UnifiedDownloadResultCard(
 
             AHStatusPill("جاهز للتنزيل", success = true)
 
-            if (showVideoSection && selectedVideo != null) {
-                MediaDownloadFormatSection(
-                    title = "الفيديو",
-                    icon = Icons.Rounded.VideoFile,
-                    selected = selectedVideo,
-                    options = primaryOptions,
-                    expanded = videoOptionsExpanded,
-                    validatingCandidateId = validatingCandidateId,
-                    onExpand = { videoOptionsExpanded = true },
-                    onDismiss = { videoOptionsExpanded = false },
-                    onSelect = {
-                        videoOptionsExpanded = false
-                        onSelect(it)
-                    },
-                    onDownload = onDownload,
-                    buttonLabel = "تحميل الفيديو",
-                )
+            if (showVideoSection) {
+                if (selectedVideo != null) {
+                    MediaDownloadFormatSection(
+                        title = "الفيديو",
+                        icon = Icons.Rounded.VideoFile,
+                        selected = selectedVideo,
+                        options = videoOptions,
+                        expanded = videoOptionsExpanded,
+                        validatingCandidateId = validatingCandidateId,
+                        onExpand = { videoOptionsExpanded = true },
+                        onDismiss = { videoOptionsExpanded = false },
+                        onSelect = {
+                            videoOptionsExpanded = false
+                            onSelect(it)
+                        },
+                        onDownload = onDownload,
+                        buttonLabel = "تحميل الفيديو",
+                    )
+                } else {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.VideoFile, contentDescription = null)
+                            Text(
+                                "لا تتوفر حاليًا جودة فيديو تجمع الصورة والصوت في مصدر واحد.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
 
-            if (showAudioSection && selectedAudio != null) {
-                MediaDownloadFormatSection(
-                    title = "الصوت",
-                    icon = Icons.Rounded.AudioFile,
-                    selected = selectedAudio,
-                    options = audioOptions,
-                    expanded = audioOptionsExpanded,
+            if (showAudioSection) {
+                AudioOnlyDownloadSection(
+                    bestAudio = bestAudio,
+                    hasVideoSource = rawVideoAvailable,
                     validatingCandidateId = validatingCandidateId,
-                    onExpand = { audioOptionsExpanded = true },
-                    onDismiss = { audioOptionsExpanded = false },
-                    onSelect = {
-                        audioOptionsExpanded = false
-                        onSelect(it)
-                    },
-                    onDownload = onDownload,
-                    buttonLabel = "تحميل الصوت",
+                    onDownload = onDownloadAudio,
                 )
             }
         }
@@ -1202,19 +1226,18 @@ private fun UnifiedDownloadResultCard(
 }
 
 @Composable
-private fun MediaDownloadFormatSection(
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    selected: MediaPresentationModel,
-    options: List<MediaPresentationModel>,
-    expanded: Boolean,
+private fun AudioOnlyDownloadSection(
+    bestAudio: MediaPresentationModel?,
+    hasVideoSource: Boolean,
     validatingCandidateId: String?,
-    onExpand: () -> Unit,
-    onDismiss: () -> Unit,
-    onSelect: (MediaPresentationModel) -> Unit,
-    onDownload: (String) -> Unit,
-    buttonLabel: String,
+    onDownload: () -> Unit,
 ) {
+    val detail = when {
+        bestAudio != null -> "أفضل جودة صوتية متاحة · " + bestAudio.qualityLabel
+        hasVideoSource -> "استخراج الصوت من الفيديو · M4A"
+        else -> "الصوت فقط"
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -1223,99 +1246,36 @@ private fun MediaDownloadFormatSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(icon, contentDescription = null)
+            Icon(Icons.Rounded.AudioFile, contentDescription = null)
             Text(
-                title,
+                "الصوت",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
-            if (selected.recommendation != MediaResultRecommendation.None) {
-                AHStatusPill(
-                    recommendationLabel(selected) ?: "",
-                    success = true,
-                )
-            }
         }
 
-        Box(modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(
-                enabled = options.size > 1 && validatingCandidateId == null,
-                onClick = onExpand,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics {
-                        contentDescription = "اختيار صيغة " + title
-                    },
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.Start,
-                ) {
-                    Text(
-                        unifiedOptionLabel(selected),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        unifiedOptionDetail(selected),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
-            }
-
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = onDismiss,
-                modifier = Modifier
-                    .widthIn(min = 220.dp, max = 360.dp)
-                    .heightIn(max = 360.dp),
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = {
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(
-                                    unifiedOptionLabel(option),
-                                    fontWeight = if (option.candidate.id == selected.candidate.id) {
-                                        FontWeight.Bold
-                                    } else {
-                                        FontWeight.Medium
-                                    },
-                                )
-                                Text(
-                                    unifiedOptionDetail(option),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        },
-                        onClick = { onSelect(option) },
-                    )
-                }
-            }
-        }
+        Text(
+            detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         Button(
             enabled = validatingCandidateId == null,
-            onClick = { onDownload(selected.candidate.id) },
+            onClick = onDownload,
             modifier = Modifier
                 .fillMaxWidth()
                 .semantics {
-                    contentDescription = buttonLabel + " " + (selected.sizeLabel ?: "")
+                    contentDescription = "تحميل الصوت فقط"
                 },
         ) {
-            Icon(Icons.Rounded.Download, contentDescription = null)
+            Icon(Icons.Rounded.AudioFile, contentDescription = null)
             Spacer(Modifier.size(8.dp))
             Text(
-                if (validatingCandidateId == selected.candidate.id) {
-                    "جارٍ التحقق من المصدر..."
+                if (validatingCandidateId != null) {
+                    "جارٍ تجهيز الصوت..."
                 } else {
-                    buttonLabel + (selected.sizeLabel?.let { " · " + it } ?: "")
+                    "تحميل الصوت"
                 },
             )
         }
