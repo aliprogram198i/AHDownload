@@ -2,7 +2,6 @@ package com.ahdownload.app.diagnostics
 
 import android.content.Context
 import com.ahdownload.app.BuildConfig
-import com.ahdownload.core.common.DiagnosticEnvironment
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.UiTraceEvent
 import com.ahdownload.core.common.UiTraceLogger
