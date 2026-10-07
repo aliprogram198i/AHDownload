@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -88,6 +89,7 @@ import com.ahdownload.domain.resolver.MediaPresentationModel
 import com.ahdownload.domain.resolver.MediaResultGroup
 import com.ahdownload.domain.resolver.MediaResultRecommendation
 import com.ahdownload.domain.resolver.SmartResultEngine
+import com.ahdownload.domain.search.ContentSearchItem
 
 @Composable
 fun HomeRoute(
@@ -129,6 +131,11 @@ fun HomeRoute(
     )
 }
 
+private enum class HomeMode {
+    Link,
+    Search,
+}
+
 private enum class ResultFilter(val label: String) {
     All("الكل"),
     Video("فيديو"),
@@ -146,6 +153,10 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
+    onEnterSearchMode: () -> Unit,
+    onSearchQueryChanged: (String) -> Unit,
+    onSearch: () -> Unit,
+    onSearchResultSelected: (ContentSearchItem) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
     onOpenUiDiagnostics: () -> Unit,
@@ -154,12 +165,19 @@ private fun HomeScreen(
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
+    var mode by remember { mutableStateOf(HomeMode.Link) }
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
     var showAll by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf(ResultFilter.All) }
     val uiContext = rememberUiTraceContext()
+
+    LaunchedEffect(mode) {
+        if (mode == HomeMode.Search) {
+            onEnterSearchMode()
+        }
+    }
 
     LaunchedEffect(
         state.url,
@@ -329,6 +347,27 @@ private fun HomeScreen(
             }
 
             item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = mode == HomeMode.Link,
+                        onClick = { mode = HomeMode.Link },
+                        label = { Text("رابط") },
+                        leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
+                    )
+                    FilterChip(
+                        selected = mode == HomeMode.Search,
+                        onClick = {
+                            mode = HomeMode.Search
+                            onEnterSearchMode()
+                        },
+                        label = { Text("بحث YouTube") },
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    )
+                }
+            }
+
+            if (mode == HomeMode.Link) {
+            item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -416,6 +455,116 @@ private fun HomeScreen(
                 )
             }
 
+
+            } else {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                "ابحث عن فيديو",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            OutlinedTextField(
+                                value = state.searchQuery,
+                                onValueChange = onSearchQueryChanged,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics { contentDescription = "حقل البحث في YouTube" },
+                                singleLine = true,
+                                leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                                trailingIcon = {
+                                    if (state.searchQuery.isNotBlank()) {
+                                        IconButton(onClick = { onSearchQueryChanged("") }) {
+                                            Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
+                                        }
+                                    }
+                                },
+                                label = { Text("ابحث في YouTube") },
+                                placeholder = { Text("مثال: football highlights") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                            )
+                            Button(
+                                onClick = {
+                                    uiTraceLogger.interaction("HOME", "search_button", "search_youtube")
+                                    onSearch()
+                                },
+                                enabled = state.searchQuery.isNotBlank() && !state.searching,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Icon(Icons.Rounded.Search, contentDescription = null)
+                                Spacer(Modifier.size(6.dp))
+                                Text(if (state.searching) "جاري البحث..." else "بحث")
+                            }
+                        }
+                    }
+                }
+
+                if (state.searching) {
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(26.dp))
+                        }
+                    }
+                }
+
+                state.searchError?.let { error ->
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    error,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                                OutlinedButton(
+                                    enabled = state.searchQuery.isNotBlank() && !state.searching,
+                                    onClick = onSearch,
+                                ) {
+                                    Text("إعادة البحث")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (state.searchResults.isNotEmpty()) {
+                    item {
+                        Text(
+                            "نتائج البحث",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    items(
+                        state.searchResults,
+                        key = { "search-" + it.id },
+                    ) { item ->
+                        SearchResultCard(
+                            item = item,
+                            onClick = {
+                                uiTraceLogger.interaction("HOME", "search_result", "open_video")
+                                mode = HomeMode.Link
+                                onSearchResultSelected(item)
+                            },
+                        )
+                    }
+                }
+            }
+
             if (state.analyzing || state.resolving) {
                 item {
                     Card(
@@ -449,6 +598,7 @@ private fun HomeScreen(
             }
 
             if (
+                mode == HomeMode.Link &&
                 state.url.isBlank() &&
                 state.resolution == null &&
                 !state.analyzing &&
@@ -464,7 +614,7 @@ private fun HomeScreen(
                 }
             }
 
-            state.result?.let { link ->
+            if (mode == HomeMode.Link) state.result?.let { link ->
                 item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         AHStatusPill(platformLabel(link.platform.name))
@@ -475,7 +625,7 @@ private fun HomeScreen(
                 }
             }
 
-            state.resolution?.let { resolution ->
+            if (mode == HomeMode.Link) state.resolution?.let { resolution ->
                 item {
                     MediaPreviewCard(
                         title = resolution.title ?: "محتوى الوسائط",
@@ -636,6 +786,59 @@ private fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultCard(
+    item: ContentSearchItem,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            MediaThumbnail(
+                url = item.thumbnailUrl,
+                contentDescription = "الصورة المصغرة: " + item.title,
+                modifier = Modifier
+                    .size(width = 112.dp, height = 70.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    item.title,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                item.channelLabel?.let {
+                    Text(
+                        it,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item.durationLabel?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

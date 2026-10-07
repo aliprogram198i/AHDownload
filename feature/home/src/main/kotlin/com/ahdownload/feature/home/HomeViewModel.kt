@@ -11,8 +11,12 @@ import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.domain.resolver.OkHttpTextClient
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.SmartResultEngine
+import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
+import com.ahdownload.domain.search.ContentSearchItem
+import com.ahdownload.domain.search.ContentSearchProvider
 import com.ahdownload.domain.validation.CandidateValidationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -33,6 +37,10 @@ data class HomeUiState(
     val error: String? = null,
     val downloadQueued: Boolean = false,
     val recentLinks: List<RecentLink> = emptyList(),
+    val searchQuery: String = "",
+    val searching: Boolean = false,
+    val searchResults: List<ContentSearchItem> = emptyList(),
+    val searchError: String? = null,
 )
 
 class HomeViewModel(
@@ -40,6 +48,7 @@ class HomeViewModel(
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
     private val resolver: HomeResolver,
     private val recentLinkStore: RecentLinkStore,
+    private val searchProvider: ContentSearchProvider,
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
@@ -48,15 +57,98 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
+    private var searchJob: Job? = null
     private var downloadJob: Job? = null
 
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
         analysisJob = null
+        searchJob?.cancel()
+        searchJob = null
         _uiState.value = HomeUiState(
             url = value,
             recentLinks = _uiState.value.recentLinks,
+            searchQuery = _uiState.value.searchQuery,
         )
+    }
+
+    fun searchContent(query: String = _uiState.value.searchQuery) {
+        val normalized = query.trim()
+        if (normalized.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                searching = false,
+                searchResults = emptyList(),
+                searchError = "اكتب كلمة أو جملة للبحث أولًا.",
+            )
+            return
+        }
+
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            searchQuery = normalized,
+            searching = true,
+            searchResults = emptyList(),
+            searchError = null,
+        )
+
+        searchJob = viewModelScope.launch {
+            try {
+                val results = searchProvider.search(normalized)
+                _uiState.value = _uiState.value.copy(
+                    searching = false,
+                    searchResults = results,
+                    searchError = if (results.isEmpty()) "لم نجد نتائج مطابقة حاليًا." else null,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                logger.log(
+                    DiagnosticLevel.WARNING,
+                    "SEARCH_FAILED",
+                    error.message ?: error::class.simpleName.orEmpty(),
+                    "home.search",
+                    mapOf("query_length" to normalized.length.toString()),
+                    error,
+                )
+                _uiState.value = _uiState.value.copy(
+                    searching = false,
+                    searchResults = emptyList(),
+                    searchError = "تعذر تنفيذ البحث الآن. أعد المحاولة.",
+                )
+            }
+        }
+    }
+
+    fun enterSearchMode() {
+        analysisJob?.cancel()
+        analysisJob = null
+        _uiState.value = _uiState.value.copy(
+            url = "",
+            analyzing = false,
+            resolving = false,
+            result = null,
+            resolution = null,
+            selectedCandidateId = null,
+            validatingCandidateId = null,
+            error = null,
+            downloadQueued = false,
+        )
+    }
+
+    fun onSearchQueryChanged(value: String) {
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            searchQuery = value,
+            searchResults = if (value == _uiState.value.searchQuery) _uiState.value.searchResults else emptyList(),
+            searchError = null,
+        )
+    }
+
+    fun openSearchResult(item: ContentSearchItem) {
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(searchQuery = item.title)
+        onUrlChanged(item.url)
+        analyze()
     }
 
     fun selectRecentLink(link: RecentLink) {
@@ -448,6 +540,7 @@ class HomeViewModel(
                     browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
+                searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
