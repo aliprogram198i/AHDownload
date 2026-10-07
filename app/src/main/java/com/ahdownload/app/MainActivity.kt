@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
+import com.ahdownload.app.diagnostics.UiDiagnosticsRoute
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
@@ -64,7 +65,7 @@ class MainActivity : ComponentActivity() {
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl)
                     },
                     onOpenYouTubeSession = ::openYouTubeSession,
-                    onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
+                    uiTraceLogger = uiTraceLogger,
                     downloadRepository = downloadRepository,
                     onPauseDownload = downloadWorkScheduler::pause,
                     onResumeDownload = downloadWorkScheduler::resume,
