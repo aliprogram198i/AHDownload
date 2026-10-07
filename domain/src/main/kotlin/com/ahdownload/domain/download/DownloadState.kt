@@ -7,6 +7,7 @@ sealed interface DownloadState {
         val bytesDownloaded: Long,
         val totalBytes: Long?,
     ) : DownloadState
+    data object Paused : DownloadState
     data object Completed : DownloadState
     data class Failed(val reason: DownloadFailure) : DownloadState
     data object Cancelled : DownloadState
