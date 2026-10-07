@@ -235,18 +235,22 @@ jobs:
 
           test -n "$BADGING"
 
-          # Validate the exact package and SDK markers from the already-verified
-          # aapt2 badging output. Fixed-string checks avoid brittle line
-          # extraction while preserving strict APK compatibility validation.
-          printf '%s\n' "$BADGING" | grep -Fq "name='com.ahdownload.app'"
-          printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'24'"
-          printf '%s\n' "$BADGING" | grep -Fq "targetSdkVersion:'36'"
+          # Parse the already-verified aapt2 badging output explicitly.
+          # This avoids relying on exact quoting/formatting around the markers
+          # while keeping the compatibility check strict and deterministic.
+          PACKAGE_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*name='\\([^']*\\)'.*/\\1/p" | head -n1)"
+          MIN_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\\([^']*\\)'.*/\\1/p" | head -n1)"
+          TARGET_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\\([^']*\\)'.*/\\1/p" | head -n1)"
+
+          test "$PACKAGE_NAME" = "com.ahdownload.app"
+          test "$MIN_SDK" = "24"
+          test "$TARGET_SDK" = "36"
 
           cp "$BADGING_FILE" apk-compatibility.txt
 
-          echo "Confirmed minSdkVersion=24 (Android 7.0 Nougat)"
-          echo "Confirmed targetSdkVersion=36"
-          echo "Confirmed applicationId=com.ahdownload.app"
+          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"
+          echo "Confirmed targetSdkVersion=$TARGET_SDK"
+          echo "Confirmed applicationId=$PACKAGE_NAME"
 
       - name: Package verification outputs
         run: |
