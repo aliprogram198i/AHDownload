@@ -155,21 +155,22 @@ fun HomeRoute(
         favoriteItems = favorites,
         currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
         onToggleFavorite = {
-            val result = state.result ?: return@HomeRoute
-            val url = result.normalizedUrl
-            val key = FavoriteKey.fromUrl(url)
-            val existing = favorites.any { FavoriteKey.fromUrl(it.url) == key }
-            favoriteScope.launch {
-                favoriteRepository.setFavorite(
-                    FavoriteItem(
-                        id = key,
-                        url = url,
-                        title = state.resolution?.title,
-                        thumbnailUrl = state.resolution?.thumbnailUrl,
-                        createdAtEpochMs = System.currentTimeMillis(),
-                    ),
-                    favorite = !existing,
-                )
+            state.result?.let { result ->
+                val url = result.normalizedUrl
+                val key = FavoriteKey.fromUrl(url)
+                val existing = favorites.any { FavoriteKey.fromUrl(it.url) == key }
+                favoriteScope.launch {
+                    favoriteRepository.setFavorite(
+                        FavoriteItem(
+                            id = key,
+                            url = url,
+                            title = state.resolution?.title,
+                            thumbnailUrl = state.resolution?.thumbnailUrl,
+                            createdAtEpochMs = System.currentTimeMillis(),
+                        ),
+                        favorite = !existing,
+                    )
+                }
             }
         },
         onFavoriteSelected = { item ->
@@ -1096,7 +1097,7 @@ private fun MediaPreviewCard(
                 },
             ) {
                 Icon(
-                    Icons.Rounded.Star,
+                    Icons.Rounded.Favorite,
                     contentDescription = null,
                     tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
