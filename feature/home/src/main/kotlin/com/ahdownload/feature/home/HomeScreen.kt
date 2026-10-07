@@ -1030,6 +1030,14 @@ private fun SmartHeroCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                AHStatusPill("المصدر صالح", success = true)
+                if (model.candidate.format.container != com.ahdownload.domain.resolver.MediaContainer.Unknown) {
+                    AHStatusPill(containerLabel(model.candidate.format.container))
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 model.sizeLabel?.let { AHStatusPill(it) }
                 model.fpsLabel?.let { AHStatusPill(it) }
@@ -1044,7 +1052,7 @@ private fun SmartHeroCard(
             ) {
                 Icon(Icons.Rounded.Download, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text(if (validating) "جارٍ التحقق من المصدر..." else "تنزيل الآن")
+                Text(if (validating) "جارٍ التحقق من المصدر..." else "تنزيل هذا الملف")
             }
             if (audioAlternative != null && model.group == MediaResultGroup.Video && onDownloadAudio != null) {
                 OutlinedButton(
