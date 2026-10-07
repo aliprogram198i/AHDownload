@@ -41,7 +41,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -81,6 +81,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.widthIn
@@ -280,6 +281,7 @@ private fun DownloadsScreen(
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
     onOpenStudio: (DownloadRecord) -> Unit,
+    onToggleFavorite: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
     var query by remember { mutableStateOf("") }
@@ -777,12 +779,12 @@ private fun DownloadRecordCard(
                 IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier.semantics {
-                        androidx.compose.ui.semantics.contentDescription =
+                        contentDescription =
                             if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
                     },
                 ) {
                     Icon(
-                        Icons.Rounded.Star,
+                        Icons.Rounded.Favorite,
                         contentDescription = null,
                         tint = if (favorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
