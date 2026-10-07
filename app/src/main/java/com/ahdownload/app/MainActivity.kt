@@ -27,6 +27,7 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
@@ -42,7 +43,7 @@ class MainActivity : ComponentActivity() {
     private val downloadControls by lazy {
         object : DownloadControls {
             override fun pause(taskId: String) = downloadWorkScheduler.pause(taskId)
-            override fun resume(record: com.ahdownload.domain.download.DownloadRecord) = downloadWorkScheduler.resume(record)
+            override fun resume(record: DownloadRecord) = downloadWorkScheduler.resume(record)
             override fun cancel(taskId: String) = downloadWorkScheduler.cancel(taskId)
         }
     }
@@ -162,6 +163,7 @@ private fun AHRoot(
                 onOpenDiagnostics = { destination = RootDestination.Diagnostics },
                 onOpenYouTubeSession = onOpenYouTubeSession,
                 onOpenSettings = { destination = RootDestination.Settings },
+                onOpenDownloads = { destination = RootDestination.Downloads },
             )
             RootDestination.Downloads -> DownloadsRoute(
                 repository = downloadRepository,
