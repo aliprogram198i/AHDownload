@@ -30,7 +30,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":domain"))
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 }
