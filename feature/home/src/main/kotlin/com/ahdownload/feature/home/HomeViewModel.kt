@@ -59,6 +59,12 @@ data class HomeUiState(
     val mode: HomeMode = HomeMode.Link,
     val showAll: Boolean = false,
     val resultFilter: ResultFilter = ResultFilter.All,
+    val selectedSearchIds: Set<String> = emptySet(),
+    val batchDownloading: Boolean = false,
+    val batchIndex: Int = 0,
+    val batchTotal: Int = 0,
+    val batchQueued: Int = 0,
+    val batchError: String? = null,
 )
 
 class HomeViewModel(
@@ -111,6 +117,12 @@ class HomeViewModel(
             searching = true,
             searchResults = emptyList(),
             searchError = null,
+            selectedSearchIds = emptySet(),
+            batchDownloading = false,
+            batchIndex = 0,
+            batchTotal = 0,
+            batchQueued = 0,
+            batchError = null,
         )
 
         searchJob = viewModelScope.launch {
@@ -191,7 +203,103 @@ class HomeViewModel(
             searchQuery = value,
             searchResults = if (value == _uiState.value.searchQuery) _uiState.value.searchResults else emptyList(),
             searchError = null,
+            selectedSearchIds = if (value == _uiState.value.searchQuery) _uiState.value.selectedSearchIds else emptySet(),
+            batchError = null,
         )
+    }
+
+    fun toggleSearchSelection(id: String) {
+        if (_uiState.value.batchDownloading) return
+        val selected = _uiState.value.selectedSearchIds.toMutableSet()
+        if (!selected.add(id)) selected.remove(id)
+        _uiState.value = _uiState.value.copy(selectedSearchIds = selected)
+    }
+
+    fun clearSearchSelection() {
+        _uiState.value = _uiState.value.copy(selectedSearchIds = emptySet())
+    }
+
+    fun downloadSelectedSearchResults(items: List<ContentSearchItem>) {
+        if (_uiState.value.batchDownloading) return
+        val selected = items.filter { it.id in _uiState.value.selectedSearchIds }.take(8)
+        if (selected.isEmpty()) {
+            _uiState.value = _uiState.value.copy(batchError = "حدد نتيجة واحدة على الأقل.")
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            batchDownloading = true,
+            batchIndex = 0,
+            batchTotal = selected.size,
+            batchQueued = 0,
+            batchError = null,
+        )
+
+        viewModelScope.launch {
+            var queuedCount = 0
+            var failures = 0
+            selected.forEachIndexed { index, item ->
+                _uiState.value = _uiState.value.copy(
+                    batchIndex = index + 1,
+                    batchQueued = queuedCount,
+                )
+                try {
+                    val link = analyzer.analyze(item.url)
+                    if (link == null) {
+                        failures++
+                        return@forEachIndexed
+                    }
+                    val operationId = UUID.randomUUID().toString()
+                    when (val resolution = resolver.resolve(link, operationId)) {
+                        is ResolverResult.Success -> {
+                            val smart = SmartResultEngine().build(resolution.candidates)
+                            val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesStore.read())
+                            val candidate = resolution.candidates.firstOrNull { it.id == selectedId }
+                            if (candidate == null) {
+                                failures++
+                                return@forEachIndexed
+                            }
+                            when (val validation = resolver.validate(candidate, operationId)) {
+                                is CandidateValidationResult.Valid -> {
+                                    val queued = onDownloadRequested(
+                                        validation.candidate.copy(sourceUrl = validation.finalUrl),
+                                        item.title,
+                                        link.normalizedUrl,
+                                        item.thumbnailUrl,
+                                    )
+                                    if (queued == DownloadEnqueueResult.QUEUED) queuedCount++ else failures++
+                                }
+                                is CandidateValidationResult.Invalid -> failures++
+                            }
+                        }
+                        is ResolverResult.Failure -> failures++
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    failures++
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "SEARCH_BATCH_ITEM_FAILED",
+                        error.message ?: error::class.simpleName.orEmpty(),
+                        "home.search.batch",
+                        mapOf("item_id" to item.id),
+                        error,
+                    )
+                }
+                _uiState.value = _uiState.value.copy(batchQueued = queuedCount)
+            }
+            _uiState.value = _uiState.value.copy(
+                batchDownloading = false,
+                batchQueued = queuedCount,
+                selectedSearchIds = emptySet(),
+                batchError = if (failures > 0) {
+                    "أضيف $queuedCount للتنزيل وتعذر تجهيز $failures."
+                } else {
+                    "تمت إضافة $queuedCount عناصر إلى قائمة التنزيل."
+                },
+            )
+        }
     }
 
     fun openSearchResult(item: ContentSearchItem) {
