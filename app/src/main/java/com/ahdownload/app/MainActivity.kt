@@ -418,6 +418,10 @@ private fun AHRoot(
             onOpenDownload = onOpenDownload,
             onShareDownload = onShareDownload,
             onOpenDownloadFolder = onOpenDownloadFolder,
+            onOpenStudio = { record ->
+                studioRecord = record
+                push(RootDestination.Studio)
+            },
             onDeleteDownloadFile = onDeleteDownloadFile,
             uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
