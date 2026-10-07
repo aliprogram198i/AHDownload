@@ -32,7 +32,7 @@ object DiagnosticReportFormatter {
                 .maxOfOrNull { it.timestampEpochMs }
             sessionEvents.filter { event ->
                 event.timestampEpochMs <= anchor.timestampEpochMs &&
-                    (previousErrorTime == null || event.timestampEpochMs >= previousErrorTime)
+                    (previousErrorTime == null || event.timestampEpochMs > previousErrorTime)
             }
         }
         val chronological = scopedEvents.sortedBy { it.timestampEpochMs }
