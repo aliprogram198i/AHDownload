@@ -60,6 +60,7 @@ fun HomeRoute(
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDownloads: () -> Unit,
 ) {
     val context = LocalContext.current
     val factory = remember(onDownloadRequested, logger, context) {
@@ -82,6 +83,7 @@ fun HomeRoute(
         onOpenDiagnostics = onOpenDiagnostics,
         onOpenYouTubeSession = onOpenYouTubeSession,
         onOpenSettings = onOpenSettings,
+        onOpenDownloads = onOpenDownloads,
     )
 }
 
@@ -97,6 +99,7 @@ private fun HomeScreen(
     onOpenDiagnostics: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDownloads: () -> Unit,
 ) {
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
@@ -142,6 +145,9 @@ private fun HomeScreen(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                 actions = {
+                    IconButton(onClick = onOpenDownloads) {
+                        Icon(Icons.Rounded.Download, contentDescription = "التنزيلات")
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات")
                     }
