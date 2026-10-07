@@ -41,6 +41,9 @@ class DownloadWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val notificationId = id.hashCode().and(Int.MAX_VALUE).coerceAtLeast(1)
+    private var lastNotificationProgressBytes = -1L
+    private var lastNotificationProgressAt = 0L
+    private var notificationBytesPerSecond = 0L
 
     override suspend fun doWork(): Result {
         var task = readTask() ?: return Result.failure()
