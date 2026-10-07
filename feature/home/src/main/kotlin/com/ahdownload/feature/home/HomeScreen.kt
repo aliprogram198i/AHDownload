@@ -1802,6 +1802,7 @@ private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContai
         com.ahdownload.domain.resolver.MediaContainer.Aac -> "AAC"
         com.ahdownload.domain.resolver.MediaContainer.Ogg -> "OGG"
         com.ahdownload.domain.resolver.MediaContainer.Flac -> "FLAC"
+        com.ahdownload.domain.resolver.MediaContainer.Wav -> "WAV"
         com.ahdownload.domain.resolver.MediaContainer.ThreeGp -> "3GP"
         com.ahdownload.domain.resolver.MediaContainer.Avi -> "AVI"
         com.ahdownload.domain.resolver.MediaContainer.Unknown -> "صيغة غير معروفة"
