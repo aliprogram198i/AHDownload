@@ -4,7 +4,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import androidx.activity.BackHandler
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -15,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.mutableStateListOf
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
@@ -32,6 +33,7 @@ import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 import java.io.File
+import kotlinx.coroutines.launch
 
 private enum class RootDestination {
     Welcome,
@@ -205,7 +207,9 @@ class MainActivity : ComponentActivity() {
                 mapOf("task_id" to record.task.id),
                 null,
             )
-            applicationServices.downloadRepository.delete(record.task.id)
+            lifecycleScope.launch {
+                applicationServices.downloadRepository.delete(record.task.id)
+            }
         }
         return deleted
     }
@@ -317,7 +321,6 @@ private fun AHRoot(
             logger = logger,
             onOpenSettings = { root(RootDestination.Settings) },
             onOpenDownloads = { root(RootDestination.Downloads) },
-            onOpenUiDiagnostics = { push(RootDestination.UiDiagnostics) },
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
         )
@@ -333,7 +336,6 @@ private fun AHRoot(
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateSettings = { root(RootDestination.Settings) },
-            onDeleteHistory = onDownloadDeletedFromHistory,
         )
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
