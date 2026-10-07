@@ -27,5 +27,5 @@ object FavoriteKey {
         url.trim()
             .lowercase()
             .removeSuffix("/")
-            .replace(Regex("[#?].*$"), "")
+            .replace(Regex("#.*$"), "")
 }
