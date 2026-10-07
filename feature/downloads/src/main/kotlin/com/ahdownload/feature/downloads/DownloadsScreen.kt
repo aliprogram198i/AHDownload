@@ -111,6 +111,7 @@ fun DownloadsRoute(
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     onNavigateSettings: () -> Unit,
+    activeDownloads: Int = 0,
 ) {
     val controls = remember(repository, onPauseDownload, onResumeDownload, onCancelDownload) {
         object : DownloadControls {
@@ -151,6 +152,7 @@ fun DownloadsRoute(
         onBack = onBack,
         onNavigateHome = onNavigateHome,
         onNavigateSettings = onNavigateSettings,
+        activeDownloads = activeDownloads,
         onPause = vm::pause,
         onResume = vm::resume,
         onCancel = vm::cancel,
@@ -170,6 +172,7 @@ private fun DownloadsScreen(
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     onNavigateSettings: () -> Unit,
+    activeDownloads: Int,
     onPause: (DownloadRecord) -> Unit,
     onResume: (DownloadRecord) -> Unit,
     onCancel: (DownloadRecord) -> Unit,
@@ -249,6 +252,7 @@ private fun DownloadsScreen(
         bottomBar = {
             AHBottomNavigationBar(
                 selected = AHBottomNavDestination.DOWNLOADS,
+                activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
                     when (destination) {
                         AHBottomNavDestination.HOME -> {
