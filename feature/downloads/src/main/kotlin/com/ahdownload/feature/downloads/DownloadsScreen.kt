@@ -620,7 +620,7 @@ private fun DownloadRecordCard(
                         expanded = menuExpanded,
                         onDismissRequest = { menuExpanded = false },
                     ) {
-                        if (record.status == DownloadStatus.COMPLETED && record.destinationUri != null) {
+                        if (record.status == DownloadStatus.COMPLETED && fileAvailable && record.destinationUri != null) {
                             DropdownMenuItem(
                                 text = { Text("فتح") },
                                 leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null) },
@@ -643,6 +643,16 @@ private fun DownloadRecordCard(
                                 onClick = {
                                     menuExpanded = false
                                     onDeleteDownloadFile()
+                                },
+                            )
+                        }
+                        if (record.status == DownloadStatus.COMPLETED && !fileAvailable) {
+                            DropdownMenuItem(
+                                text = { Text("إعادة التنزيل") },
+                                leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRetry()
                                 },
                             )
                         }
@@ -696,6 +706,15 @@ private fun DownloadRecordCard(
                 )
             }
 
+            if (record.status == DownloadStatus.FAILED) {
+                Text(
+                    failureSummary(record),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 destinationLabel(record),
                 style = MaterialTheme.typography.bodySmall,
@@ -822,6 +841,19 @@ private fun statusColor(status: DownloadStatus) = when (status) {
     DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
     DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun failureSummary(record: DownloadRecord): String = when (record.failureCode) {
+    "network_error" -> "تعذر الوصول إلى المصدر بسبب الشبكة. أعد المحاولة."
+    "http_error" -> when (record.failureDetail) {
+        "403" -> "المصدر رفض الطلب مؤقتًا. ستُعاد محاولة الحصول على مصدر صالح."
+        "404" -> "لم يعد المصدر متاحًا."
+        "429" -> "المصدر طلب الانتظار قبل المحاولة التالية."
+        else -> "تعذر الوصول إلى المصدر حاليًا. أعد المحاولة."
+    }
+    "destination_storage_error" -> "تعذر حفظ الملف في مجلد التنزيل المحدد."
+    "cancelled" -> "تم إلغاء التنزيل."
+    else -> "تعذر إكمال التنزيل. أعد المحاولة."
 }
 
 private fun destinationLabel(record: DownloadRecord): String = when {

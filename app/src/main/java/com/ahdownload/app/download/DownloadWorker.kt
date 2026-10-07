@@ -41,6 +41,9 @@ class DownloadWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     private val notificationId = id.hashCode().and(Int.MAX_VALUE).coerceAtLeast(1)
+    private var lastNotificationProgressBytes = -1L
+    private var lastNotificationProgressAt = 0L
+    private var notificationBytesPerSecond = 0L
 
     override suspend fun doWork(): Result {
         var task = readTask() ?: return Result.failure()
@@ -122,6 +125,7 @@ class DownloadWorker(
 
         val record = try {
             coordinator.execute(task) { state ->
+                updateNotificationSpeed(state)
                 setForeground(createForegroundInfo(state))
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -371,6 +375,23 @@ class DownloadWorker(
         )
     }
 
+    private fun updateNotificationSpeed(state: DownloadState) {
+        if (state !is DownloadState.Downloading) return
+        val now = System.currentTimeMillis()
+        if (lastNotificationProgressAt > 0L) {
+            val elapsed = now - lastNotificationProgressAt
+            val delta = state.bytesDownloaded - lastNotificationProgressBytes
+            if (elapsed >= 500L && delta >= 0L) {
+                notificationBytesPerSecond = delta * 1000L / elapsed
+                lastNotificationProgressBytes = state.bytesDownloaded
+                lastNotificationProgressAt = now
+                return
+            }
+        }
+        lastNotificationProgressBytes = state.bytesDownloaded
+        lastNotificationProgressAt = now
+    }
+
     private fun createForegroundInfo(state: DownloadState): ForegroundInfo {
         ensureNotificationChannel()
 
@@ -445,7 +466,21 @@ class DownloadWorker(
                 } else {
                     0L
                 }
-                "جاري التنزيل — $percent%"
+                buildString {
+                    append("جاري التنزيل — ")
+                    append(percent)
+                    append("%")
+                    if (notificationBytesPerSecond > 0L) {
+                        append(" · ")
+                        append(formatBytes(notificationBytesPerSecond))
+                        append("/s")
+                        if (total > bytesDownloaded) {
+                            val etaSeconds = (total - bytesDownloaded) / notificationBytesPerSecond
+                            append(" · ")
+                            append(formatEta(etaSeconds))
+                        }
+                    }
+                }
             } ?: "جاري التنزيل"
         }
         DownloadState.Paused -> "تم الإيقاف المؤقت"
@@ -462,6 +497,20 @@ class DownloadWorker(
     private fun DownloadState.bytesDownloadedOrNull(): Long? = when (this) {
         is DownloadState.Downloading -> bytesDownloaded
         else -> null
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes < 1024L -> "$bytes B"
+        bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+        bytes < 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
+        else -> "${bytes / (1024L * 1024L * 1024L)} GB"
+    }
+
+    private fun formatEta(seconds: Long): String {
+        val safe = seconds.coerceAtLeast(0L)
+        val minutes = safe / 60L
+        val secs = safe % 60L
+        return if (minutes > 0L) "${minutes}د ${secs.toString()}ث" else "${secs}ث"
     }
 
     private suspend fun shouldRefreshYouTubeTask(
