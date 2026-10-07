@@ -15,8 +15,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.3.2"
+        versionCode = 15
+        versionName = "1.3.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -47,6 +47,7 @@ android {
                 storeType = "PKCS12"
                 enableV1Signing = true
                 enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
