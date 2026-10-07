@@ -52,7 +52,7 @@ class MediaStorePublisher(
             check(resolver.update(uri, complete, null, null) == 1) {
                 "MediaStore finalize failed"
             }
-            check(file.delete() { "Private source file could not be removed after publish" }
+            check(file.delete()) { "Private source file could not be removed after publish" }
             Result.success(uri)
         } catch (error: Throwable) {
             resolver.delete(uri, null, null)
@@ -97,7 +97,7 @@ class MediaStorePublisher(
                 relativePath = "Music/AHDownload",
             )
             "jpg", "jpeg", "png", "webp", "gif" -> MediaMetadata(
-                collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                 mimeType = when (extension) {
                     "jpg", "jpeg" -> "image/jpeg"
                     "png" -> "image/png"
