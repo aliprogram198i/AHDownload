@@ -107,7 +107,9 @@ class OkHttpMediaProbeTest {
         val requestHeaders = mutableListOf<Map<String, String>>()
         val client = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->
-                requestHeaders += chain.request().headers.toMap()
+                requestHeaders += chain.request().headers.names().associateWith { name ->
+                    chain.request().header(name).orEmpty()
+                }
                 val hasCookie = chain.request().header("Cookie") != null
                 val response = if (hasCookie) {
                     Response.Builder()
