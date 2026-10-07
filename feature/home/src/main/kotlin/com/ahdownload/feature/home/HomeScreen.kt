@@ -222,8 +222,6 @@ private fun HomeScreen(
         state.selectedCandidateId,
         state.validatingCandidateId,
         state.error,
-        state.showAll,
-        state.resultFilter,
         state.downloadQueued,
     ) {
         val components = buildList {
@@ -272,7 +270,7 @@ private fun HomeScreen(
                 mapOf(
                     "platform" to (state.result?.platform?.name ?: "unknown"),
                     "candidate_total" to candidates.size.toString(),
-                    "visible_total" to resultSet.visible.size.toString(),
+                    "available_total" to resultSet.all.size.toString(),
                     "best_overall" to (resultSet.bestOverall?.candidate?.id ?: "none"),
                     "best_quality" to (resultSet.bestQuality?.candidate?.id ?: "none"),
                     "smallest_size" to (resultSet.smallestSize?.candidate?.id ?: "none"),
