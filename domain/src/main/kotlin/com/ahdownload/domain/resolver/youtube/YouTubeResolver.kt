@@ -483,55 +483,43 @@ class YouTubeResolver(
         result: ResolverResult.Success,
         snapshot: YouTubeSessionSnapshot,
     ): ResolverResult.Success {
-        val headers = sessionHeaders(snapshot)
+        val sessionHeaders = sessionHeaders(snapshot)
         val browserUrlsByItag = (snapshot.videoUrls + snapshot.audioUrls)
             .mapNotNull { url -> extractItag(url)?.let { it to url } }
             .toMap()
 
-        var replaced = 0
-        var poTokenAttached = 0
+        var exactBrowserSources = 0
         val candidates = result.candidates.map { candidate ->
-            val candidateItag = extractItag(candidate.sourceUrl) ?: candidate.id
-            val browserUrl = browserUrlsByItag[candidateItag]
-            val effectiveUrl = if (browserUrl != null) {
-                appendPoToken(browserUrl, snapshot.browserPoToken)
-            } else {
-                appendPoToken(candidate.sourceUrl, snapshot.browserPoToken)
-            }
-            val browserHeaders = browserUrl?.let { snapshot.browserRequestHeaders[it].orEmpty() }.orEmpty()
-            if (browserUrl != null && browserUrl != candidate.sourceUrl) {
-                replaced++
+            val candidateItag = extractItag(candidate.sourceUrl)
+            val browserUrl = candidateItag?.let(browserUrlsByItag::get)
+
+            if (browserUrl != null) {
+                val browserHeaders = snapshot.browserRequestHeaders[browserUrl].orEmpty()
+                exactBrowserSources++
                 candidate.copy(
-                    sourceUrl = effectiveUrl,
-                    requestHeaders = candidate.requestHeaders + headers + browserHeaders,
+                    // Browser-observed GVS URLs are session-bound. Preserve the exact
+                    // URL captured by WebView; never copy a PO token from another URL.
+                    sourceUrl = browserUrl,
+                    requestHeaders = candidate.requestHeaders + sessionHeaders + browserHeaders,
+                    sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
                 )
             } else {
-                if (effectiveUrl != candidate.sourceUrl) poTokenAttached++
                 candidate.copy(
-                    sourceUrl = effectiveUrl,
-                    requestHeaders = candidate.requestHeaders + headers + browserHeaders,
+                    requestHeaders = candidate.requestHeaders + sessionHeaders,
                 )
             }
         }
 
-        if (poTokenAttached > 0) {
+        if (exactBrowserSources > 0) {
             logger.log(
                 DiagnosticLevel.INFO,
-                type = "youtube.po_token_attached",
-                reason = "browser_gvs_po_token_reused_for_same_session",
+                type = "youtube.browser_media_context_attached",
+                reason = "exact_browser_gvs_url_and_context_preserved",
                 operation = "youtube.resolve",
-                context = mapOf("candidate_count" to poTokenAttached.toString()),
-                throwable = null,
-            )
-        }
-
-        if (replaced > 0) {
-            logger.log(
-                DiagnosticLevel.INFO,
-                type = "youtube.browser_media_url_aligned",
-                reason = "replaced_player_url_with_webview_media_url",
-                operation = "youtube.resolve",
-                context = mapOf("replaced_candidates" to replaced.toString()),
+                context = mapOf(
+                    "exact_browser_sources" to exactBrowserSources.toString(),
+                    "browser_context_entries" to snapshot.browserRequestHeaders.size.toString(),
+                ),
                 throwable = null,
             )
         }
@@ -556,11 +544,12 @@ class YouTubeResolver(
     }
 
     private fun sessionCandidates(snapshot: YouTubeSessionSnapshot): List<MediaCandidate> {
+        val sessionHeaders = sessionHeaders(snapshot)
+
         val videos = snapshot.videoUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
-            val effectiveUrl = appendPoToken(url, snapshot.browserPoToken)
             MediaCandidate(
                 id = "webview-video-${index}-${url.hashCode().toUInt().toString(16)}",
-                sourceUrl = effectiveUrl,
+                sourceUrl = url,
                 format = MediaFormat(
                     id = "webview-video-${index}",
                     kind = MediaKind.Video,
@@ -568,14 +557,15 @@ class YouTubeResolver(
                     hasVideo = true,
                     hasAudio = true,
                 ),
-                requestHeaders = sessionHeaders(snapshot) + snapshot.browserRequestHeaders[url].orEmpty(),
+                requestHeaders = sessionHeaders + snapshot.browserRequestHeaders[url].orEmpty(),
+                sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
             )
         }
+
         val audio = snapshot.audioUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
-            val effectiveUrl = appendPoToken(url, snapshot.browserPoToken)
             MediaCandidate(
                 id = "webview-audio-${index}-${url.hashCode().toUInt().toString(16)}",
-                sourceUrl = effectiveUrl,
+                sourceUrl = url,
                 format = MediaFormat(
                     id = "webview-audio-${index}",
                     kind = MediaKind.Audio,
@@ -583,18 +573,11 @@ class YouTubeResolver(
                     hasVideo = false,
                     hasAudio = true,
                 ),
-                requestHeaders = sessionHeaders(snapshot) + snapshot.browserRequestHeaders[url].orEmpty(),
+                requestHeaders = sessionHeaders + snapshot.browserRequestHeaders[url].orEmpty(),
+                sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
             )
         }
         return videos + audio
-    }
-
-    private fun appendPoToken(url: String, token: String?): String {
-        val value = token?.trim().orEmpty()
-        if (value.isEmpty() || !isYouTubeMediaHost(url)) return url
-        val query = runCatching { URI(url).rawQuery.orEmpty() }.getOrDefault("")
-        if (query.split('&').any { it.substringBefore('=').equals("pot", ignoreCase = true) }) return url
-        return url + if (query.isEmpty()) "?pot=$value" else "&pot=$value"
     }
 
     private fun isDirectHttpMedia(url: String): Boolean {
