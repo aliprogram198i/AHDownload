@@ -1622,30 +1622,6 @@ private fun buildQualityLine(model: MediaPresentationModel): String {
     }
 }
 
-private fun choiceCodecLabel(
-    model: MediaPresentationModel,
-    extractionOnly: Boolean,
-): String {
-    val format = model.candidate.format
-    if (extractionOnly) {
-        return "ترميز الصوت: " + (normalizeCodecForUi(format.audioCodec) ?: "متاح")
-    }
-    return when (format.kind) {
-        MediaKind.Video -> {
-            val videoCodec = normalizeCodecForUi(format.videoCodec)
-            val audioCodec = normalizeCodecForUi(format.audioCodec)
-            buildList {
-                videoCodec?.let { add("فيديو: $it") }
-                audioCodec?.let { add("صوت: $it") }
-            }.joinToString(" · ").ifBlank { "الترميزات غير محددة" }
-        }
-        MediaKind.Audio -> {
-            "ترميز الصوت: " + (normalizeCodecForUi(format.audioCodec) ?: model.codecLabel ?: "غير محدد")
-        }
-        else -> model.codecLabel ?: "الترميز غير محدد"
-    }
-}
-
 private fun normalizeCodecForUi(codec: String?): String? {
     val value = codec?.substringBefore(',')?.trim()?.lowercase() ?: return null
     return when {
@@ -1658,14 +1634,6 @@ private fun normalizeCodecForUi(codec: String?): String? {
         value.startsWith("vorbis") -> "Vorbis"
         else -> codec.substringBefore(',').trim().takeIf { it.isNotBlank() }
     }
-}
-
-private fun kindPresentation(model: MediaPresentationModel): String = when {
-    model.candidate.format.hasVideo && model.candidate.format.hasAudio -> "فيديو + صوت"
-    model.candidate.format.hasVideo -> "فيديو"
-    model.candidate.format.hasAudio -> "صوت"
-    model.candidate.format.kind == MediaKind.Image -> "صورة"
-    else -> "ملف"
 }
 
 private fun logSelection(
