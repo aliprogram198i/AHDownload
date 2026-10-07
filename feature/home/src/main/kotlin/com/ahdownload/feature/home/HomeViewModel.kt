@@ -764,6 +764,16 @@ class HomeViewModel(
         }
 
         val videoSource = smart.video.firstOrNull { model ->
+            val format = model.candidate.format
+            format.hasVideo &&
+                format.hasAudio &&
+                (
+                    format.audioCodec?.startsWith("mp4a", ignoreCase = true) == true ||
+                        format.container == com.ahdownload.domain.resolver.MediaContainer.Mp4
+                )
+        }?.candidate ?: smart.video.firstOrNull { model ->
+            model.candidate.format.hasVideo && model.candidate.format.hasAudio
+        }?.candidate ?: smart.video.firstOrNull { model ->
             model.candidate.format.hasVideo
         }?.candidate
         if (videoSource != null) {
