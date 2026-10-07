@@ -699,11 +699,18 @@ class HomeViewModel(
         }
 
         val video = candidates
-            .filter { it.format.kind == MediaKind.Video }
+            .filter { it.format.kind == MediaKind.Video && it.format.hasAudio }
             .sortedWith(
                 compareByDescending<MediaCandidate> { it.format.height ?: 0 }
                     .thenByDescending { it.format.bitrateKbps ?: 0 },
-            )
+            ).ifEmpty {
+                candidates
+                    .filter { it.format.kind == MediaKind.Video }
+                    .sortedWith(
+                        compareByDescending<MediaCandidate> { it.format.height ?: 0 }
+                            .thenByDescending { it.format.bitrateKbps ?: 0 },
+                    )
+            }
         val audio = candidates
             .filter { it.format.kind == MediaKind.Audio }
             .sortedByDescending { it.format.bitrateKbps ?: 0 }
