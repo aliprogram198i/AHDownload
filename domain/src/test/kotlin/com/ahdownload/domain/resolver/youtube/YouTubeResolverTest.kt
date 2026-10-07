@@ -389,7 +389,9 @@ class YouTubeResolverTest {
             override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
                 YouTubeSessionSnapshot(
                     cookies = "SID=redacted",
-                    videoUrls = emptyList(),
+                    videoUrls = listOf(
+                        "https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=browser&pot=pot-redacted",
+                    ),
                     audioUrls = emptyList(),
                     authenticated = true,
                     userAgent = "Mozilla/5.0 (Linux; Android 15)",
@@ -421,6 +423,10 @@ class YouTubeResolverTest {
         assertTrue(result.candidates.all { it.requestHeaders["Cookie"] == "SID=redacted" })
         assertTrue(result.candidates.all { it.requestHeaders["Referer"] == "https://www.youtube.com/" })
         assertTrue(result.candidates.all { it.sourceUrl.contains("pot=pot-redacted") })
+        assertEquals(
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=249&mime=video%2Fwebm&source=browser&pot=pot-redacted",
+            result.candidates.first { it.id == "android-249" }.sourceUrl,
+        )
     }
 
 }
