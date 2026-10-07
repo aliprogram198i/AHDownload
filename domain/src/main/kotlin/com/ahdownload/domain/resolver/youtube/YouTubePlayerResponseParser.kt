@@ -140,7 +140,8 @@ class YouTubePlayerResponseParser {
                 bitrateKbps = int("bitrate")?.div(1000),
                 fileSizeBytes = long("contentLength"),
                 hasVideo = mediaKind == MediaKind.Video,
-                hasAudio = mediaKind == MediaKind.Audio,
+                hasAudio = mediaKind == MediaKind.Audio ||
+                    (mediaKind == MediaKind.Video && audioCodec != null),
             ),
         )
     }
