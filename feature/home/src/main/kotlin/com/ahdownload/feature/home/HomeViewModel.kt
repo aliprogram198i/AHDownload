@@ -8,8 +8,8 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.DownloadEnqueueResult
-import com.ahdownload.app.settings.DownloadPreferences
-import com.ahdownload.app.settings.DownloadPreferencesStore
+import com.ahdownload.core.common.DownloadPreferences
+import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.MediaCandidate
@@ -76,7 +76,7 @@ class HomeViewModel(
     private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
         DownloadEnqueueResult.REJECTED
     },
-    private val preferencesStore: DownloadPreferencesStore,
+    private val preferencesProvider: DownloadPreferencesProvider,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(recentLinks = recentLinkStore.list()))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -253,7 +253,7 @@ class HomeViewModel(
                     when (val resolution = resolver.resolve(link, operationId)) {
                         is ResolverResult.Success -> {
                             val smart = SmartResultEngine().build(resolution.candidates)
-                            val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesStore.read())
+                            val selectedId = chooseDefaultCandidate(resolution.candidates, smart, preferencesProvider.read())
                             val candidate = resolution.candidates.firstOrNull { it.id == selectedId }
                             if (candidate == null) {
                                 failures++
@@ -736,6 +736,7 @@ class HomeViewModel(
         private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
+        private val preferencesProvider: DownloadPreferencesProvider,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -748,7 +749,7 @@ class HomeViewModel(
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
                 searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
-                preferencesStore = DownloadPreferencesStore(context.applicationContext),
+                preferencesProvider = preferencesProvider,
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }
