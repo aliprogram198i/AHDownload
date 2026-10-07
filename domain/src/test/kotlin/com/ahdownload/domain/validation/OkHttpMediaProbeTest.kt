@@ -103,17 +103,18 @@ class OkHttpMediaProbeTest {
     }
 
     @Test
-    fun retriesYouTube403WithoutSessionHeaders() = runTest {
+    fun retriesYouTube403WithoutSessionHeadersForGenericSessionContext() = runTest {
         val requestHeaders = mutableListOf<Map<String, String>>()
         val client = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->
-                requestHeaders += chain.request().headers.names().associateWith { name ->
-                    chain.request().header(name).orEmpty()
+                val current = chain.request()
+                requestHeaders += current.headers.names().associateWith { name ->
+                    current.header(name).orEmpty()
                 }
-                val hasCookie = chain.request().header("Cookie") != null
+                val hasCookie = current.header("Cookie") != null
                 val response = if (hasCookie) {
                     Response.Builder()
-                        .request(chain.request())
+                        .request(current)
                         .protocol(Protocol.HTTP_1_1)
                         .code(403)
                         .message("Forbidden")
@@ -121,7 +122,7 @@ class OkHttpMediaProbeTest {
                         .build()
                 } else {
                     Response.Builder()
-                        .request(chain.request())
+                        .request(current)
                         .protocol(Protocol.HTTP_1_1)
                         .code(200)
                         .message("OK")
@@ -151,9 +152,71 @@ class OkHttpMediaProbeTest {
         assertEquals(200, result.statusCode)
         assertEquals(2, requestHeaders.size)
         assertTrue(requestHeaders.first().keys.any { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.any { it.equals("Referer", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.any { it.equals("Origin", ignoreCase = true) })
         assertTrue(requestHeaders[1].keys.none { it.equals("Cookie", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.none { it.equals("Origin", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.none { it.equals("Referer", ignoreCase = true) })
+    }
+
+    @Test
+    fun preservesBrowserClientContextAndCapturedRangeForYouTubeValidation() = runTest {
+        val requestHeaders = mutableListOf<Map<String, String>>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val current = chain.request()
+                requestHeaders += current.headers.names().associateWith { name ->
+                    current.header(name).orEmpty()
+                }
+
+                val response = if (requestHeaders.size == 1) {
+                    Response.Builder()
+                        .request(current)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(403)
+                        .message("Forbidden")
+                        .body(byteArrayOf().toResponseBody(null))
+                        .build()
+                } else {
+                    assertEquals("mweb", current.header("X-YouTube-Client-Name"))
+                    assertEquals("2.20260708.00.00", current.header("X-YouTube-Client-Version"))
+                    assertEquals("visitor", current.header("X-Goog-Visitor-Id"))
+                    assertEquals("bytes=0-1048575", current.header("Range"))
+                    assertEquals("https://www.youtube.com/watch?v=test", current.header("Referer"))
+                    Response.Builder()
+                        .request(current)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .header("Content-Type", "audio/mp4")
+                        .header("Content-Length", "123")
+                        .body(
+                            byteArrayOf(0)
+                                .toString(Charsets.ISO_8859_1)
+                                .toResponseBody("audio/mp4".toMediaType()),
+                        )
+                        .build()
+                }
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://example.googlevideo.com/videoplayback?mime=audio%2Fmp4",
+            mapOf(
+                "Cookie" to "SID=redacted",
+                "Origin" to "https://www.youtube.com",
+                "Referer" to "https://www.youtube.com/watch?v=test",
+                "X-Goog-Visitor-Id" to "visitor",
+                "X-YouTube-Client-Name" to "mweb",
+                "X-YouTube-Client-Version" to "2.20260708.00.00",
+                "Range" to "bytes=0-1048575",
+            ),
+            operationId = "op-browser-context",
+        )
+
+        assertEquals(200, result.statusCode)
+        assertEquals(2, requestHeaders.size)
+        assertEquals("bytes=0-1048575", requestHeaders.first()["Range"])
+        assertEquals("bytes=0-1048575", requestHeaders[1]["Range"])
+        assertTrue(requestHeaders[1].keys.any { it.equals("Cookie", ignoreCase = true) })
     }
 
 }
