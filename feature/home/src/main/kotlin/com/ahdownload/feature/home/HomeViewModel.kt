@@ -393,12 +393,23 @@ class HomeViewModel(
                             _uiState.value.recentLinks
                         }
 
+                        val preferences = preferencesProvider.read()
+                        val smart = SmartResultEngine().build(resolution.candidates)
+                        val defaultVideoId = chooseDefaultCandidate(
+                            resolution.candidates,
+                            smart,
+                            preferences,
+                        )
+                        val defaultAudioId = chooseDefaultAudioCandidate(
+                            resolution.candidates,
+                            preferences,
+                        )
                         _uiState.value = _uiState.value.copy(
                             analyzing = false,
                             resolving = false,
                             resolution = resolution,
-                            selectedCandidateId = null,
-                            selectedAudioCandidateId = null,
+                            selectedCandidateId = defaultVideoId,
+                            selectedAudioCandidateId = defaultAudioId,
                             recentLinks = updatedRecent,
                             error = if (resolution.candidates.isEmpty()) {
                                 "لم يتم العثور على وسائط قابلة للتنزيل."
