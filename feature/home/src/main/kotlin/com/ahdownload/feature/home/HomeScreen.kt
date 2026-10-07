@@ -941,24 +941,47 @@ private fun RecentLinksCard(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            link.title ?: link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold,
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MediaThumbnail(
+                            url = link.thumbnailUrl,
+                            contentDescription = "صورة مصغرة: " + (link.title ?: link.url),
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 48.dp)
+                                .clip(RoundedCornerShape(10.dp)),
                         )
-                        Text(
-                            platformLabel(link.platform) + " · " + link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                link.title ?: link.url,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                platformLabel(link.platform) + " · " + formatRelativeRecentTime(link.updatedAtEpochMs),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+private fun formatRelativeRecentTime(epochMs: Long): String {
+    val age = System.currentTimeMillis() - epochMs
+    return when {
+        age < 60_000L -> "الآن"
+        age < 3_600_000L -> (age / 60_000L).toString() + " د"
+        age < 86_400_000L -> (age / 3_600_000L).toString() + " س"
+        else -> (age / 86_400_000L).toString() + " ي"
     }
 }
 
