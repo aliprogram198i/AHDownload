@@ -218,6 +218,11 @@ fun DownloadsRoute(
         onOpenDownload = onOpenDownload,
         onShareDownload = onShareDownload,
         onDeleteDownloadFile = onDeleteDownloadFile,
+        onRenameDownload = onRenameDownload,
+        onOpenDownloadLocation = onOpenDownloadLocation,
+        onPauseAll = vm::pauseAll,
+        onResumeAll = vm::resumeAll,
+        onCancelAll = vm::cancelAll,
         uiTraceLogger = uiTraceLogger,
     )
 }
