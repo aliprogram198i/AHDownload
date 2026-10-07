@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -89,6 +90,7 @@ fun AHStatusPill(
     text: String,
     success: Boolean = false,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
 ) {
     val containerColor = if (success) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
