@@ -709,7 +709,7 @@ private fun MediaThumbnail(
             }
         } else {
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current).data(url).crossfade(true).build(),
+                model = ImageRequest.Builder(LocalContext.current).data(url).build(),
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

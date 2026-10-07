@@ -515,6 +515,12 @@ class HomeViewModel(
         }
     }
 
+    fun downloadCandidate(id: String) {
+        if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
+        selectCandidate(id)
+        downloadSelected()
+    }
+
     fun downloadAudio() {
         val candidate = _uiState.value.resolution?.candidates?.firstOrNull {
             it.format.kind == MediaKind.Audio
