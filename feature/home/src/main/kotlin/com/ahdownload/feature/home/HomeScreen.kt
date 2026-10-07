@@ -580,11 +580,11 @@ private fun HomeScreen(
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
                             Column {
                                 Text(
-                                    if (state.analyzing) "نتحقق من الرابط" else "نستخرج الصيغ المتاحة",
+                                    if (state.analyzing) "1/2 · التحقق من الرابط" else "2/2 · استخراج أفضل المصادر",
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    "قد يستغرق ذلك لحظات حسب المصدر والشبكة.",
+                                    "نختار مصادر صالحة ونرتبها حسب الجودة والحجم والتوافق.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -637,6 +637,7 @@ private fun HomeScreen(
                     item {
                         SmartHeroCard(
                             model = best,
+                            audioAlternative = resultSet.audio.firstOrNull(),
                             selected = best.candidate.id == state.selectedCandidateId,
                             validating = best.candidate.id == state.validatingCandidateId,
                             onSelect = {
@@ -644,6 +645,9 @@ private fun HomeScreen(
                                 onSelectCandidate(best.candidate.id)
                             },
                             onDownload = { onDownloadCandidate(best.candidate.id) },
+                            onDownloadAudio = resultSet.audio.firstOrNull()?.let { audio ->
+                                { onDownloadCandidate(audio.candidate.id) }
+                            },
                         )
                     }
                 }
@@ -979,10 +983,12 @@ private fun MediaThumbnail(
 @Composable
 private fun SmartHeroCard(
     model: MediaPresentationModel,
+    audioAlternative: MediaPresentationModel?,
     selected: Boolean,
     validating: Boolean,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
+    onDownloadAudio: (() -> Unit)? = null,
 ) {
     ElevatedCard(
         modifier = Modifier
@@ -1040,6 +1046,17 @@ private fun SmartHeroCard(
                 Icon(Icons.Rounded.Download, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
                 Text(if (validating) "جارٍ التحقق من المصدر..." else "تنزيل الآن")
+            }
+            if (audioAlternative != null && model.group == MediaResultGroup.Video && onDownloadAudio != null) {
+                OutlinedButton(
+                    enabled = !validating,
+                    onClick = onDownloadAudio,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.AudioFile, contentDescription = null)
+                    Spacer(Modifier.size(7.dp))
+                    Text("تنزيل الصوت · " + audioAlternative.qualityLabel)
+                }
             }
         }
     }
