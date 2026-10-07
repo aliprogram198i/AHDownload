@@ -566,26 +566,45 @@ class HomeViewModel(
 
                     when (val refreshed = resolver.resolve(youtubeLink, validationOperationId)) {
                         is ResolverResult.Success -> {
-                            val refreshedCandidates = refreshed.candidates
-                                .filter {
-                                    when {
-                                        !extractAudio -> it.format.kind == candidate.format.kind
-                                        it.format.kind == MediaKind.Audio -> it.format.hasAudio
-                                        it.format.kind == MediaKind.Video -> it.format.hasVideo && it.format.hasAudio
-                                        else -> false
+                            val refreshedCandidates = if (extractAudio) {
+                                val directAudio = refreshed.candidates
+                                    .filter { it.format.kind == MediaKind.Audio && it.format.hasAudio }
+                                    .sortedWith(
+                                        compareByDescending<MediaCandidate> { it.format.bitrateKbps ?: 0 }
+                                            .thenBy { it.id == candidate.id },
+                                    )
+                                    .take(6)
+                                val muxedVideo = refreshed.candidates
+                                    .filter {
+                                        it.format.kind == MediaKind.Video &&
+                                            it.format.hasVideo &&
+                                            it.format.hasAudio
                                     }
-                                }
-                                .distinctBy { it.id }
-                                .sortedWith(
-                                    compareBy<MediaCandidate> { it.id != candidate.id }
-                                        .thenBy { if (extractAudio && it.format.kind == MediaKind.Audio) 0 else 1 }
-                                        .thenByDescending { it.id.startsWith("android-") }
-                                        .thenByDescending { it.id.startsWith("embedded-") }
-                                        .thenByDescending { it.format.hasAudio }
-                                        .thenByDescending { it.format.height ?: 0 }
-                                        .thenByDescending { it.format.bitrateKbps ?: 0 },
-                                )
-                                .take(if (extractAudio) 6 else 3)
+                                    .sortedWith(
+                                        compareByDescending<MediaCandidate> { it.format.height ?: 0 }
+                                            .thenByDescending { it.format.bitrateKbps ?: 0 }
+                                            .thenBy { it.id == candidate.id },
+                                    )
+                                    .take(4)
+                                (directAudio + muxedVideo).distinctBy { it.id }
+                            } else {
+                                refreshed.candidates
+                                    .filter {
+                                        it.format.kind == candidate.format.kind &&
+                                            when (it.format.kind) {
+                                                MediaKind.Video -> it.format.hasVideo && it.format.hasAudio
+                                                MediaKind.Audio -> it.format.hasAudio
+                                                else -> false
+                                            }
+                                    }
+                                    .sortedWith(
+                                        compareBy<MediaCandidate> { it.id != candidate.id }
+                                            .thenByDescending { it.format.hasAudio }
+                                            .thenByDescending { it.format.height ?: 0 }
+                                            .thenByDescending { it.format.bitrateKbps ?: 0 },
+                                    )
+                                    .take(3)
+                            }
 
                             logger.log(
                                 DiagnosticLevel.INFO,
@@ -844,7 +863,12 @@ class HomeViewModel(
                     ),
                     null,
                 )
-                downloadCandidateInternal(candidate.id, extractAudio = false)
+                // Audio always follows the explicit output-format pipeline.
+                downloadCandidateInternal(
+                    candidate.id,
+                    extractAudio = true,
+                    audioOutputFormat = outputFormat,
+                )
             }
             format.kind == MediaKind.Video && format.hasVideo && format.hasAudio -> {
                 logger.log(
