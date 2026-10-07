@@ -82,6 +82,7 @@ class DownloadWorkScheduler(
             .putString(DownloadWorker.KEY_SOURCE_URL, task.sourceUrl)
             .putString(DownloadWorker.KEY_DESTINATION_PATH, task.destinationPath)
             .putString(DownloadWorker.KEY_DISPLAY_NAME, task.displayName)
+            .putString(DownloadWorker.KEY_THUMBNAIL_URL, task.thumbnailUrl)
             .putString(DownloadWorker.KEY_CONTENT_FINGERPRINT, task.contentFingerprint)
             .putString(DownloadWorker.KEY_SESSION_COOKIE_HOST, task.sessionCookieHost)
             .putString(DownloadWorker.KEY_SOURCE_PAGE_URL, task.sourcePageUrl)

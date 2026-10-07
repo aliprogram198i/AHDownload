@@ -7,10 +7,16 @@ import androidx.lifecycle.viewModelScope
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
+import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.domain.resolver.OkHttpTextClient
 import com.ahdownload.domain.resolver.ResolverResult
+import com.ahdownload.domain.resolver.SmartResultEngine
+import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
+import com.ahdownload.domain.search.ContentSearchItem
+import com.ahdownload.domain.search.ContentSearchProvider
 import com.ahdownload.domain.validation.CandidateValidationResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -30,28 +36,136 @@ data class HomeUiState(
     val validatingCandidateId: String? = null,
     val error: String? = null,
     val downloadQueued: Boolean = false,
+    val recentLinks: List<RecentLink> = emptyList(),
+    val searchQuery: String = "",
+    val searching: Boolean = false,
+    val searchResults: List<ContentSearchItem> = emptyList(),
+    val searchError: String? = null,
 )
 
 class HomeViewModel(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val analyzer: LinkAnalyzer = LinkAnalyzer(),
     private val resolver: HomeResolver,
-    private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean = { _, _, _ -> false },
+    private val recentLinkStore: RecentLinkStore,
+    private val searchProvider: ContentSearchProvider,
+    private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult = { _, _, _, _ ->
+        DownloadEnqueueResult.REJECTED
+    },
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(HomeUiState())
+    private val _uiState = MutableStateFlow(HomeUiState(recentLinks = recentLinkStore.list()))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
+    private var searchJob: Job? = null
     private var downloadJob: Job? = null
 
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
         analysisJob = null
-        _uiState.value = HomeUiState(url = value)
+        searchJob?.cancel()
+        searchJob = null
+        _uiState.value = HomeUiState(
+            url = value,
+            recentLinks = _uiState.value.recentLinks,
+            searchQuery = _uiState.value.searchQuery,
+        )
+    }
+
+    fun searchContent(query: String = _uiState.value.searchQuery) {
+        val normalized = query.trim()
+        if (normalized.isBlank()) {
+            _uiState.value = _uiState.value.copy(
+                searching = false,
+                searchResults = emptyList(),
+                searchError = "اكتب كلمة أو جملة للبحث أولًا.",
+            )
+            return
+        }
+
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            searchQuery = normalized,
+            searching = true,
+            searchResults = emptyList(),
+            searchError = null,
+        )
+
+        searchJob = viewModelScope.launch {
+            try {
+                val results = searchProvider.search(normalized)
+                _uiState.value = _uiState.value.copy(
+                    searching = false,
+                    searchResults = results,
+                    searchError = if (results.isEmpty()) "لم نجد نتائج مطابقة حاليًا." else null,
+                )
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                logger.log(
+                    DiagnosticLevel.WARNING,
+                    "SEARCH_FAILED",
+                    error.message ?: error::class.simpleName.orEmpty(),
+                    "home.search",
+                    mapOf("query_length" to normalized.length.toString()),
+                    error,
+                )
+                _uiState.value = _uiState.value.copy(
+                    searching = false,
+                    searchResults = emptyList(),
+                    searchError = "تعذر تنفيذ البحث الآن. أعد المحاولة.",
+                )
+            }
+        }
+    }
+
+    fun enterSearchMode() {
+        analysisJob?.cancel()
+        analysisJob = null
+        _uiState.value = _uiState.value.copy(
+            url = "",
+            analyzing = false,
+            resolving = false,
+            result = null,
+            resolution = null,
+            selectedCandidateId = null,
+            validatingCandidateId = null,
+            error = null,
+            downloadQueued = false,
+        )
+    }
+
+    fun onSearchQueryChanged(value: String) {
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(
+            searchQuery = value,
+            searchResults = if (value == _uiState.value.searchQuery) _uiState.value.searchResults else emptyList(),
+            searchError = null,
+        )
+    }
+
+    fun openSearchResult(item: ContentSearchItem) {
+        searchJob?.cancel()
+        _uiState.value = _uiState.value.copy(searchQuery = item.title)
+        onUrlChanged(item.url)
+        analyze()
+    }
+
+    fun selectRecentLink(link: RecentLink) {
+        _uiState.value = HomeUiState(
+            url = link.url,
+            recentLinks = _uiState.value.recentLinks,
+        )
+        analyze()
+    }
+
+    fun clearRecentLinks() {
+        recentLinkStore.clear()
+        _uiState.value = _uiState.value.copy(recentLinks = emptyList())
     }
 
     fun analyze() {
-        val current = _uiState.value.url
+        val current = _uiState.value.url.trim()
         val link = analyzer.analyze(current)
         if (link == null) {
             logger.log(
@@ -67,6 +181,7 @@ class HomeViewModel(
                 resolving = false,
                 result = null,
                 resolution = null,
+                selectedCandidateId = null,
                 error = "الرابط غير صالح أو غير مدعوم.",
             )
             return
@@ -84,6 +199,7 @@ class HomeViewModel(
         )
 
         _uiState.value = _uiState.value.copy(
+            url = current,
             analyzing = true,
             resolving = false,
             result = link,
@@ -99,10 +215,27 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(analyzing = false, resolving = true)
                 when (val resolution = resolver.resolve(link, operationId)) {
                     is ResolverResult.Success -> {
+                        val smart = SmartResultEngine().build(resolution.candidates)
+                        val selectedId = smart.bestOverall?.candidate?.id
+                            ?: smart.bestQuality?.candidate?.id
+                            ?: resolution.candidates.firstOrNull()?.id
+                        val updatedRecent = if (resolution.candidates.isNotEmpty()) {
+                            recentLinkStore.add(
+                                url = link.normalizedUrl,
+                                title = resolution.title,
+                                platform = link.platform.name,
+                            )
+                            recentLinkStore.list()
+                        } else {
+                            _uiState.value.recentLinks
+                        }
+
                         _uiState.value = _uiState.value.copy(
+                            analyzing = false,
                             resolving = false,
                             resolution = resolution,
-                            selectedCandidateId = resolution.candidates.firstOrNull()?.id,
+                            selectedCandidateId = selectedId,
+                            recentLinks = updatedRecent,
                             error = if (resolution.candidates.isEmpty()) {
                                 "لم يتم العثور على وسائط قابلة للتنزيل."
                             } else {
@@ -125,6 +258,7 @@ class HomeViewModel(
                             null,
                         )
                         _uiState.value = _uiState.value.copy(
+                            analyzing = false,
                             resolving = false,
                             resolution = null,
                             error = resolution.message ?: "تعذر استخراج الوسائط: " + resolution.code,
@@ -168,6 +302,10 @@ class HomeViewModel(
         if (downloadJob?.isActive == true) return
 
         val state = _uiState.value
+        val candidate = state.resolution?.candidates
+            ?.firstOrNull { it.id == state.selectedCandidateId }
+            ?: return
+
         val validationOperationId = UUID.randomUUID().toString()
         logger.log(
             DiagnosticLevel.INFO,
@@ -176,12 +314,10 @@ class HomeViewModel(
             "download.prepare",
             mapOf(
                 "operation_id" to validationOperationId,
-                "candidate_id" to (state.resolution?.candidates?.firstOrNull { it.id == state.selectedCandidateId }?.id ?: "unknown"),
+                "candidate_id" to candidate.id,
             ),
             null,
         )
-        val candidate = state.resolution?.candidates?.firstOrNull { it.id == state.selectedCandidateId }
-            ?: return
 
         downloadJob = viewModelScope.launch {
             _uiState.value = state.copy(
@@ -195,10 +331,6 @@ class HomeViewModel(
                 var youtubeRefreshAttempted = false
                 var youtubeFallbackCandidatesChecked = 0
 
-                // YouTube media URLs are signed/short-lived. Refresh exactly once on 403.
-                // After the refresh, validate a small, deterministic set of same-kind
-                // candidates so a stale top-ranked URL cannot block an otherwise valid
-                // source. No blind retries or bypass logic are used.
                 val validationFailure = (validation as? CandidateValidationResult.Invalid)?.failure
                 val httpStatusFailure =
                     validationFailure as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
@@ -229,7 +361,7 @@ class HomeViewModel(
                                 .distinctBy { it.id }
                                 .sortedWith(
                                     compareBy<MediaCandidate> { it.id == candidate.id }
-                                         .thenByDescending { it.id.startsWith("android-") }
+                                        .thenByDescending { it.id.startsWith("android-") }
                                         .thenByDescending { it.id.startsWith("embedded-") }
                                         .thenByDescending { it.format.hasVideo }
                                         .thenByDescending { it.format.hasAudio }
@@ -283,10 +415,6 @@ class HomeViewModel(
                                     (validation as CandidateValidationResult.Invalid).failure
                                 val refreshedHttpFailure =
                                     refreshedFailure as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
-
-                                // Only continue to another candidate for a rejected HTTP
-                                // source. Parser/content-type/storage failures are not
-                                // candidates for blind fallback.
                                 if (refreshedHttpFailure?.code != 403) break
                             }
                         }
@@ -308,28 +436,35 @@ class HomeViewModel(
                     }
                 }
 
-
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
                         val queued = onDownloadRequested(
                             validation.candidate.copy(sourceUrl = validation.finalUrl),
                             state.resolution.title,
                             state.result?.normalizedUrl,
+                            state.resolution.thumbnailUrl,
                         )
-                        if (!queued) {
+                        val message = when (queued) {
+                            DownloadEnqueueResult.QUEUED -> null
+                            DownloadEnqueueResult.DUPLICATE -> "هذا المحتوى موجود بالفعل في سجل التنزيلات."
+                            DownloadEnqueueResult.INVALID_CUSTOM_LOCATION -> "مجلد التنزيل المحدد غير متاح. اختر مجلدًا آخر من الإعدادات."
+                            DownloadEnqueueResult.STORAGE_UNAVAILABLE -> "مساحة التخزين أو مسار التنزيل غير متاح حاليًا."
+                            DownloadEnqueueResult.REJECTED -> "تعذر إضافة التنزيل إلى قائمة الانتظار."
+                        }
+                        if (queued != DownloadEnqueueResult.QUEUED) {
                             logger.log(
                                 DiagnosticLevel.ERROR,
                                 "QUEUE",
-                                "QUEUE_REJECTED",
+                                queued.name,
                                 "download.queue",
-                                emptyMap(),
+                                mapOf("candidate_id" to candidateToValidate.id),
                                 null,
                             )
                         }
                         _uiState.value = _uiState.value.copy(
                             validatingCandidateId = null,
-                            downloadQueued = queued,
-                            error = if (queued) null else "تعذر إضافة التنزيل إلى قائمة الانتظار.",
+                            downloadQueued = queued == DownloadEnqueueResult.QUEUED,
+                            error = message,
                         )
                     }
 
@@ -351,9 +486,9 @@ class HomeViewModel(
                             validatingCandidateId = null,
                             error = when (validation.failure) {
                                 is com.ahdownload.domain.validation.ValidationFailure.HttpStatus ->
-                                    "لم نتمكن من الحصول على مصدر صالح من المنصة حاليًا. يمكنك فتح التشخيص لمعرفة التفاصيل."
+                                    "تعذر الحصول على مصدر صالح حاليًا. يمكنك إعادة المحاولة."
                                 else ->
-                                    "تعذر التحقق من مصدر الوسائط. يمكنك فتح التشخيص لمعرفة التفاصيل."
+                                    "تعذر التحقق من مصدر الوسائط. يمكنك إعادة المحاولة."
                             },
                         )
                     }
@@ -380,6 +515,12 @@ class HomeViewModel(
         }
     }
 
+    fun downloadCandidate(id: String) {
+        if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
+        selectCandidate(id)
+        downloadSelected()
+    }
+
     fun downloadAudio() {
         val candidate = _uiState.value.resolution?.candidates?.firstOrNull {
             it.format.kind == MediaKind.Audio
@@ -391,7 +532,7 @@ class HomeViewModel(
     }
 
     class Factory(
-        private val onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
+        private val onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
         private val logger: DiagnosticLogger,
         private val context: Context,
     ) : ViewModelProvider.Factory {
@@ -404,6 +545,8 @@ class HomeViewModel(
                     sessionProvider = AndroidYouTubeSessionProvider(context.applicationContext),
                     browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
                 ),
+                recentLinkStore = RecentLinkStore(context.applicationContext),
+                searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
                 onDownloadRequested = onDownloadRequested,
             ) as T
         }

@@ -50,6 +50,19 @@ class SmartResultEngineTest {
         assertEquals("60 FPS", model.fpsLabel)
     }
 
+    @Test
+    fun recommendsVideoBeforeAudioWhenBothExist() {
+        val candidates = listOf(
+            candidate("audio", MediaKind.Audio, null, 320, 5000000),
+            candidate("video", MediaKind.Video, 1080, 6000, 20000000),
+        )
+
+        val result = SmartResultEngine().build(candidates)
+
+        assertEquals("video", result.bestOverall?.candidate?.id)
+        assertEquals("video", result.visible.first().candidate.id)
+    }
+
     private fun candidate(
         id: String,
         kind: MediaKind,

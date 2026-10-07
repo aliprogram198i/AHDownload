@@ -12,6 +12,7 @@ data class DownloadTask(
      */
     val requestHeaders: Map<String, String> = emptyMap(),
     val displayName: String? = null,
+    val thumbnailUrl: String? = null,
     val contentFingerprint: String? = null,
     val sessionCookieHost: String? = null,
     /** Original page URL used to resolve this media source; required for refreshable sources such as YouTube. */

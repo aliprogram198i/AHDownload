@@ -338,6 +338,7 @@ class DownloadWorker(
         val destinationPath =
             inputData.getString(KEY_DESTINATION_PATH)?.takeIf { it.isNotBlank() } ?: return null
         val displayName = inputData.getString(KEY_DISPLAY_NAME)
+        val thumbnailUrl = inputData.getString(KEY_THUMBNAIL_URL)
         val contentFingerprint = inputData.getString(KEY_CONTENT_FINGERPRINT).orEmpty()
         val sessionCookieHost = inputData.getString(KEY_SESSION_COOKIE_HOST)
         val sourcePageUrl = inputData.getString(KEY_SOURCE_PAGE_URL)
@@ -359,6 +360,7 @@ class DownloadWorker(
             sourceUrl = sourceUrl,
             destinationPath = destinationPath,
             displayName = displayName,
+            thumbnailUrl = thumbnailUrl,
             contentFingerprint = contentFingerprint,
             sessionCookieHost = sessionCookieHost,
             sourcePageUrl = sourcePageUrl,
@@ -527,6 +529,7 @@ class DownloadWorker(
         const val KEY_SOURCE_URL = "source_url"
         const val KEY_DESTINATION_PATH = "destination_path"
         const val KEY_DISPLAY_NAME = "display_name"
+        const val KEY_THUMBNAIL_URL = "thumbnail_url"
         const val KEY_CONTENT_FINGERPRINT = "content_fingerprint"
         const val KEY_SESSION_COOKIE_HOST = "session_cookie_host"
         const val KEY_SOURCE_PAGE_URL = "source_page_url"

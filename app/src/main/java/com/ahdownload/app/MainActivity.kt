@@ -2,23 +2,21 @@ package com.ahdownload.app
 
 import android.content.Intent
 import android.content.pm.PackageManager
-import androidx.activity.result.contract.ActivityResultContracts
 import android.net.Uri
 import android.os.Build
-import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.mutableStateListOf
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
@@ -29,12 +27,22 @@ import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.domain.download.DownloadRecord
+import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
+import java.io.File
+import kotlinx.coroutines.launch
 
-private enum class RootDestination { Welcome, Home, Downloads, Diagnostics, Settings, UiDiagnostics }
+private enum class RootDestination {
+    Welcome,
+    Home,
+    Downloads,
+    Diagnostics,
+    Settings,
+    UiDiagnostics,
+}
 
 class MainActivity : ComponentActivity() {
     private val downloadLauncher by lazy { DownloadLauncher(applicationContext) }
@@ -44,12 +52,15 @@ class MainActivity : ComponentActivity() {
     private val diagnosticLogger by lazy { applicationServices.diagnosticLogger }
     private val uiTraceLogger by lazy { applicationServices.uiTraceLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
-    private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) downloadLocationStore.saveTreeUri(uri)
-    }
+
+    private val folderPicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) downloadLocationStore.saveTreeUri(uri)
+        }
+
     private var pendingSharedUrl by mutableStateOf<String?>(null)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
@@ -60,9 +71,12 @@ class MainActivity : ComponentActivity() {
                 AHRoot(
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
-                    onDownloadRequested = { candidate, title, sourcePageUrl ->
-                        downloadLauncher.enqueue(candidate, title, sourcePageUrl)
+                    onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
+                        downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
                     },
+                    onDeleteDownloadFile = ::deleteDownloadedFile,
+                    onShareDownload = ::shareCompletedDownload,
+                    onConsumeInitialUrl = { pendingSharedUrl = null },
                     onOpenYouTubeSession = ::openYouTubeSession,
                     uiTraceLogger = uiTraceLogger,
                     downloadRepository = downloadRepository,
@@ -71,7 +85,9 @@ class MainActivity : ComponentActivity() {
                     onCancelDownload = downloadWorkScheduler::cancel,
                     onOpenDownload = ::openCompletedDownload,
                     downloadLocationStore = downloadLocationStore,
-                    onPickDownloadFolder = { folderPicker.launch(downloadLocationStore.persistedUri()) },
+                    onPickDownloadFolder = {
+                        folderPicker.launch(downloadLocationStore.persistedUri())
+                    },
                 )
             }
         }
@@ -84,7 +100,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             requestPermissions(
@@ -94,19 +111,24 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun extractSharedUrl(intent: Intent?): String? =
-        intent?.takeIf { it.action == Intent.ACTION_SEND }
-            ?.getStringExtra(Intent.EXTRA_TEXT)
-            ?.trim()
-            ?.takeIf { it.isNotBlank() }
+    private fun extractSharedUrl(intent: Intent?): String? {
+        val raw = when (intent?.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> intent.dataString
+            else -> null
+        }
+        return raw?.trim()?.takeIf { it.isNotBlank() }
+    }
 
     private fun openCompletedDownload(record: DownloadRecord) {
         val destination = record.destinationUri
             ?.takeIf { it.isNotBlank() }
             ?.let(Uri::parse)
             ?: return
+
         val mimeType = contentResolver.getType(destination)
             ?: mimeTypeFor(record.task.displayName ?: record.task.destinationPath)
+
         runCatching {
             startActivity(
                 Intent(Intent.ACTION_VIEW).apply {
@@ -130,25 +152,88 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun mimeTypeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
-        "mp4", "m4v" -> "video/mp4"
-        "webm" -> "video/webm"
-        "mkv" -> "video/x-matroska"
-        "mov" -> "video/quicktime"
-        "3gp" -> "video/3gpp"
-        "avi" -> "video/x-msvideo"
-        "mp3" -> "audio/mpeg"
-        "m4a" -> "audio/mp4"
-        "aac" -> "audio/aac"
-        "ogg" -> "audio/ogg"
-        "flac" -> "audio/flac"
-        "wav" -> "audio/wav"
-        "jpg", "jpeg" -> "image/jpeg"
-        "png" -> "image/png"
-        "webp" -> "image/webp"
-        "gif" -> "image/gif"
-        else -> "application/octet-stream"
+    private fun shareCompletedDownload(record: DownloadRecord) {
+        val destination = record.destinationUri
+            ?.takeIf { it.isNotBlank() }
+            ?.let(Uri::parse)
+            ?: return
+
+        val mimeType = contentResolver.getType(destination)
+            ?: mimeTypeFor(record.task.displayName ?: record.task.destinationPath)
+
+        runCatching {
+            startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = mimeType
+                        putExtra(Intent.EXTRA_STREAM, destination)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    },
+                    "مشاركة عبر",
+                ),
+            )
+        }.onFailure { error ->
+            diagnosticLogger.log(
+                level = DiagnosticLevel.WARNING,
+                type = "download_share_failed",
+                reason = "Unable to share completed download",
+                operation = "main.share_download",
+                context = mapOf(
+                    "task_id" to record.task.id,
+                    "mime_type" to mimeType,
+                ),
+                throwable = error,
+            )
+        }
     }
+
+    private fun deleteDownloadedFile(record: DownloadRecord): Boolean {
+        val deleted = runCatching {
+            val uri = record.destinationUri
+                ?.takeIf { it.isNotBlank() }
+                ?.let(Uri::parse)
+            when {
+                uri != null -> contentResolver.delete(uri, null, null) > 0
+                else -> File(record.task.destinationPath).delete()
+            }
+        }.getOrDefault(false)
+
+        if (deleted) {
+            diagnosticLogger.log(
+                DiagnosticLevel.INFO,
+                "DOWNLOAD_FILE_DELETED",
+                "تم حذف الملف المطلوب من الجهاز",
+                "main.delete_download",
+                mapOf("task_id" to record.task.id),
+                null,
+            )
+            lifecycleScope.launch {
+                applicationServices.downloadRepository.delete(record.task.id)
+            }
+        }
+        return deleted
+    }
+
+    private fun mimeTypeFor(name: String): String =
+        when (name.substringAfterLast('.', "").lowercase()) {
+            "mp4", "m4v" -> "video/mp4"
+            "webm" -> "video/webm"
+            "mkv" -> "video/x-matroska"
+            "mov" -> "video/quicktime"
+            "3gp" -> "video/3gpp"
+            "avi" -> "video/x-msvideo"
+            "mp3" -> "audio/mpeg"
+            "m4a" -> "audio/mp4"
+            "aac" -> "audio/aac"
+            "ogg" -> "audio/ogg"
+            "flac" -> "audio/flac"
+            "wav" -> "audio/wav"
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            else -> "application/octet-stream"
+        }
 
     private fun openYouTubeSession() {
         runCatching {
@@ -180,7 +265,10 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
-    onDownloadRequested: suspend (MediaCandidate, String?, String?) -> Boolean,
+    onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+    onDeleteDownloadFile: (DownloadRecord) -> Boolean,
+    onShareDownload: (DownloadRecord) -> Unit,
+    onConsumeInitialUrl: () -> Unit,
     onOpenYouTubeSession: () -> Unit,
     uiTraceLogger: PersistentUiTraceLogger,
     downloadRepository: com.ahdownload.domain.download.DownloadRepository,
@@ -191,68 +279,82 @@ private fun AHRoot(
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
 ) {
-    var destination by remember {
-        mutableStateOf(
+    val backStack = remember {
+        mutableStateListOf(
             if (initialUrl?.isNotBlank() == true) RootDestination.Home
             else RootDestination.Welcome,
         )
     }
 
+    fun root(destination: RootDestination) {
+        backStack.clear()
+        backStack.add(destination)
+    }
+
+    fun push(destination: RootDestination) {
+        if (backStack.lastOrNull() != destination) backStack.add(destination)
+    }
+
+    fun popOrHome() {
+        if (backStack.size > 1) backStack.removeLast()
+        else root(RootDestination.Home)
+    }
+
     LaunchedEffect(initialUrl) {
         if (initialUrl?.isNotBlank() == true) {
-            destination = RootDestination.Home
+            root(RootDestination.Home)
         }
     }
 
-    AnimatedContent(
-        targetState = destination,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "rootDestination",
-    ) { current ->
-        when (current) {
-            RootDestination.Welcome -> WelcomeRoute(
-                onContinue = { destination = RootDestination.Home },
-                uiTraceLogger = uiTraceLogger,
-            )
-            RootDestination.Home -> HomeRoute(
-                initialUrl = initialUrl,
-                onDownloadRequested = onDownloadRequested,
-                logger = logger,
-                onOpenDiagnostics = { destination = RootDestination.Diagnostics },
-                onOpenYouTubeSession = onOpenYouTubeSession,
-                onOpenUiDiagnostics = { destination = RootDestination.UiDiagnostics },
-                uiTraceLogger = uiTraceLogger,
-                onOpenSettings = { destination = RootDestination.Settings },
-                onOpenDownloads = { destination = RootDestination.Downloads },
-            )
-            RootDestination.Downloads -> DownloadsRoute(
-                repository = downloadRepository,
-                onPauseDownload = onPauseDownload,
-                onResumeDownload = onResumeDownload,
-                onCancelDownload = onCancelDownload,
-                onOpenDownload = onOpenDownload,
-                uiTraceLogger = uiTraceLogger,
-                onBack = { destination = RootDestination.Home },
-                onNavigateHome = { destination = RootDestination.Home },
-                onNavigateSettings = { destination = RootDestination.Settings },
-            )
-            RootDestination.Settings -> SettingsRoute(
-                store = downloadLocationStore,
-                onPickDownloadFolder = onPickDownloadFolder,
-                uiTraceLogger = uiTraceLogger,
-                onBack = { destination = RootDestination.Home },
-                onNavigateHome = { destination = RootDestination.Home },
-                onNavigateDownloads = { destination = RootDestination.Downloads },
-            )
-            RootDestination.Diagnostics -> DiagnosticsRoute(
-                logger = logger,
-                uiTraceLogger = uiTraceLogger,
-                onBack = { destination = RootDestination.Home },
-            )
-            RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
-                logger = uiTraceLogger,
-                onBack = { destination = RootDestination.Home },
-            )
-        }
+    BackHandler(enabled = backStack.size > 1) {
+        backStack.removeLast()
+    }
+
+    when (backStack.last()) {
+        RootDestination.Welcome -> WelcomeRoute(
+            onContinue = { root(RootDestination.Home) },
+            uiTraceLogger = uiTraceLogger,
+        )
+        RootDestination.Home -> HomeRoute(
+            initialUrl = initialUrl,
+            onDownloadRequested = onDownloadRequested,
+            logger = logger,
+            onOpenSettings = { root(RootDestination.Settings) },
+            onOpenDownloads = { root(RootDestination.Downloads) },
+            onInitialUrlConsumed = onConsumeInitialUrl,
+            uiTraceLogger = uiTraceLogger,
+        )
+        RootDestination.Downloads -> DownloadsRoute(
+            repository = downloadRepository,
+            onPauseDownload = onPauseDownload,
+            onResumeDownload = onResumeDownload,
+            onCancelDownload = onCancelDownload,
+            onOpenDownload = onOpenDownload,
+            onShareDownload = onShareDownload,
+            onDeleteDownloadFile = onDeleteDownloadFile,
+            uiTraceLogger = uiTraceLogger,
+            onBack = ::popOrHome,
+            onNavigateHome = { root(RootDestination.Home) },
+            onNavigateSettings = { root(RootDestination.Settings) },
+        )
+        RootDestination.Settings -> SettingsRoute(
+            store = downloadLocationStore,
+            onPickDownloadFolder = onPickDownloadFolder,
+            onOpenDiagnostics = { push(RootDestination.Diagnostics) },
+            onOpenUiDiagnostics = { push(RootDestination.UiDiagnostics) },
+            onBack = ::popOrHome,
+            onNavigateHome = { root(RootDestination.Home) },
+            onNavigateDownloads = { root(RootDestination.Downloads) },
+            uiTraceLogger = uiTraceLogger,
+        )
+        RootDestination.Diagnostics -> DiagnosticsRoute(
+            logger = logger,
+            uiTraceLogger = uiTraceLogger,
+            onBack = ::popOrHome,
+        )
+        RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
+            logger = uiTraceLogger,
+            onBack = ::popOrHome,
+        )
     }
 }

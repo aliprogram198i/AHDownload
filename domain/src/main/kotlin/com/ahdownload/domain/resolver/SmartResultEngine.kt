@@ -15,7 +15,9 @@ class SmartResultEngine {
         val audio = normalized.filter { it.group == MediaResultGroup.Audio }.sortedWith(audioComparator)
         val other = normalized.filter { it.group == MediaResultGroup.Other }
 
-        val bestOverall = normalized.firstOrNull()
+        val bestOverall = video.firstOrNull()
+            ?: audio.firstOrNull()
+            ?: normalized.firstOrNull()
         val bestQuality = video.maxWithOrNull(
             compareBy<MediaPresentationModel> { it.candidate.format.height ?: 0 }
                 .thenBy { it.candidate.format.fps ?: 0.0 }
