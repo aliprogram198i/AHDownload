@@ -110,6 +110,33 @@ jobs:
 
           gradle --no-daemon assembleRelease             -PAH_KEYSTORE_FILE="$AH_KEYSTORE_FILE"             -PAH_KEYSTORE_PASSWORD="$AH_KEYSTORE_PASSWORD"             -PAH_KEY_ALIAS="$AH_KEY_ALIAS"             -PAH_KEY_PASSWORD="$AH_KEY_PASSWORD"
 
+      - name: Re-sign release APK with V1/V2/V3
+        env:
+          AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
+          AH_KEYSTORE_PASSWORD: ${{ secrets.AH_KEYSTORE_PASSWORD }}
+          AH_KEY_ALIAS: ${{ secrets.AH_KEY_ALIAS }}
+          AH_KEY_PASSWORD: ${{ secrets.AH_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          APK="app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.1.0/apksigner"
+          test -s "$APK"
+          test -x "$APKSIGNER"
+
+          "$APKSIGNER" sign \
+            --ks "$AH_KEYSTORE_FILE" \
+            --ks-key-alias "$AH_KEY_ALIAS" \
+            --ks-pass "env:AH_KEYSTORE_PASSWORD" \
+            --key-pass "env:AH_KEY_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "${APK}.resigned" \
+            "$APK"
+
+          mv "${APK}.resigned" "$APK"
+
       - name: Verify release APK integrity and installability
         env:
           AH_KEYSTORE_FILE: ${{ github.workspace }}/.ci-release.keystore
