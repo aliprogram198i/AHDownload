@@ -12,6 +12,8 @@ import com.ahdownload.domain.resolver.OkHttpTextClient
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.youtube.YouTubeResolver
+import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import com.ahdownload.domain.resolver.social.SocialPlatformResolver
 import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.CandidateValidator
 import com.ahdownload.domain.validation.OkHttpMediaProbe
@@ -29,6 +31,7 @@ class HomeResolver(
         logger = logger,
     ),
     private val candidateRanker: CandidateRanker = CandidateRanker(),
+    private val browserMediaSessionProvider: BrowserMediaSessionProvider? = null,
 ) {
     suspend fun resolve(link: MediaLink, operationId: String? = null): ResolverResult {
         if (link.platform == MediaPlatform.DirectMedia && link.kind != MediaKind.Unknown) {
@@ -54,9 +57,24 @@ class HomeResolver(
 
         val result = when (link.platform) {
             MediaPlatform.YouTube -> youtubeResolver.resolve(ResolverRequest(link, operationId = operationId))
+            MediaPlatform.Instagram,
+            MediaPlatform.Facebook,
+            MediaPlatform.TikTok,
+            MediaPlatform.X,
+            MediaPlatform.Snapchat,
+            MediaPlatform.Pinterest,
+            MediaPlatform.Reddit,
+            MediaPlatform.Twitch,
+            MediaPlatform.Vimeo -> {
+                val provider = browserMediaSessionProvider ?: return ResolverResult.Failure(
+                    com.ahdownload.domain.resolver.FailureCode.ResolverUnavailable,
+                    "محرك تصفح الوسائط غير متاح في هذا الإصدار.",
+                )
+                SocialPlatformResolver(provider, logger).resolve(ResolverRequest(link, operationId = operationId))
+            }
             else -> ResolverResult.Failure(
                 com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
-                "المنصة غير موصولة بعد.",
+                "المنصة غير مدعومة في المحرك الحالي.",
             )
         }
 
