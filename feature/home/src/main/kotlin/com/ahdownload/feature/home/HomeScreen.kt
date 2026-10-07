@@ -412,7 +412,6 @@ private fun HomeScreen(
                                         IconButton(
                                             enabled = !state.analyzing && !state.resolving,
                                             onClick = {
-                                                showAll = false
                                                 onUrlChanged("")
                                             },
                                         ) {
