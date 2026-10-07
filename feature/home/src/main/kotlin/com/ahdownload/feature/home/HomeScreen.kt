@@ -475,14 +475,14 @@ private fun HomeScreen(
                                 fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                "\${filtered.size} خيار ظاهر",
+                                "${filtered.size} خيار ظاهر",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         if (showAll && resultSet.hiddenCount > 0) {
                             Text(
-                                "مخفي سابقًا: \${resultSet.hiddenCount}",
+                                "مخفي سابقًا: ${resultSet.hiddenCount}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -592,10 +592,10 @@ private fun MediaPreviewCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    AHStatusPill("\${total} صيغة")
-                    if (video > 0) AHStatusPill("\${video} فيديو")
-                    if (audio > 0) AHStatusPill("\${audio} صوت")
-                    if (other > 0) AHStatusPill("\${other} إضافية")
+                    AHStatusPill("${total} صيغة")
+                    if (video > 0) AHStatusPill("${video} فيديو")
+                    if (audio > 0) AHStatusPill("${audio} صوت")
+                    if (other > 0) AHStatusPill("${other} إضافية")
                 }
             }
         }
@@ -902,8 +902,8 @@ private fun recommendationLabel(model: MediaPresentationModel): String? = when (
 private fun buildQualityLine(model: MediaPresentationModel): String {
     val format = model.candidate.format
     return when {
-        format.kind == MediaKind.Video -> "\${model.qualityLabel} · \${containerLabel(format.container)}"
-        format.kind == MediaKind.Audio -> "\${model.qualityLabel} · \${containerLabel(format.container)}"
+        format.kind == MediaKind.Video -> "${model.qualityLabel} · ${containerLabel(format.container)}"
+        format.kind == MediaKind.Audio -> "${model.qualityLabel} · ${containerLabel(format.container)}"
         else -> model.qualityLabel
     }
 }
