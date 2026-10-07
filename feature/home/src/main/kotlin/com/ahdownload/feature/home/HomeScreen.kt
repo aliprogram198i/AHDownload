@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
@@ -68,9 +69,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.text.format.DateUtils
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
@@ -487,7 +490,8 @@ private fun HomeScreen(
                                 },
                                 label = { Text("ابحث في YouTube") },
                                 placeholder = { Text("مثال: football highlights") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { if (state.searchQuery.isNotBlank() && !state.searching) onSearch() }),
                             )
                             Button(
                                 onClick = {
@@ -907,20 +911,36 @@ private fun RecentLinksCard(
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            link.title ?: link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.SemiBold,
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MediaThumbnail(
+                            url = link.thumbnailUrl,
+                            contentDescription = "صورة مصغرة: " + (link.title ?: link.url),
+                            modifier = Modifier
+                                .size(width = 72.dp, height = 50.dp)
+                                .clip(RoundedCornerShape(10.dp)),
                         )
-                        Text(
-                            platformLabel(link.platform) + " · " + link.url,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                link.title ?: link.url,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                platformLabel(link.platform) + " · " + relativeRecentTime(link.updatedAtEpochMs),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -1305,6 +1325,8 @@ private fun containerLabel(container: com.ahdownload.domain.resolver.MediaContai
         com.ahdownload.domain.resolver.MediaContainer.Avi -> "AVI"
         com.ahdownload.domain.resolver.MediaContainer.Unknown -> "صيغة غير معروفة"
     }
+
+private fun relativeRecentTime(epochMs: Long): String = DateUtils.getRelativeTimeSpanString(epochMs, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
 
 private fun platformLabel(platform: String): String = when (platform) {
     "YouTube" -> "YouTube"
