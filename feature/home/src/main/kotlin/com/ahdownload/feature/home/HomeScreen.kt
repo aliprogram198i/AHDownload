@@ -14,10 +14,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +46,8 @@ import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.rememberUiTraceContext
+import com.ahdownload.core.designsystem.AHBottomNavDestination
+import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
 import com.ahdownload.domain.model.MediaKind
@@ -134,9 +134,8 @@ private fun HomeScreen(
     ) {
         val components = buildList {
             add("topbar")
-            add("download_button")
             add("ui_diagnostics_button")
-            add("settings_button")
+            add("bottom_navigation")
             add("youtube_session_button")
             add("diagnostics_button")
             add("url_input")
@@ -213,20 +212,32 @@ private fun HomeScreen(
                 title = { Text("AHDownload") },
                 navigationIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                 actions = {
-                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "download_button", "open_downloads"); onOpenDownloads() }) {
-                        Icon(Icons.Rounded.Download, contentDescription = "التنزيلات")
-                    }
                     IconButton(onClick = { uiTraceLogger.interaction("HOME", "ui_diagnostics_button", "open_ui_diagnostics"); onOpenUiDiagnostics() }) {
                         Icon(Icons.Rounded.BugReport, contentDescription = "سجل الواجهة")
-                    }
-                    IconButton(onClick = { uiTraceLogger.interaction("HOME", "settings_button", "open_settings"); onOpenSettings() }) {
-                        Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات")
                     }
                     IconButton(onClick = { uiTraceLogger.interaction("HOME", "youtube_session_button", "open_youtube_session"); onOpenYouTubeSession() }) {
                         Icon(Icons.Rounded.AccountCircle, contentDescription = "جلسة YouTube")
                     }
                     IconButton(onClick = { uiTraceLogger.interaction("HOME", "diagnostics_button", "open_diagnostics"); onOpenDiagnostics() }) {
                         Icon(Icons.Rounded.ErrorOutline, contentDescription = "سجل الأخطاء")
+                    }
+                },
+            )
+        },
+        bottomBar = {
+            AHBottomNavigationBar(
+                selected = AHBottomNavDestination.HOME,
+                onDestinationSelected = { destination ->
+                    when (destination) {
+                        AHBottomNavDestination.HOME -> Unit
+                        AHBottomNavDestination.DOWNLOADS -> {
+                            uiTraceLogger.interaction("HOME", "bottom_nav_downloads", "open_downloads")
+                            onOpenDownloads()
+                        }
+                        AHBottomNavDestination.SETTINGS -> {
+                            uiTraceLogger.interaction("HOME", "bottom_nav_settings", "open_settings")
+                            onOpenSettings()
+                        }
                     }
                 },
             )

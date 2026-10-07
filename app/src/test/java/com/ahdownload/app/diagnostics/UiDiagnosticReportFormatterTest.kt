@@ -53,4 +53,52 @@ class UiDiagnosticReportFormatterTest {
         assertTrue(report.contains("topbar,url_input,analyze_button"))
         assertTrue(report.contains("HOME | HomeScreen | UI_SNAPSHOT"))
     }
+    @Test
+    fun reportUsesEnvironmentValuesFromLatestSnapshotWhenLatestEventOmitsThem() {
+        val snapshot = UiTraceEvent(
+            id = "snapshot",
+            timestampEpochMs = 1_000,
+            sessionId = "session-2",
+            sequence = 1,
+            screen = "HOME",
+            component = "HomeScreen",
+            event = "UI_SNAPSHOT",
+            state = "VISIBLE",
+            context = mapOf(
+                "app_package" to "com.ahdownload.app",
+                "app_version_name" to "1.0.0",
+                "app_version_code" to "10",
+                "app_build_type" to "release",
+                "android_release" to "15",
+                "android_sdk" to "35",
+                "app_target_sdk" to "36",
+                "device_manufacturer" to "Samsung",
+                "device_model" to "SM-G996W",
+                "viewport_width_px" to "1080",
+                "viewport_height_px" to "2399",
+                "viewport_width_dp" to "384",
+                "viewport_height_dp" to "853",
+                "density" to "2.8125",
+                "font_scale" to "1.0",
+                "orientation" to "portrait",
+                "theme_mode" to "light",
+                "layout_direction" to "RTL",
+                "locale" to "ar-EG",
+            ),
+        )
+        val interaction = snapshot.copy(
+            id = "interaction",
+            timestampEpochMs = 2_000,
+            sequence = 2,
+            event = "UI_INTERACTION",
+            state = "TRIGGERED",
+            context = mapOf("action" to "open_settings"),
+        )
+
+        val report = UiDiagnosticReportFormatter.format(listOf(snapshot, interaction))
+
+        assertTrue(report.contains("viewport=1080x2399px (384x853dp) density=2.8125 fontScale=1.0 orientation=portrait"))
+        assertTrue(report.contains("theme=light layoutDirection=RTL locale=ar-EG"))
+    }
+
 }
