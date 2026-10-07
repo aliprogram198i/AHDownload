@@ -480,6 +480,10 @@ private fun DownloadsScreen(
                             onDeleteHistory = {
                                 pendingDelete = record
                             },
+                            onRenameDownload = {
+                                renameValue = record.task.displayName.orEmpty().substringBeforeLast('.', record.task.displayName.orEmpty())
+                                pendingRename = record
+                            },
                             onOpenDownload = {
                                 uiTraceLogger.interaction("DOWNLOADS", "open_control", "open")
                                 onOpenDownload(record)
@@ -578,6 +582,7 @@ private fun DownloadRecordCard(
     onCancel: () -> Unit,
     onRetry: () -> Unit,
     onDeleteHistory: () -> Unit,
+    onRenameDownload: () -> Unit,
     onOpenDownload: () -> Unit,
     onShareDownload: () -> Unit,
     onDeleteDownloadFile: () -> Unit,
