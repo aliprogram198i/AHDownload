@@ -8,7 +8,7 @@ class FavoriteItemTest {
     @Test
     fun favoriteKeyNormalizesUrl() {
         assertEquals(
-            "https://www.youtube.com/watch",
+            "https://www.youtube.com/watch/?v=abc",
             FavoriteKey.fromUrl(" HTTPS://www.YouTube.com/watch/?v=abc#fragment "),
         )
     }
