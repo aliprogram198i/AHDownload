@@ -68,6 +68,7 @@ data class MediaInspection(
     val trackCount: Int,
 )
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun StudioRoute(
     record: DownloadRecord,
