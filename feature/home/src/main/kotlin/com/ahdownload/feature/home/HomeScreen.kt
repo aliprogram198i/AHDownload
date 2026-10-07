@@ -94,6 +94,7 @@ import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.favorites.FavoriteItem
 import com.ahdownload.domain.favorites.FavoriteKey
 import com.ahdownload.domain.favorites.FavoriteRepository
+import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaPresentationModel
@@ -106,7 +107,7 @@ import kotlinx.coroutines.launch
 fun HomeRoute(
     initialUrl: String? = null,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
-    onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+    onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
     logger: DiagnosticLogger,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
@@ -145,6 +146,7 @@ fun HomeRoute(
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onSelectAudioCandidate = viewModel::selectAudioCandidate,
+        onSelectAudioOutputFormat = viewModel::selectAudioOutputFormat,
         onDownloadCandidate = viewModel::downloadCandidate,
         onDownloadAudio = viewModel::downloadAudio,
         onModeChanged = viewModel::setMode,
@@ -197,6 +199,7 @@ private fun HomeScreen(
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onSelectAudioCandidate: (String) -> Unit,
+    onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownloadCandidate: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
@@ -742,6 +745,7 @@ private fun HomeScreen(
                         selectedCandidateId = state.selectedCandidateId,
                         selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
+                        selectedAudioOutputFormat = state.selectedAudioOutputFormat,
                         onSelect = {
                             logSelection(
                                 logger,
@@ -760,6 +764,7 @@ private fun HomeScreen(
                         },
                         onDownload = { onDownloadCandidate(it) },
                         onDownloadAudio = onDownloadAudio,
+                        onSelectAudioOutputFormat = onSelectAudioOutputFormat,
                     )
                 }
             }
@@ -1100,8 +1105,10 @@ private fun UnifiedDownloadResultCard(
     selectedCandidateId: String?,
     selectedAudioCandidateId: String?,
     validatingCandidateId: String?,
+    selectedAudioOutputFormat: AudioOutputFormat,
     onSelect: (MediaPresentationModel) -> Unit,
     onSelectAudio: (MediaPresentationModel) -> Unit,
+    onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
 ) {
@@ -1114,11 +1121,13 @@ private fun UnifiedDownloadResultCard(
         .take(8)
 
     val directAudioOptions = audioOptions
-        .filter { it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio }
+        .filter {
+            it.candidate.format.kind == MediaKind.Audio &&
+                it.candidate.format.hasAudio
+        }
         .take(8)
 
     val extractionSource = videoOptions.firstOrNull()
-
     val audioChoices = if (directAudioOptions.isNotEmpty()) {
         directAudioOptions
     } else {
@@ -1127,15 +1136,15 @@ private fun UnifiedDownloadResultCard(
 
     val selectedVideo = videoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
     val selectedAudio = audioChoices.firstOrNull { it.candidate.id == selectedAudioCandidateId }
+        ?: audioChoices.firstOrNull()
 
     val showVideoSection = videoOptions.isNotEmpty() || kind == MediaKind.Video
     val showAudioSection = audioChoices.isNotEmpty() || kind == MediaKind.Video || kind == MediaKind.Audio
+    val sourceDescription = selectedAudio?.let(::audioSourceDescription)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1165,25 +1174,16 @@ private fun UnifiedDownloadResultCard(
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
-
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        platform?.let {
-                            item { AHStatusPill(platformLabel(it)) }
-                        }
-                        durationMs?.let {
-                            item { AHStatusPill(formatDuration(it)) }
-                        }
+                        platform?.let { item { AHStatusPill(platformLabel(it)) } }
+                        durationMs?.let { item { AHStatusPill(formatDuration(it)) } }
                     }
                 }
 
                 IconButton(
                     onClick = onToggleFavorite,
                     modifier = Modifier.semantics {
-                        contentDescription = if (favorite) {
-                            "إزالة من المفضلة"
-                        } else {
-                            "إضافة إلى المفضلة"
-                        }
+                        contentDescription = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
                     },
                 ) {
                     Icon(
@@ -1215,7 +1215,7 @@ private fun UnifiedDownloadResultCard(
                         modifier = Modifier.size(18.dp),
                     )
                     Text(
-                        "تم تحليل الرابط وتجهيز خيارات التنزيل",
+                        "تم تحليل الرابط وتجهيز أفضل المصادر المتاحة",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -1226,7 +1226,7 @@ private fun UnifiedDownloadResultCard(
                 UnifiedResultSectionHeader(
                     icon = Icons.Rounded.VideoFile,
                     title = "تحميل الفيديو",
-                    subtitle = "الجودة · الصيغة · ترميز الفيديو والصوت",
+                    subtitle = "اختر الجودة؛ وسيبقى الصوت والصورة في الملف.",
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1243,22 +1243,20 @@ private fun UnifiedDownloadResultCard(
                         onClick = { selectedVideo?.candidate?.id?.let(onDownload) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics {
-                                contentDescription = "تحميل الفيديو"
-                            },
+                            .semantics { contentDescription = "تحميل الفيديو" },
                     ) {
                         Icon(Icons.Rounded.Download, contentDescription = null)
                         Spacer(Modifier.size(8.dp))
                         Text(
                             when {
                                 validatingCandidateId != null -> "جارٍ التحقق من المصدر..."
-                                selectedVideo == null -> "اختر جودة الفيديو أولًا"
+                                selectedVideo == null -> "اختر جودة الفيديو"
                                 else -> "تحميل الفيديو · " + buildQualityLine(selectedVideo)
                             },
                         )
                     }
                 } else {
-                    UnifiedResultEmptyState("لا يتوفر حاليًا فيديو يجمع الصورة والصوت في مصدر واحد.")
+                    UnifiedResultEmptyState("لا يتوفر حاليًا مصدر فيديو يجمع الصورة والصوت.")
                 }
             }
 
@@ -1269,26 +1267,46 @@ private fun UnifiedDownloadResultCard(
             if (showAudioSection) {
                 UnifiedResultSectionHeader(
                     icon = Icons.Rounded.AudioFile,
-                    title = "استخراج / تحميل الصوت",
-                    subtitle = audioSectionSubtitle(audioChoices, extractionSource),
+                    title = "استخراج وتحويل الصوت",
+                    subtitle = "اختر صيغة الإخراج؛ سيُستخرج الصوت من المصدر ثم يُحوّل على الجهاز.",
                 )
 
-                if (audioChoices.isNotEmpty()) {
-                    MediaFormatGrid(
-                        options = audioChoices,
-                        selected = selectedAudio,
-                        validatingCandidateId = validatingCandidateId,
-                        onSelect = onSelectAudio,
-                        audioOnly = true,
+                if (selectedAudio != null) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                "مصدر الصوت المختار تلقائيًا",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                sourceDescription ?: "مصدر صوتي متاح",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    AudioOutputFormatGrid(
+                        selected = selectedAudioOutputFormat,
+                        enabled = validatingCandidateId == null,
+                        onSelect = onSelectAudioOutputFormat,
                     )
 
                     Button(
-                        enabled = selectedAudio != null && validatingCandidateId == null,
-                        onClick = { onDownloadAudio(selectedAudio?.candidate?.id) },
+                        enabled = validatingCandidateId == null,
+                        onClick = { onDownloadAudio(selectedAudio.candidate.id) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .semantics {
-                                contentDescription = "تحميل الصوت فقط"
+                                contentDescription = "استخراج الصوت وتحويله إلى " + selectedAudioOutputFormat.label
                             },
                     ) {
                         Icon(Icons.Rounded.AudioFile, contentDescription = null)
@@ -1296,20 +1314,129 @@ private fun UnifiedDownloadResultCard(
                         Text(
                             when {
                                 validatingCandidateId != null -> "جارٍ التحقق من المصدر..."
-                                selectedAudio == null -> "اختر صيغة الصوت أولًا"
-                                selectedAudio.candidate.format.kind == MediaKind.Video ->
-                                    "استخراج الصوت"
-                                else ->
-                                    "تحميل الصوت · " + audioFormatLabel(selectedAudio)
+                                else -> "استخراج وتحويل " + audioOutputFormatButtonLabel(selectedAudioOutputFormat)
                             },
                         )
                     }
+
+                    Text(
+                        "ملاحظة: التحويل لا يستطيع استعادة تفاصيل صوتية غير موجودة في المصدر الأصلي.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 } else {
-                    UnifiedResultEmptyState("لا يتوفر مصدر صوتي صالح لهذا الرابط حاليًا.")
+                    UnifiedResultEmptyState("لا يوجد مصدر صوتي صالح لهذا الرابط حاليًا.")
                 }
             }
         }
     }
+}
+
+@Composable
+private fun AudioOutputFormatGrid(
+    selected: AudioOutputFormat,
+    enabled: Boolean,
+    onSelect: (AudioOutputFormat) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        AudioOutputFormat.entries.chunked(2).forEach { rowFormats ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                rowFormats.forEach { format ->
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(enabled = enabled, onClick = { onSelect(format) })
+                            .semantics {
+                                contentDescription = if (format == selected) {
+                                    "صيغة الإخراج محددة: " + format.label
+                                } else {
+                                    "اختيار صيغة الإخراج: " + format.label
+                                }
+                            },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (format == selected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    format.label,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = if (format == selected) FontWeight.Bold else FontWeight.SemiBold,
+                                )
+                                if (format == selected) {
+                                    Icon(
+                                        Icons.Rounded.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(19.dp),
+                                    )
+                                }
+                            }
+                            Text(
+                                audioOutputFormatDescription(format),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                if (rowFormats.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+private fun audioSourceDescription(model: MediaPresentationModel): String {
+    val format = model.candidate.format
+    val source = when (format.kind) {
+        MediaKind.Audio -> containerLabel(format.container)
+        MediaKind.Video -> "من الفيديو " + (format.height?.let { "${it}p" } ?: "")
+        else -> "مصدر الوسائط"
+    }
+    val codec = normalizeCodecForUi(format.audioCodec)
+    val quality = model.qualityLabel.takeIf { it.isNotBlank() }
+    return listOfNotNull(source.takeIf { it.isNotBlank() }, codec, quality, model.sizeLabel)
+        .joinToString(" · ")
+}
+
+private fun audioOutputFormatDescription(format: AudioOutputFormat): String = when (format) {
+    AudioOutputFormat.Mp3 -> "ضغط شائع · 192 kbps"
+    AudioOutputFormat.M4a -> "AAC · 192 kbps"
+    AudioOutputFormat.Aac -> "AAC · 192 kbps"
+    AudioOutputFormat.Opus -> "ضغط حديث · 128 kbps"
+    AudioOutputFormat.Ogg -> "Vorbis · 192 kbps"
+    AudioOutputFormat.Flac -> "بدون فقد · أكبر حجمًا"
+    AudioOutputFormat.Wav -> "PCM · 16-bit · 44.1 kHz"
+}
+
+private fun audioOutputFormatButtonLabel(format: AudioOutputFormat): String = when (format) {
+    AudioOutputFormat.Mp3 -> "MP3 · 192 kbps"
+    AudioOutputFormat.M4a -> "M4A · AAC 192 kbps"
+    AudioOutputFormat.Aac -> "AAC · 192 kbps"
+    AudioOutputFormat.Opus -> "OPUS · 128 kbps"
+    AudioOutputFormat.Ogg -> "OGG · Vorbis 192 kbps"
+    AudioOutputFormat.Flac -> "FLAC · Lossless"
+    AudioOutputFormat.Wav -> "WAV · PCM 16-bit"
 }
 
 @Composable

@@ -29,4 +29,6 @@ data class DownloadTask(
      * Direct keeps the source bytes; ExtractAudio produces an audio-only file.
      */
     val processingMode: DownloadProcessingMode = DownloadProcessingMode.Direct,
+    /** Desired user-visible audio output when processingMode=ExtractAudio. */
+    val audioOutputFormat: AudioOutputFormat? = null,
 )

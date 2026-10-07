@@ -19,6 +19,7 @@ import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SelectedDirectoryStorage
 import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadCoordinator
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
@@ -173,23 +174,28 @@ class DownloadWorker(
         var completedRecord = record
         if (record.status == DownloadStatus.COMPLETED && audioExtractionRequested) {
             setForeground(createForegroundInfo(DownloadState.Preparing))
+            val audioOutputFormat = task.audioOutputFormat ?: AudioOutputFormat.M4a
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "AUDIO_EXTRACTION_STARTED",
-                "اكتمل تنزيل المصدر وبدأ استخراج الصوت فقط",
+                "اكتمل تنزيل المصدر وبدأ استخراج الصوت ثم تحويله",
                 "download.audio_extraction",
                 mapOf(
                     "task_id" to task.id,
-                    "task_id" to task.id,
                     "processing_mode" to task.processingMode.name,
+                    "output_format" to audioOutputFormat.name,
                     "source_file_present" to java.io.File(sourceTask.destinationPath).isFile.toString(),
                 ),
                 null,
             )
 
             val outputFile = java.io.File(task.destinationPath)
-            val extraction = MediaAudioExtractor(applicationContext)
-                .extractToLocalFile(record, outputFile)
+            val extraction = AudioTranscoder()
+                .transcode(
+                    inputFile = java.io.File(sourceTask.destinationPath),
+                    outputFile = outputFile,
+                    outputFormat = audioOutputFormat,
+                )
 
             if (extraction.isFailure) {
                 val error = extraction.exceptionOrNull()
@@ -202,6 +208,7 @@ class DownloadWorker(
                     mapOf(
                         "task_id" to task.id,
                         "processing_mode" to task.processingMode.name,
+                        "output_format" to audioOutputFormat.name,
                         "source_file_present" to java.io.File(sourceTask.destinationPath).isFile.toString(),
                         "output_file_present" to outputFile.isFile.toString(),
                     ),
@@ -235,6 +242,7 @@ class DownloadWorker(
                 "download.audio_extraction",
                 mapOf(
                     "task_id" to task.id,
+                    "output_format" to audioOutputFormat.name,
                     "output_file_present" to java.io.File(task.destinationPath).isFile.toString(),
                     "output_size_bytes" to java.io.File(task.destinationPath).length().toString(),
                 ),
@@ -454,6 +462,8 @@ class DownloadWorker(
         val processingMode = inputData.getString(KEY_PROCESSING_MODE)
             ?.let { runCatching { DownloadProcessingMode.valueOf(it) }.getOrNull() }
             ?: DownloadProcessingMode.Direct
+        val audioOutputFormat = inputData.getString(KEY_AUDIO_OUTPUT_FORMAT)
+            ?.let { runCatching { AudioOutputFormat.valueOf(it) }.getOrNull() }
         val requestHeaders = buildMap {
             inputData.getString(KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -476,6 +486,7 @@ class DownloadWorker(
             sourcePageUrl = sourcePageUrl,
             mediaKind = mediaKind,
             processingMode = processingMode,
+            audioOutputFormat = audioOutputFormat,
             requestHeaders = requestHeaders,
         )
     }
@@ -711,6 +722,7 @@ class DownloadWorker(
         const val KEY_SOURCE_PAGE_URL = "source_page_url"
         const val KEY_MEDIA_KIND = "media_kind"
         const val KEY_PROCESSING_MODE = "processing_mode"
+        const val KEY_AUDIO_OUTPUT_FORMAT = "audio_output_format"
         const val KEY_FORCE_REFRESH = "force_refresh"
         const val KEY_USER_AGENT = "user_agent"
         const val KEY_REFERER = "referer"

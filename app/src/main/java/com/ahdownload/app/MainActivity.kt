@@ -30,6 +30,7 @@ import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadEnqueueResult
@@ -85,9 +86,9 @@ class MainActivity : ComponentActivity() {
                         requestNotificationPermissionIfNeeded()
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
                     },
-                    onAudioOnlyRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
+                    onAudioOnlyRequested = { candidate, outputFormat, title, sourcePageUrl, thumbnailUrl ->
                         requestNotificationPermissionIfNeeded()
-                        downloadLauncher.enqueueAudioExtraction(candidate, title, sourcePageUrl, thumbnailUrl)
+                        downloadLauncher.enqueueAudioExtraction(candidate, outputFormat, title, sourcePageUrl, thumbnailUrl)
                     },
                     onDeleteDownloadFile = ::deleteDownloadedFile,
                     onShareDownload = ::shareCompletedDownload,
@@ -333,7 +334,7 @@ private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
-    onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+    onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onShareDownload: (DownloadRecord) -> Unit,
     onConsumeInitialUrl: () -> Unit,
