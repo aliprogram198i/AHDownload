@@ -128,7 +128,9 @@ class DownloadWorker(
         val engine = StreamingDownloadEngine(
             source = OkHttpDownloadByteStream(
                 logger = diagnosticsLogger(),
-                dynamicHeaders = { url, _ -> dynamicHeadersFor(url, task.sessionCookieHost) },
+                dynamicHeaders = { url, headers ->
+                    dynamicHeadersFor(url, task.sessionCookieHost, headers)
+                },
             ),
             sink = LocalAtomicFileSink(),
         )
@@ -409,13 +411,19 @@ class DownloadWorker(
     private fun diagnosticsLogger(): com.ahdownload.app.diagnostics.PersistentDiagnosticLogger =
         (applicationContext as com.ahdownload.app.AHDownloadApplication).diagnosticLogger
 
-    private fun dynamicHeadersFor(url: String, sessionCookieHost: String?): Map<String, String> {
+    private fun dynamicHeadersFor(
+        url: String,
+        sessionCookieHost: String?,
+        requestHeaders: Map<String, String>,
+    ): Map<String, String> {
         val cookieManager = CookieManager.getInstance()
         val host = hostOf(url)
         return buildMap {
             when {
                 isYouTubeMediaHost(url) -> {
-                    put("Referer", "https://www.youtube.com/")
+                    if (requestHeaders.keys.none { it.equals("Referer", ignoreCase = true) }) {
+                        put("Referer", "https://www.youtube.com/")
+                    }
                     CookieManager.getInstance().getCookie("https://www.youtube.com/")
                         ?.takeIf { it.isNotBlank() }
                         ?.let { put("Cookie", it) }
@@ -725,7 +733,13 @@ class DownloadWorker(
                                 key.equals("Accept-Language", ignoreCase = true) ||
                                 key.equals("Sec-Fetch-Dest", ignoreCase = true) ||
                                 key.equals("Sec-Fetch-Mode", ignoreCase = true) ||
-                                key.equals("Sec-Fetch-Site", ignoreCase = true))
+                                key.equals("Sec-Fetch-Site", ignoreCase = true) ||
+                            key.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Name", ignoreCase = true) ||
+                            key.equals("X-YouTube-Client-Version", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Mobile", ignoreCase = true) ||
+                            key.equals("Sec-CH-UA-Platform", ignoreCase = true) )
                     },
                 )
             }
