@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Settings
@@ -82,7 +83,7 @@ fun SettingsRoute(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
                     IconButton(onClick = { uiTraceLogger.interaction("SETTINGS", "back_button", "back"); onBack() }) {
-                        Icon(Icons.Rounded.Settings, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
             )
