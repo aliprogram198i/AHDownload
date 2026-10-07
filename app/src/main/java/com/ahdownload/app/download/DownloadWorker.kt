@@ -125,6 +125,7 @@ class DownloadWorker(
 
         val record = try {
             coordinator.execute(task) { state ->
+                updateNotificationSpeed(state)
                 setForeground(createForegroundInfo(state))
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -372,6 +373,23 @@ class DownloadWorker(
             mediaKind = mediaKind,
             requestHeaders = requestHeaders,
         )
+    }
+
+    private fun updateNotificationSpeed(state: DownloadState) {
+        if (state !is DownloadState.Downloading) return
+        val now = System.currentTimeMillis()
+        if (lastNotificationProgressAt > 0L) {
+            val elapsed = now - lastNotificationProgressAt
+            val delta = state.bytesDownloaded - lastNotificationProgressBytes
+            if (elapsed >= 500L && delta >= 0L) {
+                notificationBytesPerSecond = delta * 1000L / elapsed
+                lastNotificationProgressBytes = state.bytesDownloaded
+                lastNotificationProgressAt = now
+                return
+            }
+        }
+        lastNotificationProgressBytes = state.bytesDownloaded
+        lastNotificationProgressAt = now
     }
 
     private fun createForegroundInfo(state: DownloadState): ForegroundInfo {
