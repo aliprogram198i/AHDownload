@@ -90,6 +90,7 @@ class MainActivity : ComponentActivity() {
                     onResumeDownload = downloadWorkScheduler::resume,
                     onCancelDownload = downloadWorkScheduler::cancel,
                     onOpenDownload = ::openCompletedDownload,
+                    onOpenDownloadFolder = ::openDownloadFolder,
                     downloadLocationStore = downloadLocationStore,
                     downloadPreferencesProvider = downloadPreferencesStore,
                     openDownloadsOnStart = openDownloadsOnStart,
@@ -157,6 +158,26 @@ class MainActivity : ComponentActivity() {
                     "destination_uri_present" to "true",
                 ),
                 throwable = error,
+            )
+        }
+    }
+
+    private fun openDownloadFolder(record: DownloadRecord) {
+        val treeUri = downloadLocationStore.persistedUri() ?: return
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, treeUri).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        }.onFailure { error ->
+            diagnosticLogger.log(
+                DiagnosticLevel.WARNING,
+                "DOWNLOAD_FOLDER_OPEN_FAILED",
+                "تعذر فتح مجلد الحفظ",
+                "main.open_download_folder",
+                mapOf("task_id" to record.task.id),
+                error,
             )
         }
     }
@@ -286,6 +307,7 @@ private fun AHRoot(
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
+    onOpenDownloadFolder: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
     onPickDownloadFolder: () -> Unit,
@@ -357,6 +379,7 @@ private fun AHRoot(
             onCancelDownload = onCancelDownload,
             onOpenDownload = onOpenDownload,
             onShareDownload = onShareDownload,
+            onOpenDownloadFolder = onOpenDownloadFolder,
             onDeleteDownloadFile = onDeleteDownloadFile,
             uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
