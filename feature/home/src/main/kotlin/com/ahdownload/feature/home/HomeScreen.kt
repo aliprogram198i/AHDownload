@@ -140,8 +140,6 @@ fun HomeRoute(
         onSelectCandidate = viewModel::selectCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
         onModeChanged = viewModel::setMode,
-        onToggleShowAll = viewModel::toggleShowAll,
-        onFilterChanged = viewModel::setResultFilter,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
         onSearch = viewModel::searchContent,
         onSearchResultSelected = viewModel::openSearchResult,
