@@ -144,6 +144,7 @@ fun HomeRoute(
         onUrlChanged = viewModel::onUrlChanged,
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
+        onSelectAudioCandidate = viewModel::selectAudioCandidate,
         onDownloadCandidate = viewModel::downloadCandidate,
         onDownloadAudio = viewModel::downloadAudio,
         onModeChanged = viewModel::setMode,
@@ -195,6 +196,7 @@ private fun HomeScreen(
     onUrlChanged: (String) -> Unit,
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
+    onSelectAudioCandidate: (String) -> Unit,
     onDownloadCandidate: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
@@ -260,6 +262,7 @@ private fun HomeScreen(
                 ";platform=" + (state.result?.platform?.name ?: "none") +
                 ";candidates=" + candidates.size +
                 ";selected=" + (state.selectedCandidateId ?: "none") +
+                ";selected_audio=" + (state.selectedAudioCandidateId ?: "none") +
                 ";validating=" + (state.validatingCandidateId ?: "none") +
                 ";error=" + (state.error != null) +
                 ";show_all=" + state.showAll +
@@ -1289,48 +1292,34 @@ private fun AudioOnlyDownloadSection(
         }
 
         if (selectedAudio != null && audioOptions.size > 1) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    enabled = validatingCandidateId == null,
-                    onClick = { /* menu opens through expanded state below */ },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        detail,
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Start,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
-                }
-
-                // Keep the selection surface deterministic: the popup is opened
-                // by the dedicated state-backed button overlay.
-            }
-        }
-
-        if (selectedAudio != null && audioOptions.size > 1) {
             var expanded by remember { mutableStateOf(false) }
+
             Box(modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     enabled = validatingCandidateId == null,
                     onClick = { expanded = true },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            contentDescription = "اختيار جودة الصوت"
+                        },
                 ) {
                     Column(
                         modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.Start,
                     ) {
                         Text(
-                            selectedAudio.qualityLabel + " · " + containerLabel(selectedAudio.candidate.format.container),
+                            selectedAudio.qualityLabel + " · " +
+                                containerLabel(selectedAudio.candidate.format.container),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            unifiedOptionDetail(selectedAudio),
+                            buildList {
+                                selectedAudio.codecLabel?.let(::add)
+                                selectedAudio.sizeLabel?.let(::add)
+                            }.joinToString(" · ").ifBlank { "جودة صوتية متاحة" },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -1352,8 +1341,11 @@ private fun AudioOnlyDownloadSection(
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     Text(
-                                        option.qualityLabel + " · " + containerLabel(option.candidate.format.container),
-                                        fontWeight = if (option.candidate.id == selectedAudio.candidate.id) {
+                                        option.qualityLabel + " · " +
+                                            containerLabel(option.candidate.format.container),
+                                        fontWeight = if (
+                                            option.candidate.id == selectedAudio.candidate.id
+                                        ) {
                                             FontWeight.Bold
                                         } else {
                                             FontWeight.Medium
@@ -1363,8 +1355,9 @@ private fun AudioOnlyDownloadSection(
                                         buildList {
                                             option.codecLabel?.let(::add)
                                             option.sizeLabel?.let(::add)
-                                            add(kindPresentation(option))
-                                        }.joinToString(" · "),
+                                        }.joinToString(" · ").ifBlank {
+                                            kindPresentation(option)
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
