@@ -85,6 +85,10 @@ class MainActivity : ComponentActivity() {
                         requestNotificationPermissionIfNeeded()
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
                     },
+                    onAudioOnlyRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
+                        requestNotificationPermissionIfNeeded()
+                        downloadLauncher.enqueueAudioExtraction(candidate, title, sourcePageUrl, thumbnailUrl)
+                    },
                     onDeleteDownloadFile = ::deleteDownloadedFile,
                     onShareDownload = ::shareCompletedDownload,
                     onConsumeInitialUrl = { pendingSharedUrl = null },
@@ -329,6 +333,7 @@ private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
+    onAudioOnlyRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onShareDownload: (DownloadRecord) -> Unit,
     onConsumeInitialUrl: () -> Unit,
@@ -401,6 +406,7 @@ private fun AHRoot(
         RootDestination.Home -> HomeRoute(
             initialUrl = initialUrl,
             onDownloadRequested = onDownloadRequested,
+            onAudioOnlyRequested = onAudioOnlyRequested,
             logger = logger,
             onOpenSettings = { root(RootDestination.Settings) },
             onOpenDownloads = { root(RootDestination.Downloads) },
