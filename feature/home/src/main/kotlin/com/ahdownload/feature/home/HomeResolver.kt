@@ -19,7 +19,7 @@ import com.ahdownload.domain.validation.CandidateValidator
 import com.ahdownload.domain.validation.OkHttpMediaProbe
 
 class HomeResolver(
-    logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
+    private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     sessionProvider: com.ahdownload.domain.resolver.youtube.YouTubeSessionProvider? = null,
     private val youtubeResolver: YouTubeResolver = YouTubeResolver(
         httpClient = OkHttpTextClient(),
