@@ -61,12 +61,14 @@ class MainActivity : ComponentActivity() {
         }
 
     private var pendingSharedUrl by mutableStateOf<String?>(null)
+    private var openDownloadsOnStart by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         requestNotificationPermissionIfNeeded()
         extractSharedUrl(intent)?.let { pendingSharedUrl = it }
+        openDownloadsOnStart = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
 
         setContent {
             AHTheme {
@@ -87,6 +89,7 @@ class MainActivity : ComponentActivity() {
                     onCancelDownload = downloadWorkScheduler::cancel,
                     onOpenDownload = ::openCompletedDownload,
                     downloadLocationStore = downloadLocationStore,
+                    openDownloadsOnStart = openDownloadsOnStart,
                     onPickDownloadFolder = {
                         folderPicker.launch(downloadLocationStore.persistedUri())
                     },
@@ -99,6 +102,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         extractSharedUrl(intent)?.let { pendingSharedUrl = it }
+        if (intent.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false)) openDownloadsOnStart = true
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -258,6 +262,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        const val EXTRA_OPEN_DOWNLOADS = "extra_open_downloads"
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
         private const val YOUTUBE_URL = "https://www.youtube.com"
     }
@@ -280,6 +285,7 @@ private fun AHRoot(
     onOpenDownload: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
+    openDownloadsOnStart: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
     val activeDownloads = history.count {
@@ -315,6 +321,10 @@ private fun AHRoot(
         if (initialUrl?.isNotBlank() == true) {
             root(RootDestination.Home)
         }
+    }
+
+    LaunchedEffect(openDownloadsOnStart) {
+        if (openDownloadsOnStart) root(RootDestination.Downloads)
     }
 
     BackHandler(enabled = backStack.size > 1) {
