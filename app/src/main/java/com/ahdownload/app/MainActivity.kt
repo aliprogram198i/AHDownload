@@ -4,6 +4,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.content.ContentValues
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -88,6 +91,8 @@ class MainActivity : ComponentActivity() {
                     onResumeDownload = downloadWorkScheduler::resume,
                     onCancelDownload = downloadWorkScheduler::cancel,
                     onOpenDownload = ::openCompletedDownload,
+                    onRenameDownload = ::renameCompletedDownload,
+                    onOpenDownloadFolder = ::openDownloadFolder,
                     downloadLocationStore = downloadLocationStore,
                     openDownloadsOnStart = openDownloadsOnStart,
                     onPickDownloadFolder = {
@@ -154,6 +159,87 @@ class MainActivity : ComponentActivity() {
                     "destination_uri_present" to "true",
                 ),
                 throwable = error,
+            )
+        }
+    }
+
+    private suspend fun renameCompletedDownload(record: DownloadRecord, requestedName: String): Boolean {
+        val destination = record.destinationUri?.takeIf { it.isNotBlank() }?.let(Uri::parse)
+        val extension = record.task.displayName
+            ?.substringAfterLast('.', "")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { ".$it" }
+            .orEmpty()
+        val baseName = requestedName
+            .replace(Regex("""[\\/:*?"<>|\r\n]+"""), " ")
+            .trim()
+            .trimEnd('.')
+            .take(120)
+        if (baseName.isBlank()) return false
+        val finalName = if (extension.isNotBlank() && !baseName.endsWith(extension, ignoreCase = true)) {
+            baseName + extension
+        } else {
+            baseName
+        }
+
+        val renamed = runCatching {
+            when {
+                destination?.scheme == "content" -> {
+                    val mediaUpdated = contentResolver.update(
+                        destination,
+                        ContentValues().apply {
+                            put(MediaStore.MediaColumns.DISPLAY_NAME, finalName)
+                        },
+                        null,
+                        null,
+                    ) > 0
+                    mediaUpdated || runCatching {
+                        DocumentsContract.renameDocument(contentResolver, destination, finalName) != null
+                    }.getOrDefault(false)
+                }
+                else -> {
+                    val source = File(record.task.destinationPath)
+                    val target = File(source.parentFile, finalName)
+                    source.exists() && source.renameTo(target)
+                }
+            }
+        }.getOrDefault(false)
+
+        if (!renamed) return false
+        applicationServices.downloadRepository.upsert(
+            record.copy(
+                task = record.task.copy(displayName = finalName),
+                updatedAtEpochMs = System.currentTimeMillis(),
+            ),
+        )
+        diagnosticLogger.log(
+            DiagnosticLevel.INFO,
+            "DOWNLOAD_RENAMED",
+            "تمت إعادة تسمية الملف المكتمل",
+            "main.rename_download",
+            mapOf("task_id" to record.task.id),
+            null,
+        )
+        return true
+    }
+
+    private fun openDownloadFolder(record: DownloadRecord) {
+        val treeUri = downloadLocationStore.persistedUri()
+        if (treeUri == null) return
+        runCatching {
+            startActivity(
+                Intent(Intent.ACTION_VIEW, treeUri).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        }.onFailure { error ->
+            diagnosticLogger.log(
+                DiagnosticLevel.WARNING,
+                "DOWNLOAD_FOLDER_OPEN_FAILED",
+                "تعذر فتح مجلد التنزيل",
+                "main.open_download_folder",
+                mapOf("task_id" to record.task.id),
+                error,
             )
         }
     }
@@ -283,6 +369,8 @@ private fun AHRoot(
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
+    onRenameDownload: suspend (DownloadRecord, String) -> Boolean,
+    onOpenDownloadFolder: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
@@ -352,6 +440,8 @@ private fun AHRoot(
             onResumeDownload = onResumeDownload,
             onCancelDownload = onCancelDownload,
             onOpenDownload = onOpenDownload,
+            onRenameDownload = onRenameDownload,
+            onOpenDownloadFolder = onOpenDownloadFolder,
             onShareDownload = onShareDownload,
             onDeleteDownloadFile = onDeleteDownloadFile,
             uiTraceLogger = uiTraceLogger,
