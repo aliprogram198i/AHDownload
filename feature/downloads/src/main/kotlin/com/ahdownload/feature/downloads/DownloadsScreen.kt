@@ -854,6 +854,7 @@ private fun failureSummary(record: DownloadRecord): String = when (record.failur
     "destination_storage_error" -> "تعذر حفظ الملف في مجلد التنزيل المحدد."
     "cancelled" -> "تم إلغاء التنزيل."
     else -> "تعذر إكمال التنزيل. أعد المحاولة."
+}
 
 private fun destinationLabel(record: DownloadRecord): String = when {
     record.destinationUri?.startsWith("content://") == true -> "محفوظ في مجلد الجهاز"
