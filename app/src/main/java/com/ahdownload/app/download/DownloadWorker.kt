@@ -481,6 +481,12 @@ class DownloadWorker(
             inputData.getString(KEY_SEC_FETCH_DEST)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Dest", it) }
             inputData.getString(KEY_SEC_FETCH_MODE)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Mode", it) }
             inputData.getString(KEY_SEC_FETCH_SITE)?.takeIf { it.isNotBlank() }?.let { put("Sec-Fetch-Site", it) }
+            inputData.getString(KEY_X_GOOG_VISITOR_ID)?.takeIf { it.isNotBlank() }?.let { put("X-Goog-Visitor-Id", it) }
+            inputData.getString(KEY_YOUTUBE_CLIENT_NAME)?.takeIf { it.isNotBlank() }?.let { put("X-YouTube-Client-Name", it) }
+            inputData.getString(KEY_YOUTUBE_CLIENT_VERSION)?.takeIf { it.isNotBlank() }?.let { put("X-YouTube-Client-Version", it) }
+            inputData.getString(KEY_SEC_CH_UA)?.takeIf { it.isNotBlank() }?.let { put("Sec-CH-UA", it) }
+            inputData.getString(KEY_SEC_CH_UA_MOBILE)?.takeIf { it.isNotBlank() }?.let { put("Sec-CH-UA-Mobile", it) }
+            inputData.getString(KEY_SEC_CH_UA_PLATFORM)?.takeIf { it.isNotBlank() }?.let { put("Sec-CH-UA-Platform", it) }
         }
 
         return DownloadTask(
@@ -774,6 +780,12 @@ class DownloadWorker(
         const val KEY_SEC_FETCH_DEST = "sec_fetch_dest"
         const val KEY_SEC_FETCH_MODE = "sec_fetch_mode"
         const val KEY_SEC_FETCH_SITE = "sec_fetch_site"
+        const val KEY_X_GOOG_VISITOR_ID = "x_goog_visitor_id"
+        const val KEY_YOUTUBE_CLIENT_NAME = "youtube_client_name"
+        const val KEY_YOUTUBE_CLIENT_VERSION = "youtube_client_version"
+        const val KEY_SEC_CH_UA = "sec_ch_ua"
+        const val KEY_SEC_CH_UA_MOBILE = "sec_ch_ua_mobile"
+        const val KEY_SEC_CH_UA_PLATFORM = "sec_ch_ua_platform"
         const val KEY_FAILURE_CODE = "failure_code"
         const val KEY_FAILURE_DETAIL = "failure_detail"
         const val TAG = "ahdownload-download-worker"
