@@ -9,7 +9,10 @@ class CandidateRanker {
             .asSequence()
             .filter { requestedKind == null || it.format.kind == requestedKind }
             .sortedWith(
-                compareByDescending<MediaCandidate> { it.format.hasVideo }
+                compareByDescending<MediaCandidate> {
+                    it.sourceContext == MediaSourceContext.BROWSER_OBSERVED
+                }
+                    .thenByDescending { it.format.hasVideo }
                     .thenByDescending { it.format.hasAudio }
                     .thenByDescending { it.format.height ?: 0 }
                     .thenByDescending { it.format.bitrateKbps ?: 0 }
