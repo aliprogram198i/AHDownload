@@ -61,6 +61,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -122,6 +124,48 @@ fun DownloadsRoute(
     }
     val vm: DownloadsViewModel = viewModel(factory = DownloadsViewModel.Factory(repository, controls))
     val records by vm.records.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val transferStats = remember { mutableStateMapOf<String, TransferStats>() }
+    val lastSamples = remember { mutableMapOf<String, TransferSample>() }
+    var refreshTick by remember { mutableLongStateOf(0L) }
+    var missingFiles by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(4_000L)
+            refreshTick++
+        }
+    }
+
+    LaunchedEffect(records, refreshTick) {
+        val snapshot = withContext(Dispatchers.IO) {
+            records
+                .filter { it.status == DownloadStatus.COMPLETED }
+                .associate { it.task.id to destinationExists(context, it) }
+        }
+        missingFiles = snapshot.filterValues { !it }.keys
+    }
+
+    LaunchedEffect(records) {
+        records.forEach { record ->
+            if (record.status != DownloadStatus.DOWNLOADING) {
+                transferStats.remove(record.task.id)
+                lastSamples.remove(record.task.id)
+                return@forEach
+            }
+            val current = TransferSample(record.bytesDownloaded, record.updatedAtEpochMs)
+            val previous = lastSamples[record.task.id]
+            if (previous != null) {
+                val elapsedMs = current.epochMs - previous.epochMs
+                val bytesDelta = current.bytes - previous.bytes
+                if (elapsedMs > 0L && bytesDelta >= 0L) {
+                    val bytesPerSecond = bytesDelta * 1000L / elapsedMs
+                    transferStats[record.task.id] = TransferStats(bytesPerSecond, record.totalBytes)
+                }
+            }
+            lastSamples[record.task.id] = current
+        }
+    }
 
     val uiContext = rememberUiTraceContext()
     LaunchedEffect(records) {
@@ -351,6 +395,7 @@ private fun DownloadsScreen(
                     items(filtered, key = { it.task.id }) { record ->
                         DownloadRecordCard(
                             record = record,
+                            fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFiles,
                             onPause = {
                                 uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
                                 onPause(record)
@@ -461,6 +506,7 @@ private fun EmptyDownloads(
 @Composable
 private fun DownloadRecordCard(
     record: DownloadRecord,
+    fileAvailable: Boolean = true,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -477,9 +523,12 @@ private fun DownloadRecordCard(
     val title = record.task.displayName?.takeIf { it.isNotBlank() }
         ?: record.task.destinationPath.substringAfterLast(File.separatorChar)
 
-    val statusText = statusLabel(record.status)
+    val statusText = when {
+        record.status == DownloadStatus.COMPLETED && !fileAvailable -> "الملف غير موجود"
+        else -> statusLabel(record.status)
+    }
     val statusIcon = when (record.status) {
-        DownloadStatus.COMPLETED -> Icons.Rounded.CheckCircle
+        DownloadStatus.COMPLETED -> if (fileAvailable) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline
         DownloadStatus.FAILED -> Icons.Rounded.Refresh
         DownloadStatus.PAUSED -> Icons.Rounded.Pause
         DownloadStatus.CANCELLED -> Icons.Rounded.Cancel
@@ -606,10 +655,28 @@ private fun DownloadRecordCard(
                     progress = { progress },
                     modifier = Modifier.fillMaxWidth(),
                 )
+                val stats = remember(transferStats[record.task.id], record.totalBytes) {
+                    transferStats[record.task.id]
+                }
                 Text(
-                    (progress * 100).toInt().toString() + "% · " +
-                        formatBytes(record.bytesDownloaded) + " / " +
-                        formatBytes(record.totalBytes ?: record.bytesDownloaded),
+                    buildString {
+                        append((progress * 100).toInt())
+                        append("% · ")
+                        append(formatBytes(record.bytesDownloaded))
+                        append(" / ")
+                        append(formatBytes(record.totalBytes ?: record.bytesDownloaded))
+                        stats?.bytesPerSecond?.takeIf { it > 0L }?.let {
+                            append(" · ")
+                            append(formatBytes(it))
+                            append("/s")
+                            val total = record.totalBytes
+                            if (total != null && it > 0L && total > record.bytesDownloaded) {
+                                val etaSeconds = (total - record.bytesDownloaded) / it
+                                append(" · ")
+                                append(formatDurationSeconds(etaSeconds))
+                            }
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else if (record.bytesDownloaded > 0L) {
@@ -671,7 +738,13 @@ private fun DownloadRecordCard(
                         }
                     }
                     DownloadStatus.COMPLETED -> {
-                        if (record.destinationUri != null) {
+                        if (!fileAvailable) {
+                            Button(onClick = onRetry) {
+                                Icon(Icons.Rounded.Refresh, contentDescription = null)
+                                Spacer(Modifier.size(5.dp))
+                                Text("إعادة التنزيل")
+                            }
+                        } else if (record.destinationUri != null) {
                             Button(onClick = onOpenDownload) {
                                 Icon(Icons.Rounded.OpenInNew, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
@@ -777,3 +850,37 @@ private val ACTIVE_STATUSES = setOf(
     DownloadStatus.DOWNLOADING,
     DownloadStatus.PAUSED,
 )
+
+
+private data class TransferSample(
+    val bytes: Long,
+    val epochMs: Long,
+)
+
+private data class TransferStats(
+    val bytesPerSecond: Long,
+    val totalBytes: Long?,
+)
+
+private fun formatDurationSeconds(totalSeconds: Long): String {
+    val seconds = totalSeconds.coerceAtLeast(0L)
+    val hours = seconds / 3600L
+    val minutes = (seconds % 3600L) / 60L
+    val remainder = seconds % 60L
+    return if (hours > 0L) {
+        "%02d:%02d:%02d".format(hours, minutes, remainder)
+    } else {
+        "%02d:%02d".format(minutes, remainder)
+    }
+}
+
+private fun destinationExists(context: android.content.Context, record: DownloadRecord): Boolean {
+    val raw = record.destinationUri?.takeIf { it.isNotBlank() }
+    if (raw != null) {
+        return runCatching {
+            val uri = android.net.Uri.parse(raw)
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { true } == true
+        }.getOrDefault(false)
+    }
+    return File(record.task.destinationPath).exists()
+}
