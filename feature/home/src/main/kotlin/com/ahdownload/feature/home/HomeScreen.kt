@@ -98,7 +98,7 @@ fun HomeRoute(
     logger: DiagnosticLogger,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
-    onOpenUiDiagnostics: () -> Unit,
+    onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
     val context = LocalContext.current
@@ -124,7 +124,6 @@ fun HomeRoute(
         onDownloadCandidate = viewModel::downloadCandidate,
         onOpenSettings = onOpenSettings,
         onOpenDownloads = onOpenDownloads,
-        onOpenUiDiagnostics = onOpenUiDiagnostics,
         onRecentLinkSelected = viewModel::selectRecentLink,
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
@@ -159,8 +158,6 @@ private fun HomeScreen(
     onSearchResultSelected: (ContentSearchItem) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
-    onOpenUiDiagnostics: () -> Unit,
-    onInitialUrlConsumed: () -> Unit,
     onRecentLinkSelected: (RecentLink) -> Unit,
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
