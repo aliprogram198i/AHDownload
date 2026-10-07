@@ -43,13 +43,15 @@ class DownloadWorker(
         val engine = StreamingDownloadEngine(
             source = OkHttpDownloadByteStream(
                 logger = diagnosticsLogger(),
-                dynamicHeaders = ::dynamicHeadersFor,
+                dynamicHeaders = { url, _ -> dynamicHeadersFor(url, task.sessionCookieHost) },
             ),
             sink = LocalAtomicFileSink(),
         )
+        val controlStore = DownloadControlStore(applicationContext)
         val coordinator = DownloadCoordinator(
             engine = engine,
             queue = queue,
+            isPauseRequested = { controlStore.isPaused(task.id) },
         )
 
         val diagnostics = diagnosticsLogger()
@@ -68,8 +70,20 @@ class DownloadWorker(
             null,
         )
 
-        val record = coordinator.execute(task) { state ->
-            setForeground(createForegroundInfo(state))
+        val record = try {
+            coordinator.execute(task) { state ->
+                setForeground(createForegroundInfo(state))
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            diagnostics.log(
+                DiagnosticLevel.INFO,
+                "DOWNLOAD_WORK_CANCELLED",
+                if (controlStore.isPaused(task.id)) "تم إيقاف التنزيل مؤقتًا" else "تم إلغاء مهمة التنزيل",
+                "download.worker",
+                mapOf("task_id" to task.id, "paused_request" to controlStore.isPaused(task.id).toString()),
+                cancelled,
+            )
+            throw cancelled
         }
 
         if (record.status == DownloadStatus.COMPLETED) {
@@ -113,10 +127,24 @@ class DownloadWorker(
                         ),
                         copied.exceptionOrNull(),
                     )
+                    persistDestinationFailure(record, "تعذر الكتابة في مجلد التنزيل المحدد.")
                     return Result.failure(
                         workDataOf(
                             KEY_FAILURE_CODE to "destination_storage_error",
                             KEY_FAILURE_DETAIL to "تعذر الكتابة في مجلد التنزيل المحدد.",
+                        ),
+                    )
+                }
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val localFile = java.io.File(task.destinationPath)
+                val published = MediaStorePublisher(applicationContext).publish(localFile)
+                if (published.isFailure) {
+                    val detail = "تم تنزيل الملف، لكن تعذر حفظه في مكتبة الوسائط. بقيت نسخة استرداد محلية."
+                    persistDestinationFailure(record, detail)
+                    return Result.failure(
+                        workDataOf(
+                            KEY_FAILURE_CODE to "destination_storage_error",
+                            KEY_FAILURE_DETAIL to detail,
                         ),
                     )
                 }
@@ -163,6 +191,9 @@ class DownloadWorker(
             DownloadStatus.CANCELLED -> Result.failure(
                 workDataOf(KEY_FAILURE_CODE to "cancelled"),
             )
+            DownloadStatus.PAUSED -> Result.failure(
+                workDataOf(KEY_FAILURE_CODE to "paused"),
+            )
             DownloadStatus.QUEUED,
             DownloadStatus.PREPARING,
             DownloadStatus.DOWNLOADING -> Result.failure(
@@ -171,18 +202,48 @@ class DownloadWorker(
         }
     }
 
+    private suspend fun persistDestinationFailure(
+        record: com.ahdownload.domain.download.DownloadRecord,
+        detail: String,
+    ) {
+        runCatching {
+            FileDownloadRepository(applicationContext).upsert(
+                record.copy(
+                    status = DownloadStatus.FAILED,
+                    failureCode = "destination_storage_error",
+                    failureDetail = detail,
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
     private fun diagnosticsLogger(): com.ahdownload.app.diagnostics.PersistentDiagnosticLogger =
         (applicationContext as com.ahdownload.app.AHDownloadApplication).diagnosticLogger
 
-    private fun dynamicHeadersFor(url: String): Map<String, String> {
-        if (!isYouTubeMediaHost(url)) return emptyMap()
-        val cookies = CookieManager.getInstance()
-            .getCookie("https://www.youtube.com/")
-            ?.takeIf { it.isNotBlank() }
+    private fun dynamicHeadersFor(url: String, sessionCookieHost: String?): Map<String, String> {
+        val cookieManager = CookieManager.getInstance()
+        val host = hostOf(url)
         return buildMap {
-            cookies?.let { put("Cookie", it) }
-            put("Referer", "https://www.youtube.com/")
+            when {
+                isYouTubeMediaHost(url) -> put("Referer", "https://www.youtube.com/")
+                !sessionCookieHost.isNullOrBlank() && hostMatchesSession(host, sessionCookieHost) -> {
+                    cookieManager.getCookie("https://$sessionCookieHost/")
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { put("Cookie", it) }
+                }
+                host != "invalid" -> {
+                    cookieManager.getCookie("https://$host/")
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { put("Cookie", it) }
+                }
+            }
         }
+    }
+
+    private fun hostMatchesSession(mediaHost: String, sessionHost: String): Boolean {
+        val normalized = sessionHost.lowercase().removePrefix("www.")
+        return mediaHost == normalized || mediaHost.endsWith("." + normalized)
     }
 
     private fun hostOf(url: String): String =
@@ -198,6 +259,9 @@ class DownloadWorker(
         val sourceUrl = inputData.getString(KEY_SOURCE_URL)?.takeIf { it.isNotBlank() } ?: return null
         val destinationPath =
             inputData.getString(KEY_DESTINATION_PATH)?.takeIf { it.isNotBlank() } ?: return null
+        val displayName = inputData.getString(KEY_DISPLAY_NAME)
+        val contentFingerprint = inputData.getString(KEY_CONTENT_FINGERPRINT).orEmpty()
+        val sessionCookieHost = inputData.getString(KEY_SESSION_COOKIE_HOST)
         val requestHeaders = buildMap {
             inputData.getString(KEY_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -213,6 +277,9 @@ class DownloadWorker(
             id = taskId,
             sourceUrl = sourceUrl,
             destinationPath = destinationPath,
+            displayName = displayName,
+            contentFingerprint = contentFingerprint,
+            sessionCookieHost = sessionCookieHost,
             requestHeaders = requestHeaders,
         )
     }
@@ -227,7 +294,8 @@ class DownloadWorker(
             .setOngoing(
                 state !is DownloadState.Completed &&
                     state !is DownloadState.Failed &&
-                    state !is DownloadState.Cancelled,
+                    state !is DownloadState.Cancelled &&
+                    state !is DownloadState.Paused,
             )
             .setOnlyAlertOnce(true)
             .setProgress(
@@ -281,6 +349,7 @@ class DownloadWorker(
                 "جاري التنزيل — $percent%"
             } ?: "جاري التنزيل"
         }
+        DownloadState.Paused -> "تم الإيقاف المؤقت"
         DownloadState.Completed -> "اكتمل التنزيل"
         is DownloadState.Failed -> "فشل التنزيل"
         DownloadState.Cancelled -> "تم إلغاء التنزيل"
@@ -305,6 +374,9 @@ class DownloadWorker(
         const val KEY_TASK_ID = "task_id"
         const val KEY_SOURCE_URL = "source_url"
         const val KEY_DESTINATION_PATH = "destination_path"
+        const val KEY_DISPLAY_NAME = "display_name"
+        const val KEY_CONTENT_FINGERPRINT = "content_fingerprint"
+        const val KEY_SESSION_COOKIE_HOST = "session_cookie_host"
         const val KEY_USER_AGENT = "user_agent"
         const val KEY_REFERER = "referer"
         const val KEY_ORIGIN = "origin"
