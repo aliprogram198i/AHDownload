@@ -24,7 +24,7 @@ class MediaAudioExtractor(
 
     private fun extractToLocalM4a(record: DownloadRecord): Result<File> {
         val outputDirectory = File(
-            appContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC),
+            appContext.getExternalFilesDir(Environment.DIRECTORY_MUSIC) ?: appContext.filesDir,
             "AHDownload/Studio",
         )
         if (!outputDirectory.exists() && !outputDirectory.mkdirs()) {
