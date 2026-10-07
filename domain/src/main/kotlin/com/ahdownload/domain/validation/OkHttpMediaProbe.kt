@@ -175,7 +175,7 @@ class OkHttpMediaProbe(
             )
         }
 
-        return response.toResult("GET", null)
+        return response.toResult("GET", response.request.header("Range"))
     }
 
     private fun probeGeneric(
