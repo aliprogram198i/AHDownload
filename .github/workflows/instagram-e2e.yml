@@ -106,7 +106,7 @@ jobs:
             ready=0
             for i in $(seq 1 30); do
               ui="$(dump_ui)"
-              if printf '%s' "$ui" | grep -q "الخيارات جاهزة"; then
+              if printf '%s' "$ui" | grep -Eq "النتيجة جاهزة|الخيارات جاهزة"; then
                 ready=1
                 break
               fi
