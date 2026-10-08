@@ -225,24 +225,38 @@ jobs:
           set -euo pipefail
 
           APK="app/build/outputs/apk/release/app-release.apk"
-          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
-
           test -s "$APK"
-          test -x "$AAPT2"
 
-          echo "== Android package compatibility =="
-          BADGING="$("$AAPT2" dump badging "$APK")"
-          printf '%s\n' "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:)" || true
+          APKANALYZER="$(command -v apkanalyzer || true)"
+          if [ -z "$APKANALYZER" ]; then
+            APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer -print -quit)"
+          fi
+          test -n "$APKANALYZER"
+          test -x "$APKANALYZER"
 
-          printf '%s\n' "$BADGING" | grep -q "name='com.ahdownload.app'"
-          printf '%s\n' "$BADGING" | grep -q "sdkVersion:'24'"
-          printf '%s\n' "$BADGING" | grep -q "targetSdkVersion:'36'"
+          PACKAGE_NAME="$("$APKANALYZER" manifest application-id "$APK")"
+          VERSION_CODE="$("$APKANALYZER" manifest version-code "$APK")"
+          VERSION_NAME="$("$APKANALYZER" manifest version-name "$APK")"
+          MIN_SDK="$("$APKANALYZER" manifest min-sdk "$APK")"
+          TARGET_SDK="$("$APKANALYZER" manifest target-sdk "$APK")"
 
-          printf '%s\n' "$BADGING" > apk-compatibility.txt
+          test "$PACKAGE_NAME" = "com.ahdownload.app"
+          test "$VERSION_CODE" -gt 0
+          test -n "$VERSION_NAME"
+          test "$MIN_SDK" = "24"
+          test "$TARGET_SDK" = "36"
 
-          echo "Confirmed minSdkVersion=24 (Android 7.0 Nougat)"
-          echo "Confirmed targetSdkVersion=36"
-          echo "Confirmed applicationId=com.ahdownload.app"
+          {
+            echo "applicationId=$PACKAGE_NAME"
+            echo "versionCode=$VERSION_CODE"
+            echo "versionName=$VERSION_NAME"
+            echo "minSdkVersion=$MIN_SDK"
+            echo "targetSdkVersion=$TARGET_SDK"
+          } | tee apk-compatibility.txt
+
+          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"
+          echo "Confirmed targetSdkVersion=$TARGET_SDK"
+          echo "Confirmed applicationId=$PACKAGE_NAME"
 
       - name: Package verification outputs
         run: |
