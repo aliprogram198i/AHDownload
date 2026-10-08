@@ -51,26 +51,54 @@ class DownloadWorker(
     override suspend fun doWork(): Result {
         val inputTask = readTask() ?: return Result.failure()
         val audioExtractionRequested = inputTask.processingMode == DownloadProcessingMode.ExtractAudio
+        val muxRequested = inputTask.processingMode == DownloadProcessingMode.MuxVideoAudio &&
+            !inputTask.companionAudioSourceUrl.isNullOrBlank()
+
         val extractionSuffix = ".source." + inputTask.id.take(8)
-        val extractionAlreadyStaged = audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
+        val extractionAlreadyStaged =
+            audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
+
         var task = if (extractionAlreadyStaged) {
             inputTask.copy(destinationPath = inputTask.destinationPath.removeSuffix(extractionSuffix))
         } else {
             inputTask
         }
-        var sourceTask = if (audioExtractionRequested) {
-            task.copy(
+
+        val sourceTask = when {
+            audioExtractionRequested -> task.copy(
                 destinationPath = if (extractionAlreadyStaged) {
                     task.destinationPath + extractionSuffix
                 } else {
                     extractionSourcePath(task)
                 },
                 mediaKind = MediaKind.Video,
+                processingMode = DownloadProcessingMode.Direct,
             )
-        } else {
-            task
+
+            muxRequested -> task.copy(
+                destinationPath = muxVideoStagePath(task),
+                mediaKind = MediaKind.Video,
+                processingMode = DownloadProcessingMode.Direct,
+            )
+
+            else -> task
         }
 
+        val companionAudioTask = if (muxRequested) {
+            DownloadTask(
+                id = task.id + "-audio",
+                sourceUrl = task.companionAudioSourceUrl!!,
+                destinationPath = muxAudioStagePath(task),
+                displayName = task.displayName,
+                sessionCookieHost = task.companionAudioSessionCookieHost,
+                sourcePageUrl = task.sourcePageUrl,
+                mediaKind = MediaKind.Audio,
+                processingMode = DownloadProcessingMode.Direct,
+                requestHeaders = task.companionAudioRequestHeaders,
+            )
+        } else {
+            null
+        }
         setForeground(createForegroundInfo(DownloadState.Preparing))
 
         val application = applicationContext as com.ahdownload.app.AHDownloadApplication
@@ -103,14 +131,21 @@ class DownloadWorker(
             }
             sourceTask = refreshed.copy(
                 destinationPath = sourceTask.destinationPath,
-                processingMode = task.processingMode,
+                processingMode = DownloadProcessingMode.Direct,
                 mediaKind = sourceTask.mediaKind,
+                companionAudioSourceUrl = task.companionAudioSourceUrl,
+                companionAudioRequestHeaders = task.companionAudioRequestHeaders,
+                companionAudioSessionCookieHost = task.companionAudioSessionCookieHost,
             )
-            task = if (audioExtractionRequested) task.copy(
-                sourceUrl = sourceTask.sourceUrl,
-                sessionCookieHost = sourceTask.sessionCookieHost,
-                requestHeaders = sourceTask.requestHeaders,
-            ) else refreshed
+            task = if (audioExtractionRequested || muxRequested) {
+                task.copy(
+                    sourceUrl = sourceTask.sourceUrl,
+                    sessionCookieHost = sourceTask.sessionCookieHost,
+                    requestHeaders = sourceTask.requestHeaders,
+                )
+            } else {
+                refreshed
+            }
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "YOUTUBE_RETRY_REFRESH_APPLIED",
@@ -135,12 +170,8 @@ class DownloadWorker(
             ),
             sink = LocalAtomicFileSink(),
         )
+
         val controlStore = DownloadControlStore(applicationContext)
-        val coordinator = DownloadCoordinator(
-            engine = engine,
-            queue = queue,
-            isPauseRequested = { controlStore.isPaused(task.id) },
-        )
 
         diagnostics.log(
             DiagnosticLevel.INFO,
@@ -158,9 +189,31 @@ class DownloadWorker(
         )
 
         val record = try {
-            coordinator.execute(sourceTask) { state ->
-                updateNotificationSpeed(state)
-                setForeground(createForegroundInfo(state))
+            if (muxRequested && companionAudioTask != null) {
+                executeAdaptiveMux(
+                    task = task,
+                    videoTask = sourceTask,
+                    audioTask = companionAudioTask,
+                    engine = engine,
+                    repository = repository,
+                    controlStore = controlStore,
+                    diagnostics = diagnostics,
+                ) ?: return Result.failure(
+                    workDataOf(
+                        KEY_FAILURE_CODE to "mux_failed",
+                        KEY_FAILURE_DETAIL to "تعذر تنزيل أو دمج مساري الفيديو والصوت.",
+                    ),
+                )
+            } else {
+                val coordinator = DownloadCoordinator(
+                    engine = engine,
+                    queue = queue,
+                    isPauseRequested = { controlStore.isPaused(task.id) },
+                )
+                coordinator.execute(sourceTask) { state ->
+                    updateNotificationSpeed(state)
+                    setForeground(createForegroundInfo(state))
+                }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             diagnostics.log(
@@ -468,6 +521,15 @@ class DownloadWorker(
         val sourcePageUrl = inputData.getString(KEY_SOURCE_PAGE_URL)
         val mediaKind = inputData.getString(KEY_MEDIA_KIND)
             ?.let { runCatching { MediaKind.valueOf(it) }.getOrNull() }
+        val companionAudioSourceUrl = inputData.getString(KEY_COMPANION_AUDIO_SOURCE_URL)
+        val companionAudioSessionCookieHost = inputData.getString(KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST)
+        val companionAudioRequestHeaders = buildMap {
+            inputData.getString(KEY_COMPANION_AUDIO_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+            inputData.getString(KEY_COMPANION_AUDIO_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+            inputData.getString(KEY_COMPANION_AUDIO_ORIGIN)?.takeIf { it.isNotBlank() }?.let { put("Origin", it) }
+            inputData.getString(KEY_COMPANION_AUDIO_ACCEPT)?.takeIf { it.isNotBlank() }?.let { put("Accept", it) }
+            inputData.getString(KEY_COMPANION_AUDIO_ACCEPT_LANGUAGE)?.takeIf { it.isNotBlank() }?.let { put("Accept-Language", it) }
+        }
         val processingMode = inputData.getString(KEY_PROCESSING_MODE)
             ?.let { runCatching { DownloadProcessingMode.valueOf(it) }.getOrNull() }
             ?: DownloadProcessingMode.Direct
@@ -502,8 +564,151 @@ class DownloadWorker(
             mediaKind = mediaKind,
             processingMode = processingMode,
             audioOutputFormat = audioOutputFormat,
+            companionAudioSourceUrl = companionAudioSourceUrl,
+            companionAudioRequestHeaders = companionAudioRequestHeaders,
+            companionAudioSessionCookieHost = companionAudioSessionCookieHost,
             requestHeaders = requestHeaders,
         )
+    }
+
+    private suspend fun executeAdaptiveMux(
+        task: DownloadTask,
+        videoTask: DownloadTask,
+        audioTask: DownloadTask,
+        engine: StreamingDownloadEngine,
+        repository: com.ahdownload.domain.download.DownloadRepository,
+        controlStore: DownloadControlStore,
+        diagnostics: PersistentDiagnosticLogger,
+    ): com.ahdownload.domain.download.DownloadRecord? {
+        val queue = PersistentDownloadQueue(repository)
+        queue.enqueue(task, System.currentTimeMillis())
+
+        fun update(state: DownloadState) {
+            // State persistence is intentionally tied to the main user-visible task.
+            // The staged video/audio files remain private implementation details.
+        }
+
+        val videoFile = java.io.File(videoTask.destinationPath)
+        val audioFile = java.io.File(audioTask.destinationPath)
+        val outputFile = java.io.File(task.destinationPath)
+
+        try {
+            if (!videoFile.isFile || videoFile.length() <= 0L) {
+                var videoFinal: DownloadState = DownloadState.Preparing
+                engine.download(videoTask) { state ->
+                    videoFinal = state
+                    updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
+                    updateNotificationSpeed(state)
+                    setForeground(createForegroundInfo(state))
+                }
+                if (videoFinal !is DownloadState.Completed) return null
+            }
+
+            if (!audioFile.isFile || audioFile.length() <= 0L) {
+                var audioFinal: DownloadState = DownloadState.Preparing
+                val audioEngine = StreamingDownloadEngine(
+                    source = OkHttpDownloadByteStream(
+                        logger = diagnosticsLogger(),
+                        dynamicHeaders = { url, headers ->
+                            dynamicHeadersFor(url, task.companionAudioSessionCookieHost, headers)
+                        },
+                    ),
+                    sink = LocalAtomicFileSink(),
+                )
+                audioEngine.download(audioTask) { state ->
+                    audioFinal = state
+                    val mapped = when (state) {
+                        is DownloadState.Downloading -> DownloadState.Downloading(
+                            bytesDownloaded = state.bytesDownloaded.coerceAtLeast(0L),
+                            totalBytes = state.totalBytes,
+                        )
+                        DownloadState.Completed -> DownloadState.Downloading(
+                            bytesDownloaded = audioFile.length(),
+                            totalBytes = audioFile.length(),
+                        )
+                        else -> state
+                    }
+                    updateAdaptiveRecord(repository, task.id, mapped, System.currentTimeMillis())
+                    setForeground(createForegroundInfo(mapped))
+                }
+                if (audioFinal !is DownloadState.Completed) return null
+            }
+
+            setForeground(createForegroundInfo(DownloadState.Preparing))
+            val mux = MediaVideoAudioMuxer().mux(videoFile, audioFile, outputFile)
+            if (mux.isFailure) {
+                val error = mux.exceptionOrNull()
+                diagnostics.log(
+                    DiagnosticLevel.ERROR,
+                    "VIDEO_AUDIO_MUX_FAILED",
+                    error?.message ?: "mux_failed",
+                    "download.mux",
+                    mapOf(
+                        "task_id" to task.id,
+                        "video_size_bytes" to videoFile.length().toString(),
+                        "audio_size_bytes" to audioFile.length().toString(),
+                    ),
+                    error,
+                )
+                updateAdaptiveRecord(
+                    repository,
+                    task.id,
+                    DownloadState.Failed(DownloadFailure.StorageError),
+                    System.currentTimeMillis(),
+                )
+                return null
+            }
+
+            runCatching { videoFile.delete() }
+            runCatching { audioFile.delete() }
+            val now = System.currentTimeMillis()
+            val completed = updateAdaptiveRecord(
+                repository,
+                task.id,
+                DownloadState.Downloading(outputFile.length(), outputFile.length()),
+                now,
+            )
+            return queue.applyState(task.id, DownloadState.Completed, now)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            val state = if (controlStore.isPaused(task.id)) {
+                DownloadState.Paused
+            } else {
+                DownloadState.Cancelled
+            }
+            updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
+            throw cancelled
+        } catch (error: Throwable) {
+            diagnostics.log(
+                DiagnosticLevel.ERROR,
+                "ADAPTIVE_MUX_UNEXPECTED",
+                error.message ?: error::class.simpleName.orEmpty(),
+                "download.mux",
+                mapOf("task_id" to task.id),
+                error,
+            )
+            updateAdaptiveRecord(
+                repository,
+                task.id,
+                DownloadState.Failed(DownloadFailure.NetworkError),
+                System.currentTimeMillis(),
+            )
+            return null
+        }
+    }
+
+    private suspend fun updateAdaptiveRecord(
+        repository: com.ahdownload.domain.download.DownloadRepository,
+        taskId: String,
+        state: DownloadState,
+        now: Long,
+    ) {
+        val current = repository.get(taskId) ?: return
+        val mapped = com.ahdownload.domain.download.DownloadRecordMapper.fromState(
+            current,
+            state,
+            now,
+        )
+        repository.upsert(mapped)
     }
 
     private fun updateNotificationSpeed(state: DownloadState) {
@@ -816,6 +1021,13 @@ class DownloadWorker(
         const val KEY_MEDIA_KIND = "media_kind"
         const val KEY_PROCESSING_MODE = "processing_mode"
         const val KEY_AUDIO_OUTPUT_FORMAT = "audio_output_format"
+        const val KEY_COMPANION_AUDIO_SOURCE_URL = "companion_audio_source_url"
+        const val KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST = "companion_audio_session_cookie_host"
+        const val KEY_COMPANION_AUDIO_USER_AGENT = "companion_audio_user_agent"
+        const val KEY_COMPANION_AUDIO_REFERER = "companion_audio_referer"
+        const val KEY_COMPANION_AUDIO_ORIGIN = "companion_audio_origin"
+        const val KEY_COMPANION_AUDIO_ACCEPT = "companion_audio_accept"
+        const val KEY_COMPANION_AUDIO_ACCEPT_LANGUAGE = "companion_audio_accept_language"
         const val KEY_FORCE_REFRESH = "force_refresh"
         const val KEY_USER_AGENT = "user_agent"
         const val KEY_REFERER = "referer"
