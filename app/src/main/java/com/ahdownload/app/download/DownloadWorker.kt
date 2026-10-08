@@ -682,7 +682,11 @@ class DownloadWorker(
             sessionProvider = AndroidYouTubeSessionProvider(applicationContext),
         )
 
-        val resolved = resolver.resolve(link, operationId = id.toString())
+        val resolved = resolver.resolve(
+            link,
+            operationId = id.toString(),
+            forceYouTubeFallbacks = true,
+        )
         if (resolved !is ResolverResult.Success) return null
 
         val candidates = if (task.processingMode == DownloadProcessingMode.ExtractAudio) {
@@ -693,6 +697,11 @@ class DownloadWorker(
                     },
                     requestedKind = MediaKind.Audio,
                 )
+                .sortedWith(
+                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                        .thenByDescending { it.format.bitrateKbps ?: 0 }
+                        .thenBy { it.id },
+                )
                 .take(6)
             val muxedVideo = CandidateRanker()
                 .rank(
@@ -702,6 +711,12 @@ class DownloadWorker(
                             it.format.hasAudio
                     },
                     requestedKind = MediaKind.Video,
+                )
+                .sortedWith(
+                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                        .thenByDescending { it.format.height ?: 0 }
+                        .thenByDescending { it.format.bitrateKbps ?: 0 }
+                        .thenBy { it.id },
                 )
                 .take(4)
             (directAudio + muxedVideo).distinctBy { it.id }
@@ -717,6 +732,12 @@ class DownloadWorker(
                             }
                     },
                     requestedKind = expectedKind,
+                )
+                .sortedWith(
+                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                        .thenByDescending { it.format.height ?: 0 }
+                        .thenByDescending { it.format.bitrateKbps ?: 0 }
+                        .thenBy { it.id },
                 )
                 .take(4)
         }
@@ -752,6 +773,13 @@ class DownloadWorker(
         }
 
         return null
+    }
+
+    private fun youtubeRefreshPriority(candidate: MediaCandidate): Int = when {
+        candidate.id.startsWith("embedded-") -> 0
+        candidate.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED -> 1
+        candidate.id.startsWith("android-") -> 2
+        else -> 3
     }
 
     private fun isRetryableHttp(detail: String?): Boolean {
