@@ -1202,8 +1202,8 @@ private fun UnifiedDownloadResultCard(
                         Text("النتيجة جاهزة", style = MaterialTheme.typography.labelLarge)
                         Text(
                             buildList {
-                                if (allVideoOptions.isNotEmpty()) add("\${allVideoOptions.size} جودة فيديو")
-                                if (audioAvailable) add("\${AudioOutputFormat.entries.size} صيغ صوت")
+                                if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
+                                if (audioAvailable) add("${AudioOutputFormat.entries.size} صيغ صوت")
                             }.joinToString(" · ").ifBlank { "خيارات متاحة" },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1303,7 +1303,7 @@ private fun UnifiedDownloadResultCard(
                         contentDescription = when (selectionMode) {
                             OutputSelectionMode.VIDEO -> "تنزيل الفيديو مع الصوت"
                             OutputSelectionMode.AUDIO -> selectedAudioOutputFormat
-                                ?.let { "تنزيل الصوت بصيغة \${it.label}" }
+                                ?.let { "تنزيل الصوت بصيغة ${it.label}" }
                                 ?: "اختر صيغة الصوت أولًا"
                             null -> "اختر جودة الفيديو أو صيغة الصوت أولًا"
                         }
