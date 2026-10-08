@@ -80,11 +80,7 @@ object DiagnosticReportFormatter {
                 !anchor.context["failure_code"].isNullOrBlank() -> anchor.context["failure_code"]!!
                 statusCode(anchor)?.let { it in 400..599 } == true -> "HTTP_" + statusCode(anchor)
                 anchor.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION_FAILED"
-                http403 > 0 && (
-                    anchor.type.contains("PROBE", ignoreCase = true) ||
-                        anchor.type.contains("REQUEST", ignoreCase = true) ||
-                        anchor.operation.contains("validation", ignoreCase = true)
-                    ) -> "HTTP_403"
+                http403 > 0 -> "HTTP_403"
                 else -> anchor.type
             }
         }
