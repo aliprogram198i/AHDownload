@@ -86,14 +86,19 @@ class FileDownloadRepository(
                 val recovered = records
                     .filter { it.status in INTERRUPTED_STATUSES }
                     .map {
-                        it.copy(
-                            status = DownloadStatus.QUEUED,
-                            bytesDownloaded = 0,
-                            totalBytes = null,
-                            failureCode = null,
-                            failureDetail = null,
-                            updatedAtEpochMs = nowEpochMs,
-                        )
+                        run {
+                            val partialSize = runCatching {
+                                File(it.task.destinationPath + ".part").takeIf { file -> file.isFile }?.length() ?: 0L
+                            }.getOrDefault(0L).coerceAtLeast(0L)
+                            it.copy(
+                                status = DownloadStatus.QUEUED,
+                                bytesDownloaded = partialSize,
+                                totalBytes = it.totalBytes?.coerceAtLeast(partialSize),
+                                failureCode = null,
+                                failureDetail = null,
+                                updatedAtEpochMs = nowEpochMs,
+                            )
+                        }
                     }
 
                 if (recovered.isEmpty()) {
