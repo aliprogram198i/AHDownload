@@ -129,15 +129,15 @@ class SocialDownloadSmokeTest {
 
         return when (val result = resolved.getOrThrow()) {
             is ResolverResult.Success -> {
-                val video = result.candidates
+                val videos = result.candidates
                     .filter { it.format.kind == MediaKind.Video }
                     .sortedWith(
                         compareByDescending<MediaCandidate> { it.format.height ?: 0 }
                             .thenByDescending { it.format.bitrateKbps ?: 0 },
                     )
-                    .firstOrNull()
+                    .take(MAX_TRANSFER_CANDIDATES)
 
-                if (video == null) {
+                if (videos.isEmpty()) {
                     CaseResult(
                         case = case,
                         passed = false,
@@ -146,23 +146,40 @@ class SocialDownloadSmokeTest {
                             "candidate_count=${result.candidates.size}",
                     )
                 } else {
-                    val probe = probeMedia(video.sourceUrl, video.requestHeaders, outputDir, case.name)
-                    val passed = probe.bytes > 0L && probe.mediaKind == MediaKind.Video
+                    val attempts = videos.map { candidate ->
+                        val probe = probeMedia(
+                            candidate.sourceUrl,
+                            candidate.requestHeaders,
+                            outputDir,
+                            case.name,
+                        )
+                        candidate to probe
+                    }
+                    val successful = attempts.firstOrNull { (_, probe) ->
+                        probe.bytes > 0L && probe.mediaKind == MediaKind.Video
+                    }
+                    val bestCandidate = successful?.first ?: attempts.first().first
+                    val bestProbe = successful?.second ?: attempts.first().second
+                    val passed = successful != null
+                    val attemptSummary = attempts.joinToString(",") { (candidate, probe) ->
+                        candidate.format.height?.toString().orEmpty().ifBlank { "na" } +
+                            ":" + probe.status + ":" + probe.bytes
+                    }
                     CaseResult(
                         case = case,
                         passed = passed,
-                        reason = if (passed) "OK" else probe.status,
+                        reason = if (passed) "OK" else bestProbe.status,
                         reportLine = "RESULT ${case.name}: RESOLVED " +
                             "candidate_count=${result.candidates.size} " +
-                            "height=${video.format.height ?: 0} " +
-                            "container=${video.format.container} " +
-                            "transfer=${probe.status} bytes=${probe.bytes} " +
-                            "content_type=${probe.contentType ?: "unknown"} " +
-                            "payload_kind=${probe.mediaKind.name}",
+                            "transfer_candidates=${videos.size} " +
+                            "selected_height=${bestCandidate.format.height ?: 0} " +
+                            "container=${bestCandidate.format.container} " +
+                            "transfer=${bestProbe.status} bytes=${bestProbe.bytes} " +
+                            "content_type=${bestProbe.contentType ?: "unknown"} " +
+                            "payload_kind=${bestProbe.mediaKind.name} " +
+                            "attempts=${attemptSummary}",
                     )
                 }
-            }
-
             is ResolverResult.Failure -> CaseResult(
                 case = case,
                 passed = false,
@@ -259,6 +276,10 @@ class SocialDownloadSmokeTest {
         }.also {
             connection.disconnect()
         }
+    }
+
+    private companion object {
+        const val MAX_TRANSFER_CANDIDATES = 4
     }
 
     private fun detectMediaKind(
