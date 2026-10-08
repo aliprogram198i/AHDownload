@@ -21,7 +21,7 @@ jobs:
           set -euo pipefail
           curl -fL --retry 3 --retry-delay 2 \
             -o app-release.apk \
-            "https://github.com/aliprogram198i/AHDownload/releases/download/release-37770960876/app-release.apk"
+            "https://github.com/aliprogram198i/AHDownload/releases/download/release-37847746695/app-release.apk"
           test -s app-release.apk
 
       - name: Set up Android SDK
