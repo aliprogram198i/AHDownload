@@ -627,7 +627,7 @@ class HomeViewModel(
                                     .filter {
                                         it.format.kind == candidate.format.kind &&
                                             when (it.format.kind) {
-                                                MediaKind.Video -> it.format.hasVideo && it.format.hasAudio
+                                                MediaKind.Video -> it.format.hasVideo
                                                 MediaKind.Audio -> it.format.hasAudio
                                                 else -> false
                                             }
@@ -639,7 +639,7 @@ class HomeViewModel(
                                             .thenByDescending { it.format.height ?: 0 }
                                             .thenByDescending { it.format.bitrateKbps ?: 0 },
                                     )
-                                    .take(3)
+                                    .take(6)
                             }
 
                             logger.log(
@@ -681,7 +681,33 @@ class HomeViewModel(
                                     ),
                                     null,
                                 )
-                                if (validation is CandidateValidationResult.Valid) break
+                                if (validation is CandidateValidationResult.Valid) {
+                                    if (
+                                        !extractAudio &&
+                                        refreshedCandidate.format.kind == MediaKind.Video &&
+                                        refreshedCandidate.format.hasVideo &&
+                                        !refreshedCandidate.format.hasAudio
+                                    ) {
+                                        companionAudioCandidate = bestCompanionAudioCandidate(
+                                            refreshed.candidates,
+                                        )
+                                        if (companionAudioCandidate == null) {
+                                            logger.log(
+                                                DiagnosticLevel.WARNING,
+                                                "MUX_AUDIO_CANDIDATE_MISSING",
+                                                "لم يجد fallback مسار صوت مرافق للفيديو الجديد",
+                                                "download.refresh.validation",
+                                                mapOf(
+                                                    "video_candidate_id" to refreshedCandidate.id,
+                                                    "operation_id" to validationOperationId,
+                                                ),
+                                                null,
+                                            )
+                                            return@forEach
+                                        }
+                                    }
+                                    break
+                                }
 
                                 val refreshedFailure =
                                     (validation as CandidateValidationResult.Invalid).failure
