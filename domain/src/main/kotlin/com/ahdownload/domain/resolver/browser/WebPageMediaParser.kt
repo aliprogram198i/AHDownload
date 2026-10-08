@@ -54,12 +54,23 @@ object WebPageMediaParser {
         )
     }
 
-    private fun decodeHtml(value: String): String =
-        value.replace("&amp;", "&")
+    private fun decodeHtml(value: String): String {
+        val htmlDecoded = value.replace("&amp;", "&")
             .replace("&quot;", "\"")
             .replace("&#39;", "'")
             .replace("&lt;", "<")
             .replace("&gt;", ">")
-            .let { runCatching { URLDecoder.decode(it, StandardCharsets.UTF_8.toString()) }.getOrDefault(it) }
             .trim()
+
+        // URLDecoder treats '+' as a space. Only apply it when a percent-encoded
+        // sequence is actually present so literal '+' characters in media URLs
+        // are preserved.
+        return if (Regex("%[0-9A-Fa-f]{2}").containsMatchIn(htmlDecoded)) {
+            runCatching {
+                URLDecoder.decode(htmlDecoded, StandardCharsets.UTF_8.toString())
+            }.getOrDefault(htmlDecoded)
+        } else {
+            htmlDecoded
+        }
+    }
 }
