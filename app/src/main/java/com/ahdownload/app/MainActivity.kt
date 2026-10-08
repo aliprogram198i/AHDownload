@@ -28,8 +28,10 @@ import com.ahdownload.app.favorites.FavoritesStore
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
+import com.ahdownload.app.settings.ThemePreferenceStore
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadStatus
@@ -61,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private val uiTraceLogger by lazy { applicationServices.uiTraceLogger }
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val downloadPreferencesStore by lazy { DownloadPreferencesStore(applicationContext) }
+    private val themePreferenceStore by lazy { ThemePreferenceStore(applicationContext) }
     private val favoritesStore by lazy { FavoritesStore(applicationContext) }
 
     private val folderPicker =
@@ -78,8 +81,14 @@ class MainActivity : ComponentActivity() {
         openDownloadsOnStart = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
 
         setContent {
-            AHTheme {
+            var themeMode by remember { mutableStateOf(themePreferenceStore.read()) }
+            AHTheme(themeMode = themeMode) {
                 AHRoot(
+                    themeMode = themeMode,
+                    onThemeChanged = { mode ->
+                        themePreferenceStore.set(mode)
+                        themeMode = mode
+                    },
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
                     onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
@@ -349,6 +358,8 @@ private fun AHRoot(
     downloadLocationStore: DownloadLocationStore,
     downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
     favoriteRepository: com.ahdownload.domain.favorites.FavoriteRepository,
+    themeMode: AHThemeMode,
+    onThemeChanged: (AHThemeMode) -> Unit,
     onExtractAudio: suspend (DownloadRecord) -> Boolean,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
@@ -454,6 +465,9 @@ private fun AHRoot(
         }
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
+            diagnosticLogger = logger,
+            themeMode = themeMode,
+            onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
             onOpenUiDiagnostics = { push(RootDestination.UiDiagnostics) },
