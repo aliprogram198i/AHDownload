@@ -342,7 +342,6 @@ class HomeViewModel(
         searchJob?.cancel()
         _uiState.value = _uiState.value.copy(searchQuery = item.title, mode = HomeMode.Link)
         onUrlChanged(item.url)
-        analyze()
     }
 
     fun selectRecentLink(link: RecentLink) {
