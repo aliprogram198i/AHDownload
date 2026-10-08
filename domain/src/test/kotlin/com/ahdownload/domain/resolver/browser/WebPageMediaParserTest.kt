@@ -60,4 +60,48 @@ class WebPageMediaParserTest {
             result.mediaUrls.toSet(),
         )
     }
+
+    @Test
+    fun extractsInstagramEscapedVideoUrlFromApplicationState() {
+        val html = """
+            <script type="application/json">
+              {
+                "video_versions": [{
+                  "url": "https:\/\/instagram.fsgn5-21.fna.fbcdn.net\/o1\/v\/t2\/f2\/m367\/AQExampleVideo.mp4?stp=dst-jpg&_nc_sid=9ca052",
+                  "width": 1080,
+                  "height": 1920
+                }]
+              }
+            </script>
+        """.trimIndent()
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://www.instagram.com/reel/ABC123/",
+        )
+
+        assertEquals(
+            "https://instagram.fsgn5-21.fna.fbcdn.net/o1/v/t2/f2/m367/AQExampleVideo.mp4?stp=dst-jpg&_nc_sid=9ca052",
+            result.mediaUrls.single(),
+        )
+    }
+
+    @Test
+    fun extractsInstagramPlaybackUrlWithoutOpenGraphTag() {
+        val html = """
+            <script type="application/json">
+              {"playback_url":"https:\/\/scontent.example.fbcdn.net\/o1\/v\/t16\/f1\/m999\/AQPlayback.mp4?x=1\u0026y=2"}
+            </script>
+        """.trimIndent()
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://www.instagram.com/reel/ABC123/",
+        )
+
+        assertEquals(
+            "https://scontent.example.fbcdn.net/o1/v/t16/f1/m999/AQPlayback.mp4?x=1&y=2",
+            result.mediaUrls.single(),
+        )
+    }
 }

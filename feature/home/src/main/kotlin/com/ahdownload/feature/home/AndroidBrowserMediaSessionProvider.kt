@@ -14,6 +14,7 @@ import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
+import org.json.JSONTokener
 import kotlin.coroutines.resume
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
@@ -40,23 +41,48 @@ class AndroidBrowserMediaSessionProvider(
             var durationMs: Long? = null
             var finalUrl: String? = null
 
+            fun normalizeMediaUrl(raw: String): String =
+                raw.trim()
+                    .replace("\\/", "/")
+                    .replace("\\u002F", "/", ignoreCase = true)
+                    .replace("\\u0026", "&", ignoreCase = true)
+                    .replace("\\u003F", "?", ignoreCase = true)
+                    .replace("\\u003D", "=", ignoreCase = true)
+                    .replace("\\u003A", ":", ignoreCase = true)
+
             fun isMedia(raw: String): Boolean {
-                val lower = raw.lowercase()
+                val value = normalizeMediaUrl(raw)
+                val lower = value.lowercase()
                 if (!(lower.startsWith("http://") || lower.startsWith("https://"))) return false
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                return ext in MEDIA_EXTENSIONS ||
-                    ext == "m3u8" ||
-                    ext == "mpd" ||
-                    "/videoplayback" in lower ||
-                    Regex("""[?&](mime|content-type|type)=(video|audio)(%2f|/)""").containsMatchIn(lower)
+                if (ext in MEDIA_EXTENSIONS || ext == "m3u8" || ext == "mpd" || "/videoplayback" in lower) {
+                    return true
+                }
+                if (Regex("""[?&](?:mime|content-type|type)=[^&]*?(?:video|audio)""").containsMatchIn(lower)) {
+                    return true
+                }
+                val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
+                return (
+                    host.endsWith(".fbcdn.net") ||
+                        host.endsWith(".cdninstagram.com") ||
+                        host == "cdninstagram.com"
+                    ) && (
+                    "/o1/v/" in path ||
+                        "/v/t" in path ||
+                        "/video" in path
+                    )
             }
 
             fun isLikelyPlayableMedia(raw: String): Boolean {
-                val lower = raw.lowercase()
+                val value = normalizeMediaUrl(raw)
+                val lower = value.lowercase()
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                return ext in MEDIA_EXTENSIONS || "/videoplayback" in lower
+                if (ext in MEDIA_EXTENSIONS || "/videoplayback" in lower) return true
+                val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
+                return host.endsWith(".fbcdn.net") || host.endsWith(".cdninstagram.com")
+                    || host == "cdninstagram.com"
             }
 
             fun safeHeaders(input: Map<String, String>): Map<String, String> = buildMap {
@@ -98,7 +124,7 @@ class AndroidBrowserMediaSessionProvider(
             }
 
             fun observe(raw: String?, headers: Map<String, String> = emptyMap()) {
-                val value = raw?.trim().orEmpty()
+                val value = normalizeMediaUrl(raw.orEmpty())
                 if (!isMedia(value)) return
                 mediaUrls.add(value)
                 val safe = safeHeaders(headers)
@@ -139,19 +165,41 @@ class AndroidBrowserMediaSessionProvider(
                       const sources=[...document.querySelectorAll('source')]
                         .map(e=>e.src||e.getAttribute('data-src')).filter(Boolean);
                       const perf=(performance.getEntriesByType('resource')||[]).map(e=>e.name).filter(Boolean);
+                      const scripts=[...document.scripts].map(s=>s.textContent||'').join('\n');
+                      const clean=scripts
+                        .replace(/\\u002f/gi,'/')
+                        .replace(/\\u0026/gi,'&')
+                        .replace(/\\u003f/gi,'?')
+                        .replace(/\\u003d/gi,'=')
+                        .replace(/\\u003a/gi,':')
+                        .replace(/\\\//g,'/');
+                      const embedded=[];
+                      const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url)"\s*:\s*"([^"]+)"/g;
+                      let match;
+                      while((match=keyRe.exec(clean))!==null) embedded.push(match[1]);
+                      const embeddedUrls=(clean.match(/https?:\/\/[^"'<>\\\s]+/g)||[]);
                       const d=[...document.querySelectorAll('video')].map(v=>v.duration).filter(x=>Number.isFinite(x)&&x>0);
                       return JSON.stringify({
                         title:meta('meta[property="og:title"]')||meta('meta[name="twitter:title"]')||document.title||null,
                         thumbnail:meta('meta[property="og:image"]')||meta('meta[name="twitter:image"]')||null,
                         durationSec:d.length?Math.max(...d):null,
-                        media:[...new Set([...elements.map(x=>x.url),...sources,...perf])].slice(0,80),
+                        media:[...new Set([
+                          ...elements.map(x=>x.url),
+                          ...sources,
+                          ...perf,
+                          ...embedded,
+                          ...embeddedUrls
+                        ])].slice(0,120),
                         mediaAudio:elements
                       });
                     })();
                 """.trimIndent()
                 view.evaluateJavascript(script) { raw ->
                     runCatching {
-                        val json = JSONObject(raw.removeSurrounding(""").replace("\"", """))
+                        val decoded = runCatching {
+                            JSONTokener(raw).nextValue() as? String ?: raw
+                        }.getOrDefault(raw)
+                        val json = JSONObject(decoded)
                         json.optString("title").takeIf { it.isNotBlank() }?.let { title = it }
                         json.optString("thumbnail").takeIf { it.startsWith("http") }?.let { thumbnail = it }
                         json.optDouble("durationSec", -1.0).takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }
@@ -168,7 +216,8 @@ class AndroidBrowserMediaSessionProvider(
                             for (i in 0 until array.length()) observe(array.optString(i))
                         }
                     }
-                    if (mediaUrls.isNotEmpty()) finish()
+                    // Do not terminate on the first discovered URL; Instagram
+                    // may expose higher-quality variants a moment later.
                 }
             }
 
