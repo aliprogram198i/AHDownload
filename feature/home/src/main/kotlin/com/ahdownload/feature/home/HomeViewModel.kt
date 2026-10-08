@@ -491,6 +491,19 @@ class HomeViewModel(
             downloadQueued = false,
         )
     }
+    private fun bestCompanionAudioCandidate(candidates: List<MediaCandidate>): MediaCandidate? =
+        candidates
+            .asSequence()
+            .filter { it.format.kind == MediaKind.Audio && it.format.hasAudio }
+            .sortedWith(
+                compareByDescending<MediaCandidate> {
+                    it.format.container == com.ahdownload.domain.resolver.MediaContainer.M4a ||
+                        it.format.container == com.ahdownload.domain.resolver.MediaContainer.Aac
+                }
+                    .thenByDescending { it.format.bitrateKbps ?: 0 },
+            )
+            .firstOrNull()
+
     private fun downloadSelected(
         candidateId: String,
         extractAudio: Boolean = false,
@@ -524,6 +537,30 @@ class HomeViewModel(
             )
             try {
                 var candidateToValidate = candidate
+                var companionAudioCandidate: MediaCandidate? = null
+                if (
+                    !extractAudio &&
+                    candidate.format.kind == MediaKind.Video &&
+                    candidate.format.hasVideo &&
+                    !candidate.format.hasAudio
+                ) {
+                    companionAudioCandidate = bestCompanionAudioCandidate(
+                        state.resolution?.candidates.orEmpty(),
+                    )
+                    if (companionAudioCandidate == null) {
+                        _uiState.value = _uiState.value.copy(
+                            validatingCandidateId = null,
+                            error = "لا يتوفر مسار صوت متوافق لدمج الفيديو المحدد.",
+                            downloadQueued = false,
+                        )
+                        return@launch
+                    }
+                    candidateToValidate = candidate.copy(
+                        companionAudioSourceUrl = companionAudioCandidate.sourceUrl,
+                        companionAudioRequestHeaders = companionAudioCandidate.requestHeaders,
+                        companionAudioSessionCookieHost = companionAudioCandidate.sessionCookieHost,
+                    )
+                }
                 var validation = resolver.validate(candidateToValidate, validationOperationId)
                 var youtubeRefreshAttempted = false
                 var youtubeFallbackCandidatesChecked = 0
@@ -673,6 +710,35 @@ class HomeViewModel(
 
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
+                        var enqueueCandidate = validation.candidate.copy(sourceUrl = validation.finalUrl)
+                        if (!extractAudio && companionAudioCandidate != null) {
+                            val audioValidation = resolver.validate(companionAudioCandidate, validationOperationId)
+                            if (audioValidation !is CandidateValidationResult.Valid) {
+                                _uiState.value = _uiState.value.copy(
+                                    validatingCandidateId = null,
+                                    error = "تعذر التحقق من مسار الصوت المطلوب لدمج الفيديو.",
+                                    downloadQueued = false,
+                                )
+                                logger.log(
+                                    DiagnosticLevel.WARNING,
+                                    "MUX_AUDIO_VALIDATION_FAILED",
+                                    "فشل التحقق من مسار الصوت المرافق للفيديو",
+                                    "download.validate",
+                                    mapOf(
+                                        "video_candidate_id" to candidate.id,
+                                        "audio_candidate_id" to companionAudioCandidate.id,
+                                        "operation_id" to validationOperationId,
+                                    ),
+                                    null,
+                                )
+                                return@launch
+                            }
+                            enqueueCandidate = enqueueCandidate.copy(
+                                companionAudioSourceUrl = audioValidation.finalUrl,
+                                companionAudioRequestHeaders = audioValidation.candidate.requestHeaders,
+                                companionAudioSessionCookieHost = audioValidation.candidate.sessionCookieHost,
+                            )
+                        }
                         val queued = if (extractAudio) {
                             val format = audioOutputFormat ?: run {
                                 _uiState.value = _uiState.value.copy(
@@ -691,7 +757,7 @@ class HomeViewModel(
                             )
                         } else {
                             onDownloadRequested(
-                                validation.candidate.copy(sourceUrl = validation.finalUrl),
+                                enqueueCandidate,
                                 state.resolution.title,
                                 state.result?.normalizedUrl,
                                 state.resolution.thumbnailUrl,
@@ -839,9 +905,9 @@ class HomeViewModel(
     fun downloadCandidate(id: String) {
         val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
         val format = candidate.format
-        if (format.kind != MediaKind.Video || !format.hasVideo || !format.hasAudio) {
+        if (format.kind != MediaKind.Video || !format.hasVideo) {
             _uiState.value = _uiState.value.copy(
-                error = "اختر خيار فيديو يحتوي على الصورة والصوت معًا.",
+                error = "اختر خيار فيديو صالحًا للتنزيل.",
                 downloadQueued = false,
             )
             return
