@@ -89,12 +89,13 @@ class SocialPlatformResolver(
                 // after the initial HTTPS navigation. Only send valid HTTP(S) URLs to OkHttp.
                 // Prefer the final URL when it is web-safe, then fall back through the original
                 // session/request URLs rather than allowing a custom scheme to break resolution.
-                val pageUrl = listOf(
-                    session.finalUrl,
-                    session.pageUrl,
-                    request.link.normalizedUrl,
-                    request.link.originalUrl,
-                ).firstOrNull(::isHttpPageUrl)
+                val pageUrlCandidate = listOf(
+                    "final_url" to session.finalUrl,
+                    "session_page_url" to session.pageUrl,
+                    "normalized_request_url" to request.link.normalizedUrl,
+                    "original_request_url" to request.link.originalUrl,
+                ).firstOrNull { (_, value) -> isHttpPageUrl(value) }
+                val pageUrl = pageUrlCandidate?.second
                 var fallback: ParsedPageMedia? = null
 
                 if (pageUrl == null) {
@@ -119,12 +120,7 @@ class SocialPlatformResolver(
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
-                            "page_url_source" to pageUrlSource(
-                                pageUrl,
-                                session.finalUrl,
-                                session.pageUrl,
-                                request.link.normalizedUrl,
-                            ),
+                            "page_url_source" to pageUrlCandidate.first,
                         ),
                         null,
                     )
@@ -351,18 +347,6 @@ class SocialPlatformResolver(
         if (value.isNullOrBlank()) return "missing"
         return runCatching { URI(value).scheme?.lowercase() ?: "missing" }
             .getOrDefault("invalid")
-    }
-
-    private fun pageUrlSource(
-        selected: String,
-        finalUrl: String?,
-        sessionPageUrl: String,
-        normalizedUrl: String,
-    ): String = when (selected) {
-        finalUrl -> "final_url"
-        sessionPageUrl -> "session_page_url"
-        normalizedUrl -> "normalized_request_url"
-        else -> "original_request_url"
     }
 
     private fun safeHeader(name: String): Boolean = when {
