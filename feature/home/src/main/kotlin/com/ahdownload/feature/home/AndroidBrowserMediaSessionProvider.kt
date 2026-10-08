@@ -44,15 +44,19 @@ class AndroidBrowserMediaSessionProvider(
                 if (".m3u8" in lower || ".mpd" in lower) return false
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                return ext in MEDIA_EXTENSIONS || "/videoplayback" in lower ||
-                    Regex("""[?&](mime|content-type|type)=(video|audio)(%2f|/)""").containsMatchIn(lower)
+                val queryMedia = Regex("""[?&](mime|mime_type|content-type|contentType|type|media_type)=(?:video|audio)""")
+                    .containsMatchIn(lower)
+                val pathHint = Regex("""(?:/videoplayback|/video(?:/|$)|/videos(?:/|$)|/playback(?:/|$)|/stream(?:/|$)|/download(?:/|$))""")
+                    .containsMatchIn(lower)
+                return ext in MEDIA_EXTENSIONS || queryMedia || pathHint
             }
 
             fun isLikelyPlayableMedia(raw: String): Boolean {
                 val lower = raw.lowercase()
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                return ext in MEDIA_EXTENSIONS || "/videoplayback" in lower
+                return ext in MEDIA_EXTENSIONS ||
+                    "/videoplayback" in lower || "/video/" in lower || "/videos/" in lower
             }
 
             fun safeHeaders(input: Map<String, String>): Map<String, String> = buildMap {
@@ -178,22 +182,28 @@ class AndroidBrowserMediaSessionProvider(
                         return super.shouldInterceptRequest(view, request)
                     }
 
+                    override fun onLoadResource(view: WebView, resourceUrl: String) {
+                        observe(resourceUrl)
+                        super.onLoadResource(view, resourceUrl)
+                    }
+
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         finalUrl = pageUrl
-                        view.postDelayed({ inspect(view) }, 450L)
-                        view.postDelayed({ inspect(view) }, 1400L)
-                        view.postDelayed({ inspect(view) }, 2600L)
-                        view.postDelayed({ finish() }, 8000L)
+                        view.postDelayed({ inspect(view) }, 500L)
+                        view.postDelayed({ inspect(view) }, 1600L)
+                        view.postDelayed({ inspect(view) }, 3200L)
+                        view.postDelayed({ inspect(view) }, 6000L)
+                        view.postDelayed({ finish() }, 9000L)
                     }
                 }
                 timeout = Runnable { finish() }
-                main.postDelayed(timeout!!, 15000L)
+                main.postDelayed(timeout!!, 16000L)
                 view.loadUrl(url)
             }
         }
 
     private companion object {
-        const val MAX_MEDIA_URLS = 64
+        const val MAX_MEDIA_URLS = 96
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
         val MEDIA_EXTENSIONS = setOf("mp4","m4v","webm","mov","mkv","3gp","avi","m4a","mp3","aac","ogg","flac","wav")
     }
