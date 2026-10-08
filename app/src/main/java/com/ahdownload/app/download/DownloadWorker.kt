@@ -21,6 +21,7 @@ import com.ahdownload.app.settings.SelectedDirectoryStorage
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadCoordinator
+import com.ahdownload.domain.download.DownloadFailure
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadProcessingMode
@@ -64,7 +65,7 @@ class DownloadWorker(
             inputTask
         }
 
-        val sourceTask = when {
+        var sourceTask = when {
             audioExtractionRequested -> task.copy(
                 destinationPath = if (extractionAlreadyStaged) {
                     task.destinationPath + extractionSuffix
@@ -662,7 +663,7 @@ class DownloadWorker(
             runCatching { videoFile.delete() }
             runCatching { audioFile.delete() }
             val now = System.currentTimeMillis()
-            val completed = updateAdaptiveRecord(
+            updateAdaptiveRecord(
                 repository,
                 task.id,
                 DownloadState.Downloading(outputFile.length(), outputFile.length()),
@@ -710,6 +711,12 @@ class DownloadWorker(
         )
         repository.upsert(mapped)
     }
+
+    private fun muxVideoStagePath(task: DownloadTask): String =
+        task.destinationPath + ".video." + task.id.take(8)
+
+    private fun muxAudioStagePath(task: DownloadTask): String =
+        task.destinationPath + ".audio." + task.id.take(8)
 
     private fun updateNotificationSpeed(state: DownloadState) {
         if (state !is DownloadState.Downloading) return
