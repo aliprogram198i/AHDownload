@@ -53,6 +53,7 @@ class SocialDownloadSmokeTest {
         reportLines += "AHDownload live social smoke test"
         reportLines += "android=" + android.os.Build.VERSION.RELEASE + " sdk=" + android.os.Build.VERSION.SDK_INT
         reportLines += "started=" + System.currentTimeMillis()
+        reportLines += "strict_transfer_assertion=true"
 
         for (case in cases) {
             val caseResult = runCase(resolver, case, outputDir)
