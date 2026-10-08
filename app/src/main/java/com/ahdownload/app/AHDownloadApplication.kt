@@ -8,12 +8,12 @@ import com.ahdownload.app.download.DownloadWorkScheduler
 import com.ahdownload.app.download.FileDownloadRepository
 
 class AHDownloadApplication : Application() {
-    val diagnosticLogger: PersistentDiagnosticLogger by lazy {
-        PersistentDiagnosticLogger(this)
-    }
-
     val uiTraceLogger: PersistentUiTraceLogger by lazy {
         PersistentUiTraceLogger(this)
+    }
+
+    val diagnosticLogger: PersistentDiagnosticLogger by lazy {
+        PersistentDiagnosticLogger(this, uiTraceLogger)
     }
 
     val downloadRepository: FileDownloadRepository by lazy {
