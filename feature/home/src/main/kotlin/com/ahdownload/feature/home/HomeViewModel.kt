@@ -13,6 +13,7 @@ import com.ahdownload.core.common.DownloadPreferences
 import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
+import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.OkHttpTextClient
 import com.ahdownload.domain.resolver.ResolverResult
