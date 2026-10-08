@@ -1,10 +1,12 @@
 package com.ahdownload.domain.resolver.social
 
 import com.ahdownload.domain.model.MediaPlatform
+import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,6 +35,79 @@ class SocialPlatformResolverTest {
 
         val candidate = (result as ResolverResult.Success).candidates.single()
         assertFalse(candidate.format.hasAudio)
+    }
+
+    @Test
+    fun hangingBrowserSessionReturnsExplicitTimeoutFailure() = runTest {
+        val resolver = SocialPlatformResolver(
+            provider = object : BrowserMediaSessionProvider {
+                override suspend fun snapshot(
+                    url: String,
+                    platform: MediaPlatform,
+                ): BrowserMediaSession {
+                    delay(1_000L)
+                    error("unreachable")
+                }
+            },
+            resolveTimeoutMs = 25L,
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertTrue(
+            (result as ResolverResult.Failure).code ==
+                com.ahdownload.domain.resolver.FailureCode.ResolverTimeout,
+        )
+    }
+
+    @Test
+    fun hangingPageFetchReturnsExplicitTimeoutFailure() = runTest {
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "https://www.instagram.com/reel/ABC123/",
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    delay(1_000L)
+                    return ""
+                }
+
+                override suspend fun get(
+                    url: String,
+                    headers: Map<String, String>,
+                ): String = get(url)
+
+                override suspend fun postJson(url: String, body: String): String = ""
+
+                override suspend fun postJson(
+                    url: String,
+                    body: String,
+                    headers: Map<String, String>,
+                ): String = ""
+            },
+            resolveTimeoutMs = 25L,
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertTrue(
+            (result as ResolverResult.Failure).code ==
+                com.ahdownload.domain.resolver.FailureCode.ResolverTimeout,
+        )
     }
 
     @Test

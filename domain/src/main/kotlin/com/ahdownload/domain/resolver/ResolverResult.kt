@@ -20,4 +20,5 @@ enum class FailureCode {
     NoCandidates,
     InvalidRequest,
     ResolverUnavailable,
+    ResolverTimeout,
 }
