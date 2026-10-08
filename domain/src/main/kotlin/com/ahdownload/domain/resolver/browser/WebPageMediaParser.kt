@@ -37,14 +37,18 @@ object WebPageMediaParser {
         val urls = buildList {
             listOf("og:video", "og:video:url", "og:video:secure_url", "twitter:player:stream")
                 .mapNotNull(::meta).forEach { add(absolute(it)) }
-            Regex("""(?i)(?:video|audio|source)[^>]+(?:src|data-src)=["']([^"']+)["']""")
+            Regex("""(?is)(?:video|audio|source)[^>]+(?:src|data-src)=["']([^"']+)["']""")
                 .findAll(html).forEach { add(absolute(it.groupValues[1])) }
+            Regex("""(?is)"(?:video_url|videoUrl|playAddr|downloadAddr|playable_url|playableUrl|contentUrl|srcUrl|sourceUrl|fallbackUrl|progressiveUrl|streamUrl)"\s*:\s*"((?:\\.|[^"])*)"""")
+                .findAll(html).forEach { add(absolute(it.groupValues[1])) }
+            Regex("""(?is)https?:\/\/[^\s"'<>\\]+(?:\\/[^\s"'<>\\]+)*""")
+                .findAll(html).forEach { add(absolute(it.value)) }
             Regex("""(?i)https?://[^\s"'<>]+\.(?:mp4|m4v|webm|mov|mkv|m4a|mp3|aac|ogg|flac)(?:\?[^\s"'<>]*)?""")
                 .findAll(html).forEach { add(it.value) }
         }.filter { it.startsWith("http://") || it.startsWith("https://") }
             .filterNot { it.contains(".m3u8", true) || it.contains(".mpd", true) }
             .distinct()
-            .take(64)
+            .take(96)
 
         return ParsedPageMedia(
             title = title?.trim()?.takeIf(String::isNotBlank),
