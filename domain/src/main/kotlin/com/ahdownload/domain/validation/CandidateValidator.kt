@@ -91,7 +91,14 @@ class CandidateValidator(
             return reject(ValidationFailure.HtmlResponse)
         }
 
-        if (!probeResult.contentType.matchesKind(candidate.format.kind)) {
+        if (
+            candidate.streamingManifest &&
+            !probeResult.contentType.isStreamingManifest()
+        ) {
+            return reject(ValidationFailure.ContentTypeMismatch)
+        }
+
+        if (!candidate.streamingManifest && !probeResult.contentType.matchesKind(candidate.format.kind)) {
             return reject(ValidationFailure.ContentTypeMismatch)
         }
 
@@ -143,6 +150,17 @@ class CandidateValidator(
 
     private fun String?.isHtml(): Boolean =
         this?.substringBefore(';')?.trim()?.equals("text/html", ignoreCase = true) == true
+
+    private fun String?.isStreamingManifest(): Boolean {
+        val type = this?.substringBefore(';')?.trim()?.lowercase() ?: return false
+        return type == "application/vnd.apple.mpegurl" ||
+            type == "application/x-mpegurl" ||
+            type == "application/mpegurl" ||
+            type == "audio/mpegurl" ||
+            type == "application/dash+xml" ||
+            type == "text/vnd.apple.mpegurl" ||
+            type == "text/plain"
+    }
 
     private fun String?.matchesKind(kind: MediaKind): Boolean {
         val type = this?.substringBefore(';')?.trim()?.lowercase() ?: return false
