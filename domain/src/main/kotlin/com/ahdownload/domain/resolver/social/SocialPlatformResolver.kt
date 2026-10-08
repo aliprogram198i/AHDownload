@@ -96,6 +96,7 @@ class SocialPlatformResolver(
                     "original_request_url" to request.link.originalUrl,
                 ).firstOrNull { (_, value) -> isHttpPageUrl(value) }
                 val pageUrl = pageUrlCandidate?.second
+                val pageUrlSource = pageUrlCandidate?.first ?: "none"
                 var fallback: ParsedPageMedia? = null
 
                 if (pageUrl == null) {
@@ -120,7 +121,7 @@ class SocialPlatformResolver(
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
-                            "page_url_source" to pageUrlCandidate.first,
+                            "page_url_source" to pageUrlSource,
                         ),
                         null,
                     )
