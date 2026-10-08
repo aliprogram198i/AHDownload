@@ -93,7 +93,9 @@ object SelectedDirectoryStorage {
         "m4a" -> "audio/mp4"
         "aac" -> "audio/aac"
         "ogg" -> "audio/ogg"
+        "opus" -> "audio/opus"
         "flac" -> "audio/flac"
+        "wav" -> "audio/wav"
         else -> "application/octet-stream"
     }
 }
