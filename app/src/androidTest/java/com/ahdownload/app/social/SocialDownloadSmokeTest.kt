@@ -5,6 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
+import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.feature.home.AndroidBrowserMediaSessionProvider
 import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
@@ -129,7 +130,10 @@ class SocialDownloadSmokeTest {
             is ResolverResult.Success -> {
                 val video = result.candidates
                     .filter { it.format.kind == MediaKind.Video }
-                    .sortedByDescending { it.format.height ?: 0 }
+                    .sortedWith(
+                        compareByDescending<MediaCandidate> { it.format.height ?: 0 }
+                            .thenByDescending { it.format.bitrateKbps ?: 0 },
+                    )
                     .firstOrNull()
 
                 if (video == null) {
@@ -142,7 +146,7 @@ class SocialDownloadSmokeTest {
                     )
                 } else {
                     val probe = probeMedia(video.sourceUrl, video.requestHeaders, outputDir, case.name)
-                    val passed = probe.bytes > 0L
+                    val passed = probe.bytes > 0L && probe.mediaKind == MediaKind.Video
                     CaseResult(
                         case = case,
                         passed = passed,
@@ -151,7 +155,9 @@ class SocialDownloadSmokeTest {
                             "candidate_count=${result.candidates.size} " +
                             "height=${video.format.height ?: 0} " +
                             "container=${video.format.container} " +
-                            "transfer=${probe.status} bytes=${probe.bytes}",
+                            "transfer=${probe.status} bytes=${probe.bytes} " +
+                            "content_type=${probe.contentType ?: "unknown"} " +
+                            "payload_kind=${probe.mediaKind.name}",
                     )
                 }
             }
@@ -169,6 +175,8 @@ class SocialDownloadSmokeTest {
     private data class Probe(
         val status: String,
         val bytes: Long,
+        val contentType: String?,
+        val mediaKind: MediaKind,
     )
 
     private fun probeMedia(
@@ -183,6 +191,7 @@ class SocialDownloadSmokeTest {
             requestMethod = "GET"
             instanceFollowRedirects = true
             setRequestProperty("Range", "bytes=0-1048575")
+            setRequestProperty("Accept", "video/*,audio/*,*/*;q=0.1")
             headers.forEach { (name, value) ->
                 if (name.isNotBlank() && value.isNotBlank()) {
                     setRequestProperty(name, value)
@@ -192,13 +201,19 @@ class SocialDownloadSmokeTest {
 
         return runCatching {
             val code = connection.responseCode
+            val contentType = connection.contentType?.substringBefore(';')?.trim()?.lowercase()
+
             if (code !in 200..299 && code != HttpURLConnection.HTTP_PARTIAL) {
                 Probe(
                     status = "HTTP_" + code,
                     bytes = 0L,
+                    contentType = contentType,
+                    mediaKind = MediaKind.Unknown,
                 )
             } else {
                 val destination = File(outputDir, platform.lowercase() + "-probe.bin")
+                val signature = ByteArray(32)
+                var signatureBytes = 0
                 val responseBytes = connection.inputStream.use { input ->
                     val buffer = ByteArray(64 * 1024)
                     var total = 0L
@@ -208,23 +223,85 @@ class SocialDownloadSmokeTest {
                             val count = input.read(buffer, 0, remaining)
                             if (count <= 0) break
                             output.write(buffer, 0, count)
+                            if (signatureBytes < signature.size) {
+                                val copyCount = minOf(count, signature.size - signatureBytes)
+                                System.arraycopy(buffer, 0, signature, signatureBytes, copyCount)
+                                signatureBytes += copyCount
+                            }
                             total += count
                         }
                     }
                     total
                 }
+
+                val mediaKind = detectMediaKind(contentType, signature, signatureBytes)
+                val status = when {
+                    responseBytes <= 0L -> "NO_RESPONSE_BYTES"
+                    mediaKind == MediaKind.Unknown -> "INVALID_MEDIA_PAYLOAD"
+                    else -> "HTTP_" + code
+                }
+
                 Probe(
-                    status = "HTTP_" + code,
+                    status = status,
                     bytes = responseBytes,
+                    contentType = contentType,
+                    mediaKind = mediaKind,
                 )
             }
         }.getOrElse { error ->
             Probe(
-                status = "TRANSFER_ERROR_" + (error.javaClass.simpleName ?: "Unknown"),
+                status = "TRANSFER_ERROR_" + (error::class.java.simpleName ?: "Unknown"),
                 bytes = 0L,
+                contentType = null,
+                mediaKind = MediaKind.Unknown,
             )
         }.also {
             connection.disconnect()
         }
     }
+
+    private fun detectMediaKind(
+        contentType: String?,
+        bytes: ByteArray,
+        count: Int,
+    ): MediaKind {
+        val type = contentType.orEmpty()
+        if (type.startsWith("video/")) return MediaKind.Video
+        if (type.startsWith("audio/")) return MediaKind.Audio
+        if (count <= 0) return MediaKind.Unknown
+
+        if (count >= 8 &&
+            bytes[4] == 'f'.code.toByte() &&
+            bytes[5] == 't'.code.toByte() &&
+            bytes[6] == 'y'.code.toByte() &&
+            bytes[7] == 'p'.code.toByte()
+        ) return MediaKind.Video
+
+        if (count >= 4 &&
+            bytes[0] == 0x1A.toByte() &&
+            bytes[1] == 0x45.toByte() &&
+            bytes[2] == 0xDF.toByte() &&
+            bytes[3] == 0xA3.toByte()
+        ) return MediaKind.Video
+
+        if (count >= 3 &&
+            bytes[0] == 'I'.code.toByte() &&
+            bytes[1] == 'D'.code.toByte() &&
+            bytes[2] == '3'.code.toByte()
+        ) return MediaKind.Audio
+
+        if (count >= 2 &&
+            bytes[0] == 0xFF.toByte() &&
+            (bytes[1].toInt() and 0xE0) == 0xE0
+        ) return MediaKind.Audio
+
+        val prefix = bytes.copyOf(count.coerceAtMost(32)).toString(Charsets.UTF_8).trimStart()
+        if (prefix.startsWith("<html", true) ||
+            prefix.startsWith("<!doctype", true) ||
+            prefix.startsWith("{\"error\"", true)
+        ) return MediaKind.Unknown
+
+        return MediaKind.Unknown
+    }
+
 }
