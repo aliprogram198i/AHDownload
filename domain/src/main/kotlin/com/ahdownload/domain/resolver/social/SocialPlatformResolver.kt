@@ -85,46 +85,75 @@ class SocialPlatformResolver(
                     null,
                 )
 
-                val pageUrl = session.finalUrl ?: session.pageUrl
+                // WebView may follow a platform deep link (for example instagram://)
+                // after the initial HTTPS navigation. Only send valid HTTP(S) URLs to OkHttp.
+                // Prefer the final URL when it is web-safe, then fall back through the original
+                // session/request URLs rather than allowing a custom scheme to break resolution.
+                val pageUrlCandidate = listOf(
+                    "final_url" to session.finalUrl,
+                    "session_page_url" to session.pageUrl,
+                    "normalized_request_url" to request.link.normalizedUrl,
+                    "original_request_url" to request.link.originalUrl,
+                ).firstOrNull { (_, value) -> isHttpPageUrl(value) }
+                val pageUrl = pageUrlCandidate?.second
+                val pageUrlSource = pageUrlCandidate?.first ?: "none"
                 var fallback: ParsedPageMedia? = null
-                logger.log(
-                    DiagnosticLevel.INFO,
-                    "SOCIAL_PAGE_FETCH_STARTED",
-                    "بدء جلب HTML للصفحة كمسار احتياطي",
-                    "social.resolve.page_fetch",
-                    mapOf(
-                        "platform" to platform.name,
-                    ),
-                    null,
-                )
-                try {
-                    fallback = pageClient.get(pageUrl)
-                        .let { WebPageMediaParser.parse(it, pageUrl) }
+
+                if (pageUrl == null) {
                     logger.log(
-                        DiagnosticLevel.INFO,
-                        "SOCIAL_PAGE_FETCH_RESULT",
-                        "اكتمل جلب وتحليل HTML الاحتياطي",
+                        DiagnosticLevel.WARNING,
+                        "SOCIAL_PAGE_FETCH_SKIPPED_INVALID_URL",
+                        "تم تخطي جلب HTML لأن عناوين الصفحة المتاحة ليست HTTP أو HTTPS",
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
-                            "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
+                            "final_url_scheme" to urlScheme(session.finalUrl),
+                            "session_page_scheme" to urlScheme(session.pageUrl),
+                            "request_url_scheme" to urlScheme(request.link.normalizedUrl),
                         ),
                         null,
                     )
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Throwable) {
+                } else {
                     logger.log(
-                        DiagnosticLevel.WARNING,
-                        "SOCIAL_PAGE_FETCH_FAILED",
-                        error.message ?: error::class.simpleName.orEmpty(),
+                        DiagnosticLevel.INFO,
+                        "SOCIAL_PAGE_FETCH_STARTED",
+                        "بدء جلب HTML للصفحة كمسار احتياطي",
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
-                            "exception_type" to error::class.java.simpleName,
+                            "page_url_source" to pageUrlSource,
                         ),
-                        error,
+                        null,
                     )
+                    try {
+                        fallback = pageClient.get(pageUrl)
+                            .let { WebPageMediaParser.parse(it, pageUrl) }
+                        logger.log(
+                            DiagnosticLevel.INFO,
+                            "SOCIAL_PAGE_FETCH_RESULT",
+                            "اكتمل جلب وتحليل HTML الاحتياطي",
+                            "social.resolve.page_fetch",
+                            mapOf(
+                                "platform" to platform.name,
+                                "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
+                            ),
+                            null,
+                        )
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Throwable) {
+                        logger.log(
+                            DiagnosticLevel.WARNING,
+                            "SOCIAL_PAGE_FETCH_FAILED",
+                            error.message ?: error::class.simpleName.orEmpty(),
+                            "social.resolve.page_fetch",
+                            mapOf(
+                                "platform" to platform.name,
+                                "exception_type" to error::class.java.simpleName,
+                            ),
+                            error,
+                        )
+                    }
                 }
 
                 val title = session.title ?: fallback?.title
@@ -305,6 +334,20 @@ class SocialPlatformResolver(
             sessionCookieHost = safeHost(sourceUrl),
             streamingManifest = streamingManifest,
         )
+    }
+
+    private fun isHttpPageUrl(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        return runCatching {
+            val uri = URI(value)
+            uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()
+        }.getOrDefault(false)
+    }
+
+    private fun urlScheme(value: String?): String {
+        if (value.isNullOrBlank()) return "missing"
+        return runCatching { URI(value).scheme?.lowercase() ?: "missing" }
+            .getOrDefault("invalid")
     }
 
     private fun safeHeader(name: String): Boolean = when {

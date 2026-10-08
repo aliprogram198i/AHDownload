@@ -8,6 +8,7 @@ import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,6 +112,57 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun customSchemeFinalUrlFallsBackToValidHttpSessionPageUrl() = runTest {
+        val pageUrl = "https://www.instagram.com/reel/ABC123/"
+        val mediaUrl = "https://cdn.example.com/video.mp4"
+        val fetchedUrls = mutableListOf<String>()
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = pageUrl,
+                    finalUrl = "instagram://reel/ABC123",
+                    mediaUrls = listOf(mediaUrl),
+                ),
+            ),
+            pageClient = RecordingTextClient { fetchedUrls += it },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(link = link(MediaPlatform.Instagram)),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(listOf(pageUrl), fetchedUrls)
+    }
+
+    @Test
+    fun customSchemeUrlsNeverReachHttpPageClient() = runTest {
+        val mediaUrl = "https://cdn.example.com/video.mp4"
+        val fetchedUrls = mutableListOf<String>()
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "instagram://reel/ABC123",
+                    finalUrl = "instagram://reel/ABC123",
+                    mediaUrls = listOf(mediaUrl),
+                ),
+            ),
+            pageClient = RecordingTextClient { fetchedUrls += it },
+        )
+        val deepLink = link(MediaPlatform.Instagram).copy(
+            originalUrl = "instagram://reel/ABC123",
+            normalizedUrl = "instagram://reel/ABC123",
+        )
+
+        val result = resolver.resolve(ResolverRequest(link = deepLink))
+
+        assertTrue(result is ResolverResult.Success)
+        assertTrue(fetchedUrls.isEmpty())
+    }
+
+    @Test
     fun observedVideoWithAudioTrackRemainsMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = SocialPlatformResolver(
@@ -141,6 +193,25 @@ class SocialPlatformResolverTest {
             platform = platform,
             kind = com.ahdownload.domain.model.MediaKind.Video,
         )
+
+    private class RecordingTextClient(
+        private val onGet: (String) -> Unit,
+    ) : HttpTextClient {
+        override suspend fun get(url: String): String {
+            onGet(url)
+            return ""
+        }
+
+        override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
+
+        override suspend fun postJson(url: String, body: String): String = ""
+
+        override suspend fun postJson(
+            url: String,
+            body: String,
+            headers: Map<String, String>,
+        ): String = ""
+    }
 
     private class FakeProvider(
         private val session: BrowserMediaSession,
