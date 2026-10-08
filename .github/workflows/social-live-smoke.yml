@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: social-live-smoke
+  cancel-in-progress: true
+
 jobs:
   social-smoke:
     runs-on: ubuntu-latest
