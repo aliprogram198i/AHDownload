@@ -843,7 +843,15 @@ private fun HomeScreen(
                         platform = state.result?.platform?.name,
                         kind = state.result?.kind,
                         favorite = currentFavorite,
-                        onToggleFavorite = onToggleFavorite,
+                        onToggleFavorite = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "favorite_button",
+                                "toggle_favorite_from_result",
+                                mapOf("currently_favorite" to currentFavorite.toString()),
+                            )
+                            onToggleFavorite()
+                        },
                         primaryOptions = primaryOptions,
                         audioOptions = audioOptions,
                         selectedCandidateId = state.selectedCandidateId,
@@ -855,11 +863,45 @@ private fun HomeScreen(
                                 it,
                                 state.selectedCandidateId,
                             )
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "video_option",
+                                "select_video_option",
+                                mapOf(
+                                    "candidate_id" to it.candidate.id,
+                                    "quality" to it.qualityLabel,
+                                    "group" to it.group.name,
+                                ),
+                            )
                             onSelectCandidate(it.candidate.id)
                         },
-                        onDownload = { onDownloadCandidate(it) },
-                        onDownloadAudio = onDownloadAudio,
-                        onSelectAudioOutputFormat = onSelectAudioOutputFormat,
+                        onDownload = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "video_download_button",
+                                "download_video",
+                                mapOf("candidate_id" to it),
+                            )
+                            onDownloadCandidate(it)
+                        },
+                        onDownloadAudio = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "audio_download_button",
+                                "download_audio",
+                                mapOf("candidate_id" to (it ?: "auto")),
+                            )
+                            onDownloadAudio(it)
+                        },
+                        onSelectAudioOutputFormat = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "audio_format_option",
+                                "select_audio_output_format",
+                                mapOf("format" to it.name),
+                            )
+                            onSelectAudioOutputFormat(it)
+                        },
                     )
                 }
             }
@@ -941,7 +983,12 @@ private fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
                             }
-                            TextButton(onClick = onOpenDownloads) {
+                            TextButton(
+                                onClick = {
+                                    uiTraceLogger.interaction("HOME", "download_success", "open_downloads")
+                                    onOpenDownloads()
+                                },
+                            ) {
                                 Text("فتح السجل")
                             }
                         }
@@ -1335,7 +1382,15 @@ private fun UnifiedDownloadResultCard(
 
                     if (!showAllVideoOptions && allVideoOptions.size > 4) {
                         TextButton(
-                            onClick = { showAllVideoOptions = true },
+                            onClick = {
+                                uiTraceLogger.interaction(
+                                    "HOME",
+                                    "video_options_more",
+                                    "show_more_video_options",
+                                    mapOf("available_count" to allVideoOptions.size.toString()),
+                                )
+                                showAllVideoOptions = true
+                            },
                             enabled = validatingCandidateId == null,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
