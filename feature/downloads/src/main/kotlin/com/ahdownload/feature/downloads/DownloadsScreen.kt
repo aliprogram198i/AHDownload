@@ -94,6 +94,7 @@ import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
 import com.ahdownload.core.designsystem.AHBottomNavigationBar
+import com.ahdownload.core.designsystem.AHCard
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
@@ -709,11 +710,8 @@ private fun DownloadRecordCard(
         else -> Icons.Rounded.Download
     }
 
-    Card(
+    AHCard(
         modifier = Modifier.fillMaxWidth(),
-        border = if (record.status == DownloadStatus.COMPLETED) {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        } else null,
     ) {
         Column(
             modifier = Modifier.padding(12.dp),

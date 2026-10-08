@@ -87,6 +87,8 @@ import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
 import com.ahdownload.core.designsystem.AHBottomNavigationBar
+import com.ahdownload.core.designsystem.AHCard
+import com.ahdownload.core.designsystem.AHSectionHeader
 import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
 import com.ahdownload.core.designsystem.rememberUiTraceContext
@@ -413,7 +415,7 @@ private fun HomeScreen(
 
             if (state.mode == HomeMode.Link) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AHCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -501,7 +503,7 @@ private fun HomeScreen(
 
             } else {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1110,8 +1112,9 @@ private fun UnifiedDownloadResultCard(
         .distinctBy { it.candidate.id }
 
     var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
-    val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
+    var selectionMode by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf<OutputSelectionMode?>(null) }
 
+    val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
     val directAudioAvailable = audioOptions.any {
         it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
     }
@@ -1120,42 +1123,44 @@ private fun UnifiedDownloadResultCard(
 
     val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
     val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio
+    val canDownload = validatingCandidateId == null && (
+        selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ||
+            selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null
+        )
 
-    Card(
+    AHCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 MediaThumbnail(
                     url = thumbnailUrl,
                     contentDescription = "الصورة المصغرة: " + title,
                     modifier = Modifier
-                        .size(width = 112.dp, height = 78.dp)
+                        .size(width = 116.dp, height = 84.dp)
                         .clip(RoundedCornerShape(16.dp)),
                 )
 
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Text(
                         title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleLarge,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        platform?.let { item { AHStatusPill(platformLabel(it)) } }
-                        durationMs?.let { item { AHStatusPill(formatDuration(it)) } }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        platform?.let { AHStatusPill(platformLabel(it), success = true) }
+                        durationMs?.let { AHStatusPill(formatDuration(it)) }
                     }
                 }
 
@@ -1179,13 +1184,13 @@ private fun UnifiedDownloadResultCard(
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Icon(
                         Icons.Rounded.CheckCircle,
@@ -1193,19 +1198,13 @@ private fun UnifiedDownloadResultCard(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp),
                     )
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            "الخيارات جاهزة",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("النتيجة جاهزة", style = MaterialTheme.typography.labelLarge)
                         Text(
                             buildList {
                                 if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
                                 if (audioAvailable) add("${AudioOutputFormat.entries.size} صيغ صوت")
-                            }.joinToString(" · "),
+                            }.joinToString(" · ").ifBlank { "خيارات متاحة" },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1214,10 +1213,10 @@ private fun UnifiedDownloadResultCard(
             }
 
             if (showVideoSection) {
-                UnifiedResultSectionHeader(
+                AHSectionHeader(
                     icon = Icons.Rounded.VideoFile,
-                    title = "فيديو + صوت",
-                    subtitle = "اختر الجودة؛ وسيُحفظ الفيديو مع الصوت عندما يكون متاحًا.",
+                    title = "فيديو",
+                    subtitle = "الجودة المختارة تعني فيديو + صوت عندما يتوفر المصدر المدمج.",
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1225,7 +1224,10 @@ private fun UnifiedDownloadResultCard(
                         options = videoOptions,
                         selected = selectedVideo,
                         validatingCandidateId = validatingCandidateId,
-                        onSelect = onSelect,
+                        onSelect = {
+                            selectionMode = OutputSelectionMode.VIDEO
+                            onSelect(it)
+                        },
                         audioOnly = false,
                     )
 
@@ -1238,24 +1240,6 @@ private fun UnifiedDownloadResultCard(
                             Text("عرض المزيد من الجودات")
                         }
                     }
-
-                    Button(
-                        enabled = selectedVideo != null && validatingCandidateId == null,
-                        onClick = { selectedVideo?.candidate?.id?.let(onDownload) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics { contentDescription = "تنزيل الفيديو مع الصوت" },
-                    ) {
-                        Icon(Icons.Rounded.Download, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text(
-                            when {
-                                validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
-                                selectedVideo == null -> "اختر جودة الفيديو"
-                                else -> "تنزيل " + buildQualityLine(selectedVideo)
-                            },
-                        )
-                    }
                 } else {
                     UnifiedResultEmptyState("لا يتوفر حاليًا خيار فيديو مع الصوت.")
                 }
@@ -1266,52 +1250,28 @@ private fun UnifiedDownloadResultCard(
             }
 
             if (showAudioSection) {
-                UnifiedResultSectionHeader(
+                AHSectionHeader(
                     icon = Icons.Rounded.AudioFile,
-                    title = "صوت فقط",
+                    title = "استخراج الصوت",
                     subtitle = if (directAudioAvailable) {
-                        "اختر الصيغة التي تريد حفظ الصوت بها."
+                        "صوت فقط · اختر صيغة الإخراج التي تريدها."
                     } else {
-                        "اختر الصيغة؛ وسيُستخرج الصوت من أفضل مصدر متاح."
+                        "صوت فقط · سيُستخدم أفضل مصدر صوتي متاح في الخلفية."
                     },
                 )
 
                 if (audioAvailable) {
-                    Text(
-                        "الصيغة",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
                     AudioOutputFormatGrid(
                         selected = selectedAudioOutputFormat,
                         enabled = validatingCandidateId == null,
-                        onSelect = onSelectAudioOutputFormat,
+                        onSelect = {
+                            selectionMode = OutputSelectionMode.AUDIO
+                            onSelectAudioOutputFormat(it)
+                        },
                     )
 
-                    Button(
-                        enabled = selectedAudioOutputFormat != null && validatingCandidateId == null,
-                        onClick = { onDownloadAudio(null) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .semantics {
-                                contentDescription = selectedAudioOutputFormat
-                                    ?.let { "تنزيل الصوت بصيغة ${it.label}" }
-                                    ?: "اختر صيغة الصوت أولًا"
-                            },
-                    ) {
-                        Icon(Icons.Rounded.AudioFile, contentDescription = null)
-                        Spacer(Modifier.size(8.dp))
-                        Text(
-                            when {
-                                validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
-                                selectedAudioOutputFormat == null -> "اختر صيغة الصوت"
-                                else -> "تنزيل " + audioOutputFormatButtonLabel(selectedAudioOutputFormat)
-                            },
-                        )
-                    }
-
                     Text(
-                        "المصدر يُختار تلقائيًا في الخلفية؛ أنت تختار الصيغة فقط.",
+                        "MP3 وM4A وAAC وOPUS وغيرها هنا تعني ملفًا صوتيًا فقط، وليست جودة فيديو.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1319,8 +1279,43 @@ private fun UnifiedDownloadResultCard(
                     UnifiedResultEmptyState("لا يوجد مصدر صوتي صالح لهذا الرابط حاليًا.")
                 }
             }
+
+            AHGradientPrimaryButton(
+                text = when {
+                    validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
+                    selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ->
+                        "تنزيل " + buildQualityLine(selectedVideo)
+                    selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null ->
+                        "تنزيل " + audioOutputFormatButtonLabel(selectedAudioOutputFormat)
+                    else -> "اختر خيارًا للتنزيل"
+                },
+                enabled = canDownload,
+                onClick = {
+                    when (selectionMode) {
+                        OutputSelectionMode.VIDEO -> selectedVideo?.candidate?.id?.let(onDownload)
+                        OutputSelectionMode.AUDIO -> onDownloadAudio(null)
+                        null -> Unit
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics {
+                        contentDescription = when (selectionMode) {
+                            OutputSelectionMode.VIDEO -> "تنزيل الفيديو مع الصوت"
+                            OutputSelectionMode.AUDIO -> selectedAudioOutputFormat
+                                ?.let { "تنزيل الصوت بصيغة ${it.label}" }
+                                ?: "اختر صيغة الصوت أولًا"
+                            null -> "اختر جودة الفيديو أو صيغة الصوت أولًا"
+                        }
+                    },
+            )
         }
     }
+}
+
+private enum class OutputSelectionMode {
+    VIDEO,
+    AUDIO,
 }
 
 @Composable

@@ -19,22 +19,26 @@ enum class AHThemeMode(
 }
 
 private val AhDarkColors = darkColorScheme(
-    primary = Color(0xFF7C4DFF),
-    onPrimary = Color.White,
-    secondary = Color(0xFF46D6FF),
-    onSecondary = Color(0xFF001017),
-    tertiary = Color(0xFFFF6FB7),
-    background = Color(0xFF080A12),
-    onBackground = Color(0xFFF4F5FA),
-    surface = Color(0xFF10131D),
-    onSurface = Color(0xFFF4F5FA),
-    surfaceVariant = Color(0xFF1A1F2B),
-    onSurfaceVariant = Color(0xFFB7BECC),
-    outline = Color(0xFF343B4A),
+    primary = Color(0xFF8B6DFF),
+    onPrimary = Color(0xFF130F22),
+    secondary = Color(0xFF43CBEA),
+    onSecondary = Color(0xFF001117),
+    tertiary = Color(0xFF48D9B4),
+    background = Color(0xFF080B12),
+    onBackground = Color(0xFFF2F4FA),
+    surface = Color(0xFF101520),
+    onSurface = Color(0xFFF2F4FA),
+    surfaceVariant = Color(0xFF171E2A),
+    onSurfaceVariant = Color(0xFFAAB4C3),
+    outline = Color(0xFF303A4A),
+    outlineVariant = Color(0xFF252E3C),
+    error = Color(0xFFFF6B73),
+    errorContainer = Color(0xFF401C22),
+    onErrorContainer = Color(0xFFFFDAD9),
 )
 
 private val AhDarkTechColors = darkColorScheme(
-    primary = Color(0xFF16D8FF),
+    primary = Color(0xFF21D9FF),
     onPrimary = Color(0xFF001219),
     secondary = Color(0xFF7C5CFF),
     onSecondary = Color.White,
@@ -46,6 +50,10 @@ private val AhDarkTechColors = darkColorScheme(
     surfaceVariant = Color(0xFF182232),
     onSurfaceVariant = Color(0xFFA9B6C7),
     outline = Color(0xFF344257),
+    outlineVariant = Color(0xFF263244),
+    error = Color(0xFFFF7580),
+    errorContainer = Color(0xFF421A22),
+    onErrorContainer = Color(0xFFFFDADB),
 )
 
 private val AhLightColors = lightColorScheme(
@@ -53,14 +61,18 @@ private val AhLightColors = lightColorScheme(
     onPrimary = Color.White,
     secondary = Color(0xFF006B85),
     onSecondary = Color.White,
-    tertiary = Color(0xFFB32663),
-    background = Color(0xFFF7F8FC),
-    onBackground = Color(0xFF161922),
-    surface = Color.White,
-    onSurface = Color(0xFF161922),
+    tertiary = Color(0xFF15876E),
+    background = Color(0xFFF6F7FB),
+    onBackground = Color(0xFF151823),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF151823),
     surfaceVariant = Color(0xFFEEF0F6),
-    onSurfaceVariant = Color(0xFF5D6472),
-    outline = Color(0xFFD4D8E2),
+    onSurfaceVariant = Color(0xFF626978),
+    outline = Color(0xFFD8DCE6),
+    outlineVariant = Color(0xFFE5E8EF),
+    error = Color(0xFFBA1A1A),
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
 )
 
 @Composable
