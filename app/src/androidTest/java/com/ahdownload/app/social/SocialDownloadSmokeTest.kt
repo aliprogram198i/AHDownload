@@ -5,7 +5,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
-import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.feature.home.AndroidBrowserMediaSessionProvider
 import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
@@ -101,16 +100,13 @@ class SocialDownloadSmokeTest {
         val resolved = runCatching {
             withTimeout(TimeUnit.SECONDS.toMillis(45)) {
                 resolver.resolve(
-                    ResolverRequest(
-                        link = MediaLink(
+                    link = MediaLink(
                             originalUrl = case.url,
                             normalizedUrl = case.url,
                             platform = case.platform,
                             kind = MediaKind.Video,
                         ),
-                        requestedKind = MediaKind.Video,
-                        operationId = "smoke-" + case.platform.name.lowercase(),
-                    ),
+                    operationId = "smoke-" + case.platform.name.lowercase(),
                 )
             }
         }
