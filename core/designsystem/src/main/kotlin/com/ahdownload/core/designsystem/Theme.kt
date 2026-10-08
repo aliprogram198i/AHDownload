@@ -7,6 +7,17 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+enum class AHThemeMode(
+    val storageValue: String,
+    val label: String,
+    val description: String,
+) {
+    SYSTEM("system", "النظام", "يتبع مظهر الجهاز"),
+    LIGHT("light", "فاتح", "واجهة فاتحة دائمًا"),
+    DARK("dark", "داكن", "واجهة داكنة متوازنة"),
+    DARK_TECH("dark_tech", "Dark Tech", "Obsidian مع Cyan وIndigo"),
+}
+
 private val AhDarkColors = darkColorScheme(
     primary = Color(0xFF7C4DFF),
     onPrimary = Color.White,
@@ -20,6 +31,21 @@ private val AhDarkColors = darkColorScheme(
     surfaceVariant = Color(0xFF1A1F2B),
     onSurfaceVariant = Color(0xFFB7BECC),
     outline = Color(0xFF343B4A),
+)
+
+private val AhDarkTechColors = darkColorScheme(
+    primary = Color(0xFF16D8FF),
+    onPrimary = Color(0xFF001219),
+    secondary = Color(0xFF7C5CFF),
+    onSecondary = Color.White,
+    tertiary = Color(0xFF20E6B2),
+    background = Color(0xFF0B0F19),
+    onBackground = Color(0xFFF2F7FF),
+    surface = Color(0xFF101624),
+    onSurface = Color(0xFFF2F7FF),
+    surfaceVariant = Color(0xFF182232),
+    onSurfaceVariant = Color(0xFFA9B6C7),
+    outline = Color(0xFF344257),
 )
 
 private val AhLightColors = lightColorScheme(
@@ -39,11 +65,24 @@ private val AhLightColors = lightColorScheme(
 
 @Composable
 fun AHTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: AHThemeMode = AHThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
+    val systemDark = isSystemInDarkTheme()
+    val resolvedDark = when (themeMode) {
+        AHThemeMode.SYSTEM -> systemDark
+        AHThemeMode.LIGHT -> false
+        AHThemeMode.DARK,
+        AHThemeMode.DARK_TECH -> true
+    }
+    val colors = when {
+        themeMode == AHThemeMode.DARK_TECH -> AhDarkTechColors
+        resolvedDark -> AhDarkColors
+        else -> AhLightColors
+    }
+
     MaterialTheme(
-        colorScheme = if (darkTheme) AhDarkColors else AhLightColors,
+        colorScheme = colors,
         typography = AHTypography,
         shapes = AHShapes,
         content = content,
