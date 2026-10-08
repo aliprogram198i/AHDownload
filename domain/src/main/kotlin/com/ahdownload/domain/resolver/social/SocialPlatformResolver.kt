@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeout
 class SocialPlatformResolver(
     private val provider: BrowserMediaSessionProvider,
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
+    private val resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
 ) : PlatformAdapter {
 
     private val supported = setOf(
@@ -46,7 +47,7 @@ class SocialPlatformResolver(
         }
 
         return try {
-            withTimeout(SOCIAL_RESOLVE_TIMEOUT_MS) {
+            withTimeout(resolveTimeoutMs) {
                 logger.log(
                     DiagnosticLevel.INFO,
                     "SOCIAL_RESOLUTION_STARTED",
@@ -196,7 +197,7 @@ class SocialPlatformResolver(
                 "social.resolve",
                 mapOf(
                     "platform" to platform.name,
-                    "timeout_ms" to SOCIAL_RESOLVE_TIMEOUT_MS.toString(),
+                    "timeout_ms" to resolveTimeoutMs.toString(),
                     "operation_id" to (request.operationId ?: "none"),
                 ),
                 error,
