@@ -63,6 +63,7 @@ class SocialDownloadSmokeTest {
             val caseResult = runCase(resolver, case, outputDir)
             results += caseResult
             reportLines += caseResult.reportLine
+            println(caseResult.reportLine)
         }
 
         val passed = results.count { it.passed }
