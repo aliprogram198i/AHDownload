@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import java.io.File
 import org.junit.Before
 import org.junit.Test
 
@@ -53,6 +54,10 @@ class FileDownloadRepositoryTest {
     @Test
     fun recoveryRequeuesInterruptedDownloadAndResetsProgress() = runTest {
         val task = task()
+        val partial = File(task.destinationPath + ".part").apply {
+            parentFile?.mkdirs()
+            writeBytes(ByteArray(512))
+        }
         val repository = FileDownloadRepository(context)
         val queued = DownloadRecordMapper.queued(task, 1000)
         repository.upsert(queued)
@@ -68,8 +73,9 @@ class FileDownloadRepositoryTest {
 
         assertEquals(1, recovered.size)
         assertEquals(DownloadStatus.QUEUED, recovered.single().status)
-        assertEquals(0, recovered.single().bytesDownloaded)
-        assertEquals(null, recovered.single().totalBytes)
+        assertEquals(512L, recovered.single().bytesDownloaded)
+        assertEquals(2048L, recovered.single().totalBytes)
+        assertTrue(partial.exists())
 
         val persisted = FileDownloadRepository(context).get(task.id)
         requireNotNull(persisted)
