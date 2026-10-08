@@ -33,7 +33,11 @@ class HomeResolver(
     private val candidateRanker: CandidateRanker = CandidateRanker(),
     private val browserMediaSessionProvider: BrowserMediaSessionProvider? = null,
 ) {
-    suspend fun resolve(link: MediaLink, operationId: String? = null): ResolverResult {
+    suspend fun resolve(
+        link: MediaLink,
+        operationId: String? = null,
+        forceYouTubeFallbacks: Boolean = false,
+    ): ResolverResult {
         if (link.platform == MediaPlatform.DirectMedia && link.kind != MediaKind.Unknown) {
             return ResolverResult.Success(
                 title = link.normalizedUrl.substringAfterLast('/').substringBefore('?').ifBlank { null },
@@ -56,7 +60,14 @@ class HomeResolver(
         }
 
         val result = when (link.platform) {
-            MediaPlatform.YouTube -> youtubeResolver.resolve(ResolverRequest(link, operationId = operationId))
+            MediaPlatform.YouTube -> {
+                val request = ResolverRequest(link, operationId = operationId)
+                if (forceYouTubeFallbacks) {
+                    youtubeResolver.resolveWithFallbacks(request)
+                } else {
+                    youtubeResolver.resolve(request)
+                }
+            }
             MediaPlatform.Instagram,
             MediaPlatform.Facebook,
             MediaPlatform.TikTok,
