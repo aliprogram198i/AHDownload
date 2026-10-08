@@ -165,12 +165,26 @@ class SocialPlatformResolver(
             ?.lowercase()
             .orEmpty()
 
+        val directMediaHint =
+            mediaValue.startsWith("video") ||
+                mediaValue.startsWith("audio") ||
+                mediaValue.contains("video/") ||
+                mediaValue.contains("audio/") ||
+                extension in VIDEO_EXTENSIONS ||
+                extension in AUDIO_EXTENSIONS ||
+                queryExtension in VIDEO_EXTENSIONS ||
+                queryExtension in AUDIO_EXTENSIONS
+
+        if (!directMediaHint && isKnownPlayerPage(platform, sourceUrl)) {
+            return null
+        }
+
         val kind = when {
             mediaValue.startsWith("video") || mediaValue.contains("video/") -> MediaKind.Video
             mediaValue.startsWith("audio") || mediaValue.contains("audio/") -> MediaKind.Audio
             extension in VIDEO_EXTENSIONS || queryExtension in VIDEO_EXTENSIONS -> MediaKind.Video
             extension in AUDIO_EXTENSIONS || queryExtension in AUDIO_EXTENSIONS -> MediaKind.Audio
-            isLikelyVideoPath(sourceUrl) -> MediaKind.Video
+            isLikelyVideoPath(sourceUrl) && !isKnownPlayerPage(platform, sourceUrl) -> MediaKind.Video
             else -> return null
         }
 
@@ -217,6 +231,22 @@ class SocialPlatformResolver(
             sessionCookieHost = safeHost(sourceUrl),
             sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
         )
+    }
+
+    private fun isKnownPlayerPage(platform: MediaPlatform, sourceUrl: String): Boolean {
+        val lower = sourceUrl.lowercase()
+        val host = runCatching { URI(sourceUrl).host?.lowercase().orEmpty() }.getOrDefault("")
+        return when (platform) {
+            MediaPlatform.Facebook -> lower.contains("/plugins/post.php")
+            MediaPlatform.Instagram -> lower.contains("/embed/")
+            MediaPlatform.TikTok -> lower.contains("/player/v1/")
+            MediaPlatform.Pinterest -> host == "assets.pinterest.com" && lower.contains("/ext/embed")
+            MediaPlatform.Twitch -> host == "www.twitch.tv" || host == "twitch.tv" && Regex("/videos/\\d+").containsMatchIn(lower)
+            MediaPlatform.Vimeo -> host == "player.vimeo.com" && lower.contains("/video/")
+            MediaPlatform.Snapchat -> lower.contains("/spotlight/") && host.endsWith("snapchat.com")
+            MediaPlatform.Reddit -> lower.contains("/comments/") && host.endsWith("reddit.com")
+            else -> false
+        }
     }
 
     private fun isLikelyVideoPath(sourceUrl: String): Boolean {
