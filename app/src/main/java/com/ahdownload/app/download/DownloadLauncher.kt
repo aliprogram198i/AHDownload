@@ -135,6 +135,7 @@ class DownloadLauncher(
                 mediaKind = com.ahdownload.domain.model.MediaKind.Audio,
                 processingMode = DownloadProcessingMode.ExtractAudio,
                 audioOutputFormat = outputFormat,
+                streamingManifest = candidate.streamingManifest,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
