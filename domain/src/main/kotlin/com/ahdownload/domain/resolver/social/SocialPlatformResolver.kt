@@ -6,6 +6,7 @@ import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.*
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import java.net.URI
 import java.net.URLDecoder
@@ -75,21 +76,20 @@ class SocialPlatformResolver(
                 )
 
                 val pageUrl = session.finalUrl ?: session.pageUrl
-                var fallback: WebPageMediaParser.ParsedPage? = null
-                runCatching {
-                    logger.log(
-                        DiagnosticLevel.INFO,
-                        "SOCIAL_PAGE_FETCH_STARTED",
-                        "بدء جلب HTML للصفحة كمسار احتياطي",
-                        "social.resolve.page_fetch",
-                        mapOf(
-                            "platform" to platform.name,
-                        ),
-                        null,
-                    )
+                var fallback: ParsedPageMedia? = null
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "SOCIAL_PAGE_FETCH_STARTED",
+                    "بدء جلب HTML للصفحة كمسار احتياطي",
+                    "social.resolve.page_fetch",
+                    mapOf(
+                        "platform" to platform.name,
+                    ),
+                    null,
+                )
+                try {
                     fallback = OkHttpTextClient().get(pageUrl)
                         .let { WebPageMediaParser.parse(it, pageUrl) }
-                }.onSuccess {
                     logger.log(
                         DiagnosticLevel.INFO,
                         "SOCIAL_PAGE_FETCH_RESULT",
@@ -97,11 +97,13 @@ class SocialPlatformResolver(
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
-                            "fallback_media_count" to it.mediaUrls.size.toString(),
+                            "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
                         ),
                         null,
                     )
-                }.onFailure { error ->
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
                     logger.log(
                         DiagnosticLevel.WARNING,
                         "SOCIAL_PAGE_FETCH_FAILED",
