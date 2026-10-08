@@ -1112,7 +1112,7 @@ private fun UnifiedDownloadResultCard(
         .distinctBy { it.candidate.id }
 
     var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
-    var selectionMode by remember { mutableStateOf<OutputSelectionMode?>(null) }
+    var selectionMode by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf<OutputSelectionMode?>(null) }
 
     val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
     val directAudioAvailable = audioOptions.any {
