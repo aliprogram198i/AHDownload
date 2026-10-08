@@ -55,7 +55,8 @@ class DownloadWorker(
         val muxRequested = inputTask.processingMode == DownloadProcessingMode.MuxVideoAudio &&
             !inputTask.companionAudioSourceUrl.isNullOrBlank()
 
-        val extractionSuffix = ".source." + inputTask.id.take(8)
+        val extractionSuffix = ".source." + inputTask.id.take(8) +
+            if (inputTask.streamingManifest) ".mkv" else ""
         val extractionAlreadyStaged =
             audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
 
@@ -190,7 +191,20 @@ class DownloadWorker(
         )
 
         val record = try {
-            if (muxRequested && companionAudioTask != null) {
+            if (sourceTask.streamingManifest) {
+                executeStreamingManifest(
+                    task = task,
+                    sourceTask = sourceTask,
+                    repository = repository,
+                    controlStore = controlStore,
+                    diagnostics = diagnostics,
+                ) ?: return Result.failure(
+                    workDataOf(
+                        KEY_FAILURE_CODE to "manifest_download_failed",
+                        KEY_FAILURE_DETAIL to "تعذر تنزيل مصدر HLS/DASH.",
+                    ),
+                )
+            } else if (muxRequested && companionAudioTask != null) {
                 executeAdaptiveMux(
                     task = task,
                     videoTask = sourceTask,
@@ -524,6 +538,7 @@ class DownloadWorker(
             ?.let { runCatching { MediaKind.valueOf(it) }.getOrNull() }
         val companionAudioSourceUrl = inputData.getString(KEY_COMPANION_AUDIO_SOURCE_URL)
         val companionAudioSessionCookieHost = inputData.getString(KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST)
+        val streamingManifest = inputData.getBoolean(KEY_STREAMING_MANIFEST, false)
         val companionAudioRequestHeaders = buildMap {
             inputData.getString(KEY_COMPANION_AUDIO_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_COMPANION_AUDIO_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -568,8 +583,91 @@ class DownloadWorker(
             companionAudioSourceUrl = companionAudioSourceUrl,
             companionAudioRequestHeaders = companionAudioRequestHeaders,
             companionAudioSessionCookieHost = companionAudioSessionCookieHost,
+            streamingManifest = streamingManifest,
             requestHeaders = requestHeaders,
         )
+    }
+
+    private suspend fun executeStreamingManifest(
+        task: DownloadTask,
+        sourceTask: DownloadTask,
+        repository: com.ahdownload.domain.download.DownloadRepository,
+        controlStore: DownloadControlStore,
+        diagnostics: PersistentDiagnosticLogger,
+    ): com.ahdownload.domain.download.DownloadRecord? {
+        val queue = PersistentDownloadQueue(repository)
+        queue.enqueue(task, System.currentTimeMillis())
+        updateAdaptiveRecord(
+            repository,
+            task.id,
+            DownloadState.Downloading(0L, null),
+            System.currentTimeMillis(),
+        )
+        setForeground(createForegroundInfo(DownloadState.Downloading(0L, null)))
+
+        return try {
+            val cookie = CookieManager.getInstance()
+                .getCookie(sourceTask.sourceUrl)
+                ?.takeIf { it.isNotBlank() }
+
+            val result = FfmpegManifestDownloader().download(
+                sourceUrl = sourceTask.sourceUrl,
+                outputFile = java.io.File(sourceTask.destinationPath),
+                requestHeaders = sourceTask.requestHeaders,
+                cookie = cookie,
+            )
+            if (result.isFailure) {
+                val error = result.exceptionOrNull()
+                diagnostics.log(
+                    DiagnosticLevel.ERROR,
+                    "STREAMING_MANIFEST_DOWNLOAD_FAILED",
+                    error?.message ?: "manifest_download_failed",
+                    "download.manifest",
+                    mapOf(
+                        "task_id" to task.id,
+                        "source_host" to hostOf(sourceTask.sourceUrl),
+                        "manifest_type" to if (sourceTask.sourceUrl.contains(".mpd", true)) "DASH" else "HLS",
+                    ),
+                    error,
+                )
+                return queue.applyState(
+                    task.id,
+                    DownloadState.Failed(DownloadFailure.InvalidResponse),
+                    System.currentTimeMillis(),
+                )
+            }
+
+            val output = result.getOrThrow()
+            updateAdaptiveRecord(
+                repository,
+                task.id,
+                DownloadState.Downloading(output.length(), output.length()),
+                System.currentTimeMillis(),
+            )
+            queue.applyState(task.id, DownloadState.Completed, System.currentTimeMillis())
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            val state = if (controlStore.isPaused(task.id)) {
+                DownloadState.Paused
+            } else {
+                DownloadState.Cancelled
+            }
+            updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
+            throw cancelled
+        } catch (error: Throwable) {
+            diagnostics.log(
+                DiagnosticLevel.ERROR,
+                "STREAMING_MANIFEST_UNEXPECTED",
+                error.message ?: error::class.simpleName.orEmpty(),
+                "download.manifest",
+                mapOf("task_id" to task.id, "source_host" to hostOf(sourceTask.sourceUrl)),
+                error,
+            )
+            queue.applyState(
+                task.id,
+                DownloadState.Failed(DownloadFailure.NetworkError),
+                System.currentTimeMillis(),
+            )
+        }
     }
 
     private suspend fun executeAdaptiveMux(
@@ -857,7 +955,8 @@ class DownloadWorker(
     }
 
     private fun extractionSourcePath(task: DownloadTask): String =
-        task.destinationPath + ".source." + task.id.take(8)
+        task.destinationPath + ".source." + task.id.take(8) +
+            if (task.streamingManifest) ".mkv" else ""
 
     private suspend fun shouldRefreshYouTubeTask(
         task: DownloadTask,
@@ -1030,6 +1129,7 @@ class DownloadWorker(
         const val KEY_AUDIO_OUTPUT_FORMAT = "audio_output_format"
         const val KEY_COMPANION_AUDIO_SOURCE_URL = "companion_audio_source_url"
         const val KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST = "companion_audio_session_cookie_host"
+        const val KEY_STREAMING_MANIFEST = "streaming_manifest"
         const val KEY_COMPANION_AUDIO_USER_AGENT = "companion_audio_user_agent"
         const val KEY_COMPANION_AUDIO_REFERER = "companion_audio_referer"
         const val KEY_COMPANION_AUDIO_ORIGIN = "companion_audio_origin"
