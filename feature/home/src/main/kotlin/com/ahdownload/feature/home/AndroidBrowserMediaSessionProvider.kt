@@ -35,6 +35,16 @@ class AndroidBrowserMediaSessionProvider(
             lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
+            var fallbackIndex = 0
+            var fallbackUrls = emptyList<String>()
+
+            fun loadNextFallback(view: WebView): Boolean {
+                if (finished || fallbackIndex >= fallbackUrls.size) return false
+                val next = fallbackUrls[fallbackIndex++]
+                if (next == url || next == view.url) return loadNextFallback(view)
+                view.loadUrl(next)
+                return true
+            }
             var title: String? = null
             var thumbnail: String? = null
             var durationMs: Long? = null
@@ -200,18 +210,75 @@ class AndroidBrowserMediaSessionProvider(
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         finalUrl = pageUrl
+                        if (fallbackUrls.isEmpty()) {
+                            fallbackUrls = buildFallbackUrls(url, pageUrl, platform)
+                            fallbackIndex = 0
+                        }
                         view.postDelayed({ inspect(view) }, 500L)
                         view.postDelayed({ inspect(view) }, 1600L)
                         view.postDelayed({ inspect(view) }, 3200L)
-                        view.postDelayed({ inspect(view) }, 6000L)
-                        view.postDelayed({ finish() }, 9000L)
+                        view.postDelayed({
+                            if (!finished && mediaUrls.isEmpty()) loadNextFallback(view)
+                        }, 5200L)
+                        view.postDelayed({ inspect(view) }, 6800L)
+                        view.postDelayed({
+                            if (!finished && mediaUrls.isEmpty()) finish()
+                        }, 8500L)
                     }
                 }
                 timeout = Runnable { finish() }
-                main.postDelayed(timeout!!, 16000L)
+                main.postDelayed(timeout!!, 30000L)
                 view.loadUrl(url)
             }
         }
+
+    private fun buildFallbackUrls(
+        originalUrl: String,
+        currentUrl: String,
+        platform: MediaPlatform,
+    ): List<String> {
+        val values = linkedSetOf<String>()
+        values += originalUrl
+
+        fun firstGroup(pattern: Regex): String? =
+            pattern.find(currentUrl)?.groupValues?.getOrNull(1)
+                ?: pattern.find(originalUrl)?.groupValues?.getOrNull(1)
+
+        when (platform) {
+            MediaPlatform.Instagram -> {
+                firstGroup(Regex("/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)", RegexOption.IGNORE_CASE))?.let { id ->
+                    val kind = Regex("/(reel|reels|p|tv)/", RegexOption.IGNORE_CASE)
+                        .find(currentUrl)?.groupValues?.getOrNull(1)
+                        ?: "reel"
+                    values += "https://www.instagram.com/$kind/$id/embed/"
+                }
+            }
+            MediaPlatform.Facebook -> {
+                runCatching { java.net.URLEncoder.encode(originalUrl, Charsets.UTF_8.name()) }
+                    .getOrNull()?.let { encoded ->
+                        values += "https://www.facebook.com/plugins/post.php?href=$encoded&show_text=false"
+                    }
+            }
+            MediaPlatform.TikTok -> {
+                firstGroup(Regex("/(?:video|player/v1)/([0-9]+)", RegexOption.IGNORE_CASE))?.let { id ->
+                    values += "https://www.tiktok.com/player/v1/$id?autoplay=1&controls=0"
+                }
+            }
+            MediaPlatform.Pinterest -> {
+                firstGroup(Regex("/pin/([0-9]+)", RegexOption.IGNORE_CASE))?.let { id ->
+                    values += "https://assets.pinterest.com/ext/embed.html?id=$id"
+                }
+            }
+            MediaPlatform.Vimeo -> {
+                firstGroup(Regex("/(\\d+)/?$", RegexOption.IGNORE_CASE))?.let { id ->
+                    values += "https://player.vimeo.com/video/$id?autoplay=1&muted=1"
+                }
+            }
+            else -> Unit
+        }
+
+        return values.toList()
+    }
 
     private companion object {
         const val MAX_MEDIA_URLS = 96
