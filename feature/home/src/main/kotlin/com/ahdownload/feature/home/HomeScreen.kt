@@ -654,7 +654,10 @@ private fun HomeScreen(
                                 )
                                 OutlinedButton(
                                     enabled = state.searchQuery.isNotBlank() && !state.searching,
-                                    onClick = onSearch,
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_retry_button", "retry_search")
+                                        onSearch()
+                                    },
                                 ) {
                                     Text("إعادة البحث")
                                 }
@@ -676,7 +679,12 @@ private fun HomeScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             if (state.selectedSearchIds.isNotEmpty()) {
-                                TextButton(onClick = onClearSearchSelection) { Text("مسح التحديد") }
+                                TextButton(
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
+                                        onClearSearchSelection()
+                                    },
+                                ) { Text("مسح التحديد") }
                             }
                         }
                     }
@@ -711,7 +719,15 @@ private fun HomeScreen(
                                     }
                                     if (!state.batchDownloading && state.selectedSearchIds.isNotEmpty()) {
                                         Button(
-                                            onClick = { onBatchDownload(state.searchResults) },
+                                            onClick = {
+                                                uiTraceLogger.interaction(
+                                                    "HOME",
+                                                    "batch_download_button",
+                                                    "start_batch_download",
+                                                    mapOf("selected_count" to state.selectedSearchIds.size.toString()),
+                                                )
+                                                onBatchDownload(state.searchResults)
+                                            },
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(Icons.Rounded.Download, contentDescription = null)
@@ -730,7 +746,10 @@ private fun HomeScreen(
                         SearchResultCard(
                             item = item,
                             selected = item.id in state.selectedSearchIds,
-                            onToggleSelection = { onSearchSelectionToggle(item.id) },
+                            onToggleSelection = {
+                                uiTraceLogger.interaction("HOME", "search_result_selection", "toggle")
+                                onSearchSelectionToggle(item.id)
+                            },
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
                                 onModeChanged(HomeMode.Link)
@@ -784,8 +803,14 @@ private fun HomeScreen(
                 item {
                     RecentLinksCard(
                         links = state.recentLinks.take(4),
-                        onSelect = onRecentLinkSelected,
-                        onClear = onClearRecentLinks,
+                        onSelect = {
+                            uiTraceLogger.interaction("HOME", "recent_link", "select_recent")
+                            onRecentLinkSelected(it)
+                        },
+                        onClear = {
+                            uiTraceLogger.interaction("HOME", "recent_links", "clear_recent")
+                            onClearRecentLinks()
+                        },
                     )
                 }
             }
