@@ -11,7 +11,7 @@ import com.ahdownload.domain.resolver.social.SocialPlatformResolver
 import com.ahdownload.feature.home.AndroidBrowserMediaSessionProvider
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -53,7 +53,7 @@ class SocialDownloadSmokeTest {
         lines += "started=" + System.currentTimeMillis()
 
         for (case in cases) {
-            val result = runCatching {
+            val resolved = runCatching {
                 withTimeout(TimeUnit.SECONDS.toMillis(22)) {
                     resolver.resolve(
                         ResolverRequest(
@@ -68,12 +68,17 @@ class SocialDownloadSmokeTest {
                         ),
                     )
                 }
-            }.getOrElse { error ->
-                lines += "RESULT " + case.name + ": EXCEPTION " + error::class.simpleName + ": " + error.message
+            }
+
+            if (resolved.isFailure) {
+                val error = resolved.exceptionOrNull()
+                lines += "RESULT " + case.name + ": EXCEPTION " +
+                    (error?.javaClass?.simpleName ?: "Unknown") + ": " +
+                    (error?.message ?: "")
                 continue
             }
 
-            when (result) {
+            when (val result = resolved.getOrThrow()) {
                 is ResolverResult.Success -> {
                     val video = result.candidates
                         .filter { it.format.kind == MediaKind.Video }
@@ -81,7 +86,9 @@ class SocialDownloadSmokeTest {
                         .firstOrNull()
 
                     if (video == null) {
-                        lines += "RESULT " + case.name + ": RESOLVED_NO_VIDEO_CANDIDATE"
+                        lines += "RESULT " + case.name +
+                            ": RESOLVED_NO_VIDEO_CANDIDATE candidate_count=" +
+                            result.candidates.size
                         continue
                     }
 
@@ -91,8 +98,7 @@ class SocialDownloadSmokeTest {
                         " height=" + (video.format.height ?: 0) +
                         " container=" + video.format.container +
                         " transfer=" + probe.status +
-                        " bytes=" + probe.bytes +
-                        " file=" + (probe.fileName ?: "")
+                        " bytes=" + probe.bytes
                 }
 
                 is ResolverResult.Failure -> {
@@ -106,16 +112,16 @@ class SocialDownloadSmokeTest {
         println(report)
         File(outputDir, "report.txt").writeText(report)
 
-        assertTrue(
-            "Smoke test produced no platform results",
-            lines.count { it.startsWith("RESULT ") } == cases.size,
+        assertEquals(
+            "Smoke test must produce one diagnostic result per platform case",
+            cases.size,
+            lines.count { it.startsWith("RESULT ") },
         )
     }
 
     private data class Probe(
         val status: String,
         val bytes: Long,
-        val fileName: String?,
     )
 
     private fun probeMedia(
@@ -138,30 +144,36 @@ class SocialDownloadSmokeTest {
 
         return runCatching {
             val code = connection.responseCode
-            val responseBytes = connection.inputStream.use { input ->
-                val buffer = ByteArray(64 * 1024)
-                var total = 0L
-                File(outputDir, platform.lowercase() + "-probe.bin").outputStream().use { output ->
-                    while (total < 1_048_576L) {
-                        val remaining = (1_048_576L - total).toInt().coerceAtMost(buffer.size)
-                        val count = input.read(buffer, 0, remaining)
-                        if (count <= 0) break
-                        output.write(buffer, 0, count)
-                        total += count
+            if (code !in 200..299 && code != HttpURLConnection.HTTP_PARTIAL) {
+                Probe(
+                    status = "HTTP_" + code,
+                    bytes = 0L,
+                )
+            } else {
+                val destination = File(outputDir, platform.lowercase() + "-probe.bin")
+                val responseBytes = connection.inputStream.use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    destination.outputStream().use { output ->
+                        while (total < 1_048_576L) {
+                            val remaining = (1_048_576L - total).toInt().coerceAtMost(buffer.size)
+                            val count = input.read(buffer, 0, remaining)
+                            if (count <= 0) break
+                            output.write(buffer, 0, count)
+                            total += count
+                        }
                     }
+                    total
                 }
-                total
+                Probe(
+                    status = "HTTP_" + code,
+                    bytes = responseBytes,
+                )
             }
-            Probe(
-                status = "HTTP_" + code,
-                bytes = responseBytes,
-                fileName = platform.lowercase() + "-probe.bin",
-            )
         }.getOrElse { error ->
             Probe(
-                status = "TRANSFER_ERROR_" + (error::class.simpleName ?: "Unknown"),
+                status = "TRANSFER_ERROR_" + (error.javaClass.simpleName ?: "Unknown"),
                 bytes = 0L,
-                fileName = null,
             )
         }.also {
             connection.disconnect()
