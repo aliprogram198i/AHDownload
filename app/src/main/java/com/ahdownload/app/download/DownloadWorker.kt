@@ -33,6 +33,7 @@ import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.CandidateRanker
+import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
 import com.ahdownload.feature.home.HomeResolver
