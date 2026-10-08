@@ -99,6 +99,7 @@ class DownloadWorkScheduler(
             .putString(DownloadWorker.KEY_AUDIO_OUTPUT_FORMAT, task.audioOutputFormat?.name)
             .putString(DownloadWorker.KEY_COMPANION_AUDIO_SOURCE_URL, task.companionAudioSourceUrl)
             .putString(DownloadWorker.KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST, task.companionAudioSessionCookieHost)
+            .putBoolean(DownloadWorker.KEY_STREAMING_MANIFEST, task.streamingManifest)
             .putBoolean(DownloadWorker.KEY_FORCE_REFRESH, forceRefresh)
             .apply {
                 task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
