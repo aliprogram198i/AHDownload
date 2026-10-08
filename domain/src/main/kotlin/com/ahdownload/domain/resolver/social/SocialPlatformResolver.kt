@@ -174,7 +174,8 @@ class SocialPlatformResolver(
     }
 
     private fun safeHeader(name: String): Boolean = when {
-        name.equals("Cookie", true) || name.equals("Authorization", true) -> false
+        name.equals("Authorization", true) -> false
+        name.equals("Cookie", true) -> true
         name.equals("User-Agent", true) || name.equals("Referer", true) || name.equals("Origin", true) -> true
         name.equals("Accept", true) || name.equals("Accept-Language", true) -> true
         name.startsWith("Sec-Fetch-", true) -> true
