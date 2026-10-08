@@ -54,7 +54,12 @@ class CandidateValidator(
         )
 
         val probeResult = runCatching {
-            probe.probe(url, candidate.requestHeaders, operationId)
+            probe.probe(
+                url = url,
+                headers = candidate.requestHeaders,
+                operationId = operationId,
+                sourceContext = candidate.sourceContext,
+            )
         }.getOrElse {
             return reject(ValidationFailure.ProbeFailed)
         }
