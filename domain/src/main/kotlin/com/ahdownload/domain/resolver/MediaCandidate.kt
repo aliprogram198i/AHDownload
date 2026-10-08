@@ -28,4 +28,9 @@ data class MediaCandidate(
     val companionAudioSourceUrl: String? = null,
     val companionAudioRequestHeaders: Map<String, String> = emptyMap(),
     val companionAudioSessionCookieHost: String? = null,
+    /**
+     * True when sourceUrl is a streaming manifest (HLS/DASH) and must be
+     * acquired through the manifest-aware FFmpeg path instead of byte streaming.
+     */
+    val streamingManifest: Boolean = false,
 )
