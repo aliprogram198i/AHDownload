@@ -1,7 +1,6 @@
 package com.ahdownload.core.designsystem
 
 import android.content.res.Configuration
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -16,7 +15,7 @@ import kotlin.math.roundToInt
 fun rememberUiTraceContext(): Map<String, String> {
     val configuration = LocalConfiguration.current
     val density = LocalDensity.current
-    val darkTheme = isSystemInDarkTheme()
+    val themeMode = LocalAHThemeMode.current
     val colors = MaterialTheme.colorScheme
     val typography = MaterialTheme.typography
 
@@ -31,7 +30,7 @@ fun rememberUiTraceContext(): Map<String, String> {
             Configuration.ORIENTATION_LANDSCAPE -> "landscape"
             else -> "portrait"
         },
-        "theme_mode" to if (darkTheme) "dark" else "light",
+        "theme_mode" to themeMode.storageValue,
         "layout_direction" to when (LocalLayoutDirection.current) {
             LayoutDirection.Rtl -> "RTL"
             else -> "LTR"
