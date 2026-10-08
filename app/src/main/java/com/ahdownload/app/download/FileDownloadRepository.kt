@@ -87,8 +87,14 @@ class FileDownloadRepository(
                     .filter { it.status in INTERRUPTED_STATUSES }
                     .map {
                         run {
+                            val partialPath = when (it.task.processingMode) {
+                                com.ahdownload.domain.download.DownloadProcessingMode.MuxVideoAudio ->
+                                    it.task.destinationPath + ".video." + it.task.id.take(8) + ".part"
+                                else ->
+                                    it.task.destinationPath + ".part"
+                            }
                             val partialSize = runCatching {
-                                File(it.task.destinationPath + ".part").takeIf { file -> file.isFile }?.length() ?: 0L
+                                File(partialPath).takeIf { file -> file.isFile }?.length() ?: 0L
                             }.getOrDefault(0L).coerceAtLeast(0L)
                             it.copy(
                                 status = DownloadStatus.QUEUED,
