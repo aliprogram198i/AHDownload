@@ -232,13 +232,19 @@ jobs:
 
           echo "== Android package compatibility =="
           PACKAGE_LINE="$(grep -m1 '^package:' "$BADGING_FILE")"
+          MIN_SDK_LINE="$(grep -m1 '^sdkVersion:' "$BADGING_FILE")"
+          TARGET_SDK_LINE="$(grep -m1 '^targetSdkVersion:' "$BADGING_FILE")"
           echo "$PACKAGE_LINE"
+          echo "$MIN_SDK_LINE"
+          echo "$TARGET_SDK_LINE"
 
           test -n "$PACKAGE_LINE"
-          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "name='com\.ahdownload\.app'"
-          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "sdkVersion:'24'"
-          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "targetSdkVersion:'36'"
+          test -n "$MIN_SDK_LINE"
+          test -n "$TARGET_SDK_LINE"
 
+          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "name='com\.ahdownload\.app'"
+          printf '%s\n' "$MIN_SDK_LINE" | grep -Eq "^sdkVersion:'24'$"
+          printf '%s\n' "$TARGET_SDK_LINE" | grep -Eq "^targetSdkVersion:'36'$"
           cp "$BADGING_FILE" apk-compatibility.txt
 
           echo "Confirmed minSdkVersion=24 (Android 7.0 Nougat)"
