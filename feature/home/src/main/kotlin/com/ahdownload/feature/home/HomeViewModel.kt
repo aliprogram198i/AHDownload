@@ -13,6 +13,7 @@ import com.ahdownload.core.common.DownloadPreferences
 import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
+import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.OkHttpTextClient
 import com.ahdownload.domain.resolver.ResolverResult
@@ -112,9 +113,16 @@ class HomeViewModel(
         )
 
         val normalized = value.trim()
-        if (_uiState.value.mode == HomeMode.Link &&
-            analyzer.analyze(normalized) != null
-        ) {
+        val link = analyzer.analyze(normalized)
+        if (_uiState.value.mode == HomeMode.Link && link != null && isLikelyCompleteLink(link, normalized)) {
+            logger.log(
+                DiagnosticLevel.INFO,
+                "LINK_INPUT_RECEIVED",
+                "تم استلام رابط صالح من حقل الرابط",
+                "home.input",
+                mapOf("platform" to link.platform.name),
+                null,
+            )
             autoAnalyzeJob = viewModelScope.launch {
                 delay(AUTO_ANALYZE_DEBOUNCE_MS)
                 if (isActive && _uiState.value.url.trim() == normalized &&
@@ -125,12 +133,103 @@ class HomeViewModel(
                         "AUTO_ANALYSIS_TRIGGERED",
                         "تم بدء تحليل الرابط تلقائيًا بعد إدخال رابط مكتمل",
                         "home.auto_analyze",
-                        mapOf("platform" to (analyzer.analyze(normalized)?.platform?.name ?: "unknown")),
+                        mapOf("platform" to link.platform.name),
                         null,
                     )
-                    analyze(fromAutoTrigger = true)
+                    analyzeUrl(normalized, fromAutoTrigger = true)
                 }
             }
+        }
+    }
+
+    fun setUrlAndAnalyze(value: String) {
+        analysisJob?.cancel()
+        analysisJob = null
+        autoAnalyzeJob?.cancel()
+        autoAnalyzeJob = null
+        searchJob?.cancel()
+        searchJob = null
+
+        val normalized = value.trim()
+        val link = analyzer.analyze(normalized)
+        if (link == null) {
+            _uiState.value = _uiState.value.copy(
+                url = value,
+                analyzing = false,
+                resolving = false,
+                result = null,
+                resolution = null,
+                selectedCandidateId = null,
+                selectedAudioCandidateId = null,
+                selectedAudioOutputFormat = null,
+                validatingCandidateId = null,
+                error = "الرابط غير صالح أو غير مدعوم.",
+                downloadQueued = false,
+            )
+            logger.log(
+                DiagnosticLevel.ERROR,
+                "INVALID_URL",
+                "الرابط غير صالح أو غير مدعوم",
+                "home.input",
+                emptyMap(),
+                null,
+            )
+            return
+        }
+
+        _uiState.value = _uiState.value.copy(
+            url = value,
+            analyzing = true,
+            resolving = false,
+            result = link,
+            resolution = null,
+            selectedCandidateId = null,
+            selectedAudioCandidateId = null,
+            selectedAudioOutputFormat = null,
+            validatingCandidateId = null,
+            error = null,
+            downloadQueued = false,
+        )
+        logger.log(
+            DiagnosticLevel.INFO,
+            "PASTE_ANALYSIS_STARTED",
+            "تم بدء تحليل الرابط مباشرة من عملية اللصق",
+            "home.input.paste",
+            mapOf("platform" to link.platform.name),
+            null,
+        )
+        analyzeUrl(normalized, fromAutoTrigger = true)
+    }
+
+    private fun isLikelyCompleteLink(
+        link: MediaLink,
+        normalized: String,
+    ): Boolean {
+        if (normalized.length < 24) return false
+        val lower = normalized.lowercase()
+        return when (link.platform) {
+            MediaPlatform.YouTube ->
+                "watch?v=" in lower || "youtu.be/" in lower || "/shorts/" in lower
+            MediaPlatform.Instagram ->
+                "/reel/" in lower || "/reels/" in lower || "/p/" in lower ||
+                    "/tv/" in lower || "/stories/" in lower
+            MediaPlatform.Facebook ->
+                "/reel" in lower || "/watch" in lower || "/videos/" in lower || "fb.watch/" in lower
+            MediaPlatform.TikTok ->
+                "/video/" in lower
+            MediaPlatform.X ->
+                "/status/" in lower
+            MediaPlatform.Snapchat ->
+                "/spotlight/" in lower || "/story/" in lower
+            MediaPlatform.Pinterest ->
+                "/pin/" in lower
+            MediaPlatform.Reddit ->
+                "/comments/" in lower || "redd.it/" in lower
+            MediaPlatform.Twitch ->
+                "/videos/" in lower || "/clip/" in lower
+            MediaPlatform.Vimeo ->
+                Regex("""/\d+(?:[/?#]|$)""").containsMatchIn(lower)
+            else -> link.kind != MediaKind.Unknown
         }
     }
 
@@ -361,12 +460,16 @@ class HomeViewModel(
     }
 
     fun analyze(fromAutoTrigger: Boolean = false) {
+        val current = _uiState.value.url.trim()
+        analyzeUrl(current, fromAutoTrigger)
+    }
+
+    private fun analyzeUrl(current: String, fromAutoTrigger: Boolean = false) {
         if (!fromAutoTrigger) {
             autoAnalyzeJob?.cancel()
             autoAnalyzeJob = null
         }
 
-        val current = _uiState.value.url.trim()
         val link = analyzer.analyze(current)
         if (link == null) {
             logger.log(
