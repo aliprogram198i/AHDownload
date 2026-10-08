@@ -60,7 +60,9 @@ jobs:
             set +e
             mkdir -p "$GITHUB_WORKSPACE/social-smoke-artifacts"
 
-            gradle --no-daemon connectedDebugAndroidTest               --tests com.ahdownload.app.social.SocialDownloadSmokeTest               --stacktrace
+            gradle --no-daemon :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.social.SocialDownloadSmokeTest \
+  --stacktrace
             TEST_EXIT=$?
 
             adb logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
