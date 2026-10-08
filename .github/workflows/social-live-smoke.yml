@@ -15,7 +15,7 @@ concurrency:
 jobs:
   social-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -39,38 +39,82 @@ jobs:
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
 
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -e /dev/kvm
+          sudo chmod 666 /dev/kvm
+
       - name: Install Android SDK
         run: |
           set -euo pipefail
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "system-images;android-35;google_apis;x86_64"
+
+      - name: Create clean Android emulator
+        run: |
+          set -euo pipefail
+          echo no | avdmanager create avd             --name social-smoke             --package "system-images;android-35;google_apis;x86_64"             --device "pixel_2"             --force
 
       - name: Run live smoke test on Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          cores: 2
-          ram-size: 4096M
-          disk-size: 6144M
-          emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect
-          disable-animations: true
-          script: |
-            set +e
-            mkdir -p "$GITHUB_WORKSPACE/social-smoke-artifacts"
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/social-smoke-artifacts"
 
-            gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.social.SocialDownloadSmokeTest --stacktrace
-            TEST_EXIT=$?
+          emulator -avd social-smoke             -no-window             -noaudio             -no-boot-anim             -gpu swiftshader_indirect             -no-snapshot             -camera-back none             -accel on             > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" 2>&1 &
+          EMULATOR_PID=$!
+          echo "$EMULATOR_PID" > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.pid"
 
-            adb logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
-            adb shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'" > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+          adb start-server >/dev/null 2>&1 || true
+          adb wait-for-device
 
-            if [ -d app/build/reports/androidTests/connected ]; then
-              cp -R app/build/reports/androidTests/connected "$GITHUB_WORKSPACE/social-smoke-artifacts/android-tests-report"
+          BOOTED=0
+          for i in $(seq 1 180); do
+            booted="$(adb -e shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [ "$booted" = "1" ]; then
+              BOOTED=1
+              break
             fi
 
-            exit "$TEST_EXIT"
+            if ! kill -0 "$EMULATOR_PID" 2>/dev/null; then
+              echo "Emulator process exited before boot completed."
+              break
+            fi
+
+            sleep 5
+          done
+
+          if [ "$BOOTED" -ne 1 ]; then
+            echo "Android emulator did not reach boot_completed=1."
+            adb devices -l || true
+            adb logcat -d || true
+            kill "$EMULATOR_PID" 2>/dev/null || true
+            wait "$EMULATOR_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Emulator booted successfully."
+          adb -e shell settings put global window_animation_scale 0.0 || true
+          adb -e shell settings put global transition_animation_scale 0.0 || true
+          adb -e shell settings put global animator_duration_scale 0.0 || true
+
+          gradle --no-daemon :app:connectedDebugAndroidTest             -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.social.SocialDownloadSmokeTest             --stacktrace
+          TEST_EXIT=$?
+
+          adb -e logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
+          adb -e shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'"             > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+
+          if [ -d app/build/reports/androidTests/connected ]; then
+            cp -R app/build/reports/androidTests/connected               "$GITHUB_WORKSPACE/social-smoke-artifacts/android-tests-report"
+          fi
+
+          adb -e emu kill >/dev/null 2>&1 || true
+          wait "$EMULATOR_PID" 2>/dev/null || true
+
+          exit "$TEST_EXIT"
 
       - name: Upload smoke-test report
         if: always()
