@@ -5,6 +5,7 @@ import com.ahdownload.domain.model.MediaKind
 enum class DownloadProcessingMode {
     Direct,
     ExtractAudio,
+    MuxVideoAudio,
 }
 
 data class DownloadTask(
@@ -31,4 +32,8 @@ data class DownloadTask(
     val processingMode: DownloadProcessingMode = DownloadProcessingMode.Direct,
     /** Desired user-visible audio output when processingMode=ExtractAudio. */
     val audioOutputFormat: AudioOutputFormat? = null,
+    /** Optional audio representation paired with a video-only source for adaptive muxing. */
+    val companionAudioSourceUrl: String? = null,
+    val companionAudioRequestHeaders: Map<String, String> = emptyMap(),
+    val companionAudioSessionCookieHost: String? = null,
 )
