@@ -26,6 +26,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -88,14 +90,18 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
+    private var autoAnalyzeJob: Job? = null
     private var searchJob: Job? = null
     private var downloadJob: Job? = null
 
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
         analysisJob = null
+        autoAnalyzeJob?.cancel()
+        autoAnalyzeJob = null
         searchJob?.cancel()
         searchJob = null
+
         _uiState.value = HomeUiState(
             url = value,
             recentLinks = _uiState.value.recentLinks,
@@ -104,6 +110,28 @@ class HomeViewModel(
             showAll = false,
             resultFilter = ResultFilter.All,
         )
+
+        val normalized = value.trim()
+        if (_uiState.value.mode == HomeMode.Link &&
+            analyzer.analyze(normalized) != null
+        ) {
+            autoAnalyzeJob = viewModelScope.launch {
+                delay(AUTO_ANALYZE_DEBOUNCE_MS)
+                if (isActive && _uiState.value.url.trim() == normalized &&
+                    !_uiState.value.analyzing && !_uiState.value.resolving
+                ) {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        "AUTO_ANALYSIS_TRIGGERED",
+                        "تم بدء تحليل الرابط تلقائيًا بعد إدخال رابط مكتمل",
+                        "home.auto_analyze",
+                        mapOf("platform" to (analyzer.analyze(normalized)?.platform?.name ?: "unknown")),
+                        null,
+                    )
+                    analyze(fromAutoTrigger = true)
+                }
+            }
+        }
     }
 
     fun searchContent(query: String = _uiState.value.searchQuery) {
@@ -314,7 +342,6 @@ class HomeViewModel(
         searchJob?.cancel()
         _uiState.value = _uiState.value.copy(searchQuery = item.title, mode = HomeMode.Link)
         onUrlChanged(item.url)
-        analyze()
     }
 
     fun selectRecentLink(link: RecentLink) {
@@ -333,7 +360,12 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(recentLinks = emptyList())
     }
 
-    fun analyze() {
+    fun analyze(fromAutoTrigger: Boolean = false) {
+        if (!fromAutoTrigger) {
+            autoAnalyzeJob?.cancel()
+            autoAnalyzeJob = null
+        }
+
         val current = _uiState.value.url.trim()
         val link = analyzer.analyze(current)
         if (link == null) {
@@ -880,6 +912,14 @@ class HomeViewModel(
         return result.distinctBy { it.id }
     }
 
+    override fun onCleared() {
+        autoAnalyzeJob?.cancel()
+        analysisJob?.cancel()
+        searchJob?.cancel()
+        downloadJob?.cancel()
+        super.onCleared()
+    }
+
     private fun chooseDefaultCandidate(
         candidates: List<MediaCandidate>,
         smart: com.ahdownload.domain.resolver.SmartResultSet,
@@ -1075,6 +1115,10 @@ class HomeViewModel(
             extractAudio = extractAudio,
             audioOutputFormat = audioOutputFormat,
         )
+    }
+
+    private companion object {
+        const val AUTO_ANALYZE_DEBOUNCE_MS = 500L
     }
 
     class Factory(
