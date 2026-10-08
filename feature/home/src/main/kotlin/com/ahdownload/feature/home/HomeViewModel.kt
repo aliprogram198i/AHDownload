@@ -674,9 +674,17 @@ class HomeViewModel(
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
                         val queued = if (extractAudio) {
+                            val format = audioOutputFormat ?: run {
+                                _uiState.value = _uiState.value.copy(
+                                    validatingCandidateId = null,
+                                    error = "اختر صيغة الصوت أولًا.",
+                                    downloadQueued = false,
+                                )
+                                return@launch
+                            }
                             onAudioOnlyRequested(
                                 validation.candidate.copy(sourceUrl = validation.finalUrl),
-                                audioOutputFormat,
+                                format,
                                 state.resolution.title,
                                 state.result?.normalizedUrl,
                                 state.resolution.thumbnailUrl,
@@ -967,7 +975,7 @@ class HomeViewModel(
     private fun downloadCandidateInternal(
         id: String,
         extractAudio: Boolean,
-        audioOutputFormat: AudioOutputFormat = _uiState.value.selectedAudioOutputFormat,
+        audioOutputFormat: AudioOutputFormat? = null,
     ) {
         if (_uiState.value.resolution?.candidates?.any { it.id == id } != true) return
         downloadSelected(
