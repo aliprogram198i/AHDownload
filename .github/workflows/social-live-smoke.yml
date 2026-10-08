@@ -92,9 +92,28 @@ jobs:
             exit 1
           fi
 
+          DEVICE=""
+          for i in $(seq 1 60); do
+            DEVICE="$(adb devices | awk '/^emulator-[0-9]+[[:space:]]+device$/ {print $1; exit}')"
+            if [ -n "$DEVICE" ]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [ -z "$DEVICE" ]; then
+            echo "No healthy Android emulator device was registered with ADB."
+            adb devices -l || true
+            cat "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" || true
+            kill "$EMULATOR_PID" 2>/dev/null || true
+            wait "$EMULATOR_PID" 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Using ADB device: $DEVICE"
           BOOTED=0
           for i in $(seq 1 180); do
-            booted="$(adb -e shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            booted="$(adb -s "$DEVICE" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
             if [ "$booted" = "1" ]; then
               BOOTED=1
               break
