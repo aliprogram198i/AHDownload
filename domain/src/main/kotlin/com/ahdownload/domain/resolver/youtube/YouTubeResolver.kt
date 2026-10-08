@@ -574,7 +574,9 @@ class YouTubeResolver(
             }
             .firstOrNull()
 
-    private fun sessionHeaders(snapshot: YouTubeSessionSnapshot): Map<String, String> = buildMap {
+    private fun isKnownMuxedItag(itag: String?): Boolean = itag in KNOWN_MUXED_ITAGS
+
+$marker
         snapshot.cookies?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
         snapshot.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
         put("Referer", "https://www.youtube.com/")
@@ -593,7 +595,7 @@ class YouTubeResolver(
                     kind = MediaKind.Video,
                     container = containerFor(url, MediaKind.Video),
                     hasVideo = true,
-                    hasAudio = true,
+                    hasAudio = isKnownMuxedItag(extractItag(url)),
                 ),
                 requestHeaders = sessionHeaders + snapshot.browserRequestHeaders[url].orEmpty(),
                 sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
@@ -698,6 +700,8 @@ class YouTubeResolver(
     private companion object {
         const val YOUTUBE_BOT_MESSAGE =
             "YouTube يطلب التحقق من أنك لست روبوتًا. افتح YouTube لتحديث الجلسة ثم أعد المحاولة."
+
+        val KNOWN_MUXED_ITAGS = setOf("18", "22", "43", "44", "45", "46", "59", "78")
 
         val BOT_CHALLENGE_MARKERS = listOf(
             "Sign in to confirm you’re not a bot",
