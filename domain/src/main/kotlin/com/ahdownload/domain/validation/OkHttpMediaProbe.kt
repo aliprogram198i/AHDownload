@@ -2,6 +2,7 @@ package com.ahdownload.domain.validation
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.domain.resolver.MediaSourceContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -21,10 +22,11 @@ class OkHttpMediaProbe(
         url: String,
         headers: Map<String, String>,
         operationId: String?,
+        sourceContext: MediaSourceContext,
     ): MediaProbeResult =
         withContext(Dispatchers.IO) {
             if (isYouTubeMediaHost(url)) {
-                probeYouTubeAligned(url, headers, operationId)
+                probeYouTubeAligned(url, headers, operationId, sourceContext)
             } else {
                 probeGeneric(url, headers, operationId)
             }
@@ -34,6 +36,7 @@ class OkHttpMediaProbe(
         url: String,
         headers: Map<String, String>,
         operationId: String?,
+        sourceContext: MediaSourceContext,
     ): MediaProbeResult {
         // Prefer the exact Range header captured from WebView when present. The
         // GVS URL and request context are session-bound; validation must not invent
@@ -42,7 +45,7 @@ class OkHttpMediaProbe(
         val explicitRange = headers.entries
             .firstOrNull { it.key.equals("Range", ignoreCase = true) }
             ?.value
-        val browserContext = headers.keys.any {
+        val browserContext = sourceContext == MediaSourceContext.BROWSER_OBSERVED || headers.keys.any {
             it.equals("X-Goog-Visitor-Id", ignoreCase = true) ||
                 it.equals("X-YouTube-Client-Name", ignoreCase = true) ||
                 it.equals("X-YouTube-Client-Version", ignoreCase = true) ||
