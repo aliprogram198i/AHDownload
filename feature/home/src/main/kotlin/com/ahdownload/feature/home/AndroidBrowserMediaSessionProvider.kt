@@ -43,10 +43,12 @@ class AndroidBrowserMediaSessionProvider(
             fun isMedia(raw: String): Boolean {
                 val lower = raw.lowercase()
                 if (!(lower.startsWith("http://") || lower.startsWith("https://"))) return false
-                if (".m3u8" in lower || ".mpd" in lower) return false
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                return ext in MEDIA_EXTENSIONS || "/videoplayback" in lower ||
+                return ext in MEDIA_EXTENSIONS ||
+                    ext == "m3u8" ||
+                    ext == "mpd" ||
+                    "/videoplayback" in lower ||
                     Regex("""[?&](mime|content-type|type)=(video|audio)(%2f|/)""").containsMatchIn(lower)
             }
 
