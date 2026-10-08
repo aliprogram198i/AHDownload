@@ -21,4 +21,11 @@ data class MediaCandidate(
      * exact GVS URL/context and must not receive a PO token copied from another URL.
      */
     val sourceContext: MediaSourceContext = MediaSourceContext.RESOLVER_GENERATED,
+    /**
+     * Optional audio-only companion used when a video representation has no embedded
+     * audio track. This pairing is transient and is never persisted by itself.
+     */
+    val companionAudioSourceUrl: String? = null,
+    val companionAudioRequestHeaders: Map<String, String> = emptyMap(),
+    val companionAudioSessionCookieHost: String? = null,
 )
