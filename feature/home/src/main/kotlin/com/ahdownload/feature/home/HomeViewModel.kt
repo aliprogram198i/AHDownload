@@ -594,7 +594,10 @@ class HomeViewModel(
                                             .thenBy { it.id == candidate.id },
                                     )
                                     .take(4)
-                                (directAudio + muxedVideo).distinctBy { it.id }
+                                interleaveYouTubeRefreshCandidates(
+                                    primary = directAudio,
+                                    fallback = muxedVideo,
+                                )
                             } else {
                                 refreshed.candidates
                                     .filter {
@@ -775,6 +778,19 @@ class HomeViewModel(
         candidate.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED -> 1
         candidate.id.startsWith("android-") -> 2
         else -> 3
+    }
+
+    private fun interleaveYouTubeRefreshCandidates(
+        primary: List<MediaCandidate>,
+        fallback: List<MediaCandidate>,
+    ): List<MediaCandidate> {
+        val result = ArrayList<MediaCandidate>(primary.size + fallback.size)
+        val limit = maxOf(primary.size, fallback.size)
+        for (index in 0 until limit) {
+            primary.getOrNull(index)?.let(result::add)
+            fallback.getOrNull(index)?.let(result::add)
+        }
+        return result.distinctBy { it.id }
     }
 
     private fun chooseDefaultCandidate(
