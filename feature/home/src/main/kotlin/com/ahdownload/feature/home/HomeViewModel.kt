@@ -703,7 +703,7 @@ class HomeViewModel(
                                                 ),
                                                 null,
                                             )
-                                            return@forEach
+                                            continue
                                         }
                                     }
                                     break
