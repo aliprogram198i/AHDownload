@@ -187,7 +187,6 @@ fun HomeRoute(
         },
         onFavoriteSelected = { item ->
             viewModel.onUrlChanged(item.url)
-            viewModel.analyze()
         },
     )
 }
