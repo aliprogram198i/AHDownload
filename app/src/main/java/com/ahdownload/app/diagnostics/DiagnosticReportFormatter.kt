@@ -74,9 +74,17 @@ object DiagnosticReportFormatter {
             "NONE"
         } else {
             when {
-                http403 > 0 -> "HTTP_403"
+                anchor.type == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_EXTRACTION_FAILED"
+                anchor.type == "DOWNLOAD_DESTINATION_COPY_FAILED" -> "STORAGE_ERROR"
+                anchor.type == "MEDIASTORE_PUBLISH_FAILED" -> "STORAGE_ERROR"
                 !anchor.context["failure_code"].isNullOrBlank() -> anchor.context["failure_code"]!!
+                statusCode(anchor)?.let { it in 400..599 } == true -> "HTTP_" + statusCode(anchor)
                 anchor.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION_FAILED"
+                http403 > 0 && (
+                    anchor.type.contains("PROBE", ignoreCase = true) ||
+                        anchor.type.contains("REQUEST", ignoreCase = true) ||
+                        anchor.operation.contains("validation", ignoreCase = true)
+                    ) -> "HTTP_403"
                 else -> anchor.type
             }
         }
@@ -194,6 +202,8 @@ object DiagnosticReportFormatter {
             if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
         } else when {
             rootCause.startsWith("HTTP_") -> "NETWORK"
+            rootCause == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_PROCESSING"
+            rootCause == "STORAGE_ERROR" -> "STORAGE"
             rootCause.contains("VALIDATION", ignoreCase = true) || rootCause.contains("MEDIA", ignoreCase = true) -> "MEDIA_VALIDATION"
             log.type.contains("RESOLVER", ignoreCase = true) -> "MEDIA_RESOLUTION"
             log.type.contains("SMART_CENTER", ignoreCase = true) -> "UI_FLOW"
@@ -223,6 +233,8 @@ object DiagnosticReportFormatter {
             classification == "NETWORK" -> "INSPECT_REQUEST_CONTEXT"
             classification == "MEDIA_RESOLUTION" -> "INSPECT_RESOLVER"
             classification == "MEDIA_VALIDATION" -> "INSPECT_VALIDATION"
+            classification == "AUDIO_PROCESSING" -> "INSPECT_AUDIO_PROCESSOR"
+            classification == "STORAGE" -> "INSPECT_STORAGE"
             classification == "UI_FLOW" -> "INSPECT_UI_FLOW"
             rootCause == "UNHANDLED_EXCEPTION" -> "INSPECT_STACKTRACE"
             else -> "INSPECT_FAILURE_CHAIN"
@@ -343,7 +355,9 @@ object DiagnosticReportFormatter {
             rootCause == "HTTP_403" ->
                 "وصل الطلب إلى مرحلة جلب أو التحقق من المصدر، لكن الخادم رفض الطلب بـ HTTP 403، ثم انتهى المسار الحالي قبل بدء تنزيل صالح."
             error.type == "AUDIO_EXTRACTION_FAILED" ->
-                "تم تنزيل المصدر بنجاح، ثم فشل استخراج المسار الصوتي من الملف المحلي."
+                "تم تنزيل المصدر بنجاح، ثم فشل استخراج المسار الصوتي من الملف المحلي؛ أخطاء الشبكة السابقة لا تُعامل كسبب جذري للحادثة الأخيرة."
+            rootCause == "STORAGE_ERROR" ->
+                "اكتمل تجهيز الملف، لكن تعذر حفظه في موقع التخزين النهائي للمستخدم."
             rootCause.startsWith("HTTP_") ->
                 "تعذر إكمال العملية بسبب رفض أو خطأ HTTP أثناء الوصول إلى المصدر."
             else ->
