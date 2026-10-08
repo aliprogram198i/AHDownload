@@ -72,6 +72,29 @@ class AndroidBrowserMediaSessionProvider(
                 }
             }
 
+            fun finish() {
+                if (finished) return
+                finished = true
+                timeout?.let(main::removeCallbacks)
+                settleFinish?.let(main::removeCallbacks)
+                finalUrl = webView?.url ?: url
+                val result = BrowserMediaSession(
+                    platform = platform,
+                    pageUrl = url,
+                    finalUrl = finalUrl,
+                    title = title,
+                    thumbnailUrl = thumbnail,
+                    durationMs = durationMs,
+                    mediaUrls = mediaUrls.toList().take(MAX_MEDIA_URLS),
+                    mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
+                    requestHeadersByUrl = requestHeaders.toMap(),
+                )
+                webView?.stopLoading()
+                webView?.destroy()
+                webView = null
+                if (continuation.isActive) continuation.resume(result)
+            }
+
             fun observe(raw: String?, headers: Map<String, String> = emptyMap()) {
                 val value = raw?.trim().orEmpty()
                 if (!isMedia(value)) return
@@ -98,29 +121,6 @@ class AndroidBrowserMediaSessionProvider(
                         main.postDelayed(it, remaining.coerceAtMost(MAX_MEDIA_CAPTURE_WINDOW_MS))
                     }
                 }
-            }
-
-            fun finish() {
-                if (finished) return
-                finished = true
-                timeout?.let(main::removeCallbacks)
-                settleFinish?.let(main::removeCallbacks)
-                finalUrl = webView?.url ?: url
-                val result = BrowserMediaSession(
-                    platform = platform,
-                    pageUrl = url,
-                    finalUrl = finalUrl,
-                    title = title,
-                    thumbnailUrl = thumbnail,
-                    durationMs = durationMs,
-                    mediaUrls = mediaUrls.toList().take(MAX_MEDIA_URLS),
-                    mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
-                    requestHeadersByUrl = requestHeaders.toMap(),
-                )
-                webView?.stopLoading()
-                webView?.destroy()
-                webView = null
-                if (continuation.isActive) continuation.resume(result)
             }
 
             inspect = fun(view: WebView) {
