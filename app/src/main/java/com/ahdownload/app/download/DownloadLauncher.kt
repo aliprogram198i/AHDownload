@@ -62,6 +62,14 @@ class DownloadLauncher(
                     it.startsWith("http://") || it.startsWith("https://")
                 },
                 mediaKind = candidate.format.kind,
+                processingMode = if (candidate.companionAudioSourceUrl.isNullOrBlank()) {
+                    DownloadProcessingMode.Direct
+                } else {
+                    DownloadProcessingMode.MuxVideoAudio
+                },
+                companionAudioSourceUrl = candidate.companionAudioSourceUrl,
+                companionAudioRequestHeaders = candidate.companionAudioRequestHeaders.filterKeys(::isPersistableHeader),
+                companionAudioSessionCookieHost = candidate.companionAudioSessionCookieHost,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
@@ -167,6 +175,22 @@ class DownloadLauncher(
         return digest.joinToString("") { "%02x".format(it) }
     }
 
+    private fun isPersistableHeader(key: String): Boolean =
+        key.equals("User-Agent", true) ||
+            key.equals("Referer", true) ||
+            key.equals("Origin", true) ||
+            key.equals("Accept", true) ||
+            key.equals("Accept-Language", true) ||
+            key.equals("Sec-Fetch-Dest", true) ||
+            key.equals("Sec-Fetch-Mode", true) ||
+            key.equals("Sec-Fetch-Site", true) ||
+            key.equals("X-Goog-Visitor-Id", true) ||
+            key.equals("X-YouTube-Client-Name", true) ||
+            key.equals("X-YouTube-Client-Version", true) ||
+            key.equals("Sec-CH-UA", true) ||
+            key.equals("Sec-CH-UA-Mobile", true) ||
+            key.equals("Sec-CH-UA-Platform", true)
+
     private fun uniqueFile(directory: File, baseName: String, extension: String): File {
         var index = 0
         while (true) {
@@ -184,7 +208,14 @@ class DownloadLauncher(
             .take(120)
 
     private fun extensionFor(candidate: MediaCandidate): String =
-        when (candidate.format.container) {
+        if (!candidate.companionAudioSourceUrl.isNullOrBlank()) {
+            when (candidate.format.container) {
+                com.ahdownload.domain.resolver.MediaContainer.Mp4 -> ".mp4"
+                com.ahdownload.domain.resolver.MediaContainer.Webm -> ".mkv"
+                com.ahdownload.domain.resolver.MediaContainer.Mkv -> ".mkv"
+                else -> ".mkv"
+            }
+        } else when (candidate.format.container) {
             com.ahdownload.domain.resolver.MediaContainer.Mp4 -> ".mp4"
             com.ahdownload.domain.resolver.MediaContainer.Webm -> ".webm"
             com.ahdownload.domain.resolver.MediaContainer.Mkv -> ".mkv"
