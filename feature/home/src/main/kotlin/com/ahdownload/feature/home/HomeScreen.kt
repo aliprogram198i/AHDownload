@@ -367,7 +367,7 @@ private fun HomeScreen(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "ألصق رابط الفيديو أو الصوت أو الملف، وسيتولى AHDownload اكتشاف أفضل المصادر والصيغ المتاحة.",
+                        "ألصق الرابط واحصل على خيارات التنزيل المناسبة بأسرع طريقة.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -483,9 +483,9 @@ private fun HomeScreen(
             item {
                 AHGradientPrimaryButton(
                     text = when {
-                        state.analyzing -> "جارٍ تحليل الرابط..."
-                        state.resolving -> "جارٍ استخراج أفضل المصادر..."
-                        else -> "تحليل الرابط"
+                        state.analyzing -> "جارٍ تجهيز الخيارات..."
+                        state.resolving -> "جارٍ تجهيز الخيارات..."
+                        else -> "الحصول على الخيارات"
                     },
                     enabled = state.url.isNotBlank() && !state.analyzing && !state.resolving,
                     onClick = {
@@ -494,7 +494,7 @@ private fun HomeScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .semantics { contentDescription = "تحليل الرابط واستخراج الوسائط" },
+                        .semantics { contentDescription = "الحصول على خيارات التنزيل" },
                 )
             }
 
@@ -680,11 +680,11 @@ private fun HomeScreen(
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
                             Column {
                                 Text(
-                                    if (state.analyzing) "1/2 · التحقق من الرابط" else "2/2 · استخراج أفضل المصادر",
+                                    "نجهّز أفضل خيارات التنزيل",
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    "نختار مصادر صالحة ونرتبها حسب الجودة والحجم والتوافق.",
+                                    "سيظهر الخيار الأول فور جاهزيته دون انتظار تفاصيل غير ضرورية.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -743,7 +743,6 @@ private fun HomeScreen(
                         primaryOptions = primaryOptions,
                         audioOptions = audioOptions,
                         selectedCandidateId = state.selectedCandidateId,
-                        selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
                         selectedAudioOutputFormat = state.selectedAudioOutputFormat,
                         onSelect = {
@@ -753,14 +752,6 @@ private fun HomeScreen(
                                 state.selectedCandidateId,
                             )
                             onSelectCandidate(it.candidate.id)
-                        },
-                        onSelectAudio = {
-                            logSelection(
-                                logger,
-                                it,
-                                state.selectedAudioCandidateId,
-                            )
-                            onSelectAudioCandidate(it.candidate.id)
                         },
                         onDownload = { onDownloadCandidate(it) },
                         onDownloadAudio = onDownloadAudio,
@@ -791,7 +782,7 @@ private fun HomeScreen(
                                     tint = MaterialTheme.colorScheme.error,
                                 )
                                 Text(
-                                    if (state.resolution != null) "تعذر بدء التنزيل" else "تعذر تجهيز المحتوى",
+                                    if (state.resolution != null) "تعذر بدء التنزيل" else "تعذر تجهيز الرابط",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -809,7 +800,7 @@ private fun HomeScreen(
                             ) {
                                 Icon(Icons.Rounded.Refresh, contentDescription = null)
                                 Spacer(Modifier.size(6.dp))
-                                Text("إعادة المحاولة")
+                                Text("المحاولة مرة أخرى")
                             }
                         }
                     }
@@ -856,7 +847,7 @@ private fun HomeScreen(
 
             item {
                 Text(
-                    "نتحقق من المصدر قبل بدء التنزيل.",
+                    "يتم التحقق من المصدر عند بدء التنزيل.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -1103,45 +1094,32 @@ private fun UnifiedDownloadResultCard(
     primaryOptions: List<MediaPresentationModel>,
     audioOptions: List<MediaPresentationModel>,
     selectedCandidateId: String?,
-    selectedAudioCandidateId: String?,
     validatingCandidateId: String?,
-    selectedAudioOutputFormat: AudioOutputFormat,
+    selectedAudioOutputFormat: AudioOutputFormat?,
     onSelect: (MediaPresentationModel) -> Unit,
-    onSelectAudio: (MediaPresentationModel) -> Unit,
     onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
 ) {
-    // Keep the result card focused on the four most useful playable qualities.
-    val videoOptions = primaryOptions
+    val allVideoOptions = primaryOptions
         .filter {
             it.candidate.format.kind == MediaKind.Video &&
                 it.candidate.format.hasVideo &&
                 it.candidate.format.hasAudio
         }
-        .take(4)
+        .distinctBy { it.candidate.id }
 
-    val directAudioOptions = audioOptions
-        .filter {
-            it.candidate.format.kind == MediaKind.Audio &&
-                it.candidate.format.hasAudio
-        }
-        .take(8)
+    var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
+    val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
 
-    val extractionSource = videoOptions.firstOrNull()
-    val audioChoices = if (directAudioOptions.isNotEmpty()) {
-        directAudioOptions
-    } else {
-        extractionSource?.let(::listOf).orEmpty()
+    val directAudioAvailable = audioOptions.any {
+        it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
     }
-
+    val audioAvailable = directAudioAvailable || allVideoOptions.isNotEmpty()
     val selectedVideo = videoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
-    val selectedAudio = audioChoices.firstOrNull { it.candidate.id == selectedAudioCandidateId }
-        ?: audioChoices.firstOrNull()
 
-    val showVideoSection = videoOptions.isNotEmpty() || kind == MediaKind.Video
-    val showAudioSection = audioChoices.isNotEmpty() || kind == MediaKind.Video || kind == MediaKind.Audio
-    val sourceDescription = selectedAudio?.let(::audioSourceDescription)
+    val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
+    val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1215,19 +1193,31 @@ private fun UnifiedDownloadResultCard(
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp),
                     )
-                    Text(
-                        "تم تحليل الرابط وتجهيز أفضل المصادر المتاحة",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            "الخيارات جاهزة",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            buildList {
+                                if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
+                                if (audioAvailable) add("${AudioOutputFormat.entries.size} صيغ صوت")
+                            }.joinToString(" · "),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
 
             if (showVideoSection) {
                 UnifiedResultSectionHeader(
                     icon = Icons.Rounded.VideoFile,
-                    title = "تحميل الفيديو",
-                    subtitle = "اختر الجودة؛ وسيبقى الصوت والصورة في الملف.",
+                    title = "فيديو + صوت",
+                    subtitle = "اختر الجودة؛ وسيُحفظ الفيديو مع الصوت عندما يكون متاحًا.",
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1239,25 +1229,35 @@ private fun UnifiedDownloadResultCard(
                         audioOnly = false,
                     )
 
+                    if (!showAllVideoOptions && allVideoOptions.size > 4) {
+                        TextButton(
+                            onClick = { showAllVideoOptions = true },
+                            enabled = validatingCandidateId == null,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("عرض المزيد من الجودات")
+                        }
+                    }
+
                     Button(
                         enabled = selectedVideo != null && validatingCandidateId == null,
                         onClick = { selectedVideo?.candidate?.id?.let(onDownload) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .semantics { contentDescription = "تحميل الفيديو" },
+                            .semantics { contentDescription = "تنزيل الفيديو مع الصوت" },
                     ) {
                         Icon(Icons.Rounded.Download, contentDescription = null)
                         Spacer(Modifier.size(8.dp))
                         Text(
                             when {
-                                validatingCandidateId != null -> "جارٍ التحقق من المصدر..."
+                                validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
                                 selectedVideo == null -> "اختر جودة الفيديو"
-                                else -> "تحميل الفيديو · " + buildQualityLine(selectedVideo)
+                                else -> "تنزيل " + buildQualityLine(selectedVideo)
                             },
                         )
                     }
                 } else {
-                    UnifiedResultEmptyState("لا يتوفر حاليًا مصدر فيديو يجمع الصورة والصوت.")
+                    UnifiedResultEmptyState("لا يتوفر حاليًا خيار فيديو مع الصوت.")
                 }
             }
 
@@ -1268,35 +1268,17 @@ private fun UnifiedDownloadResultCard(
             if (showAudioSection) {
                 UnifiedResultSectionHeader(
                     icon = Icons.Rounded.AudioFile,
-                    title = "استخراج وتحويل الصوت",
-                    subtitle = "اختر صيغة الإخراج؛ سيُستخرج الصوت من المصدر ثم يُحوّل على الجهاز.",
+                    title = "صوت فقط",
+                    subtitle = if (directAudioAvailable) {
+                        "اختر الصيغة التي تريد حفظ الصوت بها."
+                    } else {
+                        "اختر الصيغة؛ وسيُستخرج الصوت من أفضل مصدر متاح."
+                    },
                 )
 
-                if (selectedAudio != null) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            Text(
-                                "مصدر الصوت المختار تلقائيًا",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                sourceDescription ?: "مصدر صوتي متاح",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-
+                if (audioAvailable) {
                     Text(
-                        "صيغة الإخراج",
+                        "الصيغة",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -1307,26 +1289,29 @@ private fun UnifiedDownloadResultCard(
                     )
 
                     Button(
-                        enabled = validatingCandidateId == null,
-                        onClick = { onDownloadAudio(selectedAudio.candidate.id) },
+                        enabled = selectedAudioOutputFormat != null && validatingCandidateId == null,
+                        onClick = { onDownloadAudio(null) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .semantics {
-                                contentDescription = "استخراج الصوت وتحويله إلى " + selectedAudioOutputFormat.label
+                                contentDescription = selectedAudioOutputFormat
+                                    ?.let { "تنزيل الصوت بصيغة ${it.label}" }
+                                    ?: "اختر صيغة الصوت أولًا"
                             },
                     ) {
                         Icon(Icons.Rounded.AudioFile, contentDescription = null)
                         Spacer(Modifier.size(8.dp))
                         Text(
                             when {
-                                validatingCandidateId != null -> "جارٍ التحقق من المصدر..."
-                                else -> "استخراج وتحويل " + audioOutputFormatButtonLabel(selectedAudioOutputFormat)
+                                validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
+                                selectedAudioOutputFormat == null -> "اختر صيغة الصوت"
+                                else -> "تنزيل " + audioOutputFormatButtonLabel(selectedAudioOutputFormat)
                             },
                         )
                     }
 
                     Text(
-                        "ملاحظة: التحويل لا يستطيع استعادة تفاصيل صوتية غير موجودة في المصدر الأصلي.",
+                        "المصدر يُختار تلقائيًا في الخلفية؛ أنت تختار الصيغة فقط.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1340,7 +1325,7 @@ private fun UnifiedDownloadResultCard(
 
 @Composable
 private fun AudioOutputFormatGrid(
-    selected: AudioOutputFormat,
+    selected: AudioOutputFormat?,
     enabled: Boolean,
     onSelect: (AudioOutputFormat) -> Unit,
 ) {
@@ -1410,19 +1395,6 @@ private fun AudioOutputFormatGrid(
             }
         }
     }
-}
-
-private fun audioSourceDescription(model: MediaPresentationModel): String {
-    val format = model.candidate.format
-    val source = when (format.kind) {
-        MediaKind.Audio -> containerLabel(format.container)
-        MediaKind.Video -> "من الفيديو " + (format.height?.let { "${it}p" } ?: "")
-        else -> "مصدر الوسائط"
-    }
-    val codec = normalizeCodecForUi(format.audioCodec)
-    val quality = model.qualityLabel.takeIf { it.isNotBlank() }
-    return listOfNotNull(source.takeIf { it.isNotBlank() }, codec, quality, model.sizeLabel)
-        .joinToString(" · ")
 }
 
 private fun audioOutputFormatDescription(format: AudioOutputFormat): String = when (format) {
@@ -1616,7 +1588,7 @@ private fun MediaFormatOption(
                     )
                 } else if (model.recommendation != MediaResultRecommendation.None) {
                     Text(
-                        "الأفضل",
+                        "موصى به",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
@@ -1693,10 +1665,7 @@ private fun formatOptionSecondaryLabel(
         }
     }
 
-    return buildList {
-        add(containerLabel(format.container))
-        normalizeCodecForUi(format.videoCodec)?.let(::add)
-    }.joinToString(" · ")
+    return containerLabel(format.container)
 }
 
 private fun formatOptionMetaLabel(
@@ -1717,10 +1686,9 @@ private fun formatOptionMetaLabel(
         }
     } else {
         buildList {
-            normalizeCodecForUi(format.audioCodec)?.let(::add)
             model.fpsLabel?.let(::add)
             model.sizeLabel?.let(::add)
-        }.joinToString(" · ").ifBlank { "فيديو + صوت" }
+        }.joinToString(" · ").ifBlank { "صورة + صوت" }
     }
 }
 

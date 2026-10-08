@@ -29,6 +29,8 @@ class AndroidBrowserMediaSessionProvider(
             var webView: WebView? = null
             var timeout: Runnable? = null
             var finished = false
+            var fastFinishScheduled = false
+            lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
             var title: String? = null
@@ -44,6 +46,13 @@ class AndroidBrowserMediaSessionProvider(
                 val ext = path.substringAfterLast('.', "")
                 return ext in MEDIA_EXTENSIONS || "/videoplayback" in lower ||
                     Regex("""[?&](mime|content-type|type)=(video|audio)(%2f|/)""").containsMatchIn(lower)
+            }
+
+            fun isLikelyPlayableMedia(raw: String): Boolean {
+                val lower = raw.lowercase()
+                val path = lower.substringBefore('?').substringBefore('#')
+                val ext = path.substringAfterLast('.', "")
+                return ext in MEDIA_EXTENSIONS || "/videoplayback" in lower
             }
 
             fun safeHeaders(input: Map<String, String>): Map<String, String> = buildMap {
@@ -67,6 +76,14 @@ class AndroidBrowserMediaSessionProvider(
                 mediaUrls.add(value)
                 val safe = safeHeaders(headers)
                 if (safe.isNotEmpty()) requestHeaders[value] = safe
+
+                if (isLikelyPlayableMedia(value) && !fastFinishScheduled) {
+                    fastFinishScheduled = true
+                    main.postDelayed({
+                        if (finished) return@postDelayed
+                        webView?.let { inspect(it) }
+                    }, 350L)
+                }
             }
 
             fun finish() {
@@ -90,7 +107,7 @@ class AndroidBrowserMediaSessionProvider(
                 if (continuation.isActive) continuation.resume(result)
             }
 
-            fun inspect(view: WebView) {
+            inspect = fun(view: WebView) {
                 if (finished) return
                 val script = """
                     (function(){
@@ -157,14 +174,14 @@ class AndroidBrowserMediaSessionProvider(
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         finalUrl = pageUrl
-                        view.postDelayed({ inspect(view) }, 700L)
-                        view.postDelayed({ inspect(view) }, 1800L)
-                        view.postDelayed({ inspect(view) }, 3200L)
-                        view.postDelayed({ finish() }, 5200L)
+                        view.postDelayed({ inspect(view) }, 450L)
+                        view.postDelayed({ inspect(view) }, 1400L)
+                        view.postDelayed({ inspect(view) }, 2600L)
+                        view.postDelayed({ finish() }, 4800L)
                     }
                 }
                 timeout = Runnable { finish() }
-                main.postDelayed(timeout!!, 12000L)
+                main.postDelayed(timeout!!, 10000L)
                 view.loadUrl(url)
             }
         }
