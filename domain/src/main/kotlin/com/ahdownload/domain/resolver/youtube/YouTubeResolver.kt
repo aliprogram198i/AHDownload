@@ -27,7 +27,22 @@ class YouTubeResolver(
         supportedKinds = setOf(MediaKind.Video, MediaKind.Audio),
     )
 
-    override suspend fun resolve(request: ResolverRequest): ResolverResult {
+    override suspend fun resolve(request: ResolverRequest): ResolverResult =
+        resolveInternal(request, forceFallbacks = false)
+
+    /**
+     * Re-resolves YouTube through the alternate client paths even when the primary
+     * resolver already returned a nominally sufficient candidate. This is used only
+     * after a media source returns HTTP 403 so the refresh gets genuinely fresh
+     * alternatives instead of the same stale candidate.
+     */
+    suspend fun resolveWithFallbacks(request: ResolverRequest): ResolverResult =
+        resolveInternal(request, forceFallbacks = true)
+
+    private suspend fun resolveInternal(
+        request: ResolverRequest,
+        forceFallbacks: Boolean,
+    ): ResolverResult {
         if (request.link.platform != MediaPlatform.YouTube) {
             return ResolverResult.Failure(FailureCode.UnsupportedPlatform, "الرابط ليس YouTube.")
         }
@@ -54,16 +69,26 @@ class YouTubeResolver(
             }
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) {
-                val enriched = enrichWithSessionIfNeeded(direct, request)
-                if (hasSufficientCandidates(enriched, request)) {
-                    return filterKind(enriched, request)
+                val base = if (forceFallbacks || !hasSufficientCandidates(direct, request)) {
+                    if (forceFallbacks) {
+                        logger.log(
+                            DiagnosticLevel.INFO,
+                            type = "youtube.fallback_clients_forced",
+                            reason = "refresh_after_http_403",
+                            operation = "youtube.resolve",
+                            context = diagnosticContext(videoId, request.operationId),
+                            throwable = null,
+                        )
+                    }
+                    augmentWithAndroidFallback(
+                        augmentWithEmbeddedFallback(direct, html, request),
+                        html,
+                        request,
+                    )
+                } else {
+                    direct
                 }
-                val augmented = augmentWithAndroidFallback(
-                    augmentWithEmbeddedFallback(enriched, html, request),
-                    html,
-                    request,
-                )
-                return filterKind(enrichWithSessionIfNeeded(augmented, request), request)
+                return filterKind(enrichWithSessionIfNeeded(base, request), request)
             }
             lastFailure = direct as? ResolverResult.Failure
             logPlayerFailure(videoId, direct, "page", request.operationId)
@@ -71,13 +96,26 @@ class YouTubeResolver(
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) {
-                    val enriched = enrichWithSessionIfNeeded(apiResult, request)
-                    val augmented = augmentWithAndroidFallback(
-                        augmentWithEmbeddedFallback(enriched, html, request),
-                        html,
-                        request,
-                    )
-                    return filterKind(enrichWithSessionIfNeeded(augmented, request), request)
+                    val base = if (forceFallbacks || !hasSufficientCandidates(apiResult, request)) {
+                        if (forceFallbacks) {
+                            logger.log(
+                                DiagnosticLevel.INFO,
+                                type = "youtube.fallback_clients_forced",
+                                reason = "refresh_after_http_403",
+                                operation = "youtube.resolve",
+                                context = diagnosticContext(videoId, request.operationId),
+                                throwable = null,
+                            )
+                        }
+                        augmentWithAndroidFallback(
+                            augmentWithEmbeddedFallback(apiResult, html, request),
+                            html,
+                            request,
+                        )
+                    } else {
+                        apiResult
+                    }
+                    return filterKind(enrichWithSessionIfNeeded(base, request), request)
                 }
                 lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
