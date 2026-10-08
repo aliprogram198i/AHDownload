@@ -119,6 +119,7 @@ fun HomeRoute(
     onOpenDownloads: () -> Unit,
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    onCopyHomeTrace: () -> String = { "" },
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
@@ -174,6 +175,7 @@ fun HomeRoute(
         onRecentLinkSelected = viewModel::selectRecentLink,
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
+        onCopyHomeTrace = onCopyHomeTrace,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
         currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
@@ -227,6 +229,7 @@ private fun HomeScreen(
     onRecentLinkSelected: (RecentLink) -> Unit,
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    onCopyHomeTrace: () -> String,
     activeDownloads: Int = 0,
     favoriteItems: List<FavoriteItem> = emptyList(),
     currentFavorite: Boolean = false,
@@ -374,9 +377,7 @@ private fun HomeScreen(
                             uiTraceLogger.interaction("HOME", "copy_trace_button", "copy_home_trace")
                             clipboard.setText(
                                 AnnotatedString(
-                                    (uiTraceLogger as? com.ahdownload.app.diagnostics.PersistentUiTraceLogger)
-                                        ?.exportHomeText()
-                                        ?: "AHDownload Home Screen Trace\nstatus=UNAVAILABLE",
+                                    onCopyHomeTrace(),
                                 ),
                             )
                         },
@@ -851,6 +852,7 @@ private fun HomeScreen(
                         platform = state.result?.platform?.name,
                         kind = state.result?.kind,
                         favorite = currentFavorite,
+                        uiTraceLogger = uiTraceLogger,
                         onToggleFavorite = {
                             uiTraceLogger.interaction(
                                 "HOME",
@@ -1248,6 +1250,7 @@ private fun UnifiedDownloadResultCard(
     durationMs: Long?,
     platform: String?,
     kind: MediaKind?,
+    uiTraceLogger: UiTraceLogger,
     favorite: Boolean,
     onToggleFavorite: () -> Unit,
     primaryOptions: List<MediaPresentationModel>,
