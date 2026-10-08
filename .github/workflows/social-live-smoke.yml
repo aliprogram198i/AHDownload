@@ -77,14 +77,14 @@ jobs:
           ulimit -n 65535 || true
           export ADB_INSTALL_TIMEOUT=600
           emulator -list-avds > "$GITHUB_WORKSPACE/social-smoke-artifacts/avds.txt" 2>&1 || true
+          adb kill-server >/dev/null 2>&1 || true
+          adb start-server >/dev/null 2>&1 || true
+
           emulator -avd social-smoke -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -camera-back none -accel on -netdelay none -netspeed full -no-metrics > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" 2>&1 &
           EMULATOR_PID=$!
           echo "$EMULATOR_PID" > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.pid"
-
-          adb kill-server >/dev/null 2>&1 || true
-          adb start-server >/dev/null 2>&1 || true
           if ! timeout 300s adb wait-for-device; then
-            echo "ADB did not detect the emulator within 180 seconds."
+            echo "ADB did not detect the emulator within 300 seconds."
             cat "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" || true
             adb devices -l || true
             kill "$EMULATOR_PID" 2>/dev/null || true
@@ -137,6 +137,7 @@ jobs:
 
           echo "Emulator booted successfully."
           adb -s "$DEVICE" wait-for-device >/dev/null 2>&1 || true
+          adb -s "$DEVICE" get-state >/dev/null 2>&1
           adb -s "$DEVICE" shell settings put global window_animation_scale 0.0 || true
           adb -s "$DEVICE" shell settings put global transition_animation_scale 0.0 || true
           adb -s "$DEVICE" shell settings put global animator_duration_scale 0.0 || true
