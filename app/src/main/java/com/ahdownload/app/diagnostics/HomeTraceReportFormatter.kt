@@ -2,9 +2,10 @@ package com.ahdownload.app.diagnostics
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.UiTraceEvent
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Focused timeline for reconstructing exactly what happened on the HOME screen.
@@ -173,9 +174,12 @@ object HomeTraceReportFormatter {
     }
 
     private fun formatTime(epochMs: Long): String =
-        DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(
-            Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()),
-        )
+        SimpleDateFormat(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            Locale.US,
+        ).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date(epochMs))
 
     private val TRACE_KEYS_TO_HIDE = setOf(
         "app_package", "app_version_name", "app_version_code", "app_build_type",
