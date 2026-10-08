@@ -71,9 +71,13 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         .split('&')
                         .firstNotNullOfOrNull { part ->
                             val pieces = part.split('=', limit = 2)
-                            if (pieces.size == 2 && pieces[0].equals("pot", ignoreCase = true)) {
-                                pieces[1].takeIf { it.isNotBlank() }
-                            } else null
+                            if (pieces.size != 2) return@firstNotNullOfOrNull null
+                            val name = pieces[0].lowercase()
+                            if (name != "pot" && name != "potc" && !name.contains("po_token")) {
+                                return@firstNotNullOfOrNull null
+                            }
+                            java.net.URLDecoder.decode(pieces[1], "UTF-8")
+                                .takeIf { it.isNotBlank() }
                         }
                 }.getOrNull()
 
