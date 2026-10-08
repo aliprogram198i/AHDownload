@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -58,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,9 +70,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,6 +140,12 @@ fun HomeRoute(
 
     LaunchedEffect(initialUrl) {
         initialUrl?.takeIf { it.isNotBlank() }?.let {
+            uiTraceLogger.interaction(
+                "HOME",
+                "screen",
+                "received_initial_url",
+                mapOf("source" to "external_intent"),
+            )
             viewModel.onUrlChanged(it)
             onInitialUrlConsumed()
         }
@@ -228,9 +238,17 @@ private fun HomeScreen(
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
     val uiContext = rememberUiTraceContext()
+    val clipboard = LocalClipboardManager.current
 
+    DisposableEffect(Unit) {
+        uiTraceLogger.interaction("HOME", "screen", "entered")
+        onDispose {
+            uiTraceLogger.interaction("HOME", "screen", "exited")
+        }
+    }
 
     LaunchedEffect(
+        state.mode,
         state.url,
         state.analyzing,
         state.resolving,
@@ -241,6 +259,18 @@ private fun HomeScreen(
         state.validatingCandidateId,
         state.error,
         state.downloadQueued,
+        state.searching,
+        state.searchResults.size,
+        state.searchError,
+        state.selectedSearchIds.size,
+        state.batchDownloading,
+        state.batchIndex,
+        state.batchTotal,
+        state.batchQueued,
+        state.batchError,
+        state.recentLinks.size,
+        favoriteItems.size,
+        currentFavorite,
     ) {
         val components = buildList {
             add("topbar")
@@ -257,6 +287,9 @@ private fun HomeScreen(
             }
             if (state.error != null) add("error_card")
             if (state.downloadQueued) add("download_success")
+            if (state.searching) add("search_loading")
+            if (state.searchResults.isNotEmpty()) add("search_results")
+            if (state.batchDownloading) add("batch_download_progress")
         }.joinToString(",")
 
         uiTraceLogger.snapshot(
@@ -274,7 +307,17 @@ private fun HomeScreen(
                 ";error=" + (state.error != null) +
                 ";show_all=" + state.showAll +
                 ";filter=" + state.resultFilter.name +
-                ";queued=" + state.downloadQueued,
+                ";queued=" + state.downloadQueued +
+                ";searching=" + state.searching +
+                ";search_results=" + state.searchResults.size +
+                ";search_selected=" + state.selectedSearchIds.size +
+                ";batch_downloading=" + state.batchDownloading +
+                ";batch=" + state.batchIndex + "/" + state.batchTotal +
+                ";batch_queued=" + state.batchQueued +
+                ";search_error=" + (state.searchError != null) +
+                ";recent_links=" + state.recentLinks.size +
+                ";favorites=" + favoriteItems.size +
+                ";current_favorite=" + currentFavorite,
             context = uiContext,
         )
     }
@@ -318,6 +361,20 @@ private fun HomeScreen(
                     Icon(Icons.Rounded.Download, contentDescription = "AHDownload")
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            uiTraceLogger.interaction("HOME", "copy_trace_button", "copy_home_trace")
+                            clipboard.setText(
+                                AnnotatedString(
+                                    (uiTraceLogger as? com.ahdownload.app.diagnostics.PersistentUiTraceLogger)
+                                        ?.exportHomeText()
+                                        ?: "AHDownload Home Screen Trace\nstatus=UNAVAILABLE",
+                                ),
+                            )
+                        },
+                    ) {
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الشاشة الرئيسية")
+                    }
                     IconButton(
                         onClick = {
                             uiTraceLogger.interaction("HOME", "settings_button", "open_settings")
@@ -382,7 +439,10 @@ private fun HomeScreen(
                     item {
                         FilterChip(
                             selected = state.mode == HomeMode.Link,
-                            onClick = { onModeChanged(HomeMode.Link) },
+                            onClick = {
+                                uiTraceLogger.interaction("HOME", "mode_link", "switch_to_link")
+                                onModeChanged(HomeMode.Link)
+                            },
                             label = { Text("رابط") },
                             leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                         )
@@ -391,6 +451,7 @@ private fun HomeScreen(
                         FilterChip(
                             selected = state.mode == HomeMode.Search,
                             onClick = {
+                                uiTraceLogger.interaction("HOME", "mode_search", "switch_to_search")
                                 onModeChanged(HomeMode.Search)
                             },
                             label = { Text("بحث YouTube") },
@@ -441,6 +502,7 @@ private fun HomeScreen(
                                     IconButton(
                                         enabled = !state.analyzing && !state.resolving,
                                         onClick = {
+                                            uiTraceLogger.interaction("HOME", "paste_button", "paste_clipboard")
                                             val clipboard =
                                                 androidContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                                             val pasted = clipboard?.primaryClip
@@ -450,6 +512,15 @@ private fun HomeScreen(
                                                 ?.toString()
                                                 ?.trim()
                                                 .orEmpty()
+                                            uiTraceLogger.interaction(
+                                                "HOME",
+                                                "paste_button",
+                                                "clipboard_read",
+                                                mapOf(
+                                                    "text_present" to pasted.isNotBlank().toString(),
+                                                    "text_length" to pasted.length.toString(),
+                                                ),
+                                            )
                                             if (pasted.isNotBlank()) {
                                                 onPasteLink(pasted)
                                             }
@@ -461,6 +532,12 @@ private fun HomeScreen(
                                         IconButton(
                                             enabled = !state.analyzing && !state.resolving,
                                             onClick = {
+                                                uiTraceLogger.interaction(
+                                                    "HOME",
+                                                    "clear_input_button",
+                                                    "clear_url",
+                                                    mapOf("previous_length" to state.url.length.toString()),
+                                                )
                                                 onUrlChanged("")
                                             },
                                         ) {
