@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -42,10 +43,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.ahdownload.app.BuildConfig
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.core.common.AudioBitratePreference
@@ -408,6 +411,47 @@ fun SettingsRoute(
                             )
                         }
                     }
+
+                    if (themeMode == AHThemeMode.DARK_TECH) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF0B0F19),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Dark Tech",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = Color(0xFFF2F7FF),
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = Color(0xFF21D9FF).copy(alpha = 0.14f),
+                                    ) {
+                                        Text(
+                                            "Engine Ready",
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF21D9FF),
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "Obsidian عميق مع Cyan وIndigo وإضاءات خفيفة بدون تشتيت.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFA9B6C7),
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -583,7 +627,15 @@ private fun SettingsSectionTitle(title: String) {
 
 @Composable
 private fun SettingsCard(content: @Composable () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
+        ),
+    ) {
         Column(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
