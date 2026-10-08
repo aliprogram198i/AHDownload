@@ -39,4 +39,25 @@ class WebPageMediaParserTest {
             result.mediaUrls.single(),
         )
     }
+
+    @Test
+    fun keepsHlsAndDashManifestUrls() {
+        val html = """
+            <meta property="og:video" content="https://cdn.example.com/master.m3u8?token=a+b">
+            <source src="https://cdn.example.com/stream.mpd?session=1">
+        """.trimIndent()
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://example.com/post",
+        )
+
+        assertEquals(
+            setOf(
+                "https://cdn.example.com/master.m3u8?token=a+b",
+                "https://cdn.example.com/stream.mpd?session=1",
+            ),
+            result.mediaUrls.toSet(),
+        )
+    }
 }
