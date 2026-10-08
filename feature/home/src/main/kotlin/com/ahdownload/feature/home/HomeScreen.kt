@@ -1097,7 +1097,6 @@ private fun UnifiedDownloadResultCard(
     validatingCandidateId: String?,
     selectedAudioOutputFormat: AudioOutputFormat?,
     onSelect: (MediaPresentationModel) -> Unit,
-    onSelectAudio: (MediaPresentationModel) -> Unit,
     onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
