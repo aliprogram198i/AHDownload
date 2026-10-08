@@ -97,6 +97,8 @@ class DownloadWorkScheduler(
                 (runCatching { task.processingMode }.getOrNull() ?: DownloadProcessingMode.Direct).name,
             )
             .putString(DownloadWorker.KEY_AUDIO_OUTPUT_FORMAT, task.audioOutputFormat?.name)
+            .putString(DownloadWorker.KEY_COMPANION_AUDIO_SOURCE_URL, task.companionAudioSourceUrl)
+            .putString(DownloadWorker.KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST, task.companionAudioSessionCookieHost)
             .putBoolean(DownloadWorker.KEY_FORCE_REFRESH, forceRefresh)
             .apply {
                 task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
@@ -127,6 +129,16 @@ class DownloadWorkScheduler(
                     ?.value?.let { putString(DownloadWorker.KEY_SEC_CH_UA_MOBILE, it) }
                 task.requestHeaders.entries.firstOrNull { it.key.equals("Sec-CH-UA-Platform", ignoreCase = true) }
                     ?.value?.let { putString(DownloadWorker.KEY_SEC_CH_UA_PLATFORM, it) }
+                task.companionAudioRequestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_COMPANION_AUDIO_USER_AGENT, it) }
+                task.companionAudioRequestHeaders.entries.firstOrNull { it.key.equals("Referer", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_COMPANION_AUDIO_REFERER, it) }
+                task.companionAudioRequestHeaders.entries.firstOrNull { it.key.equals("Origin", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_COMPANION_AUDIO_ORIGIN, it) }
+                task.companionAudioRequestHeaders.entries.firstOrNull { it.key.equals("Accept", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_COMPANION_AUDIO_ACCEPT, it) }
+                task.companionAudioRequestHeaders.entries.firstOrNull { it.key.equals("Accept-Language", ignoreCase = true) }
+                    ?.value?.let { putString(DownloadWorker.KEY_COMPANION_AUDIO_ACCEPT_LANGUAGE, it) }
             }
             .build()
 
