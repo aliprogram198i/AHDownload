@@ -30,6 +30,7 @@ class AndroidBrowserMediaSessionProvider(
             var timeout: Runnable? = null
             var finished = false
             var fastFinishScheduled = false
+            lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
             var title: String? = null
@@ -80,7 +81,7 @@ class AndroidBrowserMediaSessionProvider(
                     fastFinishScheduled = true
                     main.postDelayed({
                         if (finished) return@postDelayed
-                        webView?.let(::inspect)
+                        webView?.let { inspect(it) }
                     }, 350L)
                 }
             }
@@ -106,7 +107,7 @@ class AndroidBrowserMediaSessionProvider(
                 if (continuation.isActive) continuation.resume(result)
             }
 
-            fun inspect(view: WebView) {
+            inspect = fun(view: WebView) {
                 if (finished) return
                 val script = """
                     (function(){
