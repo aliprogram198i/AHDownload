@@ -13,11 +13,20 @@ import java.net.URLDecoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 class SocialPlatformResolver(
     private val provider: BrowserMediaSessionProvider,
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
+    private val pageClient: HttpTextClient = OkHttpTextClient(
+        client = OkHttpClient.Builder()
+            .callTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .connectTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .build(),
+    ),
 ) : PlatformAdapter {
 
     private val supported = setOf(
@@ -89,7 +98,7 @@ class SocialPlatformResolver(
                     null,
                 )
                 try {
-                    fallback = OkHttpTextClient().get(pageUrl)
+                    fallback = pageClient.get(pageUrl)
                         .let { WebPageMediaParser.parse(it, pageUrl) }
                     logger.log(
                         DiagnosticLevel.INFO,
@@ -311,5 +320,6 @@ class SocialPlatformResolver(
 
     private companion object {
         const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
+        const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
     }
 }
