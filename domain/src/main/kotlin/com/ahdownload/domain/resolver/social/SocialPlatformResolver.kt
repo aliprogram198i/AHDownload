@@ -181,7 +181,8 @@ class SocialPlatformResolver(
                 hasAudio = when (kind) {
                     MediaKind.Audio -> true
                     MediaKind.Video -> audioPresence ?: true
-                    MediaKind.Image -> false
+                    MediaKind.Image,
+                    MediaKind.Unknown -> false
                 },
             ),
             requestHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
