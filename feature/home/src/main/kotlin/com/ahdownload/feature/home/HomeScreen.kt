@@ -145,6 +145,7 @@ fun HomeRoute(
         state = state,
         logger = logger,
         onUrlChanged = viewModel::onUrlChanged,
+        onPasteLink = viewModel::setUrlAndAnalyze,
         onAnalyze = viewModel::analyze,
         onSelectCandidate = viewModel::selectCandidate,
         onSelectAudioCandidate = viewModel::selectAudioCandidate,
@@ -197,6 +198,7 @@ private fun HomeScreen(
     state: HomeUiState,
     logger: DiagnosticLogger,
     onUrlChanged: (String) -> Unit,
+    onPasteLink: (String) -> Unit,
     onAnalyze: () -> Unit,
     onSelectCandidate: (String) -> Unit,
     onSelectAudioCandidate: (String) -> Unit,
@@ -449,8 +451,7 @@ private fun HomeScreen(
                                                 ?.trim()
                                                 .orEmpty()
                                             if (pasted.isNotBlank()) {
-                                                
-                                                onUrlChanged(pasted)
+                                                onPasteLink(pasted)
                                             }
                                         },
                                     ) {
