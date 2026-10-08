@@ -119,41 +119,86 @@ class SocialPlatformResolver(
         index: Int,
         requestHeaders: Map<String, String>?,
     ): MediaCandidate? {
-        val mime = runCatching { URI(sourceUrl).rawQuery.orEmpty() }
-            .getOrDefault("")
-            .split('&')
-            .firstNotNullOfOrNull { part ->
-                val key = part.substringBefore('=')
-                val value = part.substringAfter('=', "")
-                if (key.equals("mime", true) || key.equals("content-type", true) || key.equals("type", true)) {
-                    runCatching { URLDecoder.decode(value, "UTF-8") }.getOrNull()
-                } else null
+        val queryValues = runCatching {
+            URI(sourceUrl).rawQuery.orEmpty()
+                .split('&')
+                .mapNotNull { part ->
+                    if (part.isBlank()) return@mapNotNull null
+                    val key = part.substringBefore('=')
+                    val rawValue = part.substringAfter('=', "")
+                    val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrDefault(rawValue)
+                    key to value
+                }
+        }.getOrDefault(emptyList())
+
+        val mediaTypeKeys = setOf(
+            "mime",
+            "mime_type",
+            "mimetype",
+            "mimetype",
+            "content-type",
+            "content_type",
+            "contentType",
+            "type",
+            "media_type",
+            "mediaType",
+            "format",
+            "media_format",
+            "video_mime_type",
+            "audio_mime_type",
+        )
+
+        val mediaValue = queryValues
+            .firstOrNull { (key, value) ->
+                key in mediaTypeKeys || value.contains("video/", true) || value.contains("audio/", true)
             }
+            ?.second
             .orEmpty()
             .lowercase()
 
         val path = sourceUrl.substringBefore('?').substringBefore('#')
         val extension = path.substringAfterLast('.', "").lowercase()
+        val queryExtension = queryValues
+            .firstOrNull { (key, _) -> key.equals("ext", true) || key.equals("extension", true) || key.equals("format", true) }
+            ?.second
+            ?.substringBefore('?')
+            ?.lowercase()
+            .orEmpty()
 
         val kind = when {
-            mime.startsWith("video") || extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
-            mime.startsWith("audio") || extension in setOf("mp3", "m4a", "aac", "ogg", "flac", "wav") -> MediaKind.Audio
-            mime.startsWith("image") || extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
+            mediaValue.startsWith("video") || mediaValue.contains("video/") -> MediaKind.Video
+            mediaValue.startsWith("audio") || mediaValue.contains("audio/") -> MediaKind.Audio
+            extension in VIDEO_EXTENSIONS || queryExtension in VIDEO_EXTENSIONS -> MediaKind.Video
+            extension in AUDIO_EXTENSIONS || queryExtension in AUDIO_EXTENSIONS -> MediaKind.Audio
+            isLikelyVideoPath(sourceUrl) -> MediaKind.Video
             else -> return null
         }
 
-        val height = Regex("""(?i)(?:[?&](?:height|h|resolution|quality)=|/)(\d{3,4})p?""")
-            .find(sourceUrl)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val height = (
+            Regex("""(?i)(?:[?&](?:height|h|resolution|quality)=|/)(\\d{3,4})p?""")
+                .find(sourceUrl)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
+                ?: queryValues.firstOrNull { (key, _) ->
+                    key.equals("height", true) || key.equals("video_height", true) || key.equals("h", true)
+                }?.second?.toIntOrNull()
+        )
 
+        val effectiveExtension = extension.ifBlank { queryExtension }
         val container = when {
-            extension == "mp4" || mime.contains("mp4") -> MediaContainer.Mp4
-            extension == "webm" -> MediaContainer.Webm
-            extension == "mov" || mime.contains("quicktime") -> MediaContainer.Mov
-            extension == "m4a" -> MediaContainer.M4a
-            extension == "mp3" || mime.contains("mpeg") -> MediaContainer.Mp3
-            extension == "aac" -> MediaContainer.Aac
-            extension == "ogg" -> MediaContainer.Ogg
-            extension == "flac" -> MediaContainer.Flac
+            effectiveExtension == "mp4" || mediaValue.contains("video/mp4") -> MediaContainer.Mp4
+            effectiveExtension == "webm" || mediaValue.contains("video/webm") -> MediaContainer.Webm
+            effectiveExtension == "mov" || mediaValue.contains("quicktime") -> MediaContainer.Mov
+            effectiveExtension == "mkv" -> MediaContainer.Mkv
+            effectiveExtension == "m4a" || mediaValue.contains("audio/mp4") -> MediaContainer.M4a
+            effectiveExtension == "mp3" || mediaValue.contains("audio/mpeg") -> MediaContainer.Mp3
+            effectiveExtension == "aac" -> MediaContainer.Aac
+            effectiveExtension == "ogg" -> MediaContainer.Ogg
+            effectiveExtension == "flac" -> MediaContainer.Flac
+            effectiveExtension == "wav" -> MediaContainer.Wav
+            effectiveExtension == "3gp" -> MediaContainer.ThreeGp
+            effectiveExtension == "avi" -> MediaContainer.Avi
             else -> MediaContainer.Unknown
         }
 
@@ -170,7 +215,18 @@ class SocialPlatformResolver(
             ),
             requestHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
             sessionCookieHost = safeHost(sourceUrl),
+            sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
         )
+    }
+
+    private fun isLikelyVideoPath(sourceUrl: String): Boolean {
+        val lower = sourceUrl.lowercase()
+        return Regex("""/(?:video|videos|videoplayback|playback|stream|media|download)(?:/|[?]|$)""").containsMatchIn(lower)
+    }
+
+    private companion object {
+        val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi")
+        val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "aac", "ogg", "flac", "wav")
     }
 
     private fun safeHeader(name: String): Boolean = when {
