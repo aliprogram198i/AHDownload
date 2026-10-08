@@ -15,7 +15,7 @@ concurrency:
 jobs:
   social-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -74,13 +74,16 @@ jobs:
           export ANDROID_EMULATOR_HOME="$HOME/.android"
           mkdir -p "$GITHUB_WORKSPACE/social-smoke-artifacts"
 
+          ulimit -n 65535 || true
+          export ADB_INSTALL_TIMEOUT=600
           emulator -list-avds > "$GITHUB_WORKSPACE/social-smoke-artifacts/avds.txt" 2>&1 || true
-          emulator -avd social-smoke -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -accel on -netdelay none -netspeed full > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" 2>&1 &
+          emulator -avd social-smoke -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -no-snapshot-save -camera-back none -accel on -netdelay none -netspeed full -no-metrics > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" 2>&1 &
           EMULATOR_PID=$!
           echo "$EMULATOR_PID" > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.pid"
 
+          adb kill-server >/dev/null 2>&1 || true
           adb start-server >/dev/null 2>&1 || true
-          if ! timeout 180s adb wait-for-device; then
+          if ! timeout 300s adb wait-for-device; then
             echo "ADB did not detect the emulator within 180 seconds."
             cat "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" || true
             adb devices -l || true
@@ -106,7 +109,7 @@ jobs:
           if [ "$BOOTED" -ne 1 ]; then
             echo "Android emulator did not reach boot_completed=1."
             adb devices -l || true
-            adb -e logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
+            adb -s "$DEVICE" logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
             cat "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" || true
             kill "$EMULATOR_PID" 2>/dev/null || true
             wait "$EMULATOR_PID" 2>/dev/null || true
@@ -114,20 +117,22 @@ jobs:
           fi
 
           echo "Emulator booted successfully."
-          adb -e shell settings put global window_animation_scale 0.0 || true
-          adb -e shell settings put global transition_animation_scale 0.0 || true
-          adb -e shell settings put global animator_duration_scale 0.0 || true
+          adb -s "$DEVICE" wait-for-device >/dev/null 2>&1 || true
+          adb -s "$DEVICE" shell settings put global window_animation_scale 0.0 || true
+          adb -s "$DEVICE" shell settings put global transition_animation_scale 0.0 || true
+          adb -s "$DEVICE" shell settings put global animator_duration_scale 0.0 || true
+          adb -s "$DEVICE" shell pm list packages | grep -E 'webview|chrome' > "$GITHUB_WORKSPACE/social-smoke-artifacts/webview-packages.txt" 2>&1 || true
 
           gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.social.SocialDownloadSmokeTest --stacktrace
           TEST_EXIT=$?
 
-          adb -e logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
-          adb -e shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'" > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+          adb -s "$DEVICE" logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
+          adb -s "$DEVICE" shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'" > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
           if [ -d app/build/reports/androidTests/connected ]; then
             cp -R app/build/reports/androidTests/connected "$GITHUB_WORKSPACE/social-smoke-artifacts/android-tests-report"
           fi
 
-          adb -e emu kill >/dev/null 2>&1 || true
+          adb -s "$DEVICE" emu kill >/dev/null 2>&1 || true
           wait "$EMULATOR_PID" 2>/dev/null || true
           exit "$TEST_EXIT"
 
