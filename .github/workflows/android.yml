@@ -231,32 +231,19 @@ jobs:
           test -s "$BADGING_FILE"
 
           echo "== Android package compatibility =="
-          BADGING="$(cat "$BADGING_FILE")"
+          PACKAGE_LINE="$(grep -m1 '^package:' "$BADGING_FILE")"
+          echo "$PACKAGE_LINE"
 
-          test -n "$BADGING"
-
-          # Parse the already-verified aapt2 badging output explicitly.
-          # This avoids relying on exact quoting/formatting around the markers
-          # while keeping the compatibility check strict and deterministic.
-          # Extract exact aapt2 markers from the verified badging output.
-          PACKAGE_LINE="$(printf '%s\n' "$BADGING" | grep -m1 '^package:')"
-          PACKAGE_NAME="$(printf '%s\n' "$PACKAGE_LINE" | grep -oE "name='[^']+'" | head -n1 | cut -d"'" -f2)"
-          MIN_SDK="$(printf '%s\n' "$PACKAGE_LINE" | grep -oE "sdkVersion:'[^']+'" | head -n1 | cut -d"'" -f2)"
-          TARGET_SDK="$(printf '%s\n' "$PACKAGE_LINE" | grep -oE "targetSdkVersion:'[^']+'" | head -n1 | cut -d"'" -f2)"
-
-          test -n "$PACKAGE_NAME"
-          test -n "$MIN_SDK"
-          test -n "$TARGET_SDK"
-
-          test "$PACKAGE_NAME" = "com.ahdownload.app"
-          test "$MIN_SDK" = "24"
-          test "$TARGET_SDK" = "36"
+          test -n "$PACKAGE_LINE"
+          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "name='com\.ahdownload\.app'"
+          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "sdkVersion:'24'"
+          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "targetSdkVersion:'36'"
 
           cp "$BADGING_FILE" apk-compatibility.txt
 
-          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"
-          echo "Confirmed targetSdkVersion=$TARGET_SDK"
-          echo "Confirmed applicationId=$PACKAGE_NAME"
+          echo "Confirmed minSdkVersion=24 (Android 7.0 Nougat)"
+          echo "Confirmed targetSdkVersion=36"
+          echo "Confirmed applicationId=com.ahdownload.app"
 
       - name: Package verification outputs
         run: |
