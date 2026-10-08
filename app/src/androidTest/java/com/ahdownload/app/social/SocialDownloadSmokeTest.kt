@@ -41,16 +41,16 @@ class SocialDownloadSmokeTest {
         val outputDir = File(context.cacheDir, "social-smoke").apply { mkdirs() }
 
         val cases = listOf(
-            Case("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DWgvoQ3jcFs/"),
-            Case("Facebook", MediaPlatform.Facebook, "https://www.facebook.com/attn/posts/pfbid0j1Czf2gGDVqeQ8KiMLFm3pWN8GxsQmeRrVhimWDzMuKQoR8r4b1knNsejELmUgyhl"),
-            Case("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/t/ZTRC5xgJp"),
+            Case("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DbAqmKPIaY5/"),
+            Case("Facebook", MediaPlatform.Facebook, "https://www.facebook.com/amburexpress/videos/chinnaswamy-stadium-declared-unsafe-ipl-2026-matches-banned-at-rcbs-home-ground-/1260993795428923/"),
+            Case("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Case("X", MediaPlatform.X, "https://x.com/historyinmemes/status/1790637656616943991"),
-            Case("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight"),
-            Case("Pinterest", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/664281013778109217/"),
-            Case("Reddit", MediaPlatform.Reddit, "https://www.reddit.com/r/videos/comments/6rrwyj/that_small_heart_attack/"),
+            Case("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/p/8af53eee-e298-40c4-9d6e-af20cf881b61/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYnZzdm1qc3l3AZu7sQlkAZu7sKUTAAAAAQ"),
+            Case("Pinterest", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/144326363052341106/"),
+            Case("Reddit", MediaPlatform.Reddit, "https://www.reddit.com/r/vancouver/comments/1u8t3rd/i_filmed_a_day_to_night_timelapse_last_night_of/"),
             Case("Twitch", MediaPlatform.Twitch, "https://www.twitch.tv/videos/635475444"),
-            Case("Vimeo", MediaPlatform.Vimeo, "https://vimeo.com/56015672"),
-            Case("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=BaW_jenozKc"),
+            Case("Vimeo", MediaPlatform.Vimeo, "https://vimeo.com/1182776978"),
+            Case("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
         )
 
         val results = mutableListOf<CaseResult>()
