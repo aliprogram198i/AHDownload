@@ -1,5 +1,7 @@
 package com.ahdownload.domain.validation
 
+import com.ahdownload.domain.resolver.MediaSourceContext
+
 data class MediaProbeResult(
     val statusCode: Int,
     val contentType: String?,
@@ -14,5 +16,6 @@ interface MediaProbe {
         url: String,
         headers: Map<String, String> = emptyMap(),
         operationId: String? = null,
+        sourceContext: MediaSourceContext = MediaSourceContext.RESOLVER_GENERATED,
     ): MediaProbeResult
 }
