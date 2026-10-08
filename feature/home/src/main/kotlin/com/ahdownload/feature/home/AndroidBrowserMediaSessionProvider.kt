@@ -110,17 +110,14 @@ class AndroidBrowserMediaSessionProvider(
                         view.postDelayed({ inspect(view) }, 250L)
                     }
 
-                    // Keep collecting media briefly after the first playable request so
-                    // a preload/thumbnail stream cannot prevent later quality streams
-                    // or audio sources from being captured. The window remains bounded.
+                    // Keep collecting media after the first playable request until
+                    // one fixed deadline. Repeated requests must never extend it.
                     settleFinish?.let(main::removeCallbacks)
-                    val elapsed = (System.currentTimeMillis() - firstMediaObservedAt).coerceAtLeast(0L)
-                    val remaining = (MAX_MEDIA_CAPTURE_WINDOW_MS - elapsed)
-                        .coerceAtLeast(SETTLE_FINISH_DELAY_MS)
+                    val deadline = firstMediaObservedAt + MAX_MEDIA_CAPTURE_WINDOW_MS
+                    val remaining = (deadline - System.currentTimeMillis()).coerceAtLeast(0L)
                     settleFinish = Runnable { finish() }.also {
-                        main.postDelayed(it, remaining.coerceAtMost(MAX_MEDIA_CAPTURE_WINDOW_MS))
-                    }
-                }
+                        main.postDelayed(it, remaining)
+                    }                }
             }
 
             inspect = fun(view: WebView) {
@@ -226,7 +223,6 @@ class AndroidBrowserMediaSessionProvider(
 
     private companion object {
         const val MAX_MEDIA_URLS = 64
-        const val SETTLE_FINISH_DELAY_MS = 1200L
         const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
         val MEDIA_EXTENSIONS = setOf("mp4","m4v","webm","mov","mkv","3gp","avi","m4a","mp3","aac","ogg","flac","wav")
