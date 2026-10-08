@@ -59,6 +59,7 @@ class AndroidBrowserMediaSessionProvider(
                 input.forEach { (name, value) ->
                     when (name.lowercase()) {
                         "user-agent" -> put("User-Agent", value)
+                        "cookie" -> put("Cookie", value)
                         "referer" -> put("Referer", value)
                         "origin" -> put("Origin", value)
                         "accept" -> put("Accept", value)
@@ -74,7 +75,12 @@ class AndroidBrowserMediaSessionProvider(
                 val value = raw?.trim().orEmpty()
                 if (!isMedia(value)) return
                 mediaUrls.add(value)
-                val safe = safeHeaders(headers)
+                val safe = safeHeaders(headers).toMutableMap()
+                runCatching {
+                    CookieManager.getInstance().getCookie(value)
+                }.getOrNull()?.takeIf { it.isNotBlank() }?.let { cookie ->
+                    safe["Cookie"] = cookie
+                }
                 if (safe.isNotEmpty()) requestHeaders[value] = safe
 
                 if (isLikelyPlayableMedia(value) && !fastFinishScheduled) {
@@ -177,11 +183,11 @@ class AndroidBrowserMediaSessionProvider(
                         view.postDelayed({ inspect(view) }, 450L)
                         view.postDelayed({ inspect(view) }, 1400L)
                         view.postDelayed({ inspect(view) }, 2600L)
-                        view.postDelayed({ finish() }, 4800L)
+                        view.postDelayed({ finish() }, 8000L)
                     }
                 }
                 timeout = Runnable { finish() }
-                main.postDelayed(timeout!!, 10000L)
+                main.postDelayed(timeout!!, 15000L)
                 view.loadUrl(url)
             }
         }
