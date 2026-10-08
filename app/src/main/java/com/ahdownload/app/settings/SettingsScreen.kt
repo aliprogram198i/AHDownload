@@ -3,23 +3,27 @@ package com.ahdownload.app.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -27,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -36,11 +41,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ahdownload.app.BuildConfig
+import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.core.common.AudioBitratePreference
+import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.core.common.DiagnosticLog
 import com.ahdownload.core.common.DownloadPreferences
 import com.ahdownload.core.common.DownloadPreferencesProvider
 import com.ahdownload.core.common.UiTraceLogger
@@ -49,12 +59,19 @@ import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
 import com.ahdownload.core.designsystem.AHBottomNavigationBar
+import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.core.designsystem.rememberUiTraceContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsRoute(
     store: DownloadLocationStore,
+    diagnosticLogger: PersistentDiagnosticLogger,
+    themeMode: AHThemeMode,
+    onThemeChanged: (AHThemeMode) -> Unit,
     onPickDownloadFolder: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenUiDiagnostics: () -> Unit,
@@ -72,17 +89,23 @@ fun SettingsRoute(
     var folderName by remember { mutableStateOf("") }
     var folderError by remember { mutableStateOf<String?>(null) }
     var storageInfo by remember(context) { mutableStateOf(StorageInfoReader.read(context)) }
+    var latestError by remember { mutableStateOf<DiagnosticLog?>(null) }
     val uiContext = rememberUiTraceContext()
 
-    LaunchedEffect(location, showFolderDialog, folderError) {
+    LaunchedEffect(Unit) {
+        latestError = diagnosticLogger.list().firstOrNull { it.level == DiagnosticLevel.ERROR }
+    }
+
+    LaunchedEffect(location, showFolderDialog, folderError, themeMode, latestError) {
         uiTraceLogger.snapshot(
             screen = "SETTINGS",
             component = "SettingsScreen",
             components = buildList {
                 add("topbar")
-                add("download_location")
-                add("storage_health")
-                add("advanced_diagnostics")
+                add("download_preferences")
+                add("storage")
+                add("appearance")
+                add("diagnostics")
                 add("about")
                 add("bottom_navigation")
                 if (showFolderDialog) add("create_folder_dialog")
@@ -91,8 +114,8 @@ fun SettingsRoute(
             stateSummary = "custom=" + location.isCustom +
                 ";accessible=" + location.isAccessible +
                 ";storage_free_percent=" + ((storageInfo.freeRatio * 100f).toInt()) +
-                ";dialog=" + showFolderDialog +
-                ";error=" + (folderError != null),
+                ";theme=" + themeMode.storageValue +
+                ";latest_error=" + (latestError != null),
             context = uiContext,
         )
     }
@@ -131,277 +154,361 @@ fun SettingsRoute(
             )
         },
     ) { padding ->
-        androidx.compose.foundation.lazy.LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                Text("الإعدادات", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "تحكم في مكان حفظ الملفات وأدوات التشخيص بدون تعطيل مسار التنزيل الأساسي.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "الإعدادات",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "كل ما تحتاجه لضبط التنزيل والتخزين والمظهر والتشخيص في مكان واحد.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            item { SettingsSectionTitle("التنزيل") }
+
+            item {
+                SettingsCard {
+                    SettingsSwitchRow(
+                        title = "التنزيل الذكي",
+                        description = "اختيار أفضل مصدر صالح تلقائيًا عند بدء تنزيل جديد.",
+                        checked = preferences.smartDownload,
+                        onCheckedChange = {
+                            preferencesStore.setSmartDownload(it)
+                            preferences = preferences.copy(smartDownload = it)
+                        },
+                    )
+                    SettingsSwitchRow(
+                        title = "Wi‑Fi فقط",
+                        description = "تقييد التنزيلات الجديدة على شبكة Wi‑Fi.",
+                        checked = preferences.wifiOnly,
+                        onCheckedChange = {
+                            preferencesStore.setWifiOnly(it)
+                            preferences = preferences.copy(wifiOnly = it)
+                        },
+                    )
+                    Text("جودة الفيديو الافتراضية", style = MaterialTheme.typography.titleSmall)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(VideoQualityPreference.entries) { quality ->
+                            FilterChip(
+                                selected = preferences.videoQuality == quality,
+                                onClick = {
+                                    preferencesStore.setVideoQuality(quality)
+                                    preferences = preferences.copy(videoQuality = quality)
+                                },
+                                label = { Text(quality.label) },
+                            )
+                        }
+                    }
+                    Text("جودة الصوت الافتراضية", style = MaterialTheme.typography.titleSmall)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(AudioBitratePreference.entries) { bitrate ->
+                            FilterChip(
+                                selected = preferences.audioBitrate == bitrate,
+                                onClick = {
+                                    preferencesStore.setAudioBitrate(bitrate)
+                                    preferences = preferences.copy(audioBitrate = bitrate)
+                                },
+                                label = { Text(bitrate.label) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            item { SettingsSectionTitle("التخزين") }
+
+            item {
+                SettingsCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Folder, contentDescription = null)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                "مجلد التنزيل",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(location.displayName, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                when {
+                                    !location.isAccessible -> "غير متاح — أعد اختيار المجلد"
+                                    location.isCustom -> "صلاحية القراءة والكتابة فعالة"
+                                    else -> "المجلد الافتراضي للتطبيق فعال"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (location.isAccessible) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder")
+                            onPickDownloadFolder()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("تغيير مجلد التنزيل")
+                    }
+
+                    if (location.isCustom) {
+                        OutlinedButton(
+                            onClick = {
+                                uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset")
+                                store.resetToDefault()
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("العودة للمجلد الافتراضي")
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog")
+                                folderError = null
+                                folderName = ""
+                                showFolderDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Rounded.CreateNewFolder, contentDescription = null)
+                            Text("إنشاء مجلد داخل المسار")
+                        }
+                    }
+                }
             }
 
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                SettingsCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.Folder, contentDescription = null)
-                        Text("مكان التنزيل", style = MaterialTheme.typography.titleMedium)
-                        Text(location.displayName, style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            when {
-                                !location.isAccessible -> "غير متاح — أعد اختيار المجلد"
-                                location.isCustom -> "صلاحية القراءة والكتابة فعالة"
-                                else -> "المسار الافتراضي للتطبيق فعال"
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                "صحة التخزين",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                "المساحة المتاحة على وحدة التخزين المستخدمة من AHDownload.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                uiTraceLogger.interaction("SETTINGS", "storage_refresh", "refresh")
+                                storageInfo = StorageInfoReader.read(context)
                             },
-                            color = if (location.isAccessible) {
+                        ) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = "تحديث مساحة التخزين")
+                        }
+                    }
+                    LinearProgressIndicator(
+                        progress = { storageInfo.freeRatio },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            "متاح " + formatStorageBytes(storageInfo.freeBytes),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            "من " + formatStorageBytes(storageInfo.totalBytes),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        if (storageInfo.isLow) {
+                            "المساحة منخفضة. قد تفشل الملفات الكبيرة."
+                        } else {
+                            "التخزين ضمن النطاق الطبيعي."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (storageInfo.isLow) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+            }
+
+            item { SettingsSectionTitle("المظهر") }
+
+            item {
+                SettingsCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Rounded.Palette, contentDescription = null)
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                "الثيم",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                themeMode.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(AHThemeMode.entries) { mode ->
+                            FilterChip(
+                                selected = themeMode == mode,
+                                onClick = {
+                                    uiTraceLogger.interaction(
+                                        "SETTINGS",
+                                        "theme_" + mode.storageValue,
+                                        "set_theme",
+                                    )
+                                    onThemeChanged(mode)
+                                },
+                                label = { Text(mode.label) },
+                            )
+                        }
+                    }
+                }
+            }
+
+            item { SettingsSectionTitle("التشخيص والدعم") }
+
+            item {
+                SettingsCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (latestError == null) {
+                                Icons.Rounded.CheckCircle
+                            } else {
+                                Icons.Rounded.ErrorOutline
+                            },
+                            contentDescription = null,
+                            tint = if (latestError == null) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.error
                             },
                         )
-                        Button(
-                            onClick = {
-                                uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder")
-                                onPickDownloadFolder()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text("تغيير مجلد التنزيل")
-                        }
-                        if (location.isCustom) {
-                            OutlinedButton(
-                                onClick = {
-                                    uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset")
-                                    store.resetToDefault()
+                            Text(
+                                "آخر مشكلة",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                if (latestError == null) {
+                                    "لا توجد أخطاء مسجلة حاليًا."
+                                } else {
+                                    latestError.type
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text("العودة للمجلد الافتراضي")
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog")
-                                    folderError = null
-                                    folderName = ""
-                                    showFolderDialog = true
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Icon(Icons.Rounded.CreateNewFolder, contentDescription = null)
-                                Text("إنشاء مجلد داخل المسار")
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            latestError?.let {
+                                Text(
+                                    it.reason,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                )
+                                Text(
+                                    formatDiagnosticTime(it.timestampEpochMs),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            uiTraceLogger.interaction("SETTINGS", "diagnostics_button", "open_diagnostics")
+                            onOpenDiagnostics()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.ErrorOutline, contentDescription = null)
+                        Text("فتح سجل الأخطاء")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            uiTraceLogger.interaction("SETTINGS", "ui_diagnostics_button", "open_ui_diagnostics")
+                            onOpenUiDiagnostics()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.BugReport, contentDescription = null)
+                        Text("تشخيص الواجهة")
                     }
                 }
             }
 
+            item { SettingsSectionTitle("حول") }
+
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                SettingsCard {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("صحة التخزين", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "المساحة المتاحة على وحدة التخزين المستخدمة من AHDownload.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            IconButton(
-                                onClick = {
-                                    uiTraceLogger.interaction("SETTINGS", "storage_refresh", "refresh")
-                                    storageInfo = StorageInfoReader.read(context)
-                                },
-                            ) {
-                                Icon(Icons.Rounded.Refresh, contentDescription = "تحديث مساحة التخزين")
-                            }
-                        }
-                        LinearProgressIndicator(
-                            progress = { storageInfo.freeRatio },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
+                        Icon(Icons.Rounded.Info, contentDescription = null)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("AHDownload", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                             Text(
-                                "متاح " + formatStorageBytes(storageInfo.freeBytes),
+                                "الإصدار " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")",
                                 style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
                             )
                             Text(
-                                "من " + formatStorageBytes(storageInfo.totalBytes),
+                                "تنزيل الوسائط مع التحقق من المصدر وإدارة التخزين والمعالجة محليًا.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Text(
-                            if (storageInfo.isLow) {
-                                "المساحة المتاحة منخفضة. قد يفشل تنزيل الملفات الكبيرة."
-                            } else {
-                                "استخدام التخزين ضمن النطاق الطبيعي."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (storageInfo.isLow) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                        )
-                    }
-                }
-            }
-
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Text("التنزيل الذكي", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "احفظ اختياراتك مرة واحدة ودع التطبيق يطبقها على التنزيلات الجديدة.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("اختيار ذكي", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "اختيار أفضل مصدر صالح تلقائيًا",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            androidx.compose.material3.Switch(
-                                checked = preferences.smartDownload,
-                                onCheckedChange = {
-                                    preferencesStore.setSmartDownload(it)
-                                    preferences = preferences.copy(smartDownload = it)
-                                },
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Wi‑Fi فقط", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "تقييد التنزيلات الجديدة على شبكة Wi‑Fi",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            androidx.compose.material3.Switch(
-                                checked = preferences.wifiOnly,
-                                onCheckedChange = {
-                                    preferencesStore.setWifiOnly(it)
-                                    preferences = preferences.copy(wifiOnly = it)
-                                },
-                            )
-                        }
-                        Text("جودة الفيديو الافتراضية", style = MaterialTheme.typography.bodyLarge)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(VideoQualityPreference.entries) { quality ->
-                                androidx.compose.material3.FilterChip(
-                                    selected = preferences.videoQuality == quality,
-                                    onClick = {
-                                        preferencesStore.setVideoQuality(quality)
-                                        preferences = preferences.copy(videoQuality = quality)
-                                    },
-                                    label = { Text(quality.label) },
-                                )
-                            }
-                        }
-                        Text("جودة الصوت الافتراضية", style = MaterialTheme.typography.bodyLarge)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(AudioBitratePreference.entries) { bitrate ->
-                                androidx.compose.material3.FilterChip(
-                                    selected = preferences.audioBitrate == bitrate,
-                                    onClick = {
-                                        preferencesStore.setAudioBitrate(bitrate)
-                                        preferences = preferences.copy(audioBitrate = bitrate)
-                                    },
-                                    label = { Text(bitrate.label) },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text("تشخيص متقدم", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "لا تظهر أدوات التشخيص في الصفحة الرئيسية؛ استخدمها عند فحص مشكلة محددة.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                uiTraceLogger.interaction("SETTINGS", "diagnostics_button", "open_diagnostics")
-                                onOpenDiagnostics()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Rounded.ErrorOutline, contentDescription = null)
-                            Text("سجل الأخطاء")
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                uiTraceLogger.interaction("SETTINGS", "ui_diagnostics_button", "open_ui_diagnostics")
-                                onOpenUiDiagnostics()
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Rounded.BugReport, contentDescription = null)
-                            Text("تشخيص الواجهة")
-                        }
-                    }
-                }
-            }
-
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(Icons.Rounded.Info, contentDescription = null)
-                        Text("حول AHDownload", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "الإصدار " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            "إدارة التنزيلات واختيار المصادر يتمان عبر طبقات التطبيق والتحقق قبل التنفيذ.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 }
             }
@@ -460,6 +567,59 @@ fun SettingsRoute(
         )
     }
 }
+
+@Composable
+private fun SettingsSectionTitle(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+        fontWeight = FontWeight.Bold,
+    )
+}
+
+@Composable
+private fun SettingsCard(content: @Composable Column.() -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun SettingsSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+private fun formatDiagnosticTime(epochMs: Long): String =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+        .format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
 
 class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
     private val preferences = context.applicationContext.getSharedPreferences(
