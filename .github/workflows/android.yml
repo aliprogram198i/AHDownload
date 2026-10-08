@@ -225,27 +225,20 @@ jobs:
           set -euo pipefail
 
           APK="app/build/outputs/apk/release/app-release.apk"
-          BADGING_FILE="apk-badging.txt"
+          AAPT2="$ANDROID_HOME/build-tools/36.1.0/aapt2"
 
           test -s "$APK"
-          test -s "$BADGING_FILE"
+          test -x "$AAPT2"
 
           echo "== Android package compatibility =="
-          PACKAGE_LINE="$(grep -m1 '^package:' "$BADGING_FILE")"
-          MIN_SDK_LINE="$(grep -m1 '^sdkVersion:' "$BADGING_FILE")"
-          TARGET_SDK_LINE="$(grep -m1 '^targetSdkVersion:' "$BADGING_FILE")"
-          echo "$PACKAGE_LINE"
-          echo "$MIN_SDK_LINE"
-          echo "$TARGET_SDK_LINE"
+          BADGING="$("$AAPT2" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:)" || true
 
-          test -n "$PACKAGE_LINE"
-          test -n "$MIN_SDK_LINE"
-          test -n "$TARGET_SDK_LINE"
+          printf '%s\n' "$BADGING" | grep -q "name='com.ahdownload.app'"
+          printf '%s\n' "$BADGING" | grep -q "sdkVersion:'24'"
+          printf '%s\n' "$BADGING" | grep -q "targetSdkVersion:'36'"
 
-          printf '%s\n' "$PACKAGE_LINE" | grep -Eq "name='com\.ahdownload\.app'"
-          printf '%s\n' "$MIN_SDK_LINE" | grep -Eq "^sdkVersion:'24'$"
-          printf '%s\n' "$TARGET_SDK_LINE" | grep -Eq "^targetSdkVersion:'36'$"
-          cp "$BADGING_FILE" apk-compatibility.txt
+          printf '%s\n' "$BADGING" > apk-compatibility.txt
 
           echo "Confirmed minSdkVersion=24 (Android 7.0 Nougat)"
           echo "Confirmed targetSdkVersion=36"
