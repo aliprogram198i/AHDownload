@@ -619,10 +619,26 @@ class YouTubeResolver(
     }
 
     private fun isDirectHttpMedia(url: String): Boolean {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return false
+        if (uri.scheme !in setOf("http", "https")) return false
+
         val lower = url.lowercase()
-        return (lower.startsWith("https://") || lower.startsWith("http://")) &&
-            !lower.contains(".m3u8") &&
-            !lower.startsWith("blob:")
+        if (lower.startsWith("blob:") || lower.contains(".m3u8") || lower.contains(".mpd")) return false
+        if (lower.contains("vnd.yt-ump") || lower.contains("ump=")) return false
+
+        val host = uri.host?.lowercase().orEmpty()
+        val path = uri.path.orEmpty().lowercase()
+        if (host == "youtube.com" || host.endsWith(".youtube.com")) return false
+
+        if (host == "googlevideo.com" || host.endsWith(".googlevideo.com")) {
+            return path.contains("/videoplayback")
+        }
+
+        val extension = path.substringAfterLast('.', "")
+        return extension in setOf(
+            "mp4", "m4v", "webm", "mov", "mkv", "3gp",
+            "m4a", "mp3", "aac", "ogg", "flac", "wav",
+        )
     }
 
     private fun containerFor(url: String, kind: MediaKind): MediaContainer {
