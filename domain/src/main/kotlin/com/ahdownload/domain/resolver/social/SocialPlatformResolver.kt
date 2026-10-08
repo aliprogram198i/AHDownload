@@ -145,8 +145,12 @@ class SocialPlatformResolver(
         val path = sourceUrl.substringBefore('?').substringBefore('#')
         val extension = path.substringAfterLast('.', "").lowercase()
 
+        val streamingManifest = extension in setOf("m3u8", "mpd") ||
+            mime.contains("mpegurl") ||
+            mime.contains("dash+xml")
+
         val kind = when {
-            mime.startsWith("video") || extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
+            streamingManifest || mime.startsWith("video") || extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
             mime.startsWith("audio") || extension in setOf("mp3", "m4a", "aac", "ogg", "flac", "wav") -> MediaKind.Audio
             mime.startsWith("image") || extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
             else -> return null
@@ -156,6 +160,7 @@ class SocialPlatformResolver(
             .find(sourceUrl)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         val container = when {
+            streamingManifest -> MediaContainer.Mkv
             extension == "mp4" || mime.contains("mp4") -> MediaContainer.Mp4
             extension == "webm" -> MediaContainer.Webm
             extension == "mov" || mime.contains("quicktime") -> MediaContainer.Mov
@@ -187,6 +192,7 @@ class SocialPlatformResolver(
             ),
             requestHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
             sessionCookieHost = safeHost(sourceUrl),
+            streamingManifest = streamingManifest,
         )
     }
 
