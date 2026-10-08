@@ -143,8 +143,10 @@ jobs:
           adb -s "$DEVICE" shell settings put global animator_duration_scale 0.0 || true
           adb -s "$DEVICE" shell pm list packages | grep -E 'webview|chrome' > "$GITHUB_WORKSPACE/social-smoke-artifacts/webview-packages.txt" 2>&1 || true
 
+          set +e
           gradle --no-daemon :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.social.SocialDownloadSmokeTest --stacktrace
           TEST_EXIT=$?
+          set -e
 
           adb -s "$DEVICE" logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
           adb -s "$DEVICE" shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'" > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
