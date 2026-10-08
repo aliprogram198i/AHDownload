@@ -51,6 +51,7 @@ fun UiDiagnosticsRoute(
     val clipboard = LocalClipboardManager.current
     val uiContext = rememberUiTraceContext()
     val report = remember(events) { logger.exportText() }
+    val homeReport = remember(events) { logger.exportHomeText() }
     LaunchedEffect(events) {
         logger.snapshot(
             screen = "UI_DIAGNOSTICS",
@@ -110,6 +111,18 @@ fun UiDiagnosticsRoute(
                 ) {
                     Icon(Icons.Rounded.ContentCopy, contentDescription = null)
                     Text("نسخ التقرير الكامل")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        logger.interaction("UI_DIAGNOSTICS", "copy_home_report_button", "copy_home_report")
+                        clipboard.setText(AnnotatedString(homeReport))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
+                    Text("نسخ سجل الشاشة الرئيسية")
                 }
             }
             item {
