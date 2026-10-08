@@ -1,7 +1,6 @@
 package com.ahdownload.app.social
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
@@ -180,6 +179,8 @@ class SocialDownloadSmokeTest {
                             "attempts=${attemptSummary}",
                     )
                 }
+            }
+
             is ResolverResult.Failure -> CaseResult(
                 case = case,
                 passed = false,
