@@ -58,15 +58,23 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$PATH"
-          echo no | avdmanager create avd --name social-smoke --package "system-images;android-35;google_apis;x86_64" --device "pixel_2" --force
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          export ANDROID_EMULATOR_HOME="$HOME/.android"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo no | avdmanager create avd --name social-smoke --package "system-images;android-35;google_apis;x86_64" --device "pixel_2" --path "$ANDROID_AVD_HOME/social-smoke.avd" --force
+          test -f "$ANDROID_AVD_HOME/social-smoke.ini"
+          emulator -list-avds | grep -Fx "social-smoke"
 
       - name: Run live smoke test on Android emulator
         shell: bash
         run: |
           set -uo pipefail
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/emulator:$PATH"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          export ANDROID_EMULATOR_HOME="$HOME/.android"
           mkdir -p "$GITHUB_WORKSPACE/social-smoke-artifacts"
 
+          emulator -list-avds > "$GITHUB_WORKSPACE/social-smoke-artifacts/avds.txt" 2>&1 || true
           emulator -avd social-smoke -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -accel on -netdelay none -netspeed full > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.log" 2>&1 &
           EMULATOR_PID=$!
           echo "$EMULATOR_PID" > "$GITHUB_WORKSPACE/social-smoke-artifacts/emulator.pid"
