@@ -101,6 +101,7 @@ class PersistentDiagnosticLogger(
     private fun shouldMirrorToHomeTrace(record: DiagnosticLog): Boolean {
         val operation = record.operation
         return operation.startsWith("home.") ||
+            operation.startsWith("social.") ||
             operation.startsWith("ui.smart_center.") ||
             operation.startsWith("download.prepare") ||
             operation.startsWith("download.refresh") ||
