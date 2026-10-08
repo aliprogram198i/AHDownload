@@ -70,6 +70,7 @@ class DownloadLauncher(
                 companionAudioSourceUrl = candidate.companionAudioSourceUrl,
                 companionAudioRequestHeaders = candidate.companionAudioRequestHeaders.filterKeys(::isPersistableHeader),
                 companionAudioSessionCookieHost = candidate.companionAudioSessionCookieHost,
+                streamingManifest = candidate.streamingManifest,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
@@ -169,6 +170,7 @@ class DownloadLauncher(
             candidate.format.width ?: 0,
             candidate.format.height ?: 0,
             candidate.format.bitrateKbps ?: 0,
+            candidate.streamingManifest,
         ).joinToString("|")
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(raw.toByteArray(Charsets.UTF_8))
@@ -208,7 +210,9 @@ class DownloadLauncher(
             .take(120)
 
     private fun extensionFor(candidate: MediaCandidate): String =
-        if (!candidate.companionAudioSourceUrl.isNullOrBlank()) {
+        if (candidate.streamingManifest) {
+            ".mkv"
+        } else if (!candidate.companionAudioSourceUrl.isNullOrBlank()) {
             when (candidate.format.container) {
                 com.ahdownload.domain.resolver.MediaContainer.Mp4 -> ".mp4"
                 com.ahdownload.domain.resolver.MediaContainer.Webm -> ".mkv"
