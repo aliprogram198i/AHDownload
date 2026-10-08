@@ -16,7 +16,7 @@ enum class AHThemeMode(
     LIGHT("light", "فاتح", "واجهة فاتحة دائمًا"),
     DARK("dark", "داكن", "واجهة داكنة متوازنة"),
     DARK_TECH("dark_tech", "Dark Tech", "Obsidian مع Cyan وIndigo"),
-)
+}
 
 private val AhDarkColors = darkColorScheme(
     primary = Color(0xFF8B6DFF),
