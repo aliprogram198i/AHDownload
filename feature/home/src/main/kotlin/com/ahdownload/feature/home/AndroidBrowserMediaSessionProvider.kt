@@ -28,8 +28,9 @@ class AndroidBrowserMediaSessionProvider(
             val main = Handler(Looper.getMainLooper())
             var webView: WebView? = null
             var timeout: Runnable? = null
+            var settleFinish: Runnable? = null
             var finished = false
-            var fastFinishScheduled = false
+            var firstMediaObservedAt = 0L
             lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
@@ -77,12 +78,24 @@ class AndroidBrowserMediaSessionProvider(
                 val safe = safeHeaders(headers)
                 if (safe.isNotEmpty()) requestHeaders[value] = safe
 
-                if (isLikelyPlayableMedia(value) && !fastFinishScheduled) {
-                    fastFinishScheduled = true
-                    main.postDelayed({
-                        if (finished) return@postDelayed
-                        webView?.let { inspect(it) }
-                    }, 350L)
+                if (isLikelyPlayableMedia(value)) {
+                    if (firstMediaObservedAt == 0L) {
+                        firstMediaObservedAt = System.currentTimeMillis()
+                    }
+                    webView?.let { view ->
+                        view.postDelayed({ inspect(view) }, 250L)
+                    }
+
+                    // Keep collecting media briefly after the first playable request so
+                    // a preload/thumbnail stream cannot prevent later quality streams
+                    // or audio sources from being captured. The window remains bounded.
+                    settleFinish?.let(main::removeCallbacks)
+                    val elapsed = (System.currentTimeMillis() - firstMediaObservedAt).coerceAtLeast(0L)
+                    val remaining = (MAX_MEDIA_CAPTURE_WINDOW_MS - elapsed)
+                        .coerceAtLeast(SETTLE_FINISH_DELAY_MS)
+                    settleFinish = Runnable { finish() }.also {
+                        main.postDelayed(it, remaining.coerceAtMost(MAX_MEDIA_CAPTURE_WINDOW_MS))
+                    }
                 }
             }
 
@@ -90,6 +103,7 @@ class AndroidBrowserMediaSessionProvider(
                 if (finished) return
                 finished = true
                 timeout?.let(main::removeCallbacks)
+                settleFinish?.let(main::removeCallbacks)
                 finalUrl = webView?.url ?: url
                 val result = BrowserMediaSession(
                     platform = platform,
@@ -177,7 +191,10 @@ class AndroidBrowserMediaSessionProvider(
                         view.postDelayed({ inspect(view) }, 450L)
                         view.postDelayed({ inspect(view) }, 1400L)
                         view.postDelayed({ inspect(view) }, 2600L)
-                        view.postDelayed({ finish() }, 4800L)
+                        view.postDelayed({ inspect(view) }, 4200L)
+                        view.postDelayed({
+                            if (mediaUrls.isNotEmpty()) finish()
+                        }, 6200L)
                     }
                 }
                 timeout = Runnable { finish() }
@@ -188,6 +205,8 @@ class AndroidBrowserMediaSessionProvider(
 
     private companion object {
         const val MAX_MEDIA_URLS = 64
+        const val SETTLE_FINISH_DELAY_MS = 1200L
+        const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
         val MEDIA_EXTENSIONS = setOf("mp4","m4v","webm","mov","mkv","3gp","avi","m4a","mp3","aac","ogg","flac","wav")
     }
