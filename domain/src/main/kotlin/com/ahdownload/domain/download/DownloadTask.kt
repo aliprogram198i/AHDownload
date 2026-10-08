@@ -36,4 +36,6 @@ data class DownloadTask(
     val companionAudioSourceUrl: String? = null,
     val companionAudioRequestHeaders: Map<String, String> = emptyMap(),
     val companionAudioSessionCookieHost: String? = null,
+    /** True when the source is an HLS/DASH manifest handled by FFmpeg. */
+    val streamingManifest: Boolean = false,
 )
