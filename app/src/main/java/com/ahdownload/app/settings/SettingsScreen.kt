@@ -96,7 +96,9 @@ fun SettingsRoute(
         latestError = diagnosticLogger.list().firstOrNull { it.level == DiagnosticLevel.ERROR }
     }
 
-    LaunchedEffect(location, showFolderDialog, folderError, themeMode, latestError) {
+    val currentError = latestError
+
+    LaunchedEffect(location, showFolderDialog, folderError, themeMode, currentError) {
         uiTraceLogger.snapshot(
             screen = "SETTINGS",
             component = "SettingsScreen",
@@ -441,14 +443,14 @@ fun SettingsRoute(
                                 fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                if (latestError == null) {
+                                if (currentError == null) {
                                     "لا توجد أخطاء مسجلة حاليًا."
                                 } else {
-                                    latestError.type
+                                    currentError.type
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            latestError?.let {
+                            currentError?.let {
                                 Text(
                                     it.reason,
                                     style = MaterialTheme.typography.bodySmall,
@@ -580,13 +582,14 @@ private fun SettingsSectionTitle(title: String) {
 }
 
 @Composable
-private fun SettingsCard(content: @Composable Column.() -> Unit) {
+private fun SettingsCard(content: @Composable () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            content = content,
-        )
+        ) {
+            content()
+        }
     }
 }
 
