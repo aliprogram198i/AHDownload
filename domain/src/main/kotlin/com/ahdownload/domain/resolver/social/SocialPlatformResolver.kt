@@ -180,7 +180,7 @@ class SocialPlatformResolver(
                 // available; do not blindly mark every video request as muxed.
                 hasAudio = when (kind) {
                     MediaKind.Audio -> true
-                    MediaKind.Video -> audioPresence ?: true
+                    MediaKind.Video -> audioPresence ?: false
                     MediaKind.Image,
                     MediaKind.Unknown -> false
                 },
