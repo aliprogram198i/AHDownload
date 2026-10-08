@@ -57,7 +57,7 @@ fun UiDiagnosticsRoute(
             screen = "UI_DIAGNOSTICS",
             component = "UiDiagnosticsScreen",
             components = "topbar,summary,copy_button,refresh_button,clear_button,report_text",
-            stateSummary = "events=" + events.size + ";report_length=" + report.length,
+            stateSummary = "events=" + events.size + ";report_length=" + report.length + ";home_report_length=" + homeReport.length,
             context = uiContext,
         )
     }
@@ -111,6 +111,18 @@ fun UiDiagnosticsRoute(
                 ) {
                     Icon(Icons.Rounded.ContentCopy, contentDescription = null)
                     Text("نسخ التقرير الكامل")
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = {
+                        logger.interaction("UI_DIAGNOSTICS", "copy_home_report_button", "copy_home_report")
+                        clipboard.setText(AnnotatedString(homeReport))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
+                    Text("نسخ سجل الشاشة الرئيسية")
                 }
             }
             item {
