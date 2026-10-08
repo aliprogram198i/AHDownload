@@ -67,7 +67,8 @@ class PersistentDiagnosticLogger(
     }
 
     private fun mirrorHomeTrace(record: DiagnosticLog) {
-        if (uiTraceLogger == null || !shouldMirrorToHomeTrace(record)) return
+        val traceLogger = uiTraceLogger ?: return
+        if (!shouldMirrorToHomeTrace(record)) return
 
         val traceContext = buildMap {
             put("diag_type", record.type)
@@ -86,7 +87,7 @@ class PersistentDiagnosticLogger(
         }
 
         runCatching {
-            uiTraceLogger.record(
+            traceLogger.record(
                 screen = "HOME",
                 component = "pipeline",
                 event = "HOME_DIAGNOSTIC",
