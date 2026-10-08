@@ -77,6 +77,7 @@ class SocialPlatformResolver(
                     "social.resolve.browser",
                     mapOf(
                         "platform" to platform.name,
+                        "operation_id" to (request.operationId ?: "none"),
                         "media_count" to session.mediaUrls.size.toString(),
                         "headers_count" to session.requestHeadersByUrl.size.toString(),
                         "title_present" to (!session.title.isNullOrBlank()).toString(),
@@ -85,15 +86,15 @@ class SocialPlatformResolver(
                     null,
                 )
 
-                // WebView may follow a platform deep link (for example instagram://)
-                // after the initial HTTPS navigation. Only send valid HTTP(S) URLs to OkHttp.
-                // Prefer the final URL when it is web-safe, then fall back through the original
-                // session/request URLs rather than allowing a custom scheme to break resolution.
+                // The final WebView URL may be a redirect to Instagram's login page or a
+                // custom-scheme handoff. Start with the user's HTTP(S) request URL instead:
+                // OkHttp follows ordinary redirects itself, while this avoids extracting from
+                // a login page that replaced the original public post in the WebView.
                 val pageUrlCandidate = listOf(
-                    "final_url" to session.finalUrl,
-                    "session_page_url" to session.pageUrl,
                     "normalized_request_url" to request.link.normalizedUrl,
                     "original_request_url" to request.link.originalUrl,
+                    "session_page_url" to session.pageUrl,
+                    "final_url" to session.finalUrl,
                 ).firstOrNull { (_, value) -> isHttpPageUrl(value) }
                 val pageUrl = pageUrlCandidate?.second
                 val pageUrlSource = pageUrlCandidate?.first ?: "none"
@@ -107,6 +108,7 @@ class SocialPlatformResolver(
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
+                            "operation_id" to (request.operationId ?: "none"),
                             "final_url_scheme" to urlScheme(session.finalUrl),
                             "session_page_scheme" to urlScheme(session.pageUrl),
                             "request_url_scheme" to urlScheme(request.link.normalizedUrl),
@@ -121,6 +123,7 @@ class SocialPlatformResolver(
                         "social.resolve.page_fetch",
                         mapOf(
                             "platform" to platform.name,
+                            "operation_id" to (request.operationId ?: "none"),
                             "page_url_source" to pageUrlSource,
                         ),
                         null,
@@ -135,6 +138,8 @@ class SocialPlatformResolver(
                             "social.resolve.page_fetch",
                             mapOf(
                                 "platform" to platform.name,
+                                "operation_id" to (request.operationId ?: "none"),
+                                "page_url_source" to pageUrlSource,
                                 "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
                             ),
                             null,
@@ -149,6 +154,8 @@ class SocialPlatformResolver(
                             "social.resolve.page_fetch",
                             mapOf(
                                 "platform" to platform.name,
+                                "operation_id" to (request.operationId ?: "none"),
+                                "page_url_source" to pageUrlSource,
                                 "exception_type" to error::class.java.simpleName,
                             ),
                             error,
@@ -159,6 +166,7 @@ class SocialPlatformResolver(
                 val title = session.title ?: fallback?.title
                 val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl
                 val duration = session.durationMs ?: fallback?.durationMs
+                val fallbackMediaCount = fallback?.mediaUrls?.size ?: 0
                 val urls = (session.mediaUrls + fallback?.mediaUrls.orEmpty())
                     .distinct()
                     .take(64)
@@ -170,22 +178,29 @@ class SocialPlatformResolver(
                     "social.resolve.candidates",
                     mapOf(
                         "platform" to platform.name,
+                        "operation_id" to (request.operationId ?: "none"),
+                        "browser_media_count" to session.mediaUrls.size.toString(),
+                        "fallback_media_count" to fallbackMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
+                        "page_url_source" to pageUrlSource,
                     ),
                     null,
                 )
 
                 val sessionObservedUrls = session.mediaUrls.toSet()
+                var unclassifiedSourceCount = 0
                 val candidates = urls.mapIndexedNotNull { index, url ->
                     val audioPresence = session.mediaHasAudioByUrl[url]
                         ?: if (url in sessionObservedUrls) false else null
-                    inferCandidate(
+                    val candidate = inferCandidate(
                         platform = platform,
                         sourceUrl = url,
                         index = index,
                         requestHeaders = session.requestHeadersByUrl[url],
                         audioPresence = audioPresence,
                     )
+                    if (candidate == null) unclassifiedSourceCount++
+                    candidate
                 }.distinctBy {
                     listOf(
                         it.format.kind,
@@ -207,7 +222,13 @@ class SocialPlatformResolver(
                     "social.resolve",
                     mapOf(
                         "platform" to platform.name,
+                        "operation_id" to (request.operationId ?: "none"),
                         "candidate_count" to candidates.size.toString(),
+                        "browser_media_count" to session.mediaUrls.size.toString(),
+                        "fallback_media_count" to fallbackMediaCount.toString(),
+                        "source_url_count" to urls.size.toString(),
+                        "unclassified_source_count" to unclassifiedSourceCount.toString(),
+                        "page_url_source" to pageUrlSource,
                         "title_present" to (!title.isNullOrBlank()).toString(),
                     ),
                     null,
@@ -252,7 +273,10 @@ class SocialPlatformResolver(
                 "SOCIAL_BROWSER_SESSION_FAILED",
                 error.message ?: error::class.simpleName.orEmpty(),
                 "social.resolve",
-                mapOf("platform" to platform.name),
+                mapOf(
+                    "platform" to platform.name,
+                    "operation_id" to (request.operationId ?: "none"),
+                ),
                 error,
             )
             ResolverResult.Failure(
