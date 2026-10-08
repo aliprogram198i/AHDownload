@@ -564,13 +564,20 @@ class HomeViewModel(
                         null,
                     )
 
-                    when (val refreshed = resolver.resolve(youtubeLink, validationOperationId)) {
+                    when (
+                        val refreshed = resolver.resolve(
+                            youtubeLink,
+                            validationOperationId,
+                            forceYouTubeFallbacks = true,
+                        )
+                    ) {
                         is ResolverResult.Success -> {
                             val refreshedCandidates = if (extractAudio) {
                                 val directAudio = refreshed.candidates
                                     .filter { it.format.kind == MediaKind.Audio && it.format.hasAudio }
                                     .sortedWith(
-                                        compareByDescending<MediaCandidate> { it.format.bitrateKbps ?: 0 }
+                                        compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                                            .thenByDescending { it.format.bitrateKbps ?: 0 }
                                             .thenBy { it.id == candidate.id },
                                     )
                                     .take(6)
@@ -581,7 +588,8 @@ class HomeViewModel(
                                             it.format.hasAudio
                                     }
                                     .sortedWith(
-                                        compareByDescending<MediaCandidate> { it.format.height ?: 0 }
+                                        compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                                            .thenByDescending { it.format.height ?: 0 }
                                             .thenByDescending { it.format.bitrateKbps ?: 0 }
                                             .thenBy { it.id == candidate.id },
                                     )
@@ -598,7 +606,8 @@ class HomeViewModel(
                                             }
                                     }
                                     .sortedWith(
-                                        compareBy<MediaCandidate> { it.id != candidate.id }
+                                        compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                                            .thenBy { it.id != candidate.id }
                                             .thenByDescending { it.format.hasAudio }
                                             .thenByDescending { it.format.height ?: 0 }
                                             .thenByDescending { it.format.bitrateKbps ?: 0 },
@@ -759,6 +768,13 @@ class HomeViewModel(
                 )
             }
         }
+    }
+
+    private fun youtubeRefreshPriority(candidate: MediaCandidate): Int = when {
+        candidate.id.startsWith("embedded-") -> 0
+        candidate.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED -> 1
+        candidate.id.startsWith("android-") -> 2
+        else -> 3
     }
 
     private fun chooseDefaultCandidate(
