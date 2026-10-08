@@ -7,7 +7,6 @@ import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
-import com.ahdownload.domain.resolver.youtube.YouTubeResolver
 import com.ahdownload.feature.home.AndroidBrowserMediaSessionProvider
 import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
 import com.ahdownload.feature.home.HomeResolver
@@ -36,10 +35,7 @@ class SocialDownloadSmokeTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val browserProvider = AndroidBrowserMediaSessionProvider(context)
         val resolver = HomeResolver(
-            youtubeResolver = YouTubeResolver(
-                httpClient = OkHttpTextClient(),
-                sessionProvider = AndroidYouTubeSessionProvider(context),
-            ),
+            sessionProvider = AndroidYouTubeSessionProvider(context),
             browserMediaSessionProvider = browserProvider,
         )
         val outputDir = File(context.cacheDir, "social-smoke").apply { mkdirs() }
