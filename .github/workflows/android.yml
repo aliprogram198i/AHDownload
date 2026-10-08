@@ -244,7 +244,19 @@ jobs:
           MIN_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion='\([^']*\)'.*/\1/p")"
           TARGET_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion='\([^']*\)'.*/\1/p")"
 
-          test -n "$PACKAGE_NAME"\n          test -n "$MIN_SDK"\n          test -n "$TARGET_SDK"\n\n          test "$PACKAGE_NAME" = "com.ahdownload.app"\n          test "$MIN_SDK" = "24"\n          test "$TARGET_SDK" = "36"\n\n          cp "$BADGING_FILE" apk-compatibility.txt\n\n          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"\n          echo "Confirmed targetSdkVersion=$TARGET_SDK"\n          echo "Confirmed applicationId=$PACKAGE_NAME"
+          test -n "$PACKAGE_NAME"
+          test -n "$MIN_SDK"
+          test -n "$TARGET_SDK"
+
+          test "$PACKAGE_NAME" = "com.ahdownload.app"
+          test "$MIN_SDK" = "24"
+          test "$TARGET_SDK" = "36"
+
+          cp "$BADGING_FILE" apk-compatibility.txt
+
+          echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"
+          echo "Confirmed targetSdkVersion=$TARGET_SDK"
+          echo "Confirmed applicationId=$PACKAGE_NAME"
 
       - name: Package verification outputs
         run: |
