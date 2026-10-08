@@ -241,8 +241,8 @@ jobs:
           # Extract exact aapt2 markers from the verified badging output.
           PACKAGE_LINE="$(printf '%s\n' "$BADGING" | grep -m1 '^package:')"
           PACKAGE_NAME="$(printf '%s\n' "$PACKAGE_LINE" | sed -n "s/.*name='\([^']*\)'.*/\1/p")"
-          MIN_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion='\([^']*\)'.*/\1/p")"
-          TARGET_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion='\([^']*\)'.*/\1/p")"
+          MIN_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*sdkVersion:'\([^']*\)'.*/\1/p")"
+          TARGET_SDK="$(printf '%s\n' "$BADGING" | sed -n "s/.*targetSdkVersion:'\([^']*\)'.*/\1/p")"
 
           test -n "$PACKAGE_NAME"
           test -n "$MIN_SDK"
