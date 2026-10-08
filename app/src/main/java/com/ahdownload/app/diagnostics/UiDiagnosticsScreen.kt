@@ -127,18 +127,6 @@ fun UiDiagnosticsRoute(
             }
             item {
                 OutlinedButton(
-                    onClick = {
-                        logger.interaction("UI_DIAGNOSTICS", "copy_home_report_button", "copy_home_report")
-                        clipboard.setText(AnnotatedString(homeReport))
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
-                    Text("نسخ سجل الشاشة الرئيسية")
-                }
-            }
-            item {
-                OutlinedButton(
                     onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh_report"); events = logger.list() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
