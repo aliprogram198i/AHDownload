@@ -9,6 +9,9 @@ import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import java.net.URI
 import java.net.URLDecoder
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 class SocialPlatformResolver(
     private val provider: BrowserMediaSessionProvider,
@@ -42,70 +45,166 @@ class SocialPlatformResolver(
         }
 
         return try {
-            val session = provider.snapshot(request.link.normalizedUrl, platform)
-            val pageUrl = session.finalUrl ?: session.pageUrl
-            val fallback = runCatching { OkHttpTextClient().get(pageUrl) }
-                .getOrNull()
-                ?.let { WebPageMediaParser.parse(it, pageUrl) }
-
-            val title = session.title ?: fallback?.title
-            val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl
-            val duration = session.durationMs ?: fallback?.durationMs
-            val urls = (session.mediaUrls + fallback?.mediaUrls.orEmpty())
-                .distinct()
-                .take(64)
-
-            val sessionObservedUrls = session.mediaUrls.toSet()
-            val candidates = urls.mapIndexedNotNull { index, url ->
-                val audioPresence = session.mediaHasAudioByUrl[url]
-                    ?: if (url in sessionObservedUrls) false else null
-                inferCandidate(
-                    platform = platform,
-                    sourceUrl = url,
-                    index = index,
-                    requestHeaders = session.requestHeadersByUrl[url],
-                    audioPresence = audioPresence,
+            withTimeout(SOCIAL_RESOLVE_TIMEOUT_MS) {
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "SOCIAL_RESOLUTION_STARTED",
+                    "بدء تحليل المنصة الاجتماعية",
+                    "social.resolve",
+                    mapOf(
+                        "platform" to platform.name,
+                        "operation_id" to (request.operationId ?: "none"),
+                    ),
+                    null,
                 )
-            }.distinctBy {
-                listOf(
-                    it.format.kind,
-                    it.format.container,
-                    it.format.height ?: 0,
-                    it.format.bitrateKbps ?: 0,
-                    it.sourceUrl,
-                )
-            }.sortedWith(
-                compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video }
-                    .thenByDescending { it.format.height ?: 0 }
-                    .thenByDescending { it.format.bitrateKbps ?: 0 },
-            )
 
+                val session = provider.snapshot(request.link.normalizedUrl, platform)
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "SOCIAL_BROWSER_SESSION_RESULT",
+                    "اكتملت جلسة المتصفح واستخراج الوسائط الأولية",
+                    "social.resolve.browser",
+                    mapOf(
+                        "platform" to platform.name,
+                        "media_count" to session.mediaUrls.size.toString(),
+                        "headers_count" to session.requestHeadersByUrl.size.toString(),
+                        "title_present" to (!session.title.isNullOrBlank()).toString(),
+                        "duration_present" to (session.durationMs != null).toString(),
+                    ),
+                    null,
+                )
+
+                val pageUrl = session.finalUrl ?: session.pageUrl
+                var fallback: WebPageMediaParser.ParsedPage? = null
+                runCatching {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        "SOCIAL_PAGE_FETCH_STARTED",
+                        "بدء جلب HTML للصفحة كمسار احتياطي",
+                        "social.resolve.page_fetch",
+                        mapOf(
+                            "platform" to platform.name,
+                        ),
+                        null,
+                    )
+                    fallback = OkHttpTextClient().get(pageUrl)
+                        .let { WebPageMediaParser.parse(it, pageUrl) }
+                }.onSuccess {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        "SOCIAL_PAGE_FETCH_RESULT",
+                        "اكتمل جلب وتحليل HTML الاحتياطي",
+                        "social.resolve.page_fetch",
+                        mapOf(
+                            "platform" to platform.name,
+                            "fallback_media_count" to it.mediaUrls.size.toString(),
+                        ),
+                        null,
+                    )
+                }.onFailure { error ->
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "SOCIAL_PAGE_FETCH_FAILED",
+                        error.message ?: error::class.simpleName.orEmpty(),
+                        "social.resolve.page_fetch",
+                        mapOf(
+                            "platform" to platform.name,
+                            "exception_type" to error::class.java.simpleName,
+                        ),
+                        error,
+                    )
+                }
+
+                val title = session.title ?: fallback?.title
+                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl
+                val duration = session.durationMs ?: fallback?.durationMs
+                val urls = (session.mediaUrls + fallback?.mediaUrls.orEmpty())
+                    .distinct()
+                    .take(64)
+
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "SOCIAL_CANDIDATE_BUILD_STARTED",
+                    "بدء بناء المرشحين من مصادر المتصفح والصفحة",
+                    "social.resolve.candidates",
+                    mapOf(
+                        "platform" to platform.name,
+                        "source_url_count" to urls.size.toString(),
+                    ),
+                    null,
+                )
+
+                val sessionObservedUrls = session.mediaUrls.toSet()
+                val candidates = urls.mapIndexedNotNull { index, url ->
+                    val audioPresence = session.mediaHasAudioByUrl[url]
+                        ?: if (url in sessionObservedUrls) false else null
+                    inferCandidate(
+                        platform = platform,
+                        sourceUrl = url,
+                        index = index,
+                        requestHeaders = session.requestHeadersByUrl[url],
+                        audioPresence = audioPresence,
+                    )
+                }.distinctBy {
+                    listOf(
+                        it.format.kind,
+                        it.format.container,
+                        it.format.height ?: 0,
+                        it.format.bitrateKbps ?: 0,
+                        it.sourceUrl,
+                    )
+                }.sortedWith(
+                    compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video }
+                        .thenByDescending { it.format.height ?: 0 }
+                        .thenByDescending { it.format.bitrateKbps ?: 0 },
+                )
+
+                logger.log(
+                    if (candidates.isNotEmpty()) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                    "SOCIAL_RESOLUTION_RESULT",
+                    if (candidates.isNotEmpty()) "تم العثور على مصادر وسائط عامة" else "لم يتم العثور على مصدر وسائط مباشر",
+                    "social.resolve",
+                    mapOf(
+                        "platform" to platform.name,
+                        "candidate_count" to candidates.size.toString(),
+                        "title_present" to (!title.isNullOrBlank()).toString(),
+                    ),
+                    null,
+                )
+
+                if (candidates.isEmpty()) {
+                    ResolverResult.Failure(
+                        FailureCode.NoCandidates,
+                        "تعذر اكتشاف مصدر وسائط مباشر من الصفحة العامة حاليًا.",
+                    )
+                } else {
+                    ResolverResult.Success(
+                        title = title,
+                        thumbnailUrl = thumbnail,
+                        durationMs = duration,
+                        candidates = candidates,
+                    )
+                }
+            }
+        } catch (error: TimeoutCancellationException) {
             logger.log(
-                if (candidates.isNotEmpty()) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
-                "SOCIAL_RESOLUTION_RESULT",
-                if (candidates.isNotEmpty()) "تم العثور على مصادر وسائط عامة" else "لم يتم العثور على مصدر وسائط مباشر",
+                DiagnosticLevel.ERROR,
+                "SOCIAL_RESOLUTION_TIMEOUT",
+                "انتهت مهلة تحليل المنصة الاجتماعية دون إكمال المسار",
                 "social.resolve",
                 mapOf(
                     "platform" to platform.name,
-                    "candidate_count" to candidates.size.toString(),
-                    "title_present" to (!title.isNullOrBlank()).toString(),
+                    "timeout_ms" to SOCIAL_RESOLVE_TIMEOUT_MS.toString(),
+                    "operation_id" to (request.operationId ?: "none"),
                 ),
-                null,
+                error,
             )
-
-            if (candidates.isEmpty()) {
-                ResolverResult.Failure(
-                    FailureCode.NoCandidates,
-                    "تعذر اكتشاف مصدر وسائط مباشر من الصفحة العامة حاليًا.",
-                )
-            } else {
-                ResolverResult.Success(
-                    title = title,
-                    thumbnailUrl = thumbnail,
-                    durationMs = duration,
-                    candidates = candidates,
-                )
-            }
+            ResolverResult.Failure(
+                FailureCode.ResolverTimeout,
+                "استغرق تحليل الصفحة وقتًا أطول من المتوقع. أعد المحاولة.",
+            )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Throwable) {
             logger.log(
                 DiagnosticLevel.ERROR,
@@ -206,4 +305,8 @@ class SocialPlatformResolver(
 
     private fun safeHost(url: String): String? =
         runCatching { URI(url).host?.lowercase()?.removePrefix("www.") }.getOrNull()
+
+    private companion object {
+        const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
+    }
 }
