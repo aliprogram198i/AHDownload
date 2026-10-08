@@ -32,21 +32,26 @@ class MediaVideoAudioMuxer {
         temp.delete()
         outputFile.delete()
 
-        val arguments = arrayOf(
-            "-hide_banner",
-            "-loglevel", "error",
-            "-nostdin",
-            "-y",
-            "-i", videoFile.absolutePath,
-            "-i", audioFile.absolutePath,
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-c:v", "copy",
-            "-c:a", "copy",
-            "-movflags", "+faststart",
-            "-shortest",
-            temp.absolutePath,
-        )
+        val arguments = buildList {
+            addAll(
+                listOf(
+                    "-hide_banner",
+                    "-loglevel", "error",
+                    "-nostdin",
+                    "-y",
+                    "-i", videoFile.absolutePath,
+                    "-i", audioFile.absolutePath,
+                    "-map", "0:v:0",
+                    "-map", "1:a:0",
+                    "-c:v", "copy",
+                    "-c:a", "copy",
+                ),
+            )
+            if (outputFile.extension.equals("mp4", ignoreCase = true)) {
+                addAll(listOf("-movflags", "+faststart"))
+            }
+            addAll(listOf("-shortest", temp.absolutePath))
+        }.toTypedArray()
 
         val success = runCatching {
             val session = FFmpegKit.executeWithArguments(arguments)
