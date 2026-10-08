@@ -128,8 +128,12 @@ class SocialPlatformResolverTest {
             pageClient = RecordingTextClient { fetchedUrls += it },
         )
 
+        val requestLink = link(MediaPlatform.Instagram).copy(
+            originalUrl = pageUrl,
+            normalizedUrl = pageUrl,
+        )
         val result = resolver.resolve(
-            ResolverRequest(link = link(MediaPlatform.Instagram)),
+            ResolverRequest(link = requestLink),
         )
 
         assertTrue(result is ResolverResult.Success)
@@ -160,6 +164,81 @@ class SocialPlatformResolverTest {
 
         assertTrue(result is ResolverResult.Success)
         assertTrue(fetchedUrls.isEmpty())
+    }
+
+
+    @Test
+    fun loginRedirectDoesNotReplaceOriginalPostForPageFallback() = runTest {
+        val pageUrl = "https://www.instagram.com/reel/ABC123/"
+        val redirectedLoginUrl = "https://www.instagram.com/accounts/login/"
+        val mediaUrl = "https://cdn.example.com/video.mp4"
+        val fetchedUrls = mutableListOf<String>()
+        val html = """<html><head><meta property="og:video" content="$mediaUrl"></head></html>"""
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = pageUrl,
+                    finalUrl = redirectedLoginUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    fetchedUrls += url
+                    return html
+                }
+
+                override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
+                override suspend fun postJson(url: String, body: String): String = ""
+                override suspend fun postJson(
+                    url: String,
+                    body: String,
+                    headers: Map<String, String>,
+                ): String = ""
+            },
+        )
+        val requestLink = link(MediaPlatform.Instagram).copy(
+            originalUrl = pageUrl,
+            normalizedUrl = pageUrl,
+        )
+
+        val result = resolver.resolve(ResolverRequest(link = requestLink))
+
+        assertEquals(listOf(pageUrl), fetchedUrls)
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
+    }
+
+    @Test
+    fun resolverDiagnosticStagesCarryTheSameOperationId() = runTest {
+        val operationId = "instagram-op-test"
+        val loggedContexts = mutableListOf<Pair<String, Map<String, String>>>()
+        val mediaUrl = "https://cdn.example.com/video.mp4"
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "https://www.instagram.com/reel/ABC123/",
+                    mediaUrls = listOf(mediaUrl),
+                ),
+            ),
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                loggedContexts += type to context
+            },
+            pageClient = RecordingTextClient { },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram),
+                operationId = operationId,
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        assertTrue(loggedContexts.isNotEmpty())
+        assertTrue(loggedContexts.all { (_, context) -> context["operation_id"] == operationId })
     }
 
     @Test
