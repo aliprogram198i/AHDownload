@@ -70,9 +70,9 @@ class PersistentDiagnosticLogger(
         if (uiTraceLogger == null || !shouldMirrorToHomeTrace(record)) return
 
         val traceContext = buildMap {
-            put("diagnostic_type", record.type)
-            put("diagnostic_reason", record.reason)
-            put("diagnostic_operation", record.operation)
+            put("diag_type", record.type)
+            put("diag_reason", record.reason)
+            put("diag_operation", record.operation)
             record.context.forEach { (key, value) ->
                 if (
                     key !in TRACE_ENVIRONMENT_KEYS &&
@@ -81,8 +81,8 @@ class PersistentDiagnosticLogger(
                     put("diag_$key", value)
                 }
             }
-            record.throwableType?.let { put("diagnostic_exception_type", it) }
-            record.throwableMessage?.let { put("diagnostic_exception_message", it) }
+            record.throwableType?.let { put("diag_exception_type", it) }
+            record.throwableMessage?.let { put("diag_exception_message", it) }
         }
 
         runCatching {
