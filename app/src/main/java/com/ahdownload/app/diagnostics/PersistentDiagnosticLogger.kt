@@ -4,6 +4,7 @@ import android.content.Context
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.core.common.UiTraceLogger
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.json.JSONArray
@@ -17,6 +18,7 @@ import java.util.UUID
  */
 class PersistentDiagnosticLogger(
     context: Context,
+    private val uiTraceLogger: UiTraceLogger? = null,
 ) : DiagnosticLogger {
     private val appContext = context.applicationContext
     private val sessionId = UUID.randomUUID().toString()
@@ -61,6 +63,50 @@ class PersistentDiagnosticLogger(
         )
         val updated = (read() + record).takeLast(MAX_ENTRIES)
         preferences.edit().putString(KEY_LOGS, gson.toJson(updated, listType)).apply()
+        mirrorHomeTrace(record)
+    }
+
+    private fun mirrorHomeTrace(record: DiagnosticLog) {
+        val traceLogger = uiTraceLogger ?: return
+        if (!shouldMirrorToHomeTrace(record)) return
+
+        val traceContext = buildMap {
+            put("diag_type", record.type)
+            put("diag_reason", record.reason)
+            put("diag_operation", record.operation)
+            record.context.forEach { (key, value) ->
+                if (
+                    key !in TRACE_ENVIRONMENT_KEYS &&
+                    !SENSITIVE_KEY.containsMatchIn(key)
+                ) {
+                    put("diag_$key", value)
+                }
+            }
+            record.throwableType?.let { put("diag_exception_type", it) }
+            record.throwableMessage?.let { put("diag_exception_message", it) }
+        }
+
+        runCatching {
+            traceLogger.record(
+                screen = "HOME",
+                component = "pipeline",
+                event = "HOME_DIAGNOSTIC",
+                state = record.level.name,
+                context = traceContext,
+                level = record.level,
+            )
+        }
+    }
+
+    private fun shouldMirrorToHomeTrace(record: DiagnosticLog): Boolean {
+        val operation = record.operation
+        return operation.startsWith("home.") ||
+            operation.startsWith("ui.smart_center.") ||
+            operation.startsWith("download.prepare") ||
+            operation.startsWith("download.refresh") ||
+            operation.startsWith("download.validate") ||
+            operation.startsWith("download.queue") ||
+            record.type.startsWith("SMART_CENTER")
     }
 
     @Synchronized
@@ -82,6 +128,16 @@ class PersistentDiagnosticLogger(
         private const val KEY_LOGS = "logs"
         private const val LEGACY_KEY_ENTRIES = "entries"
         private const val MAX_ENTRIES = 500
+
+        private val TRACE_ENVIRONMENT_KEYS = setOf(
+            "app_package", "app_version_name", "app_version_code", "app_build_type",
+            "app_target_sdk", "app_first_install_ms", "app_last_update_ms",
+            "android_sdk", "android_release", "device_manufacturer", "device_model",
+            "device_brand", "device_product", "locale", "timezone", "is_24_hour_format",
+            "process_id", "available_memory_bytes", "low_memory", "app_uptime_ms",
+            "diagnostic_session_id", "event_sequence", "process_uptime_ms",
+            "thread", "thread_id",
+        )
 
         private val SENSITIVE_KEY = Regex(
             "(cookie|authorization|token|password|passwd|secret|api[_-]?key|session[_-]?id)",

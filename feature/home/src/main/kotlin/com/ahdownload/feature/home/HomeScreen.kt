@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
+import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -58,6 +59,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,9 +70,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,6 +119,7 @@ fun HomeRoute(
     onOpenDownloads: () -> Unit,
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    onCopyHomeTrace: () -> String = { "" },
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
@@ -136,6 +141,12 @@ fun HomeRoute(
 
     LaunchedEffect(initialUrl) {
         initialUrl?.takeIf { it.isNotBlank() }?.let {
+            uiTraceLogger.interaction(
+                "HOME",
+                "screen",
+                "received_initial_url",
+                mapOf("source" to "external_intent"),
+            )
             viewModel.onUrlChanged(it)
             onInitialUrlConsumed()
         }
@@ -164,6 +175,7 @@ fun HomeRoute(
         onRecentLinkSelected = viewModel::selectRecentLink,
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
+        onCopyHomeTrace = onCopyHomeTrace,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
         currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
@@ -217,6 +229,7 @@ private fun HomeScreen(
     onRecentLinkSelected: (RecentLink) -> Unit,
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
+    onCopyHomeTrace: () -> String,
     activeDownloads: Int = 0,
     favoriteItems: List<FavoriteItem> = emptyList(),
     currentFavorite: Boolean = false,
@@ -228,9 +241,17 @@ private fun HomeScreen(
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
     val uiContext = rememberUiTraceContext()
+    val clipboard = LocalClipboardManager.current
 
+    DisposableEffect(Unit) {
+        uiTraceLogger.interaction("HOME", "screen", "entered")
+        onDispose {
+            uiTraceLogger.interaction("HOME", "screen", "exited")
+        }
+    }
 
     LaunchedEffect(
+        state.mode,
         state.url,
         state.analyzing,
         state.resolving,
@@ -238,9 +259,26 @@ private fun HomeScreen(
         candidates.size,
         state.selectedCandidateId,
         state.selectedAudioCandidateId,
+        state.selectedAudioOutputFormat,
         state.validatingCandidateId,
         state.error,
         state.downloadQueued,
+        state.showAll,
+        state.resultFilter,
+        state.searchQuery.length,
+        state.searching,
+        state.searchResults.size,
+        state.searchError,
+        state.selectedSearchIds.size,
+        state.batchDownloading,
+        state.batchIndex,
+        state.batchTotal,
+        state.batchQueued,
+        state.batchError,
+        state.recentLinks.size,
+        favoriteItems.size,
+        currentFavorite,
+        activeDownloads,
     ) {
         val components = buildList {
             add("topbar")
@@ -257,6 +295,9 @@ private fun HomeScreen(
             }
             if (state.error != null) add("error_card")
             if (state.downloadQueued) add("download_success")
+            if (state.searching) add("search_loading")
+            if (state.searchResults.isNotEmpty()) add("search_results")
+            if (state.batchDownloading) add("batch_download_progress")
         }.joinToString(",")
 
         uiTraceLogger.snapshot(
@@ -270,11 +311,24 @@ private fun HomeScreen(
                 ";candidates=" + candidates.size +
                 ";selected=" + (state.selectedCandidateId ?: "none") +
                 ";selected_audio=" + (state.selectedAudioCandidateId ?: "none") +
+                ";audio_output=" + (state.selectedAudioOutputFormat?.name ?: "none") +
                 ";validating=" + (state.validatingCandidateId ?: "none") +
                 ";error=" + (state.error != null) +
                 ";show_all=" + state.showAll +
                 ";filter=" + state.resultFilter.name +
-                ";queued=" + state.downloadQueued,
+                ";queued=" + state.downloadQueued +
+                ";search_query_length=" + state.searchQuery.length +
+                ";searching=" + state.searching +
+                ";search_results=" + state.searchResults.size +
+                ";search_selected=" + state.selectedSearchIds.size +
+                ";batch_downloading=" + state.batchDownloading +
+                ";batch=" + state.batchIndex + "/" + state.batchTotal +
+                ";batch_queued=" + state.batchQueued +
+                ";search_error=" + (state.searchError != null) +
+                ";recent_links=" + state.recentLinks.size +
+                ";favorites=" + favoriteItems.size +
+                ";current_favorite=" + currentFavorite +
+                ";active_downloads=" + activeDownloads,
             context = uiContext,
         )
     }
@@ -318,6 +372,18 @@ private fun HomeScreen(
                     Icon(Icons.Rounded.Download, contentDescription = "AHDownload")
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            uiTraceLogger.interaction("HOME", "copy_trace_button", "copy_home_trace")
+                            clipboard.setText(
+                                AnnotatedString(
+                                    onCopyHomeTrace(),
+                                ),
+                            )
+                        },
+                    ) {
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الشاشة الرئيسية")
+                    }
                     IconButton(
                         onClick = {
                             uiTraceLogger.interaction("HOME", "settings_button", "open_settings")
@@ -382,7 +448,10 @@ private fun HomeScreen(
                     item {
                         FilterChip(
                             selected = state.mode == HomeMode.Link,
-                            onClick = { onModeChanged(HomeMode.Link) },
+                            onClick = {
+                                uiTraceLogger.interaction("HOME", "mode_link", "switch_to_link")
+                                onModeChanged(HomeMode.Link)
+                            },
                             label = { Text("رابط") },
                             leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
                         )
@@ -391,6 +460,7 @@ private fun HomeScreen(
                         FilterChip(
                             selected = state.mode == HomeMode.Search,
                             onClick = {
+                                uiTraceLogger.interaction("HOME", "mode_search", "switch_to_search")
                                 onModeChanged(HomeMode.Search)
                             },
                             label = { Text("بحث YouTube") },
@@ -441,6 +511,7 @@ private fun HomeScreen(
                                     IconButton(
                                         enabled = !state.analyzing && !state.resolving,
                                         onClick = {
+                                            uiTraceLogger.interaction("HOME", "paste_button", "paste_clipboard")
                                             val clipboard =
                                                 androidContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                                             val pasted = clipboard?.primaryClip
@@ -450,6 +521,15 @@ private fun HomeScreen(
                                                 ?.toString()
                                                 ?.trim()
                                                 .orEmpty()
+                                            uiTraceLogger.interaction(
+                                                "HOME",
+                                                "paste_button",
+                                                "clipboard_read",
+                                                mapOf(
+                                                    "text_present" to pasted.isNotBlank().toString(),
+                                                    "text_length" to pasted.length.toString(),
+                                                ),
+                                            )
                                             if (pasted.isNotBlank()) {
                                                 onPasteLink(pasted)
                                             }
@@ -461,6 +541,12 @@ private fun HomeScreen(
                                         IconButton(
                                             enabled = !state.analyzing && !state.resolving,
                                             onClick = {
+                                                uiTraceLogger.interaction(
+                                                    "HOME",
+                                                    "clear_input_button",
+                                                    "clear_url",
+                                                    mapOf("previous_length" to state.url.length.toString()),
+                                                )
                                                 onUrlChanged("")
                                             },
                                         ) {
@@ -577,7 +663,10 @@ private fun HomeScreen(
                                 )
                                 OutlinedButton(
                                     enabled = state.searchQuery.isNotBlank() && !state.searching,
-                                    onClick = onSearch,
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_retry_button", "retry_search")
+                                        onSearch()
+                                    },
                                 ) {
                                     Text("إعادة البحث")
                                 }
@@ -599,7 +688,12 @@ private fun HomeScreen(
                                 modifier = Modifier.weight(1f),
                             )
                             if (state.selectedSearchIds.isNotEmpty()) {
-                                TextButton(onClick = onClearSearchSelection) { Text("مسح التحديد") }
+                                TextButton(
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
+                                        onClearSearchSelection()
+                                    },
+                                ) { Text("مسح التحديد") }
                             }
                         }
                     }
@@ -634,7 +728,15 @@ private fun HomeScreen(
                                     }
                                     if (!state.batchDownloading && state.selectedSearchIds.isNotEmpty()) {
                                         Button(
-                                            onClick = { onBatchDownload(state.searchResults) },
+                                            onClick = {
+                                                uiTraceLogger.interaction(
+                                                    "HOME",
+                                                    "batch_download_button",
+                                                    "start_batch_download",
+                                                    mapOf("selected_count" to state.selectedSearchIds.size.toString()),
+                                                )
+                                                onBatchDownload(state.searchResults)
+                                            },
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(Icons.Rounded.Download, contentDescription = null)
@@ -653,7 +755,10 @@ private fun HomeScreen(
                         SearchResultCard(
                             item = item,
                             selected = item.id in state.selectedSearchIds,
-                            onToggleSelection = { onSearchSelectionToggle(item.id) },
+                            onToggleSelection = {
+                                uiTraceLogger.interaction("HOME", "search_result_selection", "toggle")
+                                onSearchSelectionToggle(item.id)
+                            },
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
                                 onModeChanged(HomeMode.Link)
@@ -707,8 +812,14 @@ private fun HomeScreen(
                 item {
                     RecentLinksCard(
                         links = state.recentLinks.take(4),
-                        onSelect = onRecentLinkSelected,
-                        onClear = onClearRecentLinks,
+                        onSelect = {
+                            uiTraceLogger.interaction("HOME", "recent_link", "select_recent")
+                            onRecentLinkSelected(it)
+                        },
+                        onClear = {
+                            uiTraceLogger.interaction("HOME", "recent_links", "clear_recent")
+                            onClearRecentLinks()
+                        },
                     )
                 }
             }
@@ -741,7 +852,16 @@ private fun HomeScreen(
                         platform = state.result?.platform?.name,
                         kind = state.result?.kind,
                         favorite = currentFavorite,
-                        onToggleFavorite = onToggleFavorite,
+                        uiTraceLogger = uiTraceLogger,
+                        onToggleFavorite = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "favorite_button",
+                                "toggle_favorite_from_result",
+                                mapOf("currently_favorite" to currentFavorite.toString()),
+                            )
+                            onToggleFavorite()
+                        },
                         primaryOptions = primaryOptions,
                         audioOptions = audioOptions,
                         selectedCandidateId = state.selectedCandidateId,
@@ -753,11 +873,45 @@ private fun HomeScreen(
                                 it,
                                 state.selectedCandidateId,
                             )
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "video_option",
+                                "select_video_option",
+                                mapOf(
+                                    "candidate_id" to it.candidate.id,
+                                    "quality" to it.qualityLabel,
+                                    "group" to it.group.name,
+                                ),
+                            )
                             onSelectCandidate(it.candidate.id)
                         },
-                        onDownload = { onDownloadCandidate(it) },
-                        onDownloadAudio = onDownloadAudio,
-                        onSelectAudioOutputFormat = onSelectAudioOutputFormat,
+                        onDownload = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "video_download_button",
+                                "download_video",
+                                mapOf("candidate_id" to it),
+                            )
+                            onDownloadCandidate(it)
+                        },
+                        onDownloadAudio = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "audio_download_button",
+                                "download_audio",
+                                mapOf("candidate_id" to (it ?: "auto")),
+                            )
+                            onDownloadAudio(it)
+                        },
+                        onSelectAudioOutputFormat = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "audio_format_option",
+                                "select_audio_output_format",
+                                mapOf("format" to it.name),
+                            )
+                            onSelectAudioOutputFormat(it)
+                        },
                     )
                 }
             }
@@ -839,7 +993,12 @@ private fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
                             }
-                            TextButton(onClick = onOpenDownloads) {
+                            TextButton(
+                                onClick = {
+                                    uiTraceLogger.interaction("HOME", "download_success", "open_downloads")
+                                    onOpenDownloads()
+                                },
+                            ) {
                                 Text("فتح السجل")
                             }
                         }
@@ -1091,6 +1250,7 @@ private fun UnifiedDownloadResultCard(
     durationMs: Long?,
     platform: String?,
     kind: MediaKind?,
+    uiTraceLogger: UiTraceLogger,
     favorite: Boolean,
     onToggleFavorite: () -> Unit,
     primaryOptions: List<MediaPresentationModel>,
@@ -1233,7 +1393,15 @@ private fun UnifiedDownloadResultCard(
 
                     if (!showAllVideoOptions && allVideoOptions.size > 4) {
                         TextButton(
-                            onClick = { showAllVideoOptions = true },
+                            onClick = {
+                                uiTraceLogger.interaction(
+                                    "HOME",
+                                    "video_options_more",
+                                    "show_more_video_options",
+                                    mapOf("available_count" to allVideoOptions.size.toString()),
+                                )
+                                showAllVideoOptions = true
+                            },
                             enabled = validatingCandidateId == null,
                             modifier = Modifier.fillMaxWidth(),
                         ) {

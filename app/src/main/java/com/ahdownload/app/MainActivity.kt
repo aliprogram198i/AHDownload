@@ -424,6 +424,7 @@ private fun AHRoot(
             onOpenDownloads = { root(RootDestination.Downloads) },
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
+            onCopyHomeTrace = uiTraceLogger::exportHomeText,
             activeDownloads = activeDownloads,
             preferencesProvider = downloadPreferencesProvider,
             favoriteRepository = favoriteRepository,
