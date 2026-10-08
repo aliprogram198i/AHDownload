@@ -149,7 +149,10 @@ jobs:
           set -e
 
           adb -s "$DEVICE" logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
-          adb -s "$DEVICE" shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'" > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+          adb -s "$DEVICE" exec-out run-as com.ahdownload.app cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+          if [ ! -s "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" ]; then
+            adb -s "$DEVICE" shell run-as com.ahdownload.app cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+          fi
           if [ -d app/build/reports/androidTests/connected ]; then
             cp -R app/build/reports/androidTests/connected "$GITHUB_WORKSPACE/social-smoke-artifacts/android-tests-report"
           fi
