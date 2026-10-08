@@ -36,6 +36,14 @@ class AudioTranscoder {
         }
         outputFile.delete()
 
+        tryFastPath(
+            inputFile = inputFile,
+            outputFile = outputFile,
+            outputFormat = outputFormat,
+        )?.let { fastOutput ->
+            return@withContext Result.success(fastOutput)
+        }
+
         val arguments = buildArguments(inputFile, outputFile, outputFormat)
 
         runCatching {
@@ -56,6 +64,88 @@ class AudioTranscoder {
             }
 
             outputFile
+        }
+    }
+
+    /**
+     * Avoids a quality-affecting transcode when the requested container can
+     * directly carry the source AAC audio stream. The fast path is limited to
+     * common MP4-family inputs; unsupported codecs/container combinations
+     * simply fall back to the normal encoder path.
+     */
+    private fun tryFastPath(
+        inputFile: File,
+        outputFile: File,
+        outputFormat: AudioOutputFormat,
+    ): File? {
+        if (outputFormat !in setOf(AudioOutputFormat.M4a, AudioOutputFormat.Aac)) {
+            return null
+        }
+
+        val extension = inputFile.extension.lowercase()
+        if (extension !in FAST_PATH_INPUT_EXTENSIONS) {
+            return null
+        }
+
+        val temporary = File(
+            outputFile.parentFile,
+            ".${outputFile.name}.fastcopy",
+        )
+        temporary.delete()
+
+        val arguments = mutableListOf(
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-nostdin",
+            "-y",
+            "-i",
+            inputFile.absolutePath,
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-sn",
+            "-dn",
+            "-c:a",
+            "copy",
+        )
+
+        if (outputFormat == AudioOutputFormat.M4a) {
+            arguments += listOf(
+                "-movflags",
+                "+faststart",
+                "-f",
+                "mp4",
+            )
+        } else {
+            arguments += listOf(
+                "-f",
+                "adts",
+            )
+        }
+        arguments += temporary.absolutePath
+
+        val succeeded = runCatching {
+            val session = FFmpegKit.executeWithArguments(arguments.toTypedArray())
+            ReturnCode.isSuccess(session.returnCode) &&
+                temporary.isFile &&
+                temporary.length() > 0L
+        }.getOrDefault(false)
+
+        if (!succeeded) {
+            temporary.delete()
+            return null
+        }
+
+        outputFile.delete()
+        return if (temporary.renameTo(outputFile)) {
+            outputFile.takeIf { it.isFile && it.length() > 0L }
+        } else {
+            runCatching {
+                temporary.copyTo(outputFile, overwrite = true)
+                temporary.delete()
+                outputFile.takeIf { it.isFile && it.length() > 0L }
+            }.getOrNull()
         }
     }
 
@@ -134,5 +224,6 @@ class AudioTranscoder {
 
     private companion object {
         const val MAX_ERROR_OUTPUT_CHARS = 3000
+        val FAST_PATH_INPUT_EXTENSIONS = setOf("mp4", "m4a", "mov", "aac")
     }
 }
