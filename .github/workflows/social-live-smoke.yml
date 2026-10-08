@@ -53,16 +53,20 @@ jobs:
           emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect
           disable-animations: true
           script: |
-            set -euo pipefail
-            gradle --no-daemon connectedDebugAndroidTest --tests com.ahdownload.app.social.SocialDownloadSmokeTest
+            set +e
+            mkdir -p "$GITHUB_WORKSPACE/social-smoke-artifacts"
 
-      - name: Collect instrumentation artifacts
-        if: always()
-        run: |
-          set +e
-          mkdir -p social-smoke-artifacts
-          adb logcat -d > social-smoke-artifacts/logcat.txt || true
-          adb shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'" > social-smoke-artifacts/report.txt 2>/dev/null || true
+            gradle --no-daemon connectedDebugAndroidTest               --tests com.ahdownload.app.social.SocialDownloadSmokeTest               --stacktrace
+            TEST_EXIT=$?
+
+            adb logcat -d > "$GITHUB_WORKSPACE/social-smoke-artifacts/logcat.txt" 2>&1 || true
+            adb shell "run-as com.ahdownload.app sh -c 'cat /data/data/com.ahdownload.app/cache/social-smoke/report.txt'"               > "$GITHUB_WORKSPACE/social-smoke-artifacts/report.txt" 2>&1 || true
+
+            if [ -d app/build/reports/androidTests/connected ]; then
+              cp -R app/build/reports/androidTests/connected                 "$GITHUB_WORKSPACE/social-smoke-artifacts/android-tests-report"
+            fi
+
+            exit "$TEST_EXIT"
 
       - name: Upload smoke-test report
         if: always()
