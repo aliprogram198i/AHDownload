@@ -7,8 +7,10 @@ import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
-import com.ahdownload.domain.resolver.social.SocialPlatformResolver
+import com.ahdownload.domain.resolver.youtube.YouTubeResolver
 import com.ahdownload.feature.home.AndroidBrowserMediaSessionProvider
+import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
+import com.ahdownload.feature.home.HomeResolver
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -32,7 +34,14 @@ class SocialDownloadSmokeTest {
     @Test
     fun liveSocialVideoSmokeTest() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val resolver = SocialPlatformResolver(AndroidBrowserMediaSessionProvider(context))
+        val browserProvider = AndroidBrowserMediaSessionProvider(context)
+        val resolver = HomeResolver(
+            youtubeResolver = YouTubeResolver(
+                httpClient = OkHttpTextClient(),
+                sessionProvider = AndroidYouTubeSessionProvider(context),
+            ),
+            browserMediaSessionProvider = browserProvider,
+        )
         val outputDir = File(context.cacheDir, "social-smoke").apply { mkdirs() }
 
         val cases = listOf(
@@ -89,7 +98,7 @@ class SocialDownloadSmokeTest {
     )
 
     private suspend fun runCase(
-        resolver: SocialPlatformResolver,
+        resolver: HomeResolver,
         case: Case,
         outputDir: File,
     ): CaseResult {
