@@ -12,6 +12,7 @@ import com.ahdownload.feature.home.AndroidBrowserMediaSessionProvider
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -47,76 +48,119 @@ class SocialDownloadSmokeTest {
             Case("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=BaW_jenozKc"),
         )
 
-        val lines = mutableListOf<String>()
-        lines += "AHDownload live social smoke test"
-        lines += "android=" + android.os.Build.VERSION.RELEASE + " sdk=" + android.os.Build.VERSION.SDK_INT
-        lines += "started=" + System.currentTimeMillis()
+        val results = mutableListOf<CaseResult>()
+        val reportLines = mutableListOf<String>()
+        reportLines += "AHDownload live social smoke test"
+        reportLines += "android=" + android.os.Build.VERSION.RELEASE + " sdk=" + android.os.Build.VERSION.SDK_INT
+        reportLines += "started=" + System.currentTimeMillis()
 
         for (case in cases) {
-            val resolved = runCatching {
-                withTimeout(TimeUnit.SECONDS.toMillis(22)) {
-                    resolver.resolve(
-                        ResolverRequest(
-                            link = MediaLink(
-                                originalUrl = case.url,
-                                normalizedUrl = case.url,
-                                platform = case.platform,
-                                kind = MediaKind.Video,
-                            ),
-                            requestedKind = MediaKind.Video,
-                            operationId = "smoke-" + case.platform.name.lowercase(),
-                        ),
-                    )
-                }
-            }
-
-            if (resolved.isFailure) {
-                val error = resolved.exceptionOrNull()
-                lines += "RESULT " + case.name + ": EXCEPTION " +
-                    (error?.javaClass?.simpleName ?: "Unknown") + ": " +
-                    (error?.message ?: "")
-                continue
-            }
-
-            when (val result = resolved.getOrThrow()) {
-                is ResolverResult.Success -> {
-                    val video = result.candidates
-                        .filter { it.format.kind == MediaKind.Video }
-                        .sortedByDescending { it.format.height ?: 0 }
-                        .firstOrNull()
-
-                    if (video == null) {
-                        lines += "RESULT " + case.name +
-                            ": RESOLVED_NO_VIDEO_CANDIDATE candidate_count=" +
-                            result.candidates.size
-                        continue
-                    }
-
-                    val probe = probeMedia(video.sourceUrl, video.requestHeaders, outputDir, case.name)
-                    lines += "RESULT " + case.name +
-                        ": RESOLVED candidate_count=" + result.candidates.size +
-                        " height=" + (video.format.height ?: 0) +
-                        " container=" + video.format.container +
-                        " transfer=" + probe.status +
-                        " bytes=" + probe.bytes
-                }
-
-                is ResolverResult.Failure -> {
-                    lines += "RESULT " + case.name + ": FAILURE code=" + result.code +
-                        " message=" + (result.message ?: "")
-                }
-            }
+            val caseResult = runCase(resolver, case, outputDir)
+            results += caseResult
+            reportLines += caseResult.reportLine
         }
 
-        val report = lines.joinToString("\n")
+        val passed = results.count { it.passed }
+        val failed = results.count { !it.passed }
+        reportLines += "SUMMARY passed=${passed} failed=${failed} total=${cases.size}"
+
+        val report = reportLines.joinToString("\n")
         println(report)
         File(outputDir, "report.txt").writeText(report)
 
         assertEquals(
             "Smoke test must produce one diagnostic result per platform case",
             cases.size,
-            lines.count { it.startsWith("RESULT ") },
+            results.size,
         )
+        assertTrue(
+            "Live social smoke test failed for: " +
+                results.filterNot { it.passed }.joinToString(", ") { it.case.name + "=" + it.reason },
+            results.all { it.passed },
+        )
+    }
+
+    private data class CaseResult(
+        val case: Case,
+        val passed: Boolean,
+        val reason: String,
+        val reportLine: String,
+    )
+
+    private suspend fun runCase(
+        resolver: SocialPlatformResolver,
+        case: Case,
+        outputDir: File,
+    ): CaseResult {
+        val resolved = runCatching {
+            withTimeout(TimeUnit.SECONDS.toMillis(45)) {
+                resolver.resolve(
+                    ResolverRequest(
+                        link = MediaLink(
+                            originalUrl = case.url,
+                            normalizedUrl = case.url,
+                            platform = case.platform,
+                            kind = MediaKind.Video,
+                        ),
+                        requestedKind = MediaKind.Video,
+                        operationId = "smoke-" + case.platform.name.lowercase(),
+                    ),
+                )
+            }
+        }
+
+        if (resolved.isFailure) {
+            val error = resolved.exceptionOrNull()
+            val reason = "EXCEPTION_" + (error?.javaClass?.simpleName ?: "Unknown")
+            return CaseResult(
+                case = case,
+                passed = false,
+                reason = reason,
+                reportLine = "RESULT ${case.name}: EXCEPTION " +
+                    (error?.javaClass?.simpleName ?: "Unknown") + ": " +
+                    (error?.message ?: ""),
+            )
+        }
+
+        return when (val result = resolved.getOrThrow()) {
+            is ResolverResult.Success -> {
+                val video = result.candidates
+                    .filter { it.format.kind == MediaKind.Video }
+                    .sortedByDescending { it.format.height ?: 0 }
+                    .firstOrNull()
+
+                if (video == null) {
+                    CaseResult(
+                        case = case,
+                        passed = false,
+                        reason = "RESOLVED_NO_VIDEO_CANDIDATE",
+                        reportLine = "RESULT ${case.name}: RESOLVED_NO_VIDEO_CANDIDATE " +
+                            "candidate_count=${result.candidates.size}",
+                    )
+                } else {
+                    val probe = probeMedia(video.sourceUrl, video.requestHeaders, outputDir, case.name)
+                    val passed = probe.bytes > 0L
+                    CaseResult(
+                        case = case,
+                        passed = passed,
+                        reason = if (passed) "OK" else probe.status,
+                        reportLine = "RESULT ${case.name}: RESOLVED " +
+                            "candidate_count=${result.candidates.size} " +
+                            "height=${video.format.height ?: 0} " +
+                            "container=${video.format.container} " +
+                            "transfer=${probe.status} bytes=${probe.bytes}",
+                    )
+                }
+            }
+
+            is ResolverResult.Failure -> CaseResult(
+                case = case,
+                passed = false,
+                reason = "FAILURE_${result.code}",
+                reportLine = "RESULT ${case.name}: FAILURE code=" + result.code +
+                    " message=" + (result.message ?: ""),
+            )
+        }
     }
 
     private data class Probe(
@@ -134,6 +178,7 @@ class SocialDownloadSmokeTest {
             connectTimeout = 10_000
             readTimeout = 15_000
             requestMethod = "GET"
+            instanceFollowRedirects = true
             setRequestProperty("Range", "bytes=0-1048575")
             headers.forEach { (name, value) ->
                 if (name.isNotBlank() && value.isNotBlank()) {
