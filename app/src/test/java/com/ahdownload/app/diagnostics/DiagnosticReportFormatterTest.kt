@@ -276,6 +276,54 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("FAILURE_CHAIN\nNONE"))
     }
 
+    @Test
+    fun latestAudioExtractionFailureOverridesEarlierHttp403() {
+        val session = "session-audio"
+        val operation = "op-audio"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "MEDIA_PROBE_ATTEMPT",
+                level = DiagnosticLevel.WARNING,
+                reason = "HTTP_403",
+                session = session,
+                operation = operation,
+                context = mapOf("status_code" to "403", "candidate_id" to "137"),
+            ),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "MEDIA_VALIDATION_ACCEPTED",
+                level = DiagnosticLevel.INFO,
+                reason = "valid",
+                session = session,
+                operation = operation,
+                context = mapOf("candidate_id" to "android-18"),
+            ),
+            event(
+                time = 3_000L,
+                sequence = "3",
+                type = "AUDIO_EXTRACTION_FAILED",
+                level = DiagnosticLevel.ERROR,
+                reason = "FFmpeg runtime failure",
+                session = session,
+                operation = "download.audio_extraction",
+                context = mapOf(
+                    "stage" to "DOWNLOAD",
+                    "output_format" to "Mp3",
+                ),
+            ),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("classification=AUDIO_PROCESSING"))
+        assertTrue(report.contains("root_cause=AUDIO_EXTRACTION_FAILED"))
+        assertTrue(report.contains("failure=AUDIO_EXTRACTION_FAILED"))
+        assertTrue(report.contains("action=INSPECT_AUDIO_PROCESSOR"))
+    }
+
     private fun event(
         time: Long,
         sequence: String,
