@@ -15,8 +15,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 18
-        versionName = "1.3.6"
+        versionCode = 19
+        versionName = "1.3.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -95,6 +95,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
+    // FFmpegKit 8.1.7 declares this runtime dependency incompletely; keep it explicit to prevent release-time NoClassDefFoundError.
+    implementation("com.arthenica:smart-exception-java:0.2.1")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     debugImplementation("androidx.compose.ui:ui-tooling")
