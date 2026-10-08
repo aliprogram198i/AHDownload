@@ -34,6 +34,7 @@ class AndroidBrowserMediaSessionProvider(
             lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
+            val mediaHasAudioByUrl = ConcurrentHashMap<String, Boolean>()
             var title: String? = null
             var thumbnail: String? = null
             var durationMs: Long? = null
@@ -113,6 +114,7 @@ class AndroidBrowserMediaSessionProvider(
                     thumbnailUrl = thumbnail,
                     durationMs = durationMs,
                     mediaUrls = mediaUrls.toList().take(MAX_MEDIA_URLS),
+                    mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
                     requestHeadersByUrl = requestHeaders.toMap(),
                 )
                 webView?.stopLoading()
@@ -126,15 +128,25 @@ class AndroidBrowserMediaSessionProvider(
                 val script = """
                     (function(){
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
-                      const media=[...document.querySelectorAll('video,audio,source')]
-                        .map(e=>e.currentSrc||e.src||e.getAttribute('data-src')).filter(Boolean);
+                      const elements=[...document.querySelectorAll('video,audio')].map(e=>{
+                        const url=e.currentSrc||e.src||e.getAttribute('data-src');
+                        const tag=e.tagName.toLowerCase();
+                        const hasAudio=tag==='audio'||
+                          (e.audioTracks&&typeof e.audioTracks.length==='number'&&e.audioTracks.length>0)||
+                          e.mozHasAudio===true||
+                          (typeof e.webkitAudioDecodedByteCount==='number'&&e.webkitAudioDecodedByteCount>0);
+                        return url?{url,hasAudio}:null;
+                      }).filter(Boolean);
+                      const sources=[...document.querySelectorAll('source')]
+                        .map(e=>e.src||e.getAttribute('data-src')).filter(Boolean);
                       const perf=(performance.getEntriesByType('resource')||[]).map(e=>e.name).filter(Boolean);
                       const d=[...document.querySelectorAll('video')].map(v=>v.duration).filter(x=>Number.isFinite(x)&&x>0);
                       return JSON.stringify({
                         title:meta('meta[property="og:title"]')||meta('meta[name="twitter:title"]')||document.title||null,
                         thumbnail:meta('meta[property="og:image"]')||meta('meta[name="twitter:image"]')||null,
                         durationSec:d.length?Math.max(...d):null,
-                        media:[...new Set([...media,...perf])].slice(0,80)
+                        media:[...new Set([...elements.map(x=>x.url),...sources,...perf])].slice(0,80),
+                        mediaAudio:elements
                       });
                     })();
                 """.trimIndent()
@@ -144,6 +156,15 @@ class AndroidBrowserMediaSessionProvider(
                         json.optString("title").takeIf { it.isNotBlank() }?.let { title = it }
                         json.optString("thumbnail").takeIf { it.startsWith("http") }?.let { thumbnail = it }
                         json.optDouble("durationSec", -1.0).takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }
+                        json.optJSONArray("mediaAudio")?.let { array ->
+                            for (i in 0 until array.length()) {
+                                val item = array.optJSONObject(i) ?: continue
+                                val mediaUrl = item.optString("url").trim()
+                                if (mediaUrl.isBlank()) continue
+                                observe(mediaUrl)
+                                mediaHasAudioByUrl[mediaUrl] = item.optBoolean("hasAudio", false)
+                            }
+                        }
                         json.optJSONArray("media")?.let { array ->
                             for (i in 0 until array.length()) observe(array.optString(i))
                         }
