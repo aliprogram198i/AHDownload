@@ -39,10 +39,9 @@ object WebPageMediaParser {
                 .mapNotNull(::meta).forEach { add(absolute(it)) }
             Regex("""(?i)(?:video|audio|source)[^>]+(?:src|data-src)=["']([^"']+)["']""")
                 .findAll(html).forEach { add(absolute(it.groupValues[1])) }
-            Regex("""(?i)https?://[^\s"'<>]+\.(?:mp4|m4v|webm|mov|mkv|m4a|mp3|aac|ogg|flac)(?:\?[^\s"'<>]*)?""")
+            Regex("""(?i)https?://[^\s"'<>]+\.(?:mp4|m4v|webm|mov|mkv|m4a|mp3|aac|ogg|flac|m3u8|mpd)(?:\?[^\s"'<>]*)?""")
                 .findAll(html).forEach { add(it.value) }
         }.filter { it.startsWith("http://") || it.startsWith("https://") }
-            .filterNot { it.contains(".m3u8", true) || it.contains(".mpd", true) }
             .distinct()
             .take(64)
 
