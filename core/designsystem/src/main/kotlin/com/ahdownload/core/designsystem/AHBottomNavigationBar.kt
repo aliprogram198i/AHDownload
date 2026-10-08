@@ -13,6 +13,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 
 enum class AHBottomNavDestination {
@@ -28,6 +32,9 @@ fun AHBottomNavigationBar(
     activeDownloads: Int = 0,
 ) {
     NavigationBar(
+        modifier = Modifier
+            .padding(horizontal = 12.dp, vertical = 7.dp)
+            .clip(RoundedCornerShape(22.dp)),
         containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = AHBottomNavigationDefaults.Elevation,
     ) {
@@ -52,7 +59,7 @@ fun AHBottomNavigationBar(
                     Icon(Icons.Rounded.Download, contentDescription = "سجل التنزيلات")
                 }
             },
-            label = { Text("سجل التنزيلات") },
+            label = { Text("التنزيلات") },
             colors = AHBottomNavigationDefaults.ItemColors,
         )
         NavigationBarItem(
