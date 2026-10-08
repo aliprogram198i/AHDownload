@@ -576,7 +576,7 @@ class YouTubeResolver(
 
     private fun isKnownMuxedItag(itag: String?): Boolean = itag in KNOWN_MUXED_ITAGS
 
-$marker
+    private fun sessionHeaders(snapshot: YouTubeSessionSnapshot): Map<String, String> = buildMap {
         snapshot.cookies?.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
         snapshot.userAgent?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
         put("Referer", "https://www.youtube.com/")
