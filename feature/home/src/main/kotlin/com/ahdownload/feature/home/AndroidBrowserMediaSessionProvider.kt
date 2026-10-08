@@ -196,7 +196,10 @@ class AndroidBrowserMediaSessionProvider(
                 """.trimIndent()
                 view.evaluateJavascript(script) { raw ->
                     runCatching {
-                        val json = JSONObject(raw.removeSurrounding(""").replace("\"", """))
+                        val decoded = runCatching {
+                            JSONTokener(raw).nextValue() as? String ?: raw
+                        }.getOrDefault(raw)
+                        val json = JSONObject(decoded)
                         json.optString("title").takeIf { it.isNotBlank() }?.let { title = it }
                         json.optString("thumbnail").takeIf { it.startsWith("http") }?.let { thumbnail = it }
                         json.optDouble("durationSec", -1.0).takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }
