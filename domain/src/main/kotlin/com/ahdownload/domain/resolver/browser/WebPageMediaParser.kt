@@ -41,8 +41,6 @@ object WebPageMediaParser {
                 .findAll(html).forEach { add(absolute(it.groupValues[1])) }
             Regex("""(?is)"(?:video_url|videoUrl|playAddr|downloadAddr|playable_url|playableUrl|contentUrl|srcUrl|sourceUrl|fallbackUrl|progressiveUrl|streamUrl)"\s*:\s*"((?:\\.|[^"])*)"""")
                 .findAll(html).forEach { add(absolute(it.groupValues[1])) }
-            Regex("""(?is)https?:\/\/[^\s"'<>\\]+(?:\\/[^\s"'<>\\]+)*""")
-                .findAll(html).forEach { add(absolute(it.value)) }
             Regex("""(?i)https?://[^\s"'<>]+\.(?:mp4|m4v|webm|mov|mkv|m4a|mp3|aac|ogg|flac)(?:\?[^\s"'<>]*)?""")
                 .findAll(html).forEach { add(it.value) }
         }.filter { it.startsWith("http://") || it.startsWith("https://") }
