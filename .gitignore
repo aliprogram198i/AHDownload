@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Local SDK and machine configuration
+local.properties
+
+# Keystores and signing material
+*.jks
+*.keystore
+*.p12
+*.pfx
+.ci-release.keystore
+
+# Generated APK/AAB outputs
+*.apk
+*.aab
+outputs/
+captures/
+
+# Native / temporary artifacts
+.externalNativeBuild/
+.cxx/
+*.log
+.DS_Store
+Thumbs.db
+
+# Kotlin/Android generated
+.kotlin/

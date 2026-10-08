@@ -1,0 +1,78 @@
+package com.ahdownload.domain.resolver.social
+
+import com.ahdownload.domain.model.MediaPlatform
+import com.ahdownload.domain.resolver.ResolverRequest
+import com.ahdownload.domain.resolver.ResolverResult
+import com.ahdownload.domain.resolver.browser.BrowserMediaSession
+import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class SocialPlatformResolverTest {
+    @Test
+    fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
+        val url = "https://cdn.example.com/video.mp4"
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.TikTok,
+                    pageUrl = "https://www.tiktok.com/@user/video/123456",
+                    mediaUrls = listOf(url),
+                    mediaHasAudioByUrl = mapOf(url to false),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.TikTok),
+            ),
+        )
+
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertFalse(candidate.format.hasAudio)
+    }
+
+    @Test
+    fun observedVideoWithAudioTrackRemainsMuxed() = runTest {
+        val url = "https://cdn.example.com/video.mp4"
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "https://www.instagram.com/reel/ABC123/",
+                    mediaUrls = listOf(url),
+                    mediaHasAudioByUrl = mapOf(url to true),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram),
+            ),
+        )
+
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertTrue(candidate.format.hasAudio)
+    }
+
+    private fun link(platform: MediaPlatform) =
+        com.ahdownload.domain.model.MediaLink(
+            originalUrl = "https://example.com/post",
+            normalizedUrl = "https://example.com/post",
+            platform = platform,
+            kind = com.ahdownload.domain.model.MediaKind.Video,
+        )
+
+    private class FakeProvider(
+        private val session: BrowserMediaSession,
+    ) : BrowserMediaSessionProvider {
+        override suspend fun snapshot(
+            url: String,
+            platform: MediaPlatform,
+        ): BrowserMediaSession = session
+    }
+}

@@ -10,6 +10,8 @@ data class BrowserMediaSession(
     val thumbnailUrl: String? = null,
     val durationMs: Long? = null,
     val mediaUrls: List<String> = emptyList(),
+    /** Best-effort audio-track detection for browser-observed media elements. */
+    val mediaHasAudioByUrl: Map<String, Boolean> = emptyMap(),
     val requestHeadersByUrl: Map<String, Map<String, String>> = emptyMap(),
 )
 

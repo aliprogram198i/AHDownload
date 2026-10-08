@@ -55,8 +55,17 @@ class SocialPlatformResolver(
                 .distinct()
                 .take(64)
 
+            val sessionObservedUrls = session.mediaUrls.toSet()
             val candidates = urls.mapIndexedNotNull { index, url ->
-                inferCandidate(platform, url, index, session.requestHeadersByUrl[url])
+                val audioPresence = session.mediaHasAudioByUrl[url]
+                    ?: if (url in sessionObservedUrls) false else null
+                inferCandidate(
+                    platform = platform,
+                    sourceUrl = url,
+                    index = index,
+                    requestHeaders = session.requestHeadersByUrl[url],
+                    audioPresence = audioPresence,
+                )
             }.distinctBy {
                 listOf(
                     it.format.kind,
@@ -118,6 +127,7 @@ class SocialPlatformResolver(
         sourceUrl: String,
         index: Int,
         requestHeaders: Map<String, String>?,
+        audioPresence: Boolean?,
     ): MediaCandidate? {
         val mime = runCatching { URI(sourceUrl).rawQuery.orEmpty() }
             .getOrDefault("")
@@ -166,7 +176,14 @@ class SocialPlatformResolver(
                 container = container,
                 height = height,
                 hasVideo = kind == MediaKind.Video,
-                hasAudio = kind == MediaKind.Video || kind == MediaKind.Audio,
+                // Browser-observed media gets an explicit audio-track result when
+                // available; do not blindly mark every video request as muxed.
+                hasAudio = when (kind) {
+                    MediaKind.Audio -> true
+                    MediaKind.Video -> audioPresence ?: true
+                    MediaKind.Image,
+                    MediaKind.Unknown -> false
+                },
             ),
             requestHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
             sessionCookieHost = safeHost(sourceUrl),

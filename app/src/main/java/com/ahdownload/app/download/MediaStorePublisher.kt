@@ -83,7 +83,7 @@ class MediaStorePublisher(
                 },
                 relativePath = "Movies/AHDownload",
             )
-            "mp3", "m4a", "aac", "ogg", "flac", "wav" -> MediaMetadata(
+            "mp3", "m4a", "aac", "ogg", "opus", "flac", "wav" -> MediaMetadata(
                 collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                 mimeType = when (extension) {
                     "mp3" -> "audio/mpeg"

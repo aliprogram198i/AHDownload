@@ -28,11 +28,13 @@ class AndroidBrowserMediaSessionProvider(
             val main = Handler(Looper.getMainLooper())
             var webView: WebView? = null
             var timeout: Runnable? = null
+            var settleFinish: Runnable? = null
             var finished = false
-            var fastFinishScheduled = false
+            var firstMediaObservedAt = 0L
             lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
+            val mediaHasAudioByUrl = ConcurrentHashMap<String, Boolean>()
             var title: String? = null
             var thumbnail: String? = null
             var durationMs: Long? = null
@@ -70,26 +72,11 @@ class AndroidBrowserMediaSessionProvider(
                 }
             }
 
-            fun observe(raw: String?, headers: Map<String, String> = emptyMap()) {
-                val value = raw?.trim().orEmpty()
-                if (!isMedia(value)) return
-                mediaUrls.add(value)
-                val safe = safeHeaders(headers)
-                if (safe.isNotEmpty()) requestHeaders[value] = safe
-
-                if (isLikelyPlayableMedia(value) && !fastFinishScheduled) {
-                    fastFinishScheduled = true
-                    main.postDelayed({
-                        if (finished) return@postDelayed
-                        webView?.let { inspect(it) }
-                    }, 350L)
-                }
-            }
-
             fun finish() {
                 if (finished) return
                 finished = true
                 timeout?.let(main::removeCallbacks)
+                settleFinish?.let(main::removeCallbacks)
                 finalUrl = webView?.url ?: url
                 val result = BrowserMediaSession(
                     platform = platform,
@@ -99,6 +86,7 @@ class AndroidBrowserMediaSessionProvider(
                     thumbnailUrl = thumbnail,
                     durationMs = durationMs,
                     mediaUrls = mediaUrls.toList().take(MAX_MEDIA_URLS),
+                    mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
                     requestHeadersByUrl = requestHeaders.toMap(),
                 )
                 webView?.stopLoading()
@@ -107,20 +95,58 @@ class AndroidBrowserMediaSessionProvider(
                 if (continuation.isActive) continuation.resume(result)
             }
 
+            fun observe(raw: String?, headers: Map<String, String> = emptyMap()) {
+                val value = raw?.trim().orEmpty()
+                if (!isMedia(value)) return
+                mediaUrls.add(value)
+                val safe = safeHeaders(headers)
+                if (safe.isNotEmpty()) requestHeaders[value] = safe
+
+                if (isLikelyPlayableMedia(value)) {
+                    if (firstMediaObservedAt == 0L) {
+                        firstMediaObservedAt = System.currentTimeMillis()
+                    }
+                    webView?.let { view ->
+                        view.postDelayed({ inspect(view) }, 250L)
+                    }
+
+                    // Keep collecting media briefly after the first playable request so
+                    // a preload/thumbnail stream cannot prevent later quality streams
+                    // or audio sources from being captured. The window remains bounded.
+                    settleFinish?.let(main::removeCallbacks)
+                    val elapsed = (System.currentTimeMillis() - firstMediaObservedAt).coerceAtLeast(0L)
+                    val remaining = (MAX_MEDIA_CAPTURE_WINDOW_MS - elapsed)
+                        .coerceAtLeast(SETTLE_FINISH_DELAY_MS)
+                    settleFinish = Runnable { finish() }.also {
+                        main.postDelayed(it, remaining.coerceAtMost(MAX_MEDIA_CAPTURE_WINDOW_MS))
+                    }
+                }
+            }
+
             inspect = fun(view: WebView) {
                 if (finished) return
                 val script = """
                     (function(){
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
-                      const media=[...document.querySelectorAll('video,audio,source')]
-                        .map(e=>e.currentSrc||e.src||e.getAttribute('data-src')).filter(Boolean);
+                      const elements=[...document.querySelectorAll('video,audio')].map(e=>{
+                        const url=e.currentSrc||e.src||e.getAttribute('data-src');
+                        const tag=e.tagName.toLowerCase();
+                        const hasAudio=tag==='audio'||
+                          (e.audioTracks&&typeof e.audioTracks.length==='number'&&e.audioTracks.length>0)||
+                          e.mozHasAudio===true||
+                          (typeof e.webkitAudioDecodedByteCount==='number'&&e.webkitAudioDecodedByteCount>0);
+                        return url?{url,hasAudio}:null;
+                      }).filter(Boolean);
+                      const sources=[...document.querySelectorAll('source')]
+                        .map(e=>e.src||e.getAttribute('data-src')).filter(Boolean);
                       const perf=(performance.getEntriesByType('resource')||[]).map(e=>e.name).filter(Boolean);
                       const d=[...document.querySelectorAll('video')].map(v=>v.duration).filter(x=>Number.isFinite(x)&&x>0);
                       return JSON.stringify({
                         title:meta('meta[property="og:title"]')||meta('meta[name="twitter:title"]')||document.title||null,
                         thumbnail:meta('meta[property="og:image"]')||meta('meta[name="twitter:image"]')||null,
                         durationSec:d.length?Math.max(...d):null,
-                        media:[...new Set([...media,...perf])].slice(0,80)
+                        media:[...new Set([...elements.map(x=>x.url),...sources,...perf])].slice(0,80),
+                        mediaAudio:elements
                       });
                     })();
                 """.trimIndent()
@@ -130,6 +156,15 @@ class AndroidBrowserMediaSessionProvider(
                         json.optString("title").takeIf { it.isNotBlank() }?.let { title = it }
                         json.optString("thumbnail").takeIf { it.startsWith("http") }?.let { thumbnail = it }
                         json.optDouble("durationSec", -1.0).takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }
+                        json.optJSONArray("mediaAudio")?.let { array ->
+                            for (i in 0 until array.length()) {
+                                val item = array.optJSONObject(i) ?: continue
+                                val mediaUrl = item.optString("url").trim()
+                                if (mediaUrl.isBlank()) continue
+                                observe(mediaUrl)
+                                mediaHasAudioByUrl[mediaUrl] = item.optBoolean("hasAudio", false)
+                            }
+                        }
                         json.optJSONArray("media")?.let { array ->
                             for (i in 0 until array.length()) observe(array.optString(i))
                         }
@@ -177,7 +212,10 @@ class AndroidBrowserMediaSessionProvider(
                         view.postDelayed({ inspect(view) }, 450L)
                         view.postDelayed({ inspect(view) }, 1400L)
                         view.postDelayed({ inspect(view) }, 2600L)
-                        view.postDelayed({ finish() }, 4800L)
+                        view.postDelayed({ inspect(view) }, 4200L)
+                        view.postDelayed({
+                            if (mediaUrls.isNotEmpty()) finish()
+                        }, 6200L)
                     }
                 }
                 timeout = Runnable { finish() }
@@ -188,6 +226,8 @@ class AndroidBrowserMediaSessionProvider(
 
     private companion object {
         const val MAX_MEDIA_URLS = 64
+        const val SETTLE_FINISH_DELAY_MS = 1200L
+        const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
         val MEDIA_EXTENSIONS = setOf("mp4","m4v","webm","mov","mkv","3gp","avi","m4a","mp3","aac","ogg","flac","wav")
     }
