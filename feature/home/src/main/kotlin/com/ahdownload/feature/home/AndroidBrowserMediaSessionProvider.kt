@@ -14,6 +14,7 @@ import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
+import org.json.JSONTokener
 import kotlin.coroutines.resume
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
@@ -44,8 +45,10 @@ class AndroidBrowserMediaSessionProvider(
                 if (".m3u8" in lower || ".mpd" in lower) return false
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                val queryMedia = Regex("""[?&](mime|mime_type|content-type|contentType|type|media_type)=(?:video|audio)""")
-                    .containsMatchIn(lower)
+                val queryMedia = Regex("""(?i)[?&](mime|mime_type|content-type|contentType|type|media_type)=(?:video|audio)(?:%2f|/|%252f)[^&]*""")
+                    .containsMatchIn(lower) ||
+                    Regex("""(?i)[?&](?:ext|extension|format)=(?:mp4|m4v|webm|mov|mkv|m4a|mp3|aac|ogg|flac|wav)(?:[&#]|$)""")
+                        .containsMatchIn(lower)
                 val pathHint = Regex("""(?:/videoplayback|/video(?:/|$)|/videos(?:/|$)|/playback(?:/|$)|/stream(?:/|$)|/download(?:/|$))""")
                     .containsMatchIn(lower)
                 return ext in MEDIA_EXTENSIONS || queryMedia || pathHint
@@ -56,7 +59,13 @@ class AndroidBrowserMediaSessionProvider(
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
                 return ext in MEDIA_EXTENSIONS ||
-                    "/videoplayback" in lower || "/video/" in lower || "/videos/" in lower
+                    "/videoplayback" in lower ||
+                    "/video/" in lower ||
+                    "/videos/" in lower ||
+                    "/playback/" in lower ||
+                    "/stream/" in lower ||
+                    Regex("""(?i)[?&](mime|mime_type|content-type|type|media_type)=(?:video|audio)(?:%2f|/|%252f)""")
+                        .containsMatchIn(lower)
             }
 
             fun safeHeaders(input: Map<String, String>): Map<String, String> = buildMap {
@@ -136,11 +145,12 @@ class AndroidBrowserMediaSessionProvider(
                 """.trimIndent()
                 view.evaluateJavascript(script) { raw ->
                     runCatching {
-                        val json = JSONObject(raw.removeSurrounding(""").replace("\"", """))
-                        json.optString("title").takeIf { it.isNotBlank() }?.let { title = it }
-                        json.optString("thumbnail").takeIf { it.startsWith("http") }?.let { thumbnail = it }
-                        json.optDouble("durationSec", -1.0).takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }
-                        json.optJSONArray("media")?.let { array ->
+                        val decoded = JSONTokener(raw ?: "null").nextValue()
+                        val json = if (decoded is String) JSONObject(decoded) else null
+                        json?.optString("title").takeIf { !it.isNullOrBlank() }?.let { title = it }
+                        json?.optString("thumbnail").takeIf { !it.isNullOrBlank() && it.startsWith("http") }?.let { thumbnail = it }
+                        json?.optDouble("durationSec", -1.0)?.takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }
+                        json?.optJSONArray("media")?.let { array ->
                             for (i in 0 until array.length()) observe(array.optString(i))
                         }
                     }
