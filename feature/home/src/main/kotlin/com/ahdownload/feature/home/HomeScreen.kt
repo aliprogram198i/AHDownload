@@ -256,9 +256,13 @@ private fun HomeScreen(
         candidates.size,
         state.selectedCandidateId,
         state.selectedAudioCandidateId,
+        state.selectedAudioOutputFormat,
         state.validatingCandidateId,
         state.error,
         state.downloadQueued,
+        state.showAll,
+        state.resultFilter,
+        state.searchQuery.length,
         state.searching,
         state.searchResults.size,
         state.searchError,
@@ -271,6 +275,7 @@ private fun HomeScreen(
         state.recentLinks.size,
         favoriteItems.size,
         currentFavorite,
+        activeDownloads,
     ) {
         val components = buildList {
             add("topbar")
@@ -303,11 +308,13 @@ private fun HomeScreen(
                 ";candidates=" + candidates.size +
                 ";selected=" + (state.selectedCandidateId ?: "none") +
                 ";selected_audio=" + (state.selectedAudioCandidateId ?: "none") +
+                ";audio_output=" + (state.selectedAudioOutputFormat?.name ?: "none") +
                 ";validating=" + (state.validatingCandidateId ?: "none") +
                 ";error=" + (state.error != null) +
                 ";show_all=" + state.showAll +
                 ";filter=" + state.resultFilter.name +
                 ";queued=" + state.downloadQueued +
+                ";search_query_length=" + state.searchQuery.length +
                 ";searching=" + state.searching +
                 ";search_results=" + state.searchResults.size +
                 ";search_selected=" + state.selectedSearchIds.size +
@@ -317,7 +324,8 @@ private fun HomeScreen(
                 ";search_error=" + (state.searchError != null) +
                 ";recent_links=" + state.recentLinks.size +
                 ";favorites=" + favoriteItems.size +
-                ";current_favorite=" + currentFavorite,
+                ";current_favorite=" + currentFavorite +
+                ";active_downloads=" + activeDownloads,
             context = uiContext,
         )
     }
