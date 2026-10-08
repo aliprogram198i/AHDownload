@@ -415,7 +415,7 @@ private fun HomeScreen(
 
             if (state.mode == HomeMode.Link) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AHCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -503,7 +503,7 @@ private fun HomeScreen(
 
             } else {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
