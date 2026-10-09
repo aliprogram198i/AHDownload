@@ -125,6 +125,7 @@ class YouTubeResultCardEmulatorTest {
             .performClick()
 
         var terminalRecord: DownloadRecord? = null
+        var downloadActionFailed = false
         composeRule.waitUntil(timeoutMillis = DOWNLOAD_TIMEOUT_MS) {
             val current = runBlocking { app.downloadRepository.listHistory() }
                 .firstOrNull { it.task.id !in existingTaskIds }
@@ -136,13 +137,17 @@ class YouTubeResultCardEmulatorTest {
             ) {
                 terminalRecord = current
                 true
+            } else if (nodeExists("تعذر بدء التنزيل")) {
+                downloadActionFailed = true
+                true
             } else {
                 false
             }
         }
 
         val record = requireNotNull(terminalRecord) {
-            "YouTube download did not reach a terminal state. " + safeDiagnosticSummary(app)
+            "YouTube download did not reach a terminal record; " +
+                "downloadActionFailed=$downloadActionFailed; " + safeDiagnosticSummary(app)
         }
         assertEquals(
             "The YouTube download did not complete. failureCode=${record.failureCode}; " +
