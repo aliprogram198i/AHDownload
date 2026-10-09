@@ -256,6 +256,67 @@ class YouTubeResolverTest {
     }
 
     @Test
+    fun restoresQualityAndAudioMetadataWhenOnlyObservedWebViewUrlsAreAvailable() = runBlocking {
+        val video1080Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=137&mime=video%2Fmp4&source=browser"
+        val video720Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=136&mime=video%2Fmp4&source=browser"
+        // Deliberately place the audio URL in videoUrls and omit MIME metadata.
+        // The itag catalogue must still classify it as audio, not a video card.
+        val audio160Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=251&source=browser"
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                throw IllegalStateException("Sign in to confirm you're not a bot")
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = listOf(video1080Url, video720Url, audio160Url),
+                audioUrls = emptyList(),
+                authenticated = false,
+                browserRequestHeaders = mapOf(
+                    video1080Url to mapOf("Referer" to "https://www.youtube.com/"),
+                    video720Url to mapOf("Referer" to "https://www.youtube.com/"),
+                    audio160Url to mapOf("Referer" to "https://www.youtube.com/"),
+                ),
+                browserMediaObservedCount = 3,
+            )
+        }
+
+        val result = YouTubeResolver(client, sessionProvider = session).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/observed-itag-metadata",
+                    normalizedUrl = "https://youtu.be/observed-itag-metadata",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        val candidates = (result as ResolverResult.Success).candidates
+        assertEquals(3, candidates.size)
+
+        val video1080 = candidates.first { it.sourceUrl == video1080Url }
+        assertEquals(MediaKind.Video, video1080.format.kind)
+        assertEquals(1080, video1080.format.height)
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Mp4, video1080.format.container)
+        assertEquals(false, video1080.format.hasAudio)
+
+        val video720 = candidates.first { it.sourceUrl == video720Url }
+        assertEquals(MediaKind.Video, video720.format.kind)
+        assertEquals(720, video720.format.height)
+
+        val audio160 = candidates.first { it.sourceUrl == audio160Url }
+        assertEquals(MediaKind.Audio, audio160.format.kind)
+        assertEquals(160, audio160.format.bitrateKbps)
+        assertEquals("opus", audio160.format.audioCodec)
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Webm, audio160.format.container)
+    }
+
+    @Test
     fun fallsBackToWebViewSessionCandidatesAfterBotCheck() = runBlocking {
         val client = object : HttpTextClient {
             override suspend fun get(url: String): String =
