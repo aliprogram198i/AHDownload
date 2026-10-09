@@ -47,14 +47,14 @@ class LiveSocialMediaDownloadE2ETest {
         val report = mutableListOf<String>()
 
         val targets = listOf(
-            Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=BaW_jenozKc"),
+            Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=AYSE6QLigik"),
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/p/DWHwMSwiQkW/"),
             Target("Facebook", MediaPlatform.Facebook, "https://www.facebook.com/reel/1653671952450066/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("X", MediaPlatform.X, "https://x.com/NASAEarth/status/2019783141242610121"),
             Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/@nasa/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYdHBmbG9hdHR0AZ1ytS-RAZ1ytSiwAAAAAQ"),
             Target("Pinterest", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/842173199081163306/"),
-            Target("Reddit", MediaPlatform.Reddit, "https://www.reddit.com/r/spaceporn/comments/1sgcz1e/nasa_just_dropped_a_new_highresolution_video_of/"),
+            Target("Reddit", MediaPlatform.Reddit, "https://www.reddit.com/r/oddlysatisfying/comments/1u21o2g/just_a_little_bit_of_trimming/"),
             Target("Twitch", MediaPlatform.Twitch, "https://clips.twitch.tv/ZanyBlazingOtterNomNom-86PFh3-7kWWyJhrs"),
             Target("Vimeo", MediaPlatform.Vimeo, "https://vimeo.com/764921867"),
         )
