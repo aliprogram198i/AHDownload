@@ -38,4 +38,6 @@ data class DownloadTask(
     val companionAudioSessionCookieHost: String? = null,
     /** True when the source is an HLS/DASH manifest handled by FFmpeg. */
     val streamingManifest: Boolean = false,
+    /** True when the paired audio source is an HLS/DASH manifest. */
+    val companionAudioStreamingManifest: Boolean = false,
 )
