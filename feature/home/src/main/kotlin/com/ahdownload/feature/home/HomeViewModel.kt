@@ -704,6 +704,7 @@ class HomeViewModel(
                             companionAudioSourceUrl = audioCandidate.sourceUrl,
                             companionAudioRequestHeaders = audioCandidate.requestHeaders,
                             companionAudioSessionCookieHost = audioCandidate.sessionCookieHost,
+                            companionAudioStreamingManifest = audioCandidate.streamingManifest,
                         )
                     }
                 }
@@ -909,6 +910,7 @@ class HomeViewModel(
                                 companionAudioSourceUrl = audioValidation.finalUrl,
                                 companionAudioRequestHeaders = audioValidation.candidate.requestHeaders,
                                 companionAudioSessionCookieHost = audioValidation.candidate.sessionCookieHost,
+                                companionAudioStreamingManifest = audioValidation.candidate.streamingManifest,
                             )
                         }
                         val queued = if (extractAudio) {

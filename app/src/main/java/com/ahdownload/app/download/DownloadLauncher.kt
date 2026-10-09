@@ -71,6 +71,7 @@ class DownloadLauncher(
                 companionAudioRequestHeaders = candidate.companionAudioRequestHeaders.filterKeys(::isPersistableHeader),
                 companionAudioSessionCookieHost = candidate.companionAudioSessionCookieHost,
                 streamingManifest = candidate.streamingManifest,
+                companionAudioStreamingManifest = candidate.companionAudioStreamingManifest,
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
@@ -112,7 +113,7 @@ class DownloadLauncher(
         }
 
         val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
-        val fingerprint = fingerprint(candidate, DownloadProcessingMode.ExtractAudio)
+        val fingerprint = fingerprint(candidate, DownloadProcessingMode.ExtractAudio, outputFormat)
         if (repository.findByContentFingerprint(fingerprint) != null) {
             return DownloadEnqueueResult.DUPLICATE
         }
@@ -161,22 +162,8 @@ class DownloadLauncher(
     private fun fingerprint(
         candidate: MediaCandidate,
         processingMode: DownloadProcessingMode = DownloadProcessingMode.Direct,
-    ): String {
-        val raw = listOf(
-            processingMode.name,
-            candidate.sourceUrl,
-            candidate.format.id,
-            candidate.format.kind.name,
-            candidate.format.container.name,
-            candidate.format.width ?: 0,
-            candidate.format.height ?: 0,
-            candidate.format.bitrateKbps ?: 0,
-            candidate.streamingManifest,
-        ).joinToString("|")
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(raw.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
-    }
+        outputFormat: AudioOutputFormat? = null,
+    ): String = calculateDownloadFingerprint(candidate, processingMode, outputFormat)
 
     private fun isPersistableHeader(key: String): Boolean =
         key.equals("User-Agent", true) ||
@@ -235,4 +222,38 @@ class DownloadLauncher(
             com.ahdownload.domain.resolver.MediaContainer.Avi -> ".avi"
             com.ahdownload.domain.resolver.MediaContainer.Unknown -> ".bin"
         }
+}
+
+
+/**
+ * Stable task fingerprint. Keep the legacy fingerprint for direct downloads and
+ * M4A extraction; other audio output formats must not collide with one another.
+ */
+internal fun calculateDownloadFingerprint(
+    candidate: MediaCandidate,
+    processingMode: DownloadProcessingMode = DownloadProcessingMode.Direct,
+    outputFormat: AudioOutputFormat? = null,
+): String {
+    val parts = mutableListOf(
+        processingMode.name,
+        candidate.sourceUrl,
+        candidate.format.id,
+        candidate.format.kind.name,
+        candidate.format.container.name,
+        candidate.format.width ?: 0,
+        candidate.format.height ?: 0,
+        candidate.format.bitrateKbps ?: 0,
+        candidate.streamingManifest,
+    )
+    if (
+        processingMode == DownloadProcessingMode.ExtractAudio &&
+        outputFormat != null &&
+        outputFormat != AudioOutputFormat.M4a
+    ) {
+        parts += "audio-output:" + outputFormat.name
+    }
+    val raw = parts.joinToString("|")
+    val digest = MessageDigest.getInstance("SHA-256")
+        .digest(raw.toByteArray(Charsets.UTF_8))
+    return digest.joinToString("") { "%02x".format(it) }
 }

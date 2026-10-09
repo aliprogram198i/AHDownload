@@ -97,6 +97,7 @@ class DownloadWorker(
                 mediaKind = MediaKind.Audio,
                 processingMode = DownloadProcessingMode.Direct,
                 requestHeaders = task.companionAudioRequestHeaders,
+                streamingManifest = task.companionAudioStreamingManifest,
             )
         } else {
             null
@@ -191,7 +192,7 @@ class DownloadWorker(
         )
 
         val record = try {
-            if (sourceTask.streamingManifest) {
+            if (sourceTask.streamingManifest && !muxRequested) {
                 executeStreamingManifest(
                     task = task,
                     sourceTask = sourceTask,
@@ -539,6 +540,8 @@ class DownloadWorker(
         val companionAudioSourceUrl = inputData.getString(KEY_COMPANION_AUDIO_SOURCE_URL)
         val companionAudioSessionCookieHost = inputData.getString(KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST)
         val streamingManifest = inputData.getBoolean(KEY_STREAMING_MANIFEST, false)
+        val companionAudioStreamingManifest =
+            inputData.getBoolean(KEY_COMPANION_AUDIO_STREAMING_MANIFEST, false)
         val companionAudioRequestHeaders = buildMap {
             inputData.getString(KEY_COMPANION_AUDIO_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_COMPANION_AUDIO_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -584,6 +587,7 @@ class DownloadWorker(
             companionAudioRequestHeaders = companionAudioRequestHeaders,
             companionAudioSessionCookieHost = companionAudioSessionCookieHost,
             streamingManifest = streamingManifest,
+            companionAudioStreamingManifest = companionAudioStreamingManifest,
             requestHeaders = requestHeaders,
         )
     }
@@ -693,42 +697,124 @@ class DownloadWorker(
 
         try {
             if (!videoFile.isFile || videoFile.length() <= 0L) {
-                var videoFinal: DownloadState = DownloadState.Preparing
-                engine.download(videoTask) { state ->
-                    videoFinal = state
-                    updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
-                    updateNotificationSpeed(state)
-                    setForeground(createForegroundInfo(state))
+                val videoFinal = if (videoTask.streamingManifest) {
+                    setForeground(createForegroundInfo(DownloadState.Preparing))
+                    val manifestResult = FfmpegManifestDownloader().download(
+                        sourceUrl = videoTask.sourceUrl,
+                        outputFile = videoFile,
+                        requestHeaders = videoTask.requestHeaders,
+                        cookie = CookieManager.getInstance()
+                            .getCookie(videoTask.sourceUrl)
+                            ?.takeIf { it.isNotBlank() },
+                    )
+                    if (manifestResult.isSuccess && videoFile.isFile && videoFile.length() > 0L) {
+                        val size = videoFile.length()
+                        val stagedState = DownloadState.Downloading(size, size)
+                        updateAdaptiveRecord(repository, task.id, stagedState, System.currentTimeMillis())
+                        setForeground(createForegroundInfo(stagedState))
+                        DownloadState.Completed
+                    } else {
+                        val error = manifestResult.exceptionOrNull()
+                            ?: IllegalStateException("Manifest staging produced no media file")
+                        diagnostics.log(
+                            DiagnosticLevel.ERROR,
+                            "ADAPTIVE_VIDEO_MANIFEST_FAILED",
+                            "تعذر تجهيز مصدر الفيديو HLS/DASH قبل دمج الصوت",
+                            "download.mux.video_manifest",
+                            mapOf(
+                                "task_id" to task.id,
+                                "source_host" to hostOf(videoTask.sourceUrl),
+                            ),
+                            error,
+                        )
+                        updateAdaptiveRecord(
+                            repository,
+                            task.id,
+                            DownloadState.Failed(DownloadFailure.NetworkError),
+                            System.currentTimeMillis(),
+                        )
+                        DownloadState.Failed(DownloadFailure.NetworkError)
+                    }
+                } else {
+                    var directVideoFinal: DownloadState = DownloadState.Preparing
+                    engine.download(videoTask) { state ->
+                        directVideoFinal = state
+                        updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
+                        updateNotificationSpeed(state)
+                        setForeground(createForegroundInfo(state))
+                    }
+                    directVideoFinal
                 }
                 if (videoFinal !is DownloadState.Completed) return null
             }
 
             if (!audioFile.isFile || audioFile.length() <= 0L) {
-                var audioFinal: DownloadState = DownloadState.Preparing
-                val audioEngine = StreamingDownloadEngine(
-                    source = OkHttpDownloadByteStream(
-                        logger = diagnosticsLogger(),
-                        dynamicHeaders = { url, headers ->
-                            dynamicHeadersFor(url, task.companionAudioSessionCookieHost, headers)
-                        },
-                    ),
-                    sink = LocalAtomicFileSink(),
-                )
-                audioEngine.download(audioTask) { state ->
-                    audioFinal = state
-                    val mapped = when (state) {
-                        is DownloadState.Downloading -> DownloadState.Downloading(
-                            bytesDownloaded = state.bytesDownloaded.coerceAtLeast(0L),
-                            totalBytes = state.totalBytes,
+                val audioFinal = if (audioTask.streamingManifest) {
+                    setForeground(createForegroundInfo(DownloadState.Preparing))
+                    val manifestResult = FfmpegManifestDownloader().download(
+                        sourceUrl = audioTask.sourceUrl,
+                        outputFile = audioFile,
+                        requestHeaders = audioTask.requestHeaders,
+                        cookie = CookieManager.getInstance()
+                            .getCookie(audioTask.sourceUrl)
+                            ?.takeIf { it.isNotBlank() },
+                    )
+                    if (manifestResult.isSuccess && audioFile.isFile && audioFile.length() > 0L) {
+                        val size = audioFile.length()
+                        val stagedState = DownloadState.Downloading(size, size)
+                        updateAdaptiveRecord(repository, task.id, stagedState, System.currentTimeMillis())
+                        setForeground(createForegroundInfo(stagedState))
+                        DownloadState.Completed
+                    } else {
+                        val error = manifestResult.exceptionOrNull()
+                            ?: IllegalStateException("Companion audio manifest produced no media file")
+                        diagnostics.log(
+                            DiagnosticLevel.ERROR,
+                            "ADAPTIVE_AUDIO_MANIFEST_FAILED",
+                            "تعذر تجهيز مصدر الصوت HLS/DASH قبل دمج المسارين",
+                            "download.mux.audio_manifest",
+                            mapOf(
+                                "task_id" to task.id,
+                                "source_host" to hostOf(audioTask.sourceUrl),
+                            ),
+                            error,
                         )
-                        DownloadState.Completed -> DownloadState.Downloading(
-                            bytesDownloaded = audioFile.length(),
-                            totalBytes = audioFile.length(),
+                        updateAdaptiveRecord(
+                            repository,
+                            task.id,
+                            DownloadState.Failed(DownloadFailure.NetworkError),
+                            System.currentTimeMillis(),
                         )
-                        else -> state
+                        DownloadState.Failed(DownloadFailure.NetworkError)
                     }
-                    updateAdaptiveRecord(repository, task.id, mapped, System.currentTimeMillis())
-                    setForeground(createForegroundInfo(mapped))
+                } else {
+                    var directAudioFinal: DownloadState = DownloadState.Preparing
+                    val audioEngine = StreamingDownloadEngine(
+                        source = OkHttpDownloadByteStream(
+                            logger = diagnosticsLogger(),
+                            dynamicHeaders = { url, headers ->
+                                dynamicHeadersFor(url, task.companionAudioSessionCookieHost, headers)
+                            },
+                        ),
+                        sink = LocalAtomicFileSink(),
+                    )
+                    audioEngine.download(audioTask) { state ->
+                        directAudioFinal = state
+                        val mapped = when (state) {
+                            is DownloadState.Downloading -> DownloadState.Downloading(
+                                bytesDownloaded = state.bytesDownloaded.coerceAtLeast(0L),
+                                totalBytes = state.totalBytes,
+                            )
+                            DownloadState.Completed -> DownloadState.Downloading(
+                                bytesDownloaded = audioFile.length(),
+                                totalBytes = audioFile.length(),
+                            )
+                            else -> state
+                        }
+                        updateAdaptiveRecord(repository, task.id, mapped, System.currentTimeMillis())
+                        setForeground(createForegroundInfo(mapped))
+                    }
+                    directAudioFinal
                 }
                 if (audioFinal !is DownloadState.Completed) return null
             }
@@ -1129,6 +1215,7 @@ class DownloadWorker(
         const val KEY_AUDIO_OUTPUT_FORMAT = "audio_output_format"
         const val KEY_COMPANION_AUDIO_SOURCE_URL = "companion_audio_source_url"
         const val KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST = "companion_audio_session_cookie_host"
+        const val KEY_COMPANION_AUDIO_STREAMING_MANIFEST = "companion_audio_streaming_manifest"
         const val KEY_STREAMING_MANIFEST = "streaming_manifest"
         const val KEY_COMPANION_AUDIO_USER_AGENT = "companion_audio_user_agent"
         const val KEY_COMPANION_AUDIO_REFERER = "companion_audio_referer"

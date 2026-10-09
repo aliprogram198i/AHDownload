@@ -1438,7 +1438,7 @@ private fun UnifiedDownloadResultCard(
                 if (videoOptions.isNotEmpty()) {
                     MediaFormatGrid(
                         options = videoOptions,
-                        selected = selectedVideo,
+                        selected = if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo else null,
                         validatingCandidateId = validatingCandidateId,
                         onSelect = {
                             selectionMode = OutputSelectionMode.VIDEO
@@ -1493,7 +1493,7 @@ private fun UnifiedDownloadResultCard(
                         )
                         MediaFormatGrid(
                             options = audioOptions,
-                            selected = selectedAudioSource,
+                            selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioSource else null,
                             validatingCandidateId = validatingCandidateId,
                             onSelect = {
                                 selectionMode = OutputSelectionMode.AUDIO
@@ -1509,7 +1509,7 @@ private fun UnifiedDownloadResultCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     AudioOutputFormatGrid(
-                        selected = selectedAudioOutputFormat,
+                        selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioOutputFormat else null,
                         enabled = validatingCandidateId == null,
                         onSelect = {
                             selectionMode = OutputSelectionMode.AUDIO
