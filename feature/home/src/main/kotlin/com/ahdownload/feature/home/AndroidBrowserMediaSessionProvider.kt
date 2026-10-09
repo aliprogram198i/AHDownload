@@ -299,25 +299,56 @@ class AndroidBrowserMediaSessionProvider(
                           try{
                             const markup=document.documentElement
                               ?(document.documentElement.innerHTML||''):'';
-                            // Prefer the current logged-out Polaris query. Instagram rotated the
-                            // older media_id query; this request is bound to the public shortcode
-                            // and the fresh token issued by the page session.
-                            let lsd='';
-                            try{
-                              const eqmc=document.getElementById('__eqmc');
-                              const eqmcJson=JSON.parse(eqmc?(eqmc.textContent||'{}'):'{}');
-                              if(typeof eqmcJson.l==='string')lsd=eqmcJson.l;
-                            }catch(_){}
+                            const extractLsd=source=>{
+                              const eqmc=source.match(/<script\b[^>]*\bid=["']__eqmc["'][^>]*>([\s\S]*?)<\/script>/i);
+                              if(eqmc&&eqmc[1]){
+                                try{
+                                  const parsedEqmc=JSON.parse(eqmc[1]);
+                                  if(typeof parsedEqmc.l==='string'&&parsedEqmc.l)return parsedEqmc.l;
+                                }catch(_){}
+                              }
+                              const tokenMatch=source.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
+                              return tokenMatch?tokenMatch[1]:'';
+                            };
+                            let requestMarkup=markup;
+                            let lsd=extractLsd(markup);
+                            let lsdWarmupStatus='not_needed';
+                            // Some public permalink responses do not include __eqmc/LSD. Fetch the
+                            // public homepage once in the same WebView session to obtain the fresh
+                            // token instead of abandoning the current post immediately.
                             if(!lsd){
-                              const lsdMatch=markup.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
-                              lsd=lsdMatch?lsdMatch[1]:'';
+                              try{
+                                const homeResponse=await fetch('/',{
+                                  method:'GET',
+                                  credentials:'include',
+                                  headers:{
+                                    'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                    'X-IG-App-ID':'936619743392459'
+                                  }
+                                });
+                                if(homeResponse.ok){
+                                  const homeMarkup=await homeResponse.text();
+                                  requestMarkup=homeMarkup+'\n'+markup;
+                                  lsd=extractLsd(homeMarkup);
+                                  lsdWarmupStatus=lsd?'token_found':'token_absent';
+                                }else{
+                                  lsdWarmupStatus='http_'+homeResponse.status;
+                                }
+                              }catch(_){
+                                lsdWarmupStatus='network_error';
+                              }
                             }
                             if(!lsd){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_missing_lsd';
+                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_missing_lsd_home_'+lsdWarmupStatus;
                               return;
                             }
+                            let csrf='';
+                            try{
+                              const csrfMatch=(document.cookie||'').match(/(?:^|;\s*)csrftoken=([^;]+)/);
+                              csrf=csrfMatch?decodeURIComponent(csrfMatch[1]):'';
+                            }catch(_){}
                             const jazoest='2'+Array.from(lsd).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
-                            const hsMatch=markup.match(/"__hs"\s*:\s*"([^"]+)"/);
+                            const hsMatch=requestMarkup.match(/"__hs"\s*:\s*"([^"]+)"/);
                             const hs=hsMatch?hsMatch[1]:'19624.HYP:instagram_web_pkg.2.1..0.0';
                             const variables={
                               shortcode:instagramShortcode,
@@ -353,22 +384,23 @@ class AndroidBrowserMediaSessionProvider(
                               jazoest:jazoest
                             };
                             Object.entries(fields).forEach(([key,value])=>form.set(key,String(value)));
+                            const graphqlHeaders={
+                              'Accept':'*/*',
+                              'Content-Type':'application/x-www-form-urlencoded',
+                              'X-IG-App-ID':'936619743392459',
+                              'X-ASBD-ID':'359341',
+                              'X-IG-WWW-Claim':'0',
+                              'X-FB-Friendly-Name':'PolarisPostRootQuery',
+                              'X-FB-LSD':lsd,
+                              'X-Requested-With':'XMLHttpRequest',
+                              'Origin':location.origin,
+                              'Referer':location.href
+                            };
+                            if(csrf)graphqlHeaders['X-CSRFToken']=csrf;
                             const response=await fetch('/api/graphql',{
                               method:'POST',
                               credentials:'include',
-                              headers:{
-                                'Accept':'*/*',
-                                'Content-Type':'application/x-www-form-urlencoded',
-                                'X-IG-App-ID':'936619743392459',
-                                'X-ASBD-ID':'359341',
-                                'X-IG-WWW-Claim':'0',
-                                'X-FB-Friendly-Name':'PolarisPostRootQuery',
-                                'X-FB-LSD':lsd,
-                                'X-CSRFToken':csrf,
-                                'X-Requested-With':'XMLHttpRequest',
-                                'Origin':location.origin,
-                                'Referer':location.href
-                              },
+                              headers:graphqlHeaders,
                               body:form.toString()
                             });
                             const responseText=await response.text();
@@ -390,9 +422,8 @@ class AndroidBrowserMediaSessionProvider(
                               const responseHasLogin=/login_required|require_login|accounts\/login/.test(lowerResponse);
                               const responseHasGraphqlError=Boolean(payload&&Array.isArray(payload.errors)&&payload.errors.length);
                               const responseIsJson=Boolean(payload);
-                              // Some logged-out Instagram pages return the useful relay object in
-                              // data-sjs HTML instead of JSON. Parse only structured JSON scripts;
-                              // do not log or persist their contents.
+                              // Some logged-out Instagram pages return useful relay JSON inside
+                              // data-sjs scripts instead of the GraphQL response body.
                               const relayScripts=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
                               const relayMedia=[];
                               for(const script of relayScripts){
