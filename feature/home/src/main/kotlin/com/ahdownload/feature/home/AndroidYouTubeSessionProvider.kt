@@ -178,7 +178,14 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
 
             fun inspect(view: WebView, attempt: Int) {
                 if (finished) return
-                if (attempt == 5 && observedGoogleVideoUrls.isEmpty() && !embeddedFallbackLoaded) {
+                if (
+                    shouldLoadYouTubeEmbeddedFallback(
+                        attempt = attempt,
+                        observedMediaCount = observedGoogleVideoUrls.size,
+                        hasPlayerResponse = !playerResponse.isNullOrBlank(),
+                        embeddedFallbackLoaded = embeddedFallbackLoaded,
+                    )
+                ) {
                     val videoId = runCatching {
                         val uri = java.net.URI(url)
                         val host = uri.host?.lowercase().orEmpty()
