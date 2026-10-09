@@ -69,7 +69,7 @@ class YouTubeResolver(
             }
             val direct = parser.parse(html)
             if (direct is ResolverResult.Success) {
-                val base = if (forceFallbacks || !hasSufficientCandidates(direct, request)) {
+                val base = if (shouldExpandFormatCatalog(direct, request, forceFallbacks)) {
                     if (forceFallbacks) {
                         logger.log(
                             DiagnosticLevel.INFO,
@@ -96,7 +96,7 @@ class YouTubeResolver(
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) {
-                    val base = if (forceFallbacks || !hasSufficientCandidates(apiResult, request)) {
+                    val base = if (shouldExpandFormatCatalog(apiResult, request, forceFallbacks)) {
                         if (forceFallbacks) {
                             logger.log(
                                 DiagnosticLevel.INFO,
@@ -334,29 +334,36 @@ class YouTubeResolver(
         )
     }
 
-    private fun hasSufficientCandidates(
+    /**
+     * A single playable candidate is enough to start a download, but it is not
+     * enough for the result picker: the user still needs several video qualities
+     * and an independent audio source for extraction. Expand sparse catalogs
+     * through the embedded and Android clients before presenting the result.
+     */
+    private fun shouldExpandFormatCatalog(
         result: ResolverResult.Success,
         request: ResolverRequest,
+        forceFallbacks: Boolean,
     ): Boolean {
+        if (forceFallbacks) return true
+
         val candidates = result.candidates
-        val requestedKind = request.requestedKind
-        if (requestedKind == MediaKind.Audio) {
-            return candidates.any { it.format.kind == MediaKind.Audio && it.format.hasAudio }
+        val videoCandidates = candidates.filter {
+            it.format.kind == MediaKind.Video && it.format.hasVideo
         }
-        if (requestedKind == MediaKind.Video) {
-            return candidates.any {
-                it.format.kind == MediaKind.Video &&
-                    it.format.hasVideo &&
-                    it.format.hasAudio
-            }
+        val audioCandidates = candidates.filter {
+            it.format.kind == MediaKind.Audio && it.format.hasAudio
         }
-        // A playable muxed video is sufficient for the normal unified card:
-        // audio extraction can use its embedded audio track, so do not delay the
-        // first result on a separate direct-audio representation.
-        return candidates.any {
-            it.format.kind == MediaKind.Video &&
-                it.format.hasVideo &&
-                it.format.hasAudio
+        val distinctVideoQualities = videoCandidates.mapNotNull {
+            it.format.height
+        }.distinct().size
+
+        return when (request.requestedKind) {
+            MediaKind.Audio -> audioCandidates.size < 2 || videoCandidates.isEmpty()
+            MediaKind.Video -> distinctVideoQualities < MIN_VIDEO_QUALITIES || audioCandidates.isEmpty()
+            else -> distinctVideoQualities < MIN_VIDEO_QUALITIES ||
+                audioCandidates.isEmpty() ||
+                videoCandidates.isEmpty()
         }
     }
 
@@ -698,6 +705,8 @@ class YouTubeResolver(
         BOT_CHALLENGE_MARKERS.any { text.contains(it, ignoreCase = true) }
 
     private companion object {
+        const val MIN_VIDEO_QUALITIES = 4
+
         const val YOUTUBE_BOT_MESSAGE =
             "YouTube يطلب التحقق من أنك لست روبوتًا. افتح YouTube لتحديث الجلسة ثم أعد المحاولة."
 
