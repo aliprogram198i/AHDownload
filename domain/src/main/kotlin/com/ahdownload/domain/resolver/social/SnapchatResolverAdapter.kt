@@ -17,4 +17,5 @@ class SnapchatResolverAdapter(
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = SnapchatSocialPlatformExtractionStrategy(),
 )

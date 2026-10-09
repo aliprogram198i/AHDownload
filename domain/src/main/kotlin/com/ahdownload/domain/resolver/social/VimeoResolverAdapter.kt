@@ -17,4 +17,5 @@ class VimeoResolverAdapter(
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = VimeoSocialPlatformExtractionStrategy(),
 )

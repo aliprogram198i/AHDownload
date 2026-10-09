@@ -17,4 +17,5 @@ class TikTokResolverAdapter(
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = TikTokSocialPlatformExtractionStrategy(),
 )

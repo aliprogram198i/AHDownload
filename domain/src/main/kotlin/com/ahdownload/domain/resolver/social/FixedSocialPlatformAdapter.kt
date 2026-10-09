@@ -18,10 +18,12 @@ abstract class FixedSocialPlatformAdapter(
     logger: DiagnosticLogger = defaultSocialDiagnosticLogger(),
     resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
     pageClient: HttpTextClient = defaultSocialPageClient(),
+    strategy: SocialPlatformExtractionStrategy = socialPlatformExtractionStrategy(platform),
 ) : PlatformAdapter by SocialPlatformResolverEngine(
     provider = provider,
     platform = platform,
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = strategy,
 )

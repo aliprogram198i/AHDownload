@@ -17,4 +17,5 @@ class InstagramResolverAdapter(
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = InstagramSocialPlatformExtractionStrategy(),
 )

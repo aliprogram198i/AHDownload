@@ -17,4 +17,5 @@ class FacebookResolverAdapter(
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = FacebookSocialPlatformExtractionStrategy(),
 )
