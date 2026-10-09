@@ -22,6 +22,7 @@ class DownloadRecordJsonCodecTest {
                 companionAudioSourceUrl = "https://example.com/audio.m4a",
                 companionAudioRequestHeaders = mapOf("Referer" to "https://example.com/"),
                 companionAudioSessionCookieHost = "example.com",
+                companionAudioStreamingManifest = true,
             ),
             status = DownloadStatus.DOWNLOADING,
             bytesDownloaded = 1024,
@@ -36,6 +37,7 @@ class DownloadRecordJsonCodecTest {
         val restored = codec.decode(codec.encode(listOf(original)))
 
         assertEquals(listOf(original), restored)
+        assertEquals(true, restored.single().task.companionAudioStreamingManifest)
         assertNull(restored.single().failureCode)
         assertEquals("content://media/external/video/media/42", restored.single().destinationUri)
     }
@@ -51,6 +53,7 @@ class DownloadRecordJsonCodecTest {
         val restored = codec.decode(json)
 
         assertEquals(DownloadProcessingMode.Direct, restored.single().task.processingMode)
+        assertEquals(false, restored.single().task.companionAudioStreamingManifest)
     }
 
     @Test
