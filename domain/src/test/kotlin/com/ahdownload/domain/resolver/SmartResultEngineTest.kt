@@ -172,6 +172,25 @@ class SmartResultEngineTest {
         assertEquals(listOf("a160-m4a", "a128"), result.audio.map { it.candidate.id })
     }
 
+    @Test
+    fun collapsesUnknownQualitySourcesIntoSingleFallbackChoices() {
+        val unknownVideoA = candidate("unknown-video-a", MediaKind.Video, null, 2500, 8_000_000)
+        val unknownVideoB = candidate("unknown-video-b", MediaKind.Video, null, 1800, 6_000_000)
+        val unknownAudioA = candidate("unknown-audio-a", MediaKind.Audio, null, 0, 2_000_000).copy(
+            format = candidate("unknown-audio-a", MediaKind.Audio, null, 0, 2_000_000).format.copy(bitrateKbps = null),
+        )
+        val unknownAudioB = candidate("unknown-audio-b", MediaKind.Audio, null, 0, 3_000_000).copy(
+            format = candidate("unknown-audio-b", MediaKind.Audio, null, 0, 3_000_000).format.copy(bitrateKbps = null),
+        )
+
+        val result = SmartResultEngine().build(
+            listOf(unknownVideoA, unknownVideoB, unknownAudioA, unknownAudioB),
+        )
+
+        assertEquals(1, result.video.size)
+        assertEquals(1, result.audio.size)
+    }
+
     private fun candidate(
         id: String,
         kind: MediaKind,
