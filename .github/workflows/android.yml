@@ -45,6 +45,64 @@ jobs:
           set -euo pipefail
           gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
 
+  youtube_emulator:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install compile SDK
+        run: sdkmanager "platforms;android-37.1" "build-tools;36.1.0"
+
+      - name: Run YouTube result-card and download acceptance test on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set +e
+            gradle --no-daemon --max-workers=1 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.YouTubeResultCardEmulatorTest > youtube-emulator-test.log 2>&1
+            test_status=$?
+            cat youtube-emulator-test.log
+            adb logcat -d -s AH_YOUTUBE_E2E:I AndroidRuntime:E > youtube-emulator-logcat.txt || true
+            exit "$test_status"
+
+      - name: Upload emulator test report and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-emulator-e2e-report
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+            youtube-emulator-test.log
+            youtube-emulator-logcat.txt
+          if-no-files-found: warn
+
   release:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: verify
