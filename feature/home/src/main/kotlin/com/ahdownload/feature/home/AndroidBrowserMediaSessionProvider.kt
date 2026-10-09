@@ -502,7 +502,10 @@ class AndroidBrowserMediaSessionProvider(
                           }catch(error){
                             window.__ahInstagramApiStatus=fallbackStatus+'_graphql_network_'+safeErrorClass(error);
                           }
-                        })();
+                        })().catch(error=>{
+                          // Never leave the session marked as pending if fallback setup itself fails.
+                          window.__ahInstagramApiStatus='fallback_unhandled_'+safeErrorClass(error);
+                        });
                       }
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
                       const metaVideos=[
