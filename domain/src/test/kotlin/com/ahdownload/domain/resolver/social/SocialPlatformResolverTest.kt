@@ -370,6 +370,82 @@ class SocialPlatformResolverTest {
         assertEquals("0", resolutionEvent.second["video_candidate_count"])
     }
 
+
+    @Test
+    fun redditPostFetchesFirstPartyJsonAndResolvesDirectVideoSource() = runTest {
+        val postUrl = "https://www.reddit.com/r/oddlysatisfying/comments/abc123/clip/"
+        val mediaUrl = "https://v.redd.it/clip/DASH_720.mp4?source=fallback"
+        val fetchedUrls = mutableListOf<String>()
+        val json = """[{"data":{"children":[{"data":{"secure_media":{"reddit_video":{"fallback_url":"$mediaUrl","dash_url":"https://v.redd.it/clip/DASHPlaylist.mpd"}}}}]}}]"""
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Reddit,
+                    pageUrl = postUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    fetchedUrls += url
+                    return json
+                }
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Reddit).copy(
+                    originalUrl = postUrl,
+                    normalizedUrl = postUrl,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.first().sourceUrl)
+        assertEquals(
+            listOf("https://www.reddit.com/r/oddlysatisfying/comments/abc123/clip.json?raw_json=1"),
+            fetchedUrls,
+        )
+    }
+
+    @Test
+    fun vimeoConfigFallbackExtractsProgressiveMp4WhenPageHtmlHasNoMedia() = runTest {
+        val pageUrl = "https://vimeo.com/764921867"
+        val mediaUrl = "https://vod-adaptive-ak.vimeocdn.com/expire/123/clip/video.mp4?token=public"
+        val fetchedUrls = mutableListOf<String>()
+        val config = """{"request":{"files":{"progressive":[{"url":"$mediaUrl","mime":"video/mp4"}]}}}"""
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Vimeo,
+                    pageUrl = pageUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    fetchedUrls += url
+                    return if (url.endsWith("/config")) config else "<html><head></head><body></body></html>"
+                }
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Vimeo).copy(
+                    originalUrl = pageUrl,
+                    normalizedUrl = pageUrl,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
+        assertTrue(fetchedUrls.contains("https://player.vimeo.com/video/764921867/config"))
+    }
+
     private fun link(platform: MediaPlatform) =
         com.ahdownload.domain.model.MediaLink(
             originalUrl = "https://example.com/post",
