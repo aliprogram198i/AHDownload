@@ -152,9 +152,9 @@ class WebPageMediaParserTest {
     fun extractsFallbackDashAndHlsSourcesFromRedditVideoJson() {
         val response = """{
             "reddit_video": {
-              "fallback_url": "https:\\/\\/v.redd.it\\/clip\\/DASH_720.mp4?source=fallback",
-              "dash_url": "https:\\/\\/v.redd.it\\/clip\\/DASHPlaylist.mpd",
-              "hls_url": "https:\\/\\/v.redd.it\\/clip\\/HLSPlaylist.m3u8"
+              "fallback_url": "https://v.redd.it/clip/DASH_720.mp4?source=fallback",
+              "dash_url": "https://v.redd.it/clip/DASHPlaylist.mpd",
+              "hls_url": "https://v.redd.it/clip/HLSPlaylist.m3u8"
             }
         }"""
 
