@@ -183,26 +183,31 @@ class SocialPlatformResolverEngine(
                             "Referer" to pageUrl,
                             "User-Agent" to "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
                         )
-                        val parsed = try {
-                            withTimeoutOrNull(INSTAGRAM_EMBED_FETCH_TIMEOUT_MS) {
-                                val body = pageClient.get(embedUrl, embedHeaders)
-                                instagramEmbedResponseChars = body.length
-                                instagramEmbedLoginWall = looksLikeInstagramLoginWall(body)
-                                WebPageMediaParser.parse(body, pageUrl)
+                        var parsed: ParsedPageMedia? = null
+                        var embedBody: String? = null
+                        try {
+                            // Bound only the network request. Parsing a large Instagram embed
+                            // response is CPU work and must not consume the 3.5s HTTP budget.
+                            embedBody = withTimeoutOrNull(INSTAGRAM_EMBED_FETCH_TIMEOUT_MS) {
+                                pageClient.get(embedUrl, embedHeaders)
+                            }
+                            if (embedBody != null) {
+                                instagramEmbedResponseChars = embedBody.length
+                                instagramEmbedLoginWall = looksLikeInstagramLoginWall(embedBody)
+                                parsed = WebPageMediaParser.parse(embedBody, pageUrl)
                             }
                         } catch (error: CancellationException) {
                             throw error
                         } catch (error: Throwable) {
                             instagramEmbedExceptionType = error::class.java.simpleName
-                            null
                         }
                         if (parsed != null && parsed.mediaUrls.isNotEmpty()) {
                             instagramEmbedFallback = parsed
                         }
                         val embedStatus = when {
                             instagramEmbedExceptionType != null -> "request_failed"
-                            parsed == null -> "request_timeout"
-                            parsed.mediaUrls.isNotEmpty() -> "media_found"
+                            embedBody == null -> "request_timeout"
+                            parsed?.mediaUrls?.isNotEmpty() == true -> "media_found"
                             instagramEmbedLoginWall -> "login_wall"
                             else -> "no_media"
                         }

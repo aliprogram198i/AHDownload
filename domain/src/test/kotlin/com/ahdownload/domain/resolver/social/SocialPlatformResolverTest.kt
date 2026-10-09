@@ -43,6 +43,8 @@ class SocialPlatformResolverTest {
         val pageUrl = "https://www.instagram.com/p/ABC123/"
         val embedUrl = "https://www.instagram.com/p/ABC123/embed/captioned/"
         val mediaUrl = "https://scontent.cdninstagram.com/o1/v/t2/f2/m367/clip.mp4?token=opaque"
+        val embedHtml = """<html><head><meta property="og:video" content="$mediaUrl"></head><body>""" +
+            "x".repeat(620_000) + "</body></html>"
         val fetchedUrls = mutableListOf<String>()
         val requestHeaders = mutableMapOf<String, Map<String, String>>()
         val events = mutableListOf<Pair<String, Map<String, String>>>()
@@ -62,7 +64,7 @@ class SocialPlatformResolverTest {
                 override suspend fun get(url: String): String {
                     fetchedUrls += url
                     return if (url == embedUrl) {
-                        """<html><head><meta property="og:video" content="$mediaUrl"></head></html>"""
+                        embedHtml
                     } else {
                         """<html><head><title>Instagram</title></head><body></body></html>"""
                     }
@@ -88,6 +90,7 @@ class SocialPlatformResolverTest {
         assertTrue(requestHeaders[embedUrl]?.get("User-Agent").orEmpty().contains("Android"))
         val embedEvent = events.single { it.first == "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT" }
         assertEquals("media_found", embedEvent.second["fallback_status"])
+        assertEquals(embedHtml.length.toString(), embedEvent.second["response_chars"])
         assertEquals("1", embedEvent.second["media_count"])
         assertEquals("instagram-embed-fallback-test", embedEvent.second["operation_id"])
     }
