@@ -15,6 +15,10 @@ data class BrowserMediaSession(
     val requestHeadersByUrl: Map<String, Map<String, String>> = emptyMap(),
     /** Categorical result of the Instagram in-session API fallback; contains no secrets. */
     val instagramApiStatus: String? = null,
+    /** Number of bounded WebView media-inspection attempts made for this session. */
+    val inspectionAttemptCount: Int = 0,
+    /** Number of JavaScript inspection callbacks returned by WebView. */
+    val inspectionCallbackCount: Int = 0,
 )
 
 interface BrowserMediaSessionProvider {
