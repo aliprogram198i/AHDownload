@@ -1903,7 +1903,7 @@ private fun formatOptionSecondaryLabel(
             MediaKind.Audio -> buildList {
                 normalizeCodecForUi(format.audioCodec)?.let(::add)
                 model.qualityLabel
-                    .takeIf { it.isNotBlank() }
+                    .takeIf { it.isNotBlank() && !it.equals("Audio", ignoreCase = true) }
                     ?.let(::add)
             }.joinToString(" · ").ifBlank { "مسار صوتي مباشر" }
 
