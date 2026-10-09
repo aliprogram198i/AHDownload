@@ -343,8 +343,32 @@ class AndroidBrowserMediaSessionProvider(
                         }catch(_){}
                         return [...new Set(found)].slice(0,32);
                       };
+                      const boundedFetch=async(url,options,timeoutMs)=>{
+                        const controller=typeof AbortController==='function'?new AbortController():null;
+                        const requestOptions={...options};
+                        if(controller)requestOptions.signal=controller.signal;
+                        let timer=0;
+                        const operation=(async()=>{
+                          const response=await fetch(url,requestOptions);
+                          const body=response.ok?await response.text():'';
+                          return {response:response,body:body};
+                        })();
+                        const result=await Promise.race([
+                          operation.then(value=>({value:value})).catch(error=>({error:error})),
+                          new Promise(resolve=>{
+                            timer=setTimeout(()=>{
+                              if(controller)controller.abort();
+                              resolve({timedOut:true});
+                            },timeoutMs);
+                          })
+                        ]);
+                        clearTimeout(timer);
+                        if(result.timedOut)return {timedOut:true};
+                        if(result.error)throw result.error;
+                        return result.value;
+                      };
                       const requestMedia=async target=>{
-                        const response=await fetch(target,{
+                        const result=await boundedFetch(target,{
                           method:'GET',
                           credentials:'include',
                           headers:{
@@ -352,9 +376,11 @@ class AndroidBrowserMediaSessionProvider(
                             'X-IG-App-ID':'936619743392459',
                             'X-Requested-With':'XMLHttpRequest'
                           }
-                        });
+                        },1800);
+                        if(result.timedOut)return {status:'timeout',media:[]};
+                        const response=result.response;
                         if(!response.ok)return {status:'http_'+response.status,media:[]};
-                        const body=await response.text();
+                        const body=result.body;
                         let payload=null;
                         try{payload=JSON.parse(body);}catch(_){}
                         let media=payload?collectMedia(payload):[];
@@ -429,7 +455,7 @@ class AndroidBrowserMediaSessionProvider(
                             form.set('server_timestamps','true');
                             form.set('variables',JSON.stringify({media_id:instagramMediaId}));
                             form.set('doc_id','27130156389949648');
-                            const response=await fetch('/api/graphql',{
+                            const result=await boundedFetch('/api/graphql',{
                               method:'POST',
                               credentials:'include',
                               headers:{
@@ -446,12 +472,17 @@ class AndroidBrowserMediaSessionProvider(
                                 'Referer':location.href
                               },
                               body:form.toString()
-                            });
+                            },1800);
+                            if(result.timedOut){
+                              window.__ahInstagramApiStatus=fallbackStatus+'_graphql_timeout';
+                              return;
+                            }
+                            const response=result.response;
                             if(!response.ok){
                               window.__ahInstagramApiStatus=fallbackStatus+'_graphql_http_'+response.status;
                               return;
                             }
-                            const body=await response.text();
+                            const body=result.body;
                             let payload=null;
                             try{payload=JSON.parse(body);}catch(_){}
                             let found=payload?collectMedia(payload):[];
