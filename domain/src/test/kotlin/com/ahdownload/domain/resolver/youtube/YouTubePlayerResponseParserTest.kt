@@ -138,7 +138,7 @@ class YouTubePlayerResponseParserTest {
             }
         """.trimIndent()
 
-        val result = parser.parsePlayerResponse(json, listOf(video1080Url, video720Url, audio160Url))
+        val result = parser.parsePlayerResponse(json, listOf(video1080Url, video720Url), listOf(audio160Url))
 
         assertTrue(result is ResolverResult.Success)
         val candidates = (result as ResolverResult.Success).candidates
