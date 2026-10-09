@@ -248,7 +248,7 @@ class YouTubeResolver(
                 context = diagnosticContext(videoId, request.operationId),
                 throwable = null,
             )
-            val webResult = parser.parsePlayerResponse(response, snapshot.videoUrls + snapshot.audioUrls)
+            val webResult = parser.parsePlayerResponse(response, snapshot.videoUrls, snapshot.audioUrls)
             if (webResult is ResolverResult.Success) {
                 val sessionResult = withSessionHeaders(webResult, snapshot)
                 val browserCandidates = sessionCandidates(snapshot)
@@ -519,7 +519,7 @@ class YouTubeResolver(
         val sessionEnriched = withSessionHeaders(result, snapshot)
         val capturedPlayerCandidates = snapshot.playerResponse
             ?.takeIf { it.isNotBlank() }
-            ?.let { parser.parsePlayerResponse(it, snapshot.videoUrls + snapshot.audioUrls) }
+            ?.let { parser.parsePlayerResponse(it, snapshot.videoUrls, snapshot.audioUrls) }
             ?.let { it as? ResolverResult.Success }
             ?.let { withSessionHeaders(it, snapshot).candidates }
             .orEmpty()
