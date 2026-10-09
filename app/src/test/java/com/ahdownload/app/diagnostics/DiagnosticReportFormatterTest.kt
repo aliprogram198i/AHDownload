@@ -324,6 +324,65 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("action=INSPECT_AUDIO_PROCESSOR"))
     }
 
+    @Test
+    fun destinationCopyFailureReportsStorageStageAfterSuccessfulValidationAndExtraction() {
+        val session = "session-storage"
+        val operation = "op-storage"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "MEDIA_VALIDATION_ACCEPTED",
+                level = DiagnosticLevel.INFO,
+                reason = "valid",
+                session = session,
+                operation = operation,
+                context = mapOf("candidate_id" to "instagram-video"),
+            ),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "DOWNLOAD_STARTED",
+                level = DiagnosticLevel.INFO,
+                reason = "started",
+                session = session,
+                operation = operation,
+            ),
+            event(
+                time = 3_000L,
+                sequence = "3",
+                type = "AUDIO_EXTRACTION_COMPLETED",
+                level = DiagnosticLevel.INFO,
+                reason = "audio ready",
+                session = session,
+                operation = operation,
+            ),
+            event(
+                time = 4_000L,
+                sequence = "4",
+                type = "DOWNLOAD_DESTINATION_COPY_FAILED",
+                level = DiagnosticLevel.ERROR,
+                reason = "Invalid URI",
+                session = session,
+                operation = operation,
+                context = mapOf("destination_mode" to "CUSTOM_DIRECTORY"),
+            ),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("classification=STORAGE"))
+        assertTrue(report.contains("root_cause=STORAGE_ERROR"))
+        assertTrue(report.contains("action=INSPECT_STORAGE"))
+        assertTrue(
+            report.contains(
+                "FAILURE_CHAIN\\nvalidation_passed -> download_completed_locally -> " +
+                    "audio_extraction_completed -> destination_copy_failed",
+            ),
+        )
+    }
+
     private fun event(
         time: Long,
         sequence: String,

@@ -18,7 +18,7 @@ object SelectedDirectoryStorage {
         val parentId = DocumentsContract.getTreeDocumentId(treeUri)
         require(parentId.isNotBlank()) { "Invalid tree URI" }
 
-        val parentUri = DocumentsContract.buildTreeDocumentUri(treeUri.authority ?: error("Missing authority"), parentId)
+        val parentUri = buildParentDocumentUri(treeUri, parentId)
         val name = uniqueDisplayName(resolver, treeUri, parentId, displayName)
         val mimeType = mimeTypeFor(name)
         val destination = DocumentsContract.createDocument(resolver, parentUri, mimeType, name)
@@ -37,12 +37,26 @@ object SelectedDirectoryStorage {
         }
     }
 
+
+    /**
+     * Returns the document URI for the selected tree's root (or the supplied document ID).
+     *
+     * A tree URI alone is not a valid parent URI for DocumentsContract.createDocument().
+     * The URI must contain both the tree grant and a document path.
+     */
+    internal fun buildParentDocumentUri(treeUri: Uri, documentId: String): Uri {
+        require(DocumentsContract.isTreeUri(treeUri)) { "Invalid tree URI" }
+        require(!treeUri.authority.isNullOrBlank()) { "Missing authority" }
+        require(documentId.isNotBlank()) { "Invalid tree document ID" }
+        return DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId)
+    }
+
     fun createFolder(context: Context, treeUri: Uri, folderName: String): Uri? {
         val safeName = folderName.trim().replace(Regex("""[\\/:*?"<>|]+"""), " ").take(80)
         if (safeName.isBlank()) return null
         val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(treeUri)
-        val parentUri = DocumentsContract.buildTreeDocumentUri(treeUri.authority ?: return null, parentId)
+        val parentId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: return null
+        val parentUri = runCatching { buildParentDocumentUri(treeUri, parentId) }.getOrNull() ?: return null
         return DocumentsContract.createDocument(
             resolver,
             parentUri,
