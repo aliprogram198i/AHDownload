@@ -42,7 +42,12 @@ jobs:
           set -euo pipefail
           sdkmanager "platforms;android-37.1" "build-tools;36.1.0"
 
-      - name: Run real social video analysis, validation, download and output checks
+      - name: Compile production app and instrumentation tests
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
+
+      - name: Run real social video downloads on Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -50,18 +55,19 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          emulator-options: "-no-window -no-audio -no-boot-anim -camera-back none -camera-front none"
+          emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none"
           script: |
-            set -euo pipefail
+            set -eu
             mkdir -p live-e2e-artifacts
-            trap 'adb logcat -d -v threadtime > live-e2e-artifacts/logcat.txt 2>/dev/null || true' EXIT
-
-            gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
-
-            gradle --no-daemon connectedDebugAndroidTest --stacktrace 2>&1 |
-              tee live-e2e-artifacts/connected-debug-android-test.log
-
-            adb logcat -d -v threadtime -s AH_LIVE_E2E:I AndroidRuntime:E > live-e2e-artifacts/live-test-logcat.txt
+            if gradle --no-daemon connectedDebugAndroidTest --stacktrace > live-e2e-artifacts/connected-debug-android-test.log 2>&1; then
+              test_status=0
+            else
+              test_status=$?
+            fi
+            cat live-e2e-artifacts/connected-debug-android-test.log
+            adb logcat -d -v threadtime > live-e2e-artifacts/logcat.txt 2>/dev/null || true
+            adb logcat -d -v threadtime -s AH_LIVE_E2E:I AndroidRuntime:E > live-e2e-artifacts/live-test-logcat.txt 2>/dev/null || true
+            exit "$test_status"
 
       - name: Upload live emulator reports and logcat
         if: always()
