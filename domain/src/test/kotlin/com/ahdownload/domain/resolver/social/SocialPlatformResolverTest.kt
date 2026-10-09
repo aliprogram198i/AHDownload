@@ -481,6 +481,30 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun everySocialPlatformResolvesToItsOwnExtractionStrategy() {
+        val platforms = listOf(
+            MediaPlatform.Instagram,
+            MediaPlatform.Facebook,
+            MediaPlatform.TikTok,
+            MediaPlatform.X,
+            MediaPlatform.Snapchat,
+            MediaPlatform.Pinterest,
+            MediaPlatform.Reddit,
+            MediaPlatform.Twitch,
+            MediaPlatform.Vimeo,
+        )
+        val strategies = platforms.map(::socialPlatformExtractionStrategy)
+        assertEquals(platforms, strategies.map { it.platform })
+        assertEquals(platforms.size, strategies.map { it.javaClass }.distinct().size)
+        assertTrue(strategies.first() is InstagramSocialPlatformExtractionStrategy)
+        assertTrue(strategies.drop(1).none { it is InstagramSocialPlatformExtractionStrategy })
+        assertEquals(32_000L, strategies.first().effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
+        strategies.drop(1).forEach { strategy ->
+            assertEquals(SOCIAL_RESOLVE_TIMEOUT_MS, strategy.effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
+        }
+    }
+
+    @Test
     fun everySocialPlatformHasItsOwnFixedIdentityAdapter() = runTest {
         val provider = FakeProvider(
             BrowserMediaSession(

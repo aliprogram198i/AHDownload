@@ -17,4 +17,5 @@ class XResolverAdapter(
     logger = logger,
     resolveTimeoutMs = resolveTimeoutMs,
     pageClient = pageClient,
+    strategy = XSocialPlatformExtractionStrategy(),
 )

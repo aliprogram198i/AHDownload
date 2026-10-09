@@ -13,7 +13,6 @@ import java.net.URLDecoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -23,7 +22,14 @@ class SocialPlatformResolverEngine(
     private val logger: DiagnosticLogger = defaultSocialDiagnosticLogger(),
     private val resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
     private val pageClient: HttpTextClient = defaultSocialPageClient(),
+    private val strategy: SocialPlatformExtractionStrategy = socialPlatformExtractionStrategy(platform),
 ) : PlatformAdapter {
+
+    init {
+        require(strategy.platform == platform) {
+            "Extraction strategy platform ${strategy.platform} does not match engine platform $platform"
+        }
+    }
 
     override val capability = ResolverCapability(
         platform = platform,
@@ -40,13 +46,7 @@ class SocialPlatformResolverEngine(
         }
         val platform = this.platform
 
-        val effectiveTimeoutMs = if (
-            platform == MediaPlatform.Instagram && resolveTimeoutMs == SOCIAL_RESOLVE_TIMEOUT_MS
-        ) {
-            INSTAGRAM_SOCIAL_RESOLVE_TIMEOUT_MS
-        } else {
-            resolveTimeoutMs
-        }
+        val effectiveTimeoutMs = strategy.effectiveTimeoutMillis(resolveTimeoutMs)
 
         return try {
             withTimeout(effectiveTimeoutMs) {
@@ -75,10 +75,7 @@ class SocialPlatformResolverEngine(
                         "headers_count" to session.requestHeadersByUrl.size.toString(),
                         "inspection_attempt_count" to session.inspectionAttemptCount.toString(),
                         "inspection_callback_count" to session.inspectionCallbackCount.toString(),
-                        "instagram_api_status" to (
-                            session.instagramApiStatus
-                                ?: if (platform == MediaPlatform.Instagram) "not_reported" else "not_applicable"
-                            ),
+                        "instagram_api_status" to strategy.sessionInspectionStatus(session),
                         "title_present" to (!session.title.isNullOrBlank()).toString(),
                         "duration_present" to (session.durationMs != null).toString(),
                     ),
@@ -162,84 +159,25 @@ class SocialPlatformResolverEngine(
                     }
                 }
 
-                // Instagram may expose media through either public embed variant. Try the
-                // captioned variant first, then the plain public embed only if no media was found.
-                // Requests are first-party and bounded; no login or access-control bypass is attempted.
-                var instagramEmbedFallback: ParsedPageMedia? = null
-                if (
-                    platform == MediaPlatform.Instagram &&
-                    !pageUrl.isNullOrBlank() &&
-                    session.mediaUrls.isEmpty() &&
-                    fallback?.mediaUrls.isNullOrEmpty()
-                ) {
-                    val embedEndpoints = instagramEmbedEndpoints(pageUrl)
-                    val embedHeaders = mapOf(
-                        "Accept" to "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
-                        "Accept-Language" to "en-US,en;q=0.8",
-                        "Referer" to pageUrl,
-                        "User-Agent" to "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
-                    )
-                    for ((variant, embedUrl) in embedEndpoints) {
-                        var parsed: ParsedPageMedia? = null
-                        var embedBody: String? = null
-                        var embedLoginWall = false
-                        var embedExceptionType: String? = null
-                        try {
-                            // Bound only the network request. Parsing a large response is
-                            // CPU work and must not consume the 3.5s HTTP budget.
-                            embedBody = withTimeoutOrNull(INSTAGRAM_EMBED_FETCH_TIMEOUT_MS) {
-                                pageClient.get(embedUrl, embedHeaders)
-                            }
-                            if (embedBody != null) {
-                                embedLoginWall = looksLikeInstagramLoginWall(embedBody)
-                                parsed = WebPageMediaParser.parse(embedBody, pageUrl)
-                            }
-                        } catch (error: CancellationException) {
-                            throw error
-                        } catch (error: Throwable) {
-                            embedExceptionType = error::class.java.simpleName
-                        }
-                        val hasMedia = parsed?.mediaUrls?.isNotEmpty() == true
-                        val embedStatus = when {
-                            embedExceptionType != null -> "request_failed"
-                            embedBody == null -> "request_timeout"
-                            hasMedia -> "media_found"
-                            embedLoginWall -> "login_wall"
-                            else -> "no_media"
-                        }
-                        logger.log(
-                            if (hasMedia) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
-                            "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT",
-                            "اكتمل فحص مسار تضمين Instagram العام",
-                            "social.resolve.instagram_embed",
-                            buildMap {
-                                put("platform", platform.name)
-                                put("operation_id", request.operationId ?: "none")
-                                put("embed_variant", variant)
-                                put("fallback_status", embedStatus)
-                                put("response_chars", (embedBody?.length ?: 0).toString())
-                                put("media_count", (parsed?.mediaUrls?.size ?: 0).toString())
-                                put("login_wall_detected", embedLoginWall.toString())
-                                embedBody?.let { putAll(instagramEmbedMarkers(it)) }
-                                embedExceptionType?.let { put("exception_type", it) }
-                            },
-                            null,
-                        )
-                        if (hasMedia) {
-                            instagramEmbedFallback = parsed
-                            break
-                        }
-                    }
-                }
-                val title = session.title ?: fallback?.title ?: instagramEmbedFallback?.title
-                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: instagramEmbedFallback?.thumbnailUrl
-                val duration = session.durationMs ?: fallback?.durationMs ?: instagramEmbedFallback?.durationMs
+                // Platform-specific fallback extraction lives in the selected strategy.
+                // The shared engine retains common orchestration, candidate building and validation.
+                val platformFallback = strategy.extractAdditionalMedia(
+                    pageUrl = pageUrl,
+                    browserMediaCount = session.mediaUrls.size,
+                    pageFallbackMediaCount = fallback?.mediaUrls?.size ?: 0,
+                    pageClient = pageClient,
+                    operationId = request.operationId,
+                    logger = logger,
+                )
+                val title = session.title ?: fallback?.title ?: platformFallback?.title
+                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: platformFallback?.thumbnailUrl
+                val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs
                 val fallbackMediaCount = fallback?.mediaUrls?.size ?: 0
-                val instagramEmbedMediaCount = instagramEmbedFallback?.mediaUrls?.size ?: 0
+                val platformFallbackMediaCount = platformFallback?.mediaUrls?.size ?: 0
                 val urls = (
                     session.mediaUrls +
                         fallback?.mediaUrls.orEmpty() +
-                        instagramEmbedFallback?.mediaUrls.orEmpty()
+                        platformFallback?.mediaUrls.orEmpty()
                     )
                     .distinct()
                     .take(64)
@@ -254,7 +192,7 @@ class SocialPlatformResolverEngine(
                         "operation_id" to (request.operationId ?: "none"),
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
-                        "instagram_embed_media_count" to instagramEmbedMediaCount.toString(),
+                        strategy.additionalMediaMetricName to platformFallbackMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
                         "page_url_source" to pageUrlSource,
                     ),
@@ -281,18 +219,15 @@ class SocialPlatformResolverEngine(
                     if (candidate == null) unclassifiedSourceCount++
                     candidate
                 }
-                // Instagram often exposes a poster/thumbnail beside the playback source.
-                // A Reel/video request must not present that image as a downloadable video.
+                // A video request must never present an image-only poster as a downloadable video.
                 val rejectedImageCandidateCount = if (request.link.kind == MediaKind.Video) {
-                    builtCandidates.count { it.format.kind == MediaKind.Image }
+                    builtCandidates.count { !strategy.shouldKeepCandidate(request.link.kind, it.format.kind) }
                 } else {
                     0
                 }
                 val candidates = builtCandidates
                     .asSequence()
-                    .filterNot {
-                        request.link.kind == MediaKind.Video && it.format.kind == MediaKind.Image
-                    }
+                    .filter { strategy.shouldKeepCandidate(request.link.kind, it.format.kind) }
                     .distinctBy {
                         listOf(
                             it.format.kind,
@@ -328,7 +263,7 @@ class SocialPlatformResolverEngine(
                         "streaming_manifest_count" to candidates.count { it.streamingManifest }.toString(),
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
-                        "instagram_embed_media_count" to instagramEmbedMediaCount.toString(),
+                        strategy.additionalMediaMetricName to platformFallbackMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
                         "unclassified_source_count" to unclassifiedSourceCount.toString(),
                         "page_url_source" to pageUrlSource,
@@ -440,17 +375,10 @@ class SocialPlatformResolverEngine(
             else -> MediaContainer.Unknown
         }
 
-        val safeRequestHeaders = requestHeaders.orEmpty()
-            .filterKeys(::safeHeader)
-            .toMutableMap()
-        if (
-            platform == MediaPlatform.Instagram &&
-            safeRequestHeaders.keys.none { it.equals("Referer", ignoreCase = true) }
-        ) {
-            // API-extracted CDN URLs have no associated intercepted media request.
-            // Preserve normal authenticated-session behavior and add only a safe page referrer.
-            safeRequestHeaders["Referer"] = "https://www.instagram.com/"
-        }
+        val safeRequestHeaders = strategy.requestHeadersForCandidate(
+            sourceUrl = sourceUrl,
+            safeHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
+        )
 
         return MediaCandidate(
             id = "social-" + platform.name.lowercase() + "-" + index + "-" + sourceUrl.hashCode().toUInt().toString(16),
@@ -474,53 +402,6 @@ class SocialPlatformResolverEngine(
             sessionCookieHost = safeHost(sourceUrl),
             sourceContext = sourceContext,
             streamingManifest = streamingManifest,
-        )
-    }
-
-    private fun instagramEmbedEndpoints(pageUrl: String): List<Pair<String, String>> {
-        val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return emptyList()
-        val host = uri.host?.lowercase().orEmpty()
-        if (uri.scheme?.lowercase() != "https" || host !in setOf("instagram.com", "www.instagram.com")) {
-            return emptyList()
-        }
-        val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
-        val typeIndex = segments.indexOfFirst { it.lowercase() in setOf("p", "reel", "reels", "tv") }
-        if (typeIndex < 0) return emptyList()
-        val mediaType = segments[typeIndex].lowercase()
-        val shortcode = segments.getOrNull(typeIndex + 1) ?: return emptyList()
-        if (!shortcode.matches(Regex("""[A-Za-z0-9_-]{5,}"""))) return emptyList()
-        val base = "https://www.instagram.com/$mediaType/$shortcode"
-        return listOf(
-            "captioned" to "$base/embed/captioned/",
-            "plain" to "$base/embed/",
-        )
-    }
-
-    private fun looksLikeInstagramLoginWall(body: String): Boolean {
-        val sample = body.take(250_000).lowercase()
-        return "accounts/login" in sample ||
-            "login_required" in sample ||
-            "log in to instagram" in sample ||
-            "sign up to see photos and videos" in sample
-    }
-
-    /** Emits only booleans; never logs HTML, media URLs, cookies, or signed query strings. */
-    private fun instagramEmbedMarkers(body: String): Map<String, String> {
-        val sample = body.take(800_000).lowercase()
-        fun has(vararg markers: String) = markers.any { it in sample }.toString()
-        return mapOf(
-            "marker_video_url_key" to has("video_url"),
-            "marker_video_versions_key" to has("video_versions"),
-            "marker_playback_url_key" to has("playback_url"),
-            "marker_content_url_key" to has("contenturl", "content_url"),
-            "marker_og_video" to has("og:video"),
-            "marker_video_element" to has("<video"),
-            "marker_instagram_cdn" to has("cdninstagram", "fbcdn.net", "scontent"),
-            "marker_media_extension" to has(".mp4", ".m4v", ".webm", ".m3u8", ".mpd"),
-            "marker_video_metadata" to has("video_versions", "video_url", "playback_url", "contenturl", "og:video"),
-            "marker_login_or_checkpoint" to has("accounts/login", "login_required", "checkpoint_required"),
-            "marker_challenge_or_rate_limit" to has("challenge_required", "please wait a few minutes", "rate limit"),
-            "marker_response_error" to has("graphql_error", "feedback_required", "restricted_access"),
         )
     }
 
@@ -552,9 +433,7 @@ class SocialPlatformResolverEngine(
 }
 
 internal const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
-private const val INSTAGRAM_SOCIAL_RESOLVE_TIMEOUT_MS = 32_000L
 private const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
-private const val INSTAGRAM_EMBED_FETCH_TIMEOUT_MS = 3_500L
 
 internal fun defaultSocialDiagnosticLogger(): DiagnosticLogger =
     DiagnosticLogger { _, _, _, _, _, _ -> }
