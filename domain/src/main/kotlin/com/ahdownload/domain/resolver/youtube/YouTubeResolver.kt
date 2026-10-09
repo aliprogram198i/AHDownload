@@ -248,7 +248,7 @@ class YouTubeResolver(
                 context = diagnosticContext(videoId, request.operationId),
                 throwable = null,
             )
-            val webResult = parser.parsePlayerResponse(response)
+            val webResult = parser.parsePlayerResponse(response, snapshot.videoUrls, snapshot.audioUrls)
             if (webResult is ResolverResult.Success) {
                 val sessionResult = withSessionHeaders(webResult, snapshot)
                 val browserCandidates = sessionCandidates(snapshot)
@@ -516,7 +516,49 @@ class YouTubeResolver(
             ),
             throwable = null,
         )
-        return withSessionHeaders(result, snapshot)
+        val sessionEnriched = withSessionHeaders(result, snapshot)
+        val capturedPlayerCandidates = snapshot.playerResponse
+            ?.takeIf { it.isNotBlank() }
+            ?.let { parser.parsePlayerResponse(it, snapshot.videoUrls, snapshot.audioUrls) }
+            ?.let { it as? ResolverResult.Success }
+            ?.let { withSessionHeaders(it, snapshot).candidates }
+            .orEmpty()
+            .filter {
+                it.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED
+            }
+
+        val knownSourceUrls = sessionEnriched.candidates
+            .mapTo(mutableSetOf()) { it.sourceUrl }
+        val recoveredCipherCandidates = capturedPlayerCandidates.filter { candidate ->
+            knownSourceUrls.add(candidate.sourceUrl)
+        }
+
+        if (recoveredCipherCandidates.isNotEmpty()) {
+            logger.log(
+                DiagnosticLevel.INFO,
+                type = "youtube.cipher_format_metadata_recovered",
+                reason = "player_metadata_matched_to_exact_browser_media_urls",
+                operation = "youtube.resolve",
+                context = diagnosticContext(
+                    extractVideoId(request.link.normalizedUrl).orEmpty(),
+                    request.operationId,
+                ) + mapOf(
+                    "recovered_candidate_count" to recoveredCipherCandidates.size.toString(),
+                    "recovered_video_count" to recoveredCipherCandidates.count {
+                        it.format.kind == MediaKind.Video
+                    }.toString(),
+                    "recovered_audio_count" to recoveredCipherCandidates.count {
+                        it.format.kind == MediaKind.Audio
+                    }.toString(),
+                ),
+                throwable = null,
+            )
+            return sessionEnriched.copy(
+                candidates = sessionEnriched.candidates + recoveredCipherCandidates,
+            )
+        }
+
+        return sessionEnriched
     }
 
     private fun isYouTubeMediaHost(url: String): Boolean {

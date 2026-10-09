@@ -82,7 +82,7 @@ class YouTubePlayerResponseParserTest {
               "videoDetails": {"title":"No Direct URL"},
               "streamingData": {
                 "formats": [
-                  {"itag":"999","mimeType":"video/mp4; codecs=\"avc1.4D401F\"","signatureCipher":"s=abc"}
+                  {"itag":"999","mimeType":"video/mp4; codecs=\"avc1.4D401F\"","signatureCipher":"url=https%3A%2F%2Fcdn.example.com%2Fsource%3Fitag%3D999&s=abc"}
                 ]
               }
             };
@@ -93,6 +93,69 @@ class YouTubePlayerResponseParserTest {
             FailureCode.NoCandidates,
             (result as ResolverResult.Failure).code,
         )
+    }
+
+    @Test
+    fun usesExactObservedBrowserUrlsToRecoverCipheredFormatMetadata() {
+        val video1080Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=137&mime=video%2Fmp4&pot=browser-video"
+        val video720Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=136&mime=video%2Fmp4&pot=browser-video"
+        val audio160Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=251&mime=audio%2Fwebm&pot=browser-audio"
+        val json = """
+            {
+              "videoDetails":{"title":"Cipher metadata test","lengthSeconds":"8"},
+              "playabilityStatus":{"status":"OK"},
+              "streamingData":{
+                "adaptiveFormats":[
+                  {
+                    "itag":"137",
+                    "mimeType":"video/mp4; codecs=\"avc1.640028\"",
+                    "width":1920,
+                    "height":1080,
+                    "fps":30,
+                    "bitrate":4500000,
+                    "signatureCipher":"url=https%3A%2F%2Frr1---sn.googlevideo.com%2Fvideoplayback%3Fitag%3D137&s=encrypted"
+                  },
+                  {
+                    "itag":"136",
+                    "mimeType":"video/mp4; codecs=\"avc1.4d401f\"",
+                    "width":1280,
+                    "height":720,
+                    "fps":30,
+                    "bitrate":2500000,
+                    "cipher":"url=https%3A%2F%2Frr1---sn.googlevideo.com%2Fvideoplayback%3Fitag%3D136&s=encrypted"
+                  },
+                  {
+                    "itag":"251",
+                    "mimeType":"audio/webm; codecs=\"opus\"",
+                    "bitrate":160000,
+                    "signatureCipher":"url=https%3A%2F%2Frr1---sn.googlevideo.com%2Fvideoplayback%3Fitag%3D251&s=encrypted"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val result = parser.parsePlayerResponse(json, listOf(video1080Url, video720Url), listOf(audio160Url))
+
+        assertTrue(result is ResolverResult.Success)
+        val candidates = (result as ResolverResult.Success).candidates
+        assertEquals(3, candidates.size)
+
+        val video1080 = candidates.first { it.format.height == 1080 }
+        assertEquals(video1080Url, video1080.sourceUrl)
+        assertEquals("137", video1080.id)
+        assertEquals(false, video1080.format.hasAudio)
+
+        val video720 = candidates.first { it.format.height == 720 }
+        assertEquals(video720Url, video720.sourceUrl)
+        assertEquals("136", video720.id)
+
+        val audio160 = candidates.first { it.format.kind == MediaKind.Audio }
+        assertEquals(audio160Url, audio160.sourceUrl)
+        assertEquals(160, audio160.format.bitrateKbps)
     }
 
     @Test

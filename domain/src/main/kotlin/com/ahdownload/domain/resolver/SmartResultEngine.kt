@@ -113,11 +113,14 @@ class SmartResultEngine {
             MediaResultGroup.Video -> format.height
                 ?.takeIf { it > 0 }
                 ?.let { "video-height:$it" }
-                ?: "video-unknown:${item.candidate.sourceUrl}"
+                // If the resolver cannot provide height metadata, these are not
+                // distinct user-visible quality options. Keep one best fallback
+                // instead of rendering several identical "Video" placeholder cards.
+                ?: "video-unknown"
             MediaResultGroup.Audio -> format.bitrateKbps
                 ?.takeIf { it > 0 }
                 ?.let { "audio-bitrate:${it / 16 * 16}" }
-                ?: "audio-unknown:${item.candidate.sourceUrl}"
+                ?: "audio-unknown"
             MediaResultGroup.Other -> item.candidate.sourceUrl
         }
     }
@@ -158,11 +161,13 @@ class SmartResultEngine {
         .thenByDescending { videoContainerCompatibility(it.candidate.format.container) }
         .thenByDescending { it.candidate.format.bitrateKbps ?: 0 }
         .thenBy { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
+        .thenBy { it.candidate.id }
 
     private val audioComparator = compareByDescending<MediaPresentationModel> { it.candidate.format.bitrateKbps ?: 0 }
         .thenByDescending { audioContainerCompatibility(it.candidate.format.container) }
         .thenByDescending { audioCodecCompatibility(it.candidate.format.audioCodec) }
         .thenBy { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
+        .thenBy { it.candidate.id }
 
     private fun videoCodecCompatibility(codec: String?): Int = when (normalizeCodec(codec)) {
         "H.264" -> 3

@@ -173,6 +173,89 @@ class YouTubeResolverTest {
     }
 
     @Test
+    fun recoversCipheredVideoQualitiesAndAudioFromObservedWebViewUrls() = runBlocking {
+        val video1080Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=137&mime=video%2Fmp4&pot=browser-1080"
+        val video720Url =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=136&mime=video%2Fmp4&pot=browser-720"
+        val audioUrl =
+            "https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&pot=browser-audio"
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                throw IllegalStateException("Sign in to confirm you're not a bot")
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = listOf(video1080Url, video720Url),
+                audioUrls = listOf(audioUrl),
+                playerResponse = """
+                    {
+                      "videoDetails":{"title":"Cipher Session Test","lengthSeconds":"10"},
+                      "playabilityStatus":{"status":"OK"},
+                      "streamingData":{
+                        "adaptiveFormats":[
+                          {
+                            "itag":"137",
+                            "mimeType":"video/mp4; codecs=\"avc1.640028\"",
+                            "width":1920,
+                            "height":1080,
+                            "fps":30,
+                            "bitrate":4500000,
+                            "signatureCipher":"url=https%3A%2F%2Frr1---sn.googlevideo.com%2Fvideoplayback%3Fitag%3D137&s=encrypted"
+                          },
+                          {
+                            "itag":"136",
+                            "mimeType":"video/mp4; codecs=\"avc1.4d401f\"",
+                            "width":1280,
+                            "height":720,
+                            "fps":30,
+                            "bitrate":2500000,
+                            "signatureCipher":"url=https%3A%2F%2Frr1---sn.googlevideo.com%2Fvideoplayback%3Fitag%3D136&s=encrypted"
+                          },
+                          {
+                            "itag":"140",
+                            "mimeType":"audio/mp4; codecs=\"mp4a.40.2\"",
+                            "bitrate":128000,
+                            "cipher":"url=https%3A%2F%2Frr1---sn.googlevideo.com%2Fvideoplayback%3Fitag%3D140&s=encrypted"
+                          }
+                        ]
+                      }
+                    }
+                """.trimIndent(),
+                authenticated = false,
+                browserRequestHeaders = mapOf(
+                    video1080Url to mapOf("Referer" to "https://www.youtube.com/"),
+                    video720Url to mapOf("Referer" to "https://www.youtube.com/"),
+                    audioUrl to mapOf("Referer" to "https://www.youtube.com/"),
+                ),
+                browserMediaObservedCount = 3,
+            )
+        }
+
+        val result = YouTubeResolver(client, sessionProvider = session).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/cipher-session-test",
+                    normalizedUrl = "https://youtu.be/cipher-session-test",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        val candidates = (result as ResolverResult.Success).candidates
+        assertEquals(3, candidates.size)
+        assertEquals(video1080Url, candidates.first { it.format.height == 1080 }.sourceUrl)
+        assertEquals(video720Url, candidates.first { it.format.height == 720 }.sourceUrl)
+        assertEquals(128, candidates.first { it.format.kind == MediaKind.Audio }.format.bitrateKbps)
+        assertTrue(candidates.all {
+            it.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED
+        })
+    }
+
+    @Test
     fun fallsBackToWebViewSessionCandidatesAfterBotCheck() = runBlocking {
         val client = object : HttpTextClient {
             override suspend fun get(url: String): String =
