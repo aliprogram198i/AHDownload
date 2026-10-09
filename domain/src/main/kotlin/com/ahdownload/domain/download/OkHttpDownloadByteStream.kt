@@ -23,7 +23,11 @@ class OkHttpDownloadByteStream(
         rangeStart: Long,
         headers: Map<String, String>,
     ): DownloadResponse = withContext(Dispatchers.IO) {
-        val mergedHeaders = dynamicHeaders(url, headers) + headers
+        // A Range header observed in WebView describes that browser request, not
+        // this download job. Drop it before constructing the transfer request;
+        // only this engine may set Range from its actual resume offset.
+        val mergedHeaders = (dynamicHeaders(url, headers) + headers)
+            .filterKeys { !it.equals("Range", ignoreCase = true) }
         val builder = Request.Builder()
             .url(url)
             .header("User-Agent", userAgentFor(url))
