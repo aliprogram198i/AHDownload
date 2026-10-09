@@ -106,6 +106,7 @@ class SocialPlatformResolver(
                 val pageUrl = pageUrlCandidate?.second
                 val pageUrlSource = pageUrlCandidate?.first ?: "none"
                 var fallback: ParsedPageMedia? = null
+                var fallbackSourceKind = "none"
 
                 if (pageUrl == null) {
                     logger.log(
@@ -136,43 +137,52 @@ class SocialPlatformResolver(
                         null,
                     )
                     try {
-                        // Instagram can spend nearly the entire resolver budget in WebView.
-                        // Bound its independent HTML fallback to avoid converting a recoverable
-                        // no-candidate result into a resolver timeout.
-                        val pageFetchTimeoutMs = if (platform == MediaPlatform.Instagram) {
-                            INSTAGRAM_PAGE_FETCH_TIMEOUT_MS
+                        val pageFallback = if (platform == MediaPlatform.Instagram) {
+                            fetchInstagramPageFallback(
+                                pageUrl = pageUrl,
+                                operationId = request.operationId,
+                                pageUrlSource = pageUrlSource,
+                            )
                         } else {
-                            SOCIAL_PAGE_FETCH_TIMEOUT_MS
+                            val html = withTimeoutOrNull(SOCIAL_PAGE_FETCH_TIMEOUT_MS) {
+                                pageClient.get(pageUrl)
+                            }
+                            html?.let { PageMediaFallback(WebPageMediaParser.parse(it, pageUrl), "html") }
                         }
-                        val html = withTimeoutOrNull(pageFetchTimeoutMs) {
-                            pageClient.get(pageUrl)
-                        }
-                        if (html == null) {
+
+                        if (pageFallback != null) {
+                            fallback = pageFallback.media
+                            fallbackSourceKind = pageFallback.sourceKind
                             logger.log(
-                                DiagnosticLevel.WARNING,
-                                "SOCIAL_PAGE_FETCH_TIMEOUT",
-                                "انتهت مهلة جلب HTML الاحتياطي",
+                                if (fallback?.mediaUrls.isNullOrEmpty()) DiagnosticLevel.WARNING else DiagnosticLevel.INFO,
+                                "SOCIAL_PAGE_FETCH_RESULT",
+                                if (fallback?.mediaUrls.isNullOrEmpty()) {
+                                    "اكتمل جلب الصفحة الاحتياطية دون مصدر وسائط"
+                                } else {
+                                    "تم العثور على مصدر وسائط في الصفحة الاحتياطية"
+                                },
                                 "social.resolve.page_fetch",
                                 mapOf(
                                     "platform" to platform.name,
                                     "operation_id" to (request.operationId ?: "none"),
                                     "page_url_source" to pageUrlSource,
-                                    "timeout_ms" to pageFetchTimeoutMs.toString(),
+                                    "fallback_source_kind" to fallbackSourceKind,
+                                    "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
+                                    "title_present" to (!fallback?.title.isNullOrBlank()).toString(),
                                 ),
                                 null,
                             )
                         } else {
-                            fallback = WebPageMediaParser.parse(html, pageUrl)
                             logger.log(
-                                DiagnosticLevel.INFO,
-                                "SOCIAL_PAGE_FETCH_RESULT",
-                                "اكتمل جلب وتحليل HTML الاحتياطي",
+                                DiagnosticLevel.WARNING,
+                                "SOCIAL_PAGE_FETCH_NO_RESULT",
+                                "لم تنتج المسارات الاحتياطية استجابة قابلة للتحليل",
                                 "social.resolve.page_fetch",
                                 mapOf(
                                     "platform" to platform.name,
                                     "operation_id" to (request.operationId ?: "none"),
                                     "page_url_source" to pageUrlSource,
-                                    "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
+                                    "fallback_source_kind" to fallbackSourceKind,
                                 ),
                                 null,
                             )
@@ -347,6 +357,163 @@ class SocialPlatformResolver(
         }
     }
 
+    private suspend fun fetchInstagramPageFallback(
+        pageUrl: String,
+        operationId: String?,
+        pageUrlSource: String,
+    ): PageMediaFallback? {
+        var best: PageMediaFallback? = null
+        val targets = buildList {
+            add(InstagramFallbackTarget("html", pageUrl, emptyMap()))
+            addAll(instagramFallbackTargets(pageUrl))
+        }
+
+        // Keep all Instagram HTTP fallbacks inside one small budget. The WebView
+        // session may already have consumed most of the resolver's 20-second limit.
+        withTimeoutOrNull(INSTAGRAM_PAGE_FETCH_BUDGET_MS) {
+            for (target in targets) {
+                val response = try {
+                    withTimeoutOrNull(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS) {
+                        pageClient.get(target.url, target.headers)
+                    }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Throwable) {
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "SOCIAL_PLATFORM_FALLBACK_FAILED",
+                        error::class.java.simpleName,
+                        "social.resolve.platform_fallback",
+                        mapOf(
+                            "platform" to MediaPlatform.Instagram.name,
+                            "operation_id" to (operationId ?: "none"),
+                            "page_url_source" to pageUrlSource,
+                            "fallback_source_kind" to target.kind,
+                            "exception_type" to error::class.java.simpleName,
+                        ),
+                        null,
+                    )
+                    null
+                }
+
+                if (response == null) {
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "SOCIAL_PLATFORM_FALLBACK_TIMEOUT",
+                        "انتهت مهلة مسار Instagram الاحتياطي",
+                        "social.resolve.platform_fallback",
+                        mapOf(
+                            "platform" to MediaPlatform.Instagram.name,
+                            "operation_id" to (operationId ?: "none"),
+                            "page_url_source" to pageUrlSource,
+                            "fallback_source_kind" to target.kind,
+                            "timeout_ms" to INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS.toString(),
+                        ),
+                        null,
+                    )
+                    continue
+                }
+
+                val parsed = WebPageMediaParser.parse(response, pageUrl)
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "SOCIAL_PLATFORM_FALLBACK_RESULT",
+                    if (parsed.mediaUrls.isEmpty()) {
+                        "لم يعثر المسار الاحتياطي على وسائط"
+                    } else {
+                        "عثر المسار الاحتياطي على وسائط"
+                    },
+                    "social.resolve.platform_fallback",
+                    mapOf(
+                        "platform" to MediaPlatform.Instagram.name,
+                        "operation_id" to (operationId ?: "none"),
+                        "page_url_source" to pageUrlSource,
+                        "fallback_source_kind" to target.kind,
+                        "media_count" to parsed.mediaUrls.size.toString(),
+                        "title_present" to (!parsed.title.isNullOrBlank()).toString(),
+                    ),
+                    null,
+                )
+
+                if (parsed.mediaUrls.isNotEmpty()) {
+                    best = PageMediaFallback(parsed, target.kind)
+                    break
+                }
+                if (best == null || (best?.media?.title.isNullOrBlank() && !parsed.title.isNullOrBlank())) {
+                    best = PageMediaFallback(parsed, target.kind)
+                }
+            }
+        }
+
+        return best
+    }
+
+    private fun instagramFallbackTargets(pageUrl: String): List<InstagramFallbackTarget> =
+        runCatching {
+            val uri = URI(pageUrl)
+            val host = uri.host?.lowercase().orEmpty()
+            if (host != "instagram.com" && !host.endsWith(".instagram.com")) {
+                return emptyList()
+            }
+
+            val pagePath = uri.path?.takeIf(String::isNotBlank) ?: return emptyList()
+            val apiHeaders = mapOf(
+                "Accept" to "application/json, text/plain, */*",
+                "X-IG-App-ID" to INSTAGRAM_WEB_APP_ID,
+                "X-Requested-With" to "XMLHttpRequest",
+                "Referer" to pageUrl,
+            )
+            val queryUrl = URI(
+                uri.scheme,
+                null,
+                uri.host,
+                uri.port,
+                pagePath,
+                "__a=1&__d=dis",
+                null,
+            ).toASCIIString()
+            val targets = mutableListOf(
+                InstagramFallbackTarget("page_json", queryUrl, apiHeaders),
+            )
+            val segments = pagePath.split('/').filter(String::isNotBlank)
+            val mediaIndex = segments.indexOfFirst {
+                it.lowercase() in setOf("reel", "reels", "p", "tv")
+            }
+            val shortcode = segments.getOrNull(mediaIndex + 1)?.takeIf {
+                mediaIndex >= 0 && it.matches(Regex("[A-Za-z0-9_-]{5,}"))
+            }
+            if (shortcode != null) {
+                val shortcodeUrl = URI(
+                    uri.scheme,
+                    null,
+                    uri.host,
+                    uri.port,
+                    "/api/v1/media/shortcode/$shortcode/",
+                    null,
+                    null,
+                ).toASCIIString()
+                targets += InstagramFallbackTarget("shortcode_api", shortcodeUrl, apiHeaders)
+            }
+            val embedUrl = URI(
+                uri.scheme,
+                null,
+                uri.host,
+                uri.port,
+                pagePath.trimEnd('/') + "/embed/captioned/",
+                null,
+                null,
+            ).toASCIIString()
+            targets += InstagramFallbackTarget(
+                "embed",
+                embedUrl,
+                mapOf(
+                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Referer" to pageUrl,
+                ),
+            )
+            targets
+        }.getOrDefault(emptyList())
+
     private fun inferCandidate(
         platform: MediaPlatform,
         sourceUrl: String,
@@ -460,9 +627,23 @@ class SocialPlatformResolver(
     private fun safeHost(url: String): String? =
         runCatching { URI(url).host?.lowercase()?.removePrefix("www.") }.getOrNull()
 
+    private data class PageMediaFallback(
+        val media: ParsedPageMedia,
+        val sourceKind: String,
+    )
+
+    private data class InstagramFallbackTarget(
+        val kind: String,
+        val url: String,
+        val headers: Map<String, String>,
+    )
+
     private companion object {
         const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
         const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
         const val INSTAGRAM_PAGE_FETCH_TIMEOUT_MS = 4_500L
+        const val INSTAGRAM_PAGE_FETCH_BUDGET_MS = 4_500L
+        const val INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS = 1_050L
+        const val INSTAGRAM_WEB_APP_ID = "936619743392459"
     }
 }
