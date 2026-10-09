@@ -59,7 +59,7 @@ internal fun classifyYouTubeObservedMediaUrl(rawUrl: String): String? {
 
     val itag = query["itag"]
     return when {
-        itag in YOUTUBE_AUDIO_ITAGS -> "audio"
+        !itag.isNullOrBlank() && itag in YOUTUBE_AUDIO_ITAGS -> "audio"
         !itag.isNullOrBlank() -> "video"
         else -> null
     }
