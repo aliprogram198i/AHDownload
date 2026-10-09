@@ -227,83 +227,146 @@ class AndroidBrowserMediaSessionProvider(
                     (function(){
                       const instagramShortcode=__IG_SHORTCODE__;
                       const instagramMediaId=__IG_MEDIA_ID__;
-                      // Keep credentials in WebView. Try the lightweight endpoint first,
-                      // then the current GraphQL path used by the Instagram web extractor.
-                      if(instagramShortcode && !window.__ahInstagramApiRequestStarted){
-                        window.__ahInstagramApiRequestStarted=true;
-                        window.__ahInstagramApiStatus='pending';
-                        const collectMedia=payload=>{
-                          const found=[];
-                          const addVideoUrl=raw=>{
-                            if(typeof raw!=='string' ||
-                               !(raw.startsWith('https://') || raw.startsWith('http://'))) return;
+                      // Keep requests inside the Instagram WebView session and try independent
+                      // public-media representations before the legacy GraphQL query.
+                      const safeErrorClass=error=>{
+                        const name=String(error&&error.name||'unknown')
+                          .toLowerCase().replace(/[^a-z0-9_]/g,'').slice(0,20);
+                        return name||'unknown';
+                      };
+                      const collectMedia=payload=>{
+                        const found=[];
+                        const addVideoUrl=raw=>{
+                          if(typeof raw!=='string')return;
+                          let value=raw.trim()
+                            .replace(/\\u002f/gi,'/')
+                            .replace(/\\u0026/gi,'&')
+                            .replace(/\\u003f/gi,'?')
+                            .replace(/\\u003d/gi,'=')
+                            .replace(/\\u003a/gi,':')
+                            .replace(/\\\//g,'/');
+                          if(!(value.startsWith('https://')||value.startsWith('http://')))return;
+                          const path=value.split('?')[0].split('#')[0].toLowerCase();
+                          if(['.jpg','.jpeg','.png','.webp','.gif','.avif','.heic','.heif']
+                              .some(ext=>path.endsWith(ext)))return;
+                          if(['.mp4','.m4v','.webm','.mov','.m3u8','.mpd']
+                              .some(ext=>path.endsWith(ext))||
+                             path.includes('/o1/v/')||path.includes('/v/t')){
+                            found.push(value);
+                          }
+                        };
+                        const visit=(node,depth)=>{
+                          if(!node||depth>14)return;
+                          if(Array.isArray(node)){
+                            node.slice(0,200).forEach(item=>visit(item,depth+1));
+                            return;
+                          }
+                          if(typeof node!=='object')return;
+                          Object.entries(node).forEach(([key,value])=>{
+                            const lower=key.toLowerCase();
+                            if(typeof value==='string'&&[
+                              'video_url','playback_url','content_url','videourl','contenturl',
+                              'fallback_url','fallbackurl','progressive_url','progressiveurl',
+                              'browser_native_sd_url','browser_native_hd_url','sd_src','hd_src',
+                              'playable_url','download_url'
+                            ].includes(lower))addVideoUrl(value);
+                            if(Array.isArray(value)&&lower==='video_versions'){
+                              value.forEach(item=>{if(item&&typeof item.url==='string')addVideoUrl(item.url);});
+                            }
+                            if(value&&typeof value==='object')visit(value,depth+1);
+                          });
+                        };
+                        visit(payload,0);
+                        return [...new Set(found)].slice(0,32);
+                      };
+                      const collectTextMedia=text=>{
+                        const normalized=String(text||'')
+                          .replace(/\\u002f/gi,'/')
+                          .replace(/\\u0026/gi,'&')
+                          .replace(/\\u003f/gi,'?')
+                          .replace(/\\u003d/gi,'=')
+                          .replace(/\\u003a/gi,':')
+                          .replace(/\\\//g,'/');
+                        const found=[];
+                        const keyRe=/"(?:video_url|playback_url|content_url|videoUrl|contentUrl|fallback_url|fallbackUrl|progressive_url|browser_native_sd_url|browser_native_hd_url|sd_src|hd_src|playable_url|download_url)"\s*:\s*"([^"]+)"/gi;
+                        let match;
+                        while((match=keyRe.exec(normalized))!==null){
+                          const raw=match[1].replace(/&amp;/gi,'&');
+                          if(/^https?:\/\//i.test(raw)){
                             const path=raw.split('?')[0].split('#')[0].toLowerCase();
-                            if(['.jpg','.jpeg','.png','.webp','.gif','.avif','.heic','.heif']
-                                .some(ext=>path.endsWith(ext))) return;
-                            if(['.mp4','.m4v','.webm','.mov','.m3u8','.mpd']
-                                .some(ext=>path.endsWith(ext)) ||
-                               path.includes('/o1/v/') || path.includes('/v/t')){
+                            if(!['.jpg','.jpeg','.png','.webp','.gif','.avif','.heic','.heif']
+                                .some(ext=>path.endsWith(ext))&&
+                               (['.mp4','.m4v','.webm','.mov','.m3u8','.mpd']
+                                  .some(ext=>path.endsWith(ext))||
+                                path.includes('/o1/v/')||path.includes('/v/t'))){
                               found.push(raw);
                             }
-                          };
-                          const visit=(node,depth)=>{
-                            if(!node || depth>12) return;
-                            if(Array.isArray(node)){
-                              node.slice(0,150).forEach(item=>visit(item,depth+1));
-                              return;
-                            }
-                            if(typeof node!=='object') return;
-                            Object.entries(node).forEach(([key,value])=>{
-                              const lower=key.toLowerCase();
-                              if(typeof value==='string' &&
-                                 ['video_url','playback_url','content_url'].includes(lower)){
-                                addVideoUrl(value);
-                              }
-                              if(Array.isArray(value) && lower==='video_versions'){
-                                value.forEach(item=>{
-                                  if(item && typeof item.url==='string') addVideoUrl(item.url);
-                                });
-                              }
-                              if(value && typeof value==='object') visit(value,depth+1);
-                            });
-                          };
-                          visit(payload,0);
-                          return [...new Set(found)].slice(0,32);
+                          }
+                        }
+                        return [...new Set(found)].slice(0,32);
+                      };
+                      const requestMedia=async target=>{
+                        const response=await fetch(target,{
+                          method:'GET',
+                          credentials:'include',
+                          headers:{
+                            'Accept':'application/json, text/plain, */*',
+                            'X-IG-App-ID':'936619743392459',
+                            'X-Requested-With':'XMLHttpRequest'
+                          }
+                        });
+                        if(!response.ok)return {status:'http_'+response.status,media:[]};
+                        const body=await response.text();
+                        let payload=null;
+                        try{payload=JSON.parse(body);}catch(_){}
+                        let media=payload?collectMedia(payload):[];
+                        if(!media.length)media=collectTextMedia(body);
+                        return {
+                          status:media.length?'success_media':(payload?'success_no_media':'response_not_json'),
+                          media:media
                         };
+                      };
+                      if(instagramShortcode&&!window.__ahInstagramApiRequestStarted){
+                        window.__ahInstagramApiRequestStarted=true;
+                        window.__ahInstagramApiStatus='pending';
                         (async()=>{
-                          let legacyStatus='not_attempted';
-                          try{
-                            const endpoint=new URL(
+                          let fallbackStatus='not_attempted';
+                          const targets=[];
+                          targets.push({
+                            label:'shortcode',
+                            url:new URL(
                               '/api/v1/media/shortcode/'+encodeURIComponent(instagramShortcode)+'/',
                               location.origin
-                            ).toString();
-                            const response=await fetch(endpoint,{
-                              method:'GET',
-                              credentials:'include',
-                              headers:{
-                                'Accept':'application/json, text/plain, */*',
-                                'X-IG-App-ID':'936619743392459',
-                                'X-Requested-With':'XMLHttpRequest'
-                              }
-                            });
-                            if(response.ok){
-                              const payload=await response.json();
-                              const found=collectMedia(payload);
-                              if(found.length){
-                                window.__ahInstagramApiMedia=found;
+                            ).toString()
+                          });
+                          try{
+                            // Some public pages expose their hydrated media through the
+                            // page JSON variant even when the shortcode endpoint is blocked.
+                            const pageUrl=new URL(__IG_PAGE_URL__,location.origin);
+                            if(pageUrl.origin===location.origin){
+                              pageUrl.searchParams.set('__a','1');
+                              pageUrl.searchParams.set('__d','dis');
+                              targets.push({label:'page_query',url:pageUrl.pathname+pageUrl.search});
+                            }
+                          }catch(_){}
+                          for(const target of targets){
+                            try{
+                              const result=await requestMedia(target.url);
+                              fallbackStatus=target.label+'_'+result.status;
+                              if(result.media.length){
+                                window.__ahInstagramApiMedia=result.media;
                                 window.__ahInstagramApiStatus='success_media';
                                 return;
                               }
-                              legacyStatus='success_no_media';
-                            }else{
-                              legacyStatus='http_'+response.status;
+                            }catch(error){
+                              fallbackStatus=target.label+'_network_'+safeErrorClass(error);
                             }
-                          }catch(_){legacyStatus='network_error';}
+                          }
+                          if(!instagramMediaId){
+                            window.__ahInstagramApiStatus=fallbackStatus+'_graphql_invalid_media_id';
+                            return;
+                          }
                           try{
-                            if(!instagramMediaId){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_invalid_shortcode';
-                              return;
-                            }
                             const markup=document.documentElement
                               ?(document.documentElement.innerHTML||''):'';
                             const lsdMatch=markup.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
@@ -312,7 +375,7 @@ class AndroidBrowserMediaSessionProvider(
                               .match(/(?:^|;\s*)csrftoken=([^;]+)/);
                             const csrf=csrfMatch?decodeURIComponent(csrfMatch[1]):'';
                             if(!lsd){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_missing_lsd';
+                              window.__ahInstagramApiStatus=fallbackStatus+'_graphql_missing_lsd';
                               return;
                             }
                             const form=new URLSearchParams();
@@ -341,26 +404,43 @@ class AndroidBrowserMediaSessionProvider(
                               body:form.toString()
                             });
                             if(!response.ok){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_http_'+response.status;
+                              window.__ahInstagramApiStatus=fallbackStatus+'_graphql_http_'+response.status;
                               return;
                             }
-                            const payload=await response.json();
-                            const found=collectMedia(payload);
+                            const body=await response.text();
+                            let payload=null;
+                            try{payload=JSON.parse(body);}catch(_){}
+                            let found=payload?collectMedia(payload):[];
+                            if(!found.length)found=collectTextMedia(body);
                             if(found.length){
                               window.__ahInstagramApiMedia=found;
                               window.__ahInstagramApiStatus='success_media';
                             }else{
-                              const message=String(payload.message||'').toLowerCase();
-                              const errors=Array.isArray(payload.errors)&&payload.errors.length>0;
+                              const message=String(payload&&payload.message||'').toLowerCase();
+                              const errors=!!(payload&&Array.isArray(payload.errors)&&payload.errors.length>0);
                               window.__ahInstagramApiStatus=
-                                (payload.require_login===true || message==='login_required')
+                                (payload&&(payload.require_login===true||message==='login_required'))
                                   ?'login_required'
-                                  :(errors?'graphql_rejected':'legacy_'+legacyStatus+'_graphql_no_media');
+                                  :(errors?fallbackStatus+'_graphql_rejected':
+                                    fallbackStatus+'_graphql_'+(payload?'no_media':'response_not_json'));
                             }
-                          }catch(_){window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_error';}
+                          }catch(error){
+                            window.__ahInstagramApiStatus=fallbackStatus+'_graphql_network_'+safeErrorClass(error);
+                          }
                         })();
                       }
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
+                      const metaVideos=[
+                        'meta[property="og:video"]',
+                        'meta[property="og:video:url"]',
+                        'meta[property="og:video:secure_url"]',
+                        'meta[name="twitter:player:stream"]'
+                      ].map(selector=>{
+                        const value=meta(selector);
+                        try{return value?new URL(value,location.href).href:null;}catch(_){return null;}
+                      }).filter(Boolean);
+                      const preloadVideos=[...document.querySelectorAll('link[rel="preload"][as="video"]')]
+                        .map(e=>e.href||e.getAttribute('href')).filter(Boolean);
                       // Instagram may defer the actual CDN request until its player starts.
                       // Prime at most two video elements silently so the WebView can observe the
                       // real media request; never click page controls or follow login prompts.
@@ -415,7 +495,7 @@ class AndroidBrowserMediaSessionProvider(
                           .replace(/\\u003d/gi,'=')
                           .replace(/\\u003a/gi,':')
                           .replace(/\\\//g,'/');
-                        const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url)"\s*:\s*"([^"]+)"/g;
+                        const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url|fallback_url|fallbackUrl|dash_url|dashUrl|hls_url|hlsUrl|scrubberMediaUrl|scrubber_media_url|progressive_url|progressiveUrl|download_url|browser_native_sd_url|browser_native_hd_url|sd_src|hd_src|playable_url)"\s*:\s*"([^"]+)"/g;
                         let mediaMatch;
                         while((mediaMatch=keyRe.exec(clean))!==null){
                           const candidate=mediaMatch[1];
@@ -435,6 +515,8 @@ class AndroidBrowserMediaSessionProvider(
                           ...sources,
                           ...perf,
                           ...embedded,
+                          ...metaVideos,
+                          ...preloadVideos,
                           ...(window.__ahInstagramApiMedia||[])
                         ])].filter(isMediaCandidate).slice(0,64),
                         instagramApiStatus:window.__ahInstagramApiStatus ||
@@ -445,6 +527,7 @@ class AndroidBrowserMediaSessionProvider(
                 """.trimIndent()
                     .replace("__IG_SHORTCODE__", JSONObject.quote(instagramShortcode.orEmpty()))
                     .replace("__IG_MEDIA_ID__", JSONObject.quote(instagramMediaId.orEmpty()))
+                    .replace("__IG_PAGE_URL__", JSONObject.quote(url))
                 view.evaluateJavascript(script) { raw ->
                     inspectionCallbackCount++
                     if (activeInspectionSerial == inspectionId) inspectionInFlight = false
