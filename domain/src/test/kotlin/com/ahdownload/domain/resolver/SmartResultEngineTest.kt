@@ -234,6 +234,55 @@ class SmartResultEngineTest {
         assertEquals(1, result.audio.size)
     }
 
+    @Test
+    fun doesNotRecommendUnconfirmedVideoOnlySourceAsReady() {
+        val videoOnly = MediaCandidate(
+            id = "browser-video-unknown",
+            sourceUrl = "https://cdn.example/video",
+            format = MediaFormat(
+                id = "browser-video-unknown",
+                kind = MediaKind.Video,
+                container = MediaContainer.Unknown,
+                height = null,
+                hasVideo = true,
+                hasAudio = false,
+            ),
+            sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+        )
+
+        val result = SmartResultEngine().build(listOf(videoOnly))
+
+        assertTrue(result.videoWithAudioOptions.isEmpty())
+        assertEquals(1, result.unresolvedVideoCandidateCount)
+        assertEquals(null, result.bestOverall)
+        assertEquals(null, result.bestQuality)
+        assertTrue(result.visible.isEmpty())
+    }
+
+    @Test
+    fun videoOnlySourceBecomesActionableWhenSeparateAudioExists() {
+        val videoOnly = MediaCandidate(
+            id = "video-only",
+            sourceUrl = "https://cdn.example/video",
+            format = MediaFormat(
+                id = "video-only",
+                kind = MediaKind.Video,
+                container = MediaContainer.Mp4,
+                height = 720,
+                hasVideo = true,
+                hasAudio = false,
+            ),
+        )
+        val audio = candidate("audio-source", MediaKind.Audio, null, 128, 2_000_000)
+
+        val result = SmartResultEngine().build(listOf(videoOnly, audio))
+
+        assertEquals(listOf("video-only"), result.videoWithAudioOptions.map { it.candidate.id })
+        assertEquals(0, result.unresolvedVideoCandidateCount)
+        assertTrue(result.audioExtractionAvailable)
+        assertEquals("video-only", result.bestOverall?.candidate?.id)
+    }
+
     private fun candidate(
         id: String,
         kind: MediaKind,
