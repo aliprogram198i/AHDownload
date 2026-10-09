@@ -36,6 +36,20 @@ class AndroidBrowserMediaSessionProvider(
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
             val mediaHasAudioByUrl = ConcurrentHashMap<String, Boolean>()
+            val instagramShortcode = if (platform == MediaPlatform.Instagram) {
+                runCatching {
+                    val segments = URI(url).path.orEmpty().split('/').filter(String::isNotBlank)
+                    val mediaIndex = segments.indexOfFirst {
+                        it.lowercase() in setOf("reel", "reels", "p", "tv")
+                    }
+                    segments.getOrNull(mediaIndex + 1)?.takeIf {
+                        it.matches(Regex("[A-Za-z0-9_-]{5,}"))
+                    }
+                }.getOrNull()
+            } else {
+                null
+            }
+            var instagramApiStatus: String? = null
             var title: String? = null
             var thumbnail: String? = null
             var durationMs: Long? = null
@@ -120,6 +134,7 @@ class AndroidBrowserMediaSessionProvider(
                     mediaUrls = mediaUrls.toList().take(MAX_MEDIA_URLS),
                     mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
                     requestHeadersByUrl = requestHeaders.toMap(),
+                    instagramApiStatus = instagramApiStatus,
                 )
                 webView?.stopLoading()
                 webView?.destroy()
@@ -156,6 +171,74 @@ class AndroidBrowserMediaSessionProvider(
                 if (finished) return
                 val script = """
                     (function(){
+                      const instagramShortcode=__IG_SHORTCODE__;
+                      // Ask Instagram's same-origin media endpoint from the WebView itself.
+                      // This keeps any existing WebView session cookies inside the WebView;
+                      // cookie values are never copied into native state or diagnostic logs.
+                      if(instagramShortcode && !window.__ahInstagramApiRequestStarted){
+                        window.__ahInstagramApiRequestStarted=true;
+                        window.__ahInstagramApiStatus='pending';
+                        try{
+                          const endpoint=new URL(
+                            '/api/v1/media/shortcode/'+encodeURIComponent(instagramShortcode)+'/',
+                            location.origin
+                          ).toString();
+                          fetch(endpoint,{
+                            method:'GET',
+                            credentials:'include',
+                            headers:{
+                              'Accept':'application/json, text/plain, */*',
+                              'X-IG-App-ID':'936619743392459',
+                              'X-Requested-With':'XMLHttpRequest'
+                            }
+                          }).then(response=>{
+                            if(!response.ok){
+                              window.__ahInstagramApiStatus='http_'+response.status;
+                              return null;
+                            }
+                            return response.json().then(payload=>({payload}))
+                              .catch(()=>{window.__ahInstagramApiStatus='invalid_json';return null;});
+                          }).then(result=>{
+                            if(!result || !result.payload) return;
+                            const discovered=[];
+                            const addVideoUrl=raw=>{
+                              if(typeof raw!=='string' || !/^https?:\\/\\//i.test(raw)) return;
+                              if(/\\.(?:mp4|m3u8|mpd)(?:[?#]|$)/i.test(raw) ||
+                                 /\\/(?:o1\\/v|v\\/t)[^?#]*/i.test(raw)){
+                                discovered.push(raw);
+                              }
+                            };
+                            const visit=(node,depth)=>{
+                              if(!node || depth>10) return;
+                              if(Array.isArray(node)){
+                                node.slice(0,100).forEach(item=>visit(item,depth+1));
+                                return;
+                              }
+                              if(typeof node!=='object') return;
+                              Object.entries(node).forEach(([key,value])=>{
+                                const lower=key.toLowerCase();
+                                if(typeof value==='string' &&
+                                   ['video_url','playback_url','content_url'].includes(lower)){
+                                  addVideoUrl(value);
+                                }
+                                if(Array.isArray(value) && lower==='video_versions'){
+                                  value.forEach(item=>{
+                                    if(item && typeof item.url==='string') addVideoUrl(item.url);
+                                  });
+                                }
+                                if(value && typeof value==='object') visit(value,depth+1);
+                              });
+                            };
+                            visit(result.payload,0);
+                            window.__ahInstagramApiMedia=[...new Set(discovered)].slice(0,32);
+                            const message=String(result.payload.message||'').toLowerCase();
+                            window.__ahInstagramApiStatus=
+                              (result.payload.require_login===true || message==='login_required')
+                                ? 'login_required'
+                                : (window.__ahInstagramApiMedia.length ? 'success_media' : 'success_no_media');
+                          }).catch(()=>{window.__ahInstagramApiStatus='network_error';});
+                        }catch(_){window.__ahInstagramApiStatus='request_error';}
+                      }
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
                       // Instagram may defer the actual CDN request until its player starts.
                       // Prime at most two video elements silently so the WebView can observe the
@@ -208,18 +291,31 @@ class AndroidBrowserMediaSessionProvider(
                           ...sources,
                           ...perf,
                           ...embedded,
-                          ...embeddedUrls
+                          ...embeddedUrls,
+                          ...(window.__ahInstagramApiMedia||[])
                         ])].slice(0,120),
+                        instagramApiStatus:window.__ahInstagramApiStatus ||
+                          (instagramShortcode ? 'pending' : 'not_applicable'),
                         mediaAudio:elements
                       });
                     })();
-                """.trimIndent()
+                """.trimIndent().replace(
+                    "__IG_SHORTCODE__",
+                    JSONObject.quote(instagramShortcode.orEmpty()),
+                )
                 view.evaluateJavascript(script) { raw ->
                     runCatching {
                         val decoded = runCatching {
                             JSONTokener(raw).nextValue() as? String ?: raw
                         }.getOrDefault(raw)
                         val json = JSONObject(decoded)
+                        val reportedInstagramApiStatus = json.optString("instagramApiStatus")
+                            .takeIf { it.isNotBlank() }
+                        if (reportedInstagramApiStatus != null &&
+                            (reportedInstagramApiStatus != "pending" || instagramApiStatus == null)
+                        ) {
+                            instagramApiStatus = reportedInstagramApiStatus
+                        }
                         json.optString("title").takeIf { it.isNotBlank() }?.let { title = it }
                         json.optString("thumbnail").takeIf { it.startsWith("http") }?.let { thumbnail = it }
                         json.optDouble("durationSec", -1.0).takeIf { it > 0 }?.let { durationMs = (it * 1000).toLong() }

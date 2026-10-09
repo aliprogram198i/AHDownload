@@ -120,4 +120,32 @@ class WebPageMediaParserTest {
             result.mediaUrls.single(),
         )
     }
+    @Test
+    fun extractsVideoVersionsFromInstagramShortcodeApiJsonAndIgnoresThumbnail() {
+        val response = """{
+            "items": [{
+              "video_versions": [{
+                "width": 720,
+                "height": 1280,
+                "url": "https:\\/\\/scontent.cdninstagram.com\\/o1\\/v\\/t2\\/f2\\/m367\\/AQExample.mp4?token=1"
+              }],
+              "image_versions2": {
+                "candidates": [{
+                  "url": "https:\\/\\/scontent.cdninstagram.com\\/o1\\/v\\/t16\\/f1\\/m999\\/thumbnail.jpg?token=2"
+                }]
+              }
+            }]
+        }"""
+
+        val result = WebPageMediaParser.parse(
+            html = response,
+            baseUrl = "https://www.instagram.com/reel/ABC123/",
+        )
+
+        assertEquals(
+            listOf("https://scontent.cdninstagram.com/o1/v/t2/f2/m367/AQExample.mp4?token=1"),
+            result.mediaUrls,
+        )
+    }
+
 }

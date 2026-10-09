@@ -80,6 +80,10 @@ class SocialPlatformResolver(
                         "operation_id" to (request.operationId ?: "none"),
                         "media_count" to session.mediaUrls.size.toString(),
                         "headers_count" to session.requestHeadersByUrl.size.toString(),
+                        "instagram_api_status" to (
+                            session.instagramApiStatus
+                                ?: if (platform == MediaPlatform.Instagram) "not_reported" else "not_applicable"
+                            ),
                         "title_present" to (!session.title.isNullOrBlank()).toString(),
                         "duration_present" to (session.durationMs != null).toString(),
                     ),

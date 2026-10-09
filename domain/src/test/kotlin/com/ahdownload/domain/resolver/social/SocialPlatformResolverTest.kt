@@ -225,6 +225,7 @@ class SocialPlatformResolverTest {
                     platform = MediaPlatform.Instagram,
                     pageUrl = "https://www.instagram.com/reel/ABC123/",
                     mediaUrls = listOf(mediaUrl),
+                    instagramApiStatus = "success_media",
                 ),
             ),
             logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
@@ -243,6 +244,11 @@ class SocialPlatformResolverTest {
         assertTrue(result is ResolverResult.Success)
         assertTrue(loggedContexts.isNotEmpty())
         assertTrue(loggedContexts.all { (_, context) -> context["operation_id"] == operationId })
+        assertEquals(
+            "success_media",
+            loggedContexts.single { it.first == "SOCIAL_BROWSER_SESSION_RESULT" }
+                .second["instagram_api_status"],
+        )
     }
 
     @Test
