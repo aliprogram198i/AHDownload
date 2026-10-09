@@ -17,7 +17,6 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import kotlin.coroutines.resume
 import java.net.URI
-import java.math.BigInteger
 import java.util.concurrent.ConcurrentHashMap
 
 class AndroidBrowserMediaSessionProvider(
@@ -59,7 +58,6 @@ class AndroidBrowserMediaSessionProvider(
             } else {
                 null
             }
-            val instagramMediaId = instagramShortcode?.let(::decodeInstagramShortcode)
             var instagramApiStatus: String? = null
             var title: String? = null
             var thumbnail: String? = null
@@ -226,7 +224,6 @@ class AndroidBrowserMediaSessionProvider(
                 val script = """
                     (function(){
                       const instagramShortcode=__IG_SHORTCODE__;
-                      const instagramMediaId=__IG_MEDIA_ID__;
                       // Keep credentials in WebView. Try the lightweight endpoint first,
                       // then the current GraphQL path used by the Instagram web extractor.
                       if(instagramShortcode && !window.__ahInstagramApiRequestStarted){
@@ -300,10 +297,6 @@ class AndroidBrowserMediaSessionProvider(
                             }
                           }catch(_){legacyStatus='network_error';}
                           try{
-                            if(!instagramMediaId){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_invalid_shortcode';
-                              return;
-                            }
                             const markup=document.documentElement
                               ?(document.documentElement.innerHTML||''):'';
                             // Prefer the current logged-out Polaris query. Instagram rotated the
@@ -515,7 +508,6 @@ class AndroidBrowserMediaSessionProvider(
                     })();
                 """.trimIndent()
                     .replace("__IG_SHORTCODE__", JSONObject.quote(instagramShortcode.orEmpty()))
-                    .replace("__IG_MEDIA_ID__", JSONObject.quote(instagramMediaId.orEmpty()))
                 view.evaluateJavascript(script) { raw ->
                     inspectionCallbackCount++
                     if (activeInspectionSerial == inspectionId) inspectionInFlight = false
@@ -646,20 +638,6 @@ class AndroidBrowserMediaSessionProvider(
         }
 
     private companion object {
-        fun decodeInstagramShortcode(shortcode: String): String? {
-            val value = if (shortcode.length > 28) shortcode.dropLast(28) else shortcode
-            if (value.isEmpty()) return null
-            val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-            var mediaId = BigInteger.ZERO
-            for (character in value) {
-                val digit = alphabet.indexOf(character)
-                if (digit < 0) return null
-                mediaId = mediaId.multiply(BigInteger.valueOf(64L))
-                    .add(BigInteger.valueOf(digit.toLong()))
-            }
-            return mediaId.toString()
-        }
-
         const val MAX_MEDIA_URLS = 64
         const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
