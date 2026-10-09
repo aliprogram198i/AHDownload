@@ -13,6 +13,8 @@ data class BrowserMediaSession(
     /** Best-effort audio-track detection for browser-observed media elements. */
     val mediaHasAudioByUrl: Map<String, Boolean> = emptyMap(),
     val requestHeadersByUrl: Map<String, Map<String, String>> = emptyMap(),
+    /** Categorical result of the Instagram in-session API fallback; contains no secrets. */
+    val instagramApiStatus: String? = null,
 )
 
 interface BrowserMediaSessionProvider {

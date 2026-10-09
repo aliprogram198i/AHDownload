@@ -80,6 +80,10 @@ class SocialPlatformResolver(
                         "operation_id" to (request.operationId ?: "none"),
                         "media_count" to session.mediaUrls.size.toString(),
                         "headers_count" to session.requestHeadersByUrl.size.toString(),
+                        "instagram_api_status" to (
+                            session.instagramApiStatus
+                                ?: if (platform == MediaPlatform.Instagram) "not_reported" else "not_applicable"
+                            ),
                         "title_present" to (!session.title.isNullOrBlank()).toString(),
                         "duration_present" to (session.durationMs != null).toString(),
                     ),
@@ -365,6 +369,18 @@ class SocialPlatformResolver(
             else -> MediaContainer.Unknown
         }
 
+        val safeRequestHeaders = requestHeaders.orEmpty()
+            .filterKeys(::safeHeader)
+            .toMutableMap()
+        if (
+            platform == MediaPlatform.Instagram &&
+            safeRequestHeaders.keys.none { it.equals("Referer", ignoreCase = true) }
+        ) {
+            // API-extracted CDN URLs have no associated intercepted media request.
+            // Preserve normal authenticated-session behavior and add only a safe page referrer.
+            safeRequestHeaders["Referer"] = "https://www.instagram.com/"
+        }
+
         return MediaCandidate(
             id = "social-" + platform.name.lowercase() + "-" + index + "-" + sourceUrl.hashCode().toUInt().toString(16),
             sourceUrl = sourceUrl,
@@ -383,7 +399,7 @@ class SocialPlatformResolver(
                     MediaKind.Unknown -> false
                 },
             ),
-            requestHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
+            requestHeaders = safeRequestHeaders,
             sessionCookieHost = safeHost(sourceUrl),
             sourceContext = sourceContext,
             streamingManifest = streamingManifest,
