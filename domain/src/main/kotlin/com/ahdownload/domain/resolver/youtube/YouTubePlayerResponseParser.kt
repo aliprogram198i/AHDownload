@@ -10,6 +10,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -20,7 +21,10 @@ class YouTubePlayerResponseParser {
         return parsePlayerResponse(playerResponse)
     }
 
-    fun parsePlayerResponse(json: String): ResolverResult =
+    fun parsePlayerResponse(
+        json: String,
+        observedMediaUrls: List<String> = emptyList(),
+    ): ResolverResult =
         runCatching {
             val root = parseJsonObject(json) ?: throw IllegalArgumentException("استجابة YouTube ليست JSON صالحًا.")
             val details = root.obj("videoDetails")
@@ -34,7 +38,7 @@ class YouTubePlayerResponseParser {
                 )
             }
 
-            val candidates = buildCandidates(root.obj("streamingData"))
+            val candidates = buildCandidates(root.obj("streamingData"), observedMediaUrls)
             if (candidates.isEmpty()) {
                 ResolverResult.Failure(
                     FailureCode.NoCandidates,
@@ -94,25 +98,52 @@ class YouTubePlayerResponseParser {
         return null
     }
 
-    private fun buildCandidates(streamingData: JsonObject?): List<MediaCandidate> {
+    private fun buildCandidates(
+        streamingData: JsonObject?,
+        observedMediaUrls: List<String>,
+    ): List<MediaCandidate> {
         if (streamingData == null) return emptyList()
+
+        // A ciphered YouTube format does not contain a directly usable URL.
+        // Only associate its quality metadata with the exact media URL observed
+        // in the active WebView session for the same itag; never invent a URL or
+        // use the unsigned URL embedded inside signatureCipher.
+        val observedUrlsByItag = observedMediaUrls
+            .filter(::isHttpMediaUrl)
+            .mapNotNull { url -> queryParameter(url, "itag")?.let { it to url } }
+            .groupBy({ it.first }, { it.second })
+
         return sequenceOf(streamingData.array("formats"), streamingData.array("adaptiveFormats"))
             .filterNotNull()
             .flatMap { it.asSequence() }
-            .mapNotNull { it.takeIf(JsonElement::isJsonObject)?.asJsonObject?.toCandidate() }
+            .mapNotNull {
+                it.takeIf(JsonElement::isJsonObject)
+                    ?.asJsonObject
+                    ?.toCandidate(observedUrlsByItag)
+            }
             .distinctBy { it.id }
             .toList()
     }
 
-    private fun JsonObject.toCandidate(): MediaCandidate? {
-        val url = string("url") ?: return null
+    private fun JsonObject.toCandidate(
+        observedUrlsByItag: Map<String, List<String>>,
+    ): MediaCandidate? {
+        val formatId = string("itag") ?: return null
         val mimeType = string("mimeType") ?: return null
+        val directUrl = string("url")?.takeIf(::isHttpMediaUrl)
+        val ciphered = !string("signatureCipher").isNullOrBlank() ||
+            !string("cipher").isNullOrBlank()
+        val observedUrl = if (directUrl == null && ciphered) {
+            observedUrlsByItag[formatId]?.firstOrNull()
+        } else {
+            null
+        }
+        val url = directUrl ?: observedUrl ?: return null
         val mediaKind = when {
             mimeType.startsWith("video/") -> MediaKind.Video
             mimeType.startsWith("audio/") -> MediaKind.Audio
             else -> return null
         }
-        val formatId = string("itag") ?: return null
         val codecs = Regex("""codecs="([^"]+)"""").find(mimeType)?.groupValues?.get(1)
             ?.split(',')
             ?.map(String::trim)
@@ -164,6 +195,25 @@ class YouTubePlayerResponseParser {
             "flac" -> MediaContainer.Flac
             else -> MediaContainer.Unknown
         }
+
+    private fun isHttpMediaUrl(url: String): Boolean =
+        url.startsWith("https://", ignoreCase = true) ||
+            url.startsWith("http://", ignoreCase = true)
+
+    private fun queryParameter(url: String, name: String): String? {
+        val query = runCatching { URI(url).rawQuery }.getOrNull() ?: return null
+        return query.split('&').firstNotNullOfOrNull { component ->
+            val separator = component.indexOf('=')
+            if (separator <= 0) return@firstNotNullOfOrNull null
+            val key = runCatching {
+                URLDecoder.decode(component.substring(0, separator), StandardCharsets.UTF_8.toString())
+            }.getOrDefault(component.substring(0, separator))
+            if (key != name) return@firstNotNullOfOrNull null
+            runCatching {
+                URLDecoder.decode(component.substring(separator + 1), StandardCharsets.UTF_8.toString())
+            }.getOrDefault(component.substring(separator + 1))
+        }
+    }
 
     private fun extractPlayerResponse(html: String): String? {
         val markers = listOf(
