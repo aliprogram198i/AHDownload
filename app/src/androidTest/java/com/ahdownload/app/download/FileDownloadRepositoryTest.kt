@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import java.io.File
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -20,6 +21,13 @@ class FileDownloadRepositoryTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        context.deleteFileStore()
+        context.deleteDownloadTestOutput()
+    }
+
+    @After
+    fun tearDown() {
+        context.deleteDownloadTestOutput()
         context.deleteFileStore()
     }
 
@@ -86,12 +94,18 @@ class FileDownloadRepositoryTest {
     private fun task() = DownloadTask(
         id = "instrumented-task",
         sourceUrl = "https://example.com/video.mp4",
-        destinationPath = "/data/local/tmp/video.mp4",
+        // Instrumentation runs as the app UID, so the partial file must live in
+        // app-owned storage instead of shell-only paths such as /data/local/tmp.
+        destinationPath = File(context.filesDir, "download-test-output/video.mp4").absolutePath,
     )
 
     private fun Context.deleteFileStore() {
         // Context.deleteFile accepts only a simple file name, not a relative path
         // containing separators. Delete the repository's test directory safely.
         File(filesDir, "downloads").deleteRecursively()
+    }
+
+    private fun Context.deleteDownloadTestOutput() {
+        File(filesDir, "download-test-output").deleteRecursively()
     }
 }
