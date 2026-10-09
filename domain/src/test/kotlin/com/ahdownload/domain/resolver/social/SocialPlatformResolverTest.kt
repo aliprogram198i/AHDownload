@@ -38,6 +38,55 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun instagramPublicJsonFallbackResolvesMediaWhenHtmlHasNoCandidates() = runTest {
+        val postUrl = "https://www.instagram.com/p/ABC123xyz/"
+        val mediaUrl = "https://scontent.cdninstagram.com/o1/v/t2/f2/m367/AQExample.mp4?token=1"
+        val requestedUrls = mutableListOf<String>()
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = postUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String = get(url, emptyMap())
+
+                override suspend fun get(url: String, headers: Map<String, String>): String {
+                    requestedUrls += url
+                    return when {
+                        url == postUrl -> "<html><head><title>Public post</title></head><body></body></html>"
+                        url.contains("__a=1") -> """{"video_url":"$mediaUrl"}"""
+                        else -> ""
+                    }
+                }
+
+                override suspend fun postJson(url: String, body: String): String = ""
+
+                override suspend fun postJson(
+                    url: String,
+                    body: String,
+                    headers: Map<String, String>,
+                ): String = ""
+            },
+        )
+        val requestLink = link(MediaPlatform.Instagram).copy(
+            originalUrl = postUrl,
+            normalizedUrl = postUrl,
+        )
+
+        val result = resolver.resolve(ResolverRequest(link = requestLink))
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(
+            mediaUrl,
+            (result as ResolverResult.Success).candidates.single().sourceUrl,
+        )
+        assertTrue(requestedUrls.any { it.contains("__a=1&__d=dis") })
+    }
+
+    @Test
     fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = SocialPlatformResolver(
