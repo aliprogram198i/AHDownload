@@ -10,6 +10,16 @@ import kotlinx.coroutines.withContext
  * Muxes separate video/audio representations into one playable file without
  * re-encoding when the source codecs are already compatible with the target.
  */
+/**
+ * Keep the target container extension on the temporary output so FFmpeg can
+ * infer the muxed format from the output filename.
+ */
+internal fun muxTemporaryOutputFile(outputFile: File): File {
+    val extension = outputFile.extension.takeIf { it.isNotBlank() } ?: "mkv"
+    val baseName = outputFile.nameWithoutExtension.takeIf { it.isNotBlank() } ?: outputFile.name
+    return File(outputFile.parentFile, ".$baseName.muxing.$extension")
+}
+
 class MediaVideoAudioMuxer {
     suspend fun mux(
         videoFile: File,
@@ -28,7 +38,7 @@ class MediaVideoAudioMuxer {
             }
         }
 
-        val temp = File(outputFile.parentFile, "." + outputFile.name + ".muxing")
+        val temp = muxTemporaryOutputFile(outputFile)
         temp.delete()
         outputFile.delete()
 
