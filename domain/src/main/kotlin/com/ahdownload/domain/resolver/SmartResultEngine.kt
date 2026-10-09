@@ -5,15 +5,25 @@ import kotlin.math.roundToInt
 
 class SmartResultEngine {
     fun build(candidates: List<MediaCandidate>, maxVideo: Int = 8, maxAudio: Int = 8): SmartResultSet {
-        val normalized = candidates
+        val parsed = candidates
             .filter { it.sourceUrl.startsWith("http://") || it.sourceUrl.startsWith("https://") }
             .map(::normalize)
-            .distinctBy { it.dedupeKey }
-            .sortedByDescending { it.score }
 
-        val video = normalized.filter { it.group == MediaResultGroup.Video }.sortedWith(videoComparator)
-        val audio = normalized.filter { it.group == MediaResultGroup.Audio }.sortedWith(audioComparator)
-        val other = normalized.filter { it.group == MediaResultGroup.Other }
+        // Present one best source per actual quality tier. Multiple YouTube
+        // clients/containers can expose the same resolution or bitrate; those
+        // are alternate sources, not separate quality buttons.
+        val video = parsed
+            .filter { it.group == MediaResultGroup.Video }
+            .sortedWith(videoComparator)
+            .distinctBy { presentationQualityKey(it) }
+        val audio = parsed
+            .filter { it.group == MediaResultGroup.Audio }
+            .sortedWith(audioComparator)
+            .distinctBy { presentationQualityKey(it) }
+        val other = parsed
+            .filter { it.group == MediaResultGroup.Other }
+            .distinctBy { it.candidate.sourceUrl }
+        val normalized = (video + audio + other).sortedByDescending { it.score }
         val playableVideo = video.filter { it.candidate.format.hasVideo && it.candidate.format.hasAudio }
         val presentationVideo = playableVideo.ifEmpty { video }
 
@@ -95,6 +105,21 @@ class SmartResultEngine {
             sizeLabel = f.fileSizeBytes?.takeIf { it > 0 }?.let(::formatBytes),
             dedupeKey = dedupeKey,
         )
+    }
+
+    private fun presentationQualityKey(item: MediaPresentationModel): String {
+        val format = item.candidate.format
+        return when (item.group) {
+            MediaResultGroup.Video -> format.height
+                ?.takeIf { it > 0 }
+                ?.let { "video-height:$it" }
+                ?: "video-unknown:${item.candidate.sourceUrl}"
+            MediaResultGroup.Audio -> format.bitrateKbps
+                ?.takeIf { it > 0 }
+                ?.let { "audio-bitrate:${it / 16 * 16}" }
+                ?: "audio-unknown:${item.candidate.sourceUrl}"
+            MediaResultGroup.Other -> item.candidate.sourceUrl
+        }
     }
 
     private fun qualityLabel(c: MediaCandidate): String = when {

@@ -865,8 +865,22 @@ private fun HomeScreen(
                         primaryOptions = primaryOptions,
                         audioOptions = audioOptions,
                         selectedCandidateId = state.selectedCandidateId,
+                        selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
                         selectedAudioOutputFormat = state.selectedAudioOutputFormat,
+                        onSelectAudioCandidate = {
+                            uiTraceLogger.interaction(
+                                "HOME",
+                                "audio_source_option",
+                                "select_audio_source_quality",
+                                mapOf(
+                                    "candidate_id" to it.candidate.id,
+                                    "quality" to it.qualityLabel,
+                                    "bitrate_kbps" to (it.candidate.format.bitrateKbps?.toString() ?: "unknown"),
+                                ),
+                            )
+                            onSelectAudioCandidate(it.candidate.id)
+                        },
                         onSelect = {
                             logSelection(
                                 logger,
@@ -1256,9 +1270,11 @@ private fun UnifiedDownloadResultCard(
     primaryOptions: List<MediaPresentationModel>,
     audioOptions: List<MediaPresentationModel>,
     selectedCandidateId: String?,
+    selectedAudioCandidateId: String?,
     validatingCandidateId: String?,
     selectedAudioOutputFormat: AudioOutputFormat?,
     onSelect: (MediaPresentationModel) -> Unit,
+    onSelectAudioCandidate: (MediaPresentationModel) -> Unit,
     onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
@@ -1280,6 +1296,7 @@ private fun UnifiedDownloadResultCard(
     val muxedVideoAvailable = allVideoOptions.any { it.candidate.format.hasAudio }
     val audioAvailable = directAudioAvailable || muxedVideoAvailable
     val selectedVideo = videoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
+    val selectedAudioSource = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
 
     val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
     val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio
@@ -1429,6 +1446,29 @@ private fun UnifiedDownloadResultCard(
                 )
 
                 if (audioAvailable) {
+                    if (audioOptions.isNotEmpty()) {
+                        Text(
+                            "جودة مصدر الصوت",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        MediaFormatGrid(
+                            options = audioOptions,
+                            selected = selectedAudioSource,
+                            validatingCandidateId = validatingCandidateId,
+                            onSelect = {
+                                selectionMode = OutputSelectionMode.AUDIO
+                                onSelectAudioCandidate(it)
+                            },
+                            audioOnly = true,
+                        )
+                    }
+
+                    Text(
+                        "صيغة الملف الناتج",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     AudioOutputFormatGrid(
                         selected = selectedAudioOutputFormat,
                         enabled = validatingCandidateId == null,
@@ -1461,7 +1501,7 @@ private fun UnifiedDownloadResultCard(
                 onClick = {
                     when (selectionMode) {
                         OutputSelectionMode.VIDEO -> selectedVideo?.candidate?.id?.let(onDownload)
-                        OutputSelectionMode.AUDIO -> onDownloadAudio(null)
+                        OutputSelectionMode.AUDIO -> onDownloadAudio(selectedAudioCandidateId)
                         null -> Unit
                     }
                 },
