@@ -244,7 +244,7 @@ class LiveSocialMediaDownloadE2ETest {
             Log.i(
                 TAG,
                 "DIAG | " + targetName + " | " + event.type + " | " +
-                    event.reason.replace('\\n', ' ').take(120) + " | " + context,
+                    event.reason.replace('\n', ' ').take(120) + " | " + context,
             )
         }
     }
