@@ -14,6 +14,18 @@ import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import java.net.URI
 
+private data class KnownYouTubeFormat(
+    val kind: MediaKind,
+    val container: MediaContainer,
+    val width: Int? = null,
+    val height: Int? = null,
+    val fps: Double? = null,
+    val bitrateKbps: Int? = null,
+    val videoCodec: String? = null,
+    val audioCodec: String? = null,
+    val hasAudio: Boolean = false,
+)
+
 class YouTubeResolver(
     private val httpClient: HttpTextClient,
     private val parser: YouTubePlayerResponseParser = YouTubePlayerResponseParser(),
@@ -635,38 +647,74 @@ class YouTubeResolver(
     private fun sessionCandidates(snapshot: YouTubeSessionSnapshot): List<MediaCandidate> {
         val sessionHeaders = sessionHeaders(snapshot)
 
-        val videos = snapshot.videoUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
-            MediaCandidate(
-                id = "webview-video-${index}-${url.hashCode().toUInt().toString(16)}",
-                sourceUrl = url,
-                format = MediaFormat(
-                    id = "webview-video-${index}",
-                    kind = MediaKind.Video,
-                    container = containerFor(url, MediaKind.Video),
-                    hasVideo = true,
-                    hasAudio = isKnownMuxedItag(extractItag(url)),
-                ),
-                requestHeaders = sessionHeaders + snapshot.browserRequestHeaders[url].orEmpty(),
-                sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
+        // WebView can observe a usable URL even when the Player Response is
+        // unavailable. Recover basic, stable format metadata from YouTube's
+        // public itag identifiers, and classify audio/video from MIME first.
+        // The URL itself remains the exact browser-observed URL.
+        val observedUrls = (
+            snapshot.videoUrls.map { it to MediaKind.Video } +
+                snapshot.audioUrls.map { it to MediaKind.Audio }
             )
-        }
+            .filter { (url, _) -> isDirectHttpMedia(url) }
+            .distinctBy { (url, _) -> url }
 
-        val audio = snapshot.audioUrls.filter(::isDirectHttpMedia).distinct().mapIndexed { index, url ->
+        return observedUrls.mapIndexedNotNull { index, (url, poolKind) ->
+            val itag = extractItag(url)
+            val knownFormat = KNOWN_YOUTUBE_FORMATS[itag]
+            val kind = mediaKindFromUrl(url) ?: knownFormat?.kind ?: poolKind
+            if (kind != MediaKind.Video && kind != MediaKind.Audio) {
+                return@mapIndexedNotNull null
+            }
+            val metadata = knownFormat?.takeIf { it.kind == kind }
+            val observedContainer = containerFor(url, kind)
+            val container = if (observedContainer != MediaContainer.Unknown) {
+                observedContainer
+            } else {
+                metadata?.container ?: MediaContainer.Unknown
+            }
+            val video = kind == MediaKind.Video
+            val hasAudio = when {
+                kind == MediaKind.Audio -> true
+                metadata != null -> metadata.hasAudio
+                else -> isKnownMuxedItag(itag)
+            }
+            val kindLabel = if (video) "video" else "audio"
             MediaCandidate(
-                id = "webview-audio-${index}-${url.hashCode().toUInt().toString(16)}",
+                id = "webview-$kindLabel-$index-${url.hashCode().toUInt().toString(16)}",
                 sourceUrl = url,
                 format = MediaFormat(
-                    id = "webview-audio-${index}",
-                    kind = MediaKind.Audio,
-                    container = containerFor(url, MediaKind.Audio),
-                    hasVideo = false,
-                    hasAudio = true,
+                    id = itag ?: "webview-$kindLabel-$index",
+                    kind = kind,
+                    container = container,
+                    videoCodec = metadata?.videoCodec,
+                    audioCodec = metadata?.audioCodec,
+                    width = metadata?.width,
+                    height = metadata?.height,
+                    fps = metadata?.fps,
+                    bitrateKbps = metadata?.bitrateKbps,
+                    hasVideo = video,
+                    hasAudio = hasAudio,
                 ),
                 requestHeaders = sessionHeaders + snapshot.browserRequestHeaders[url].orEmpty(),
                 sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
             )
         }
-        return videos + audio
+    }
+
+    private fun mediaKindFromUrl(url: String): MediaKind? {
+        val rawMime = Regex("""[?&](?:mime|type)=([^&]+)""")
+            .find(url)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: return null
+        val mime = runCatching {
+            java.net.URLDecoder.decode(rawMime, "UTF-8")
+        }.getOrDefault(rawMime).lowercase()
+        return when {
+            mime.startsWith("audio/") -> MediaKind.Audio
+            mime.startsWith("video/") -> MediaKind.Video
+            else -> null
+        }
     }
 
     private fun isDirectHttpMedia(url: String): Boolean {
@@ -752,7 +800,59 @@ class YouTubeResolver(
         const val YOUTUBE_BOT_MESSAGE =
             "YouTube يطلب التحقق من أنك لست روبوتًا. افتح YouTube لتحديث الجلسة ثم أعد المحاولة."
 
-        val KNOWN_MUXED_ITAGS = setOf("18", "22", "43", "44", "45", "46", "59", "78")
+        val KNOWN_MUXED_ITAGS = setOf("18", "22", "37", "43", "44", "45", "46", "59", "78")
+
+        // Format metadata fallback for browser-observed URLs when the Player
+        // Response is not available. Height/container are derived only from a
+        // recognized itag, not guessed from URL ordering or bitrate.
+        val KNOWN_YOUTUBE_FORMATS = mapOf(
+            "18" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 640, 360, 30.0, videoCodec = "avc1", audioCodec = "mp4a.40.2", hasAudio = true),
+            "22" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1280, 720, 30.0, videoCodec = "avc1", audioCodec = "mp4a.40.2", hasAudio = true),
+            "37" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1920, 1080, 30.0, videoCodec = "avc1", audioCodec = "mp4a.40.2", hasAudio = true),
+            "43" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 640, 360, 30.0, videoCodec = "vp8", audioCodec = "vorbis", hasAudio = true),
+            "44" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 854, 480, 30.0, videoCodec = "vp8", audioCodec = "vorbis", hasAudio = true),
+            "45" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 1280, 720, 30.0, videoCodec = "vp8", audioCodec = "vorbis", hasAudio = true),
+            "46" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 1920, 1080, 30.0, videoCodec = "vp8", audioCodec = "vorbis", hasAudio = true),
+            "59" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 854, 480, 30.0, videoCodec = "avc1", audioCodec = "mp4a.40.2", hasAudio = true),
+            "78" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 854, 480, 30.0, videoCodec = "avc1", audioCodec = "mp4a.40.2", hasAudio = true),
+            "160" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 256, 144, videoCodec = "avc1"),
+            "133" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 426, 240, videoCodec = "avc1"),
+            "134" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 640, 360, videoCodec = "avc1"),
+            "135" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 854, 480, videoCodec = "avc1"),
+            "136" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1280, 720, videoCodec = "avc1"),
+            "137" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1920, 1080, videoCodec = "avc1"),
+            "264" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 2560, 1440, videoCodec = "avc1"),
+            "266" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 3840, 2160, videoCodec = "avc1"),
+            "298" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1280, 720, 60.0, videoCodec = "avc1"),
+            "299" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1920, 1080, 60.0, videoCodec = "avc1"),
+            "242" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 426, 240, videoCodec = "vp9"),
+            "243" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 640, 360, videoCodec = "vp9"),
+            "244" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 854, 480, videoCodec = "vp9"),
+            "247" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 1280, 720, videoCodec = "vp9"),
+            "248" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 1920, 1080, videoCodec = "vp9"),
+            "271" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 2560, 1440, videoCodec = "vp9"),
+            "272" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 3840, 2160, videoCodec = "vp9"),
+            "278" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 256, 144, videoCodec = "vp9"),
+            "308" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 2560, 1440, 60.0, videoCodec = "vp9"),
+            "313" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 3840, 2160, videoCodec = "vp9"),
+            "315" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Webm, 3840, 2160, 60.0, videoCodec = "vp9"),
+            "394" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 256, 144, videoCodec = "av01"),
+            "395" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 426, 240, videoCodec = "av01"),
+            "396" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 640, 360, videoCodec = "av01"),
+            "397" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 854, 480, videoCodec = "av01"),
+            "398" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1280, 720, videoCodec = "av01"),
+            "399" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 1920, 1080, videoCodec = "av01"),
+            "400" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 2560, 1440, videoCodec = "av01"),
+            "401" to KnownYouTubeFormat(MediaKind.Video, MediaContainer.Mp4, 3840, 2160, videoCodec = "av01"),
+            "139" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.M4a, bitrateKbps = 48, audioCodec = "mp4a.40.2", hasAudio = true),
+            "140" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.M4a, bitrateKbps = 128, audioCodec = "mp4a.40.2", hasAudio = true),
+            "141" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.M4a, bitrateKbps = 256, audioCodec = "mp4a.40.2", hasAudio = true),
+            "171" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.Webm, bitrateKbps = 128, audioCodec = "vorbis", hasAudio = true),
+            "172" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.Webm, bitrateKbps = 256, audioCodec = "vorbis", hasAudio = true),
+            "249" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.Webm, bitrateKbps = 50, audioCodec = "opus", hasAudio = true),
+            "250" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.Webm, bitrateKbps = 70, audioCodec = "opus", hasAudio = true),
+            "251" to KnownYouTubeFormat(MediaKind.Audio, MediaContainer.Webm, bitrateKbps = 160, audioCodec = "opus", hasAudio = true),
+        )
 
         val BOT_CHALLENGE_MARKERS = listOf(
             "Sign in to confirm you’re not a bot",
