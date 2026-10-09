@@ -104,7 +104,8 @@ class LiveSocialMediaDownloadE2ETest {
                         continue
                     }
                     if (validation !is CandidateValidationResult.Valid) {
-                        candidateFailure = "Candidate " + (index + 1) + ": validation rejected (" + validation.failure + ")"
+                        val invalid = validation as CandidateValidationResult.Invalid
+                        candidateFailure = "Candidate " + (index + 1) + ": validation rejected (" + invalid.failure + ")"
                         continue
                     }
 
