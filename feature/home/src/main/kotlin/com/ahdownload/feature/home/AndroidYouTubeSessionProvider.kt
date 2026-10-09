@@ -18,6 +18,16 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
+internal fun shouldLoadYouTubeEmbeddedFallback(
+    attempt: Int,
+    observedMediaCount: Int,
+    hasPlayerResponse: Boolean,
+    embeddedFallbackLoaded: Boolean,
+): Boolean =
+    attempt == 5 &&
+        !embeddedFallbackLoaded &&
+        (observedMediaCount == 0 || !hasPlayerResponse)
+
 class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessionProvider {
     @SuppressLint("SetJavaScriptEnabled")
     override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
@@ -178,7 +188,14 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
 
             fun inspect(view: WebView, attempt: Int) {
                 if (finished) return
-                if (attempt == 5 && observedGoogleVideoUrls.isEmpty() && !embeddedFallbackLoaded) {
+                if (
+                    shouldLoadYouTubeEmbeddedFallback(
+                        attempt = attempt,
+                        observedMediaCount = observedGoogleVideoUrls.size,
+                        hasPlayerResponse = !playerResponse.isNullOrBlank(),
+                        embeddedFallbackLoaded = embeddedFallbackLoaded,
+                    )
+                ) {
                     val videoId = runCatching {
                         val uri = java.net.URI(url)
                         val host = uri.host?.lowercase().orEmpty()
