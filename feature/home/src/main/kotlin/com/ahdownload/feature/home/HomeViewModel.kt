@@ -595,7 +595,7 @@ class HomeViewModel(
     fun selectCandidate(id: String) {
         val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
         val format = candidate.format
-        if (format.kind != MediaKind.Video || !format.hasVideo || !format.hasAudio) return
+        if (format.kind != MediaKind.Video || !format.hasVideo) return
         _uiState.value = _uiState.value.copy(
             selectedCandidateId = id,
             selectedAudioCandidateId = null,
@@ -679,22 +679,33 @@ class HomeViewModel(
                     candidate.format.hasVideo &&
                     !candidate.format.hasAudio
                 ) {
-                    companionAudioCandidate = bestCompanionAudioCandidate(
+                    val audioCandidate = bestCompanionAudioCandidate(
                         state.resolution?.candidates.orEmpty(),
                     )
-                    if (companionAudioCandidate == null) {
-                        _uiState.value = _uiState.value.copy(
-                            validatingCandidateId = null,
-                            error = "لا يتوفر مسار صوت متوافق لدمج الفيديو المحدد.",
-                            downloadQueued = false,
+                    if (audioCandidate == null) {
+                        // Track detection from WebView is best-effort. Do not block the
+                        // original file: a progressive MP4 may already contain its audio.
+                        logger.log(
+                            DiagnosticLevel.WARNING,
+                            "AUDIO_COMPANION_NOT_FOUND",
+                            "لم يتم اكتشاف مصدر صوت منفصل؛ سيُنزل التطبيق مصدر الفيديو الأصلي كما هو.",
+                            "download.prepare",
+                            mapOf(
+                                "candidate_id" to candidate.id,
+                                "operation_id" to validationOperationId,
+                                "platform" to (state.result?.platform?.name ?: "unknown"),
+                                "download_original_source" to "true",
+                            ),
+                            null,
                         )
-                        return@launch
+                    } else {
+                        companionAudioCandidate = audioCandidate
+                        candidateToValidate = candidate.copy(
+                            companionAudioSourceUrl = audioCandidate.sourceUrl,
+                            companionAudioRequestHeaders = audioCandidate.requestHeaders,
+                            companionAudioSessionCookieHost = audioCandidate.sessionCookieHost,
+                        )
                     }
-                    candidateToValidate = candidate.copy(
-                        companionAudioSourceUrl = companionAudioCandidate.sourceUrl,
-                        companionAudioRequestHeaders = companionAudioCandidate.requestHeaders,
-                        companionAudioSessionCookieHost = companionAudioCandidate.sessionCookieHost,
-                    )
                 }
                 var validation = resolver.validate(candidateToValidate, validationOperationId)
                 var youtubeRefreshAttempted = false

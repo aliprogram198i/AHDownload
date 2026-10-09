@@ -36,6 +36,10 @@ class SocialPlatformResolverTest {
 
         val candidate = (result as ResolverResult.Success).candidates.single()
         assertFalse(candidate.format.hasAudio)
+        assertEquals(
+            com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
+            candidate.sourceContext,
+        )
     }
 
     @Test
@@ -263,6 +267,41 @@ class SocialPlatformResolverTest {
 
         val candidate = (result as ResolverResult.Success).candidates.single()
         assertTrue(candidate.format.hasAudio)
+    }
+
+    @Test
+    fun instagramVideoRequestRejectsImageThumbnailAndReportsTheReason() = runTest {
+        val thumbnailUrl = "https://scontent.cdninstagram.com/o1/v/t16/f1/m999/thumbnail.jpg?stp=dst-jpg"
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "https://www.instagram.com/reel/ABC123/",
+                    mediaUrls = listOf(thumbnailUrl),
+                ),
+            ),
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = RecordingTextClient { },
+        )
+        val videoLink = link(MediaPlatform.Instagram).copy(
+            originalUrl = "https://www.instagram.com/reel/ABC123/",
+            normalizedUrl = "https://www.instagram.com/reel/ABC123/",
+            kind = com.ahdownload.domain.model.MediaKind.Video,
+        )
+
+        val result = resolver.resolve(ResolverRequest(link = videoLink))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(
+            com.ahdownload.domain.resolver.FailureCode.NoCandidates,
+            (result as ResolverResult.Failure).code,
+        )
+        val resolutionEvent = events.single { it.first == "SOCIAL_RESOLUTION_RESULT" }
+        assertEquals("1", resolutionEvent.second["rejected_image_candidate_count"])
+        assertEquals("0", resolutionEvent.second["video_candidate_count"])
     }
 
     private fun link(platform: MediaPlatform) =

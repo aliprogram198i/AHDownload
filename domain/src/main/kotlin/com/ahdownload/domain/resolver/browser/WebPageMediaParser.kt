@@ -84,6 +84,7 @@ object WebPageMediaParser {
 
         val path = value.substringBefore('?').substringBefore('#')
         val extension = path.substringAfterLast('.', "")
+        if (extension in IMAGE_EXTENSIONS) return false
         if (extension in MEDIA_EXTENSIONS) return true
 
         if (Regex("""[?&](?:mime|content-type|type|format)=[^&]*?(?:video|audio)""")
@@ -136,4 +137,5 @@ object WebPageMediaParser {
         "mp4", "m4v", "webm", "mov", "mkv", "m4a", "mp3", "aac", "ogg", "flac", "wav",
         "m3u8", "mpd",
     )
+    private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif")
 }

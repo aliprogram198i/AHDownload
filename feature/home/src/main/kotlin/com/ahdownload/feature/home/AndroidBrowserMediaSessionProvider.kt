@@ -56,6 +56,9 @@ class AndroidBrowserMediaSessionProvider(
                 if (!(lower.startsWith("http://") || lower.startsWith("https://"))) return false
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
+                // Instagram/CDN image URLs can share the same /o1/v/ and /v/t paths
+                // as video assets. Never promote a known image extension to a media source.
+                if (ext in IMAGE_EXTENSIONS) return false
                 if (ext in MEDIA_EXTENSIONS || ext == "m3u8" || ext == "mpd" || "/videoplayback" in lower) {
                     return true
                 }
@@ -79,7 +82,8 @@ class AndroidBrowserMediaSessionProvider(
                 val lower = value.lowercase()
                 val path = lower.substringBefore('?').substringBefore('#')
                 val ext = path.substringAfterLast('.', "")
-                if (ext in MEDIA_EXTENSIONS || "/videoplayback" in lower) return true
+                if (ext in IMAGE_EXTENSIONS) return false
+                if (ext in MEDIA_EXTENSIONS || ext == "m3u8" || ext == "mpd" || "/videoplayback" in lower) return true
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
                 return host.endsWith(".fbcdn.net") || host.endsWith(".cdninstagram.com")
                     || host == "cdninstagram.com"
@@ -277,5 +281,6 @@ class AndroidBrowserMediaSessionProvider(
         const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"
         val MEDIA_EXTENSIONS = setOf("mp4","m4v","webm","mov","mkv","3gp","avi","m4a","mp3","aac","ogg","flac","wav")
+        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif")
     }
 }

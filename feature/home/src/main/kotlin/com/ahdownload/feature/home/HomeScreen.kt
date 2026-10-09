@@ -843,7 +843,7 @@ private fun HomeScreen(
                         MediaKind.Audio -> resultSet.audio
                         MediaKind.Image -> resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
                         MediaKind.Unknown -> resultSet.all
-                    }.ifEmpty { resultSet.all }
+                    }
                     val audioOptions = resultSet.audio
                     UnifiedDownloadResultCard(
                         title = resolution.title ?: "محتوى الوسائط",

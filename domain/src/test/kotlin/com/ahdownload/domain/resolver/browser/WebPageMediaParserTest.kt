@@ -62,6 +62,22 @@ class WebPageMediaParserTest {
     }
 
     @Test
+    fun ignoresInstagramCdnThumbnailWhenDiscoveringVideoSources() {
+        val html = """
+            <html><head>
+              <meta property="og:image" content="https://scontent.cdninstagram.com/o1/v/t16/f1/m999/thumbnail.jpg?stp=dst-jpg">
+            </head><body></body></html>
+        """.trimIndent()
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://www.instagram.com/reel/ABC123/",
+        )
+
+        assertTrue(result.mediaUrls.isEmpty())
+    }
+
+    @Test
     fun extractsInstagramEscapedVideoUrlFromApplicationState() {
         val html = """
             <script type="application/json">

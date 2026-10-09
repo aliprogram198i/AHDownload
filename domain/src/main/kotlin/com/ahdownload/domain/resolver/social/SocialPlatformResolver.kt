@@ -189,7 +189,7 @@ class SocialPlatformResolver(
 
                 val sessionObservedUrls = session.mediaUrls.toSet()
                 var unclassifiedSourceCount = 0
-                val candidates = urls.mapIndexedNotNull { index, url ->
+                val builtCandidates = urls.mapIndexedNotNull { index, url ->
                     val audioPresence = session.mediaHasAudioByUrl[url]
                         ?: if (url in sessionObservedUrls) false else null
                     val candidate = inferCandidate(
@@ -198,22 +198,42 @@ class SocialPlatformResolver(
                         index = index,
                         requestHeaders = session.requestHeadersByUrl[url],
                         audioPresence = audioPresence,
+                        sourceContext = if (url in sessionObservedUrls) {
+                            MediaSourceContext.BROWSER_OBSERVED
+                        } else {
+                            MediaSourceContext.RESOLVER_GENERATED
+                        },
                     )
                     if (candidate == null) unclassifiedSourceCount++
                     candidate
-                }.distinctBy {
-                    listOf(
-                        it.format.kind,
-                        it.format.container,
-                        it.format.height ?: 0,
-                        it.format.bitrateKbps ?: 0,
-                        it.sourceUrl,
+                }
+                // Instagram often exposes a poster/thumbnail beside the playback source.
+                // A Reel/video request must not present that image as a downloadable video.
+                val rejectedImageCandidateCount = if (request.link.kind == MediaKind.Video) {
+                    builtCandidates.count { it.format.kind == MediaKind.Image }
+                } else {
+                    0
+                }
+                val candidates = builtCandidates
+                    .asSequence()
+                    .filterNot {
+                        request.link.kind == MediaKind.Video && it.format.kind == MediaKind.Image
+                    }
+                    .distinctBy {
+                        listOf(
+                            it.format.kind,
+                            it.format.container,
+                            it.format.height ?: 0,
+                            it.format.bitrateKbps ?: 0,
+                            it.sourceUrl,
+                        )
+                    }
+                    .sortedWith(
+                        compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video }
+                            .thenByDescending { it.format.height ?: 0 }
+                            .thenByDescending { it.format.bitrateKbps ?: 0 },
                     )
-                }.sortedWith(
-                    compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video }
-                        .thenByDescending { it.format.height ?: 0 }
-                        .thenByDescending { it.format.bitrateKbps ?: 0 },
-                )
+                    .toList()
 
                 logger.log(
                     if (candidates.isNotEmpty()) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
@@ -224,6 +244,14 @@ class SocialPlatformResolver(
                         "platform" to platform.name,
                         "operation_id" to (request.operationId ?: "none"),
                         "candidate_count" to candidates.size.toString(),
+                        "rejected_image_candidate_count" to rejectedImageCandidateCount.toString(),
+                        "video_candidate_count" to candidates.count { it.format.kind == MediaKind.Video }.toString(),
+                        "video_with_audio_count" to candidates.count { it.format.kind == MediaKind.Video && it.format.hasAudio }.toString(),
+                        "video_without_audio_count" to candidates.count { it.format.kind == MediaKind.Video && !it.format.hasAudio }.toString(),
+                        "video_quality_known_count" to candidates.count { it.format.kind == MediaKind.Video && it.format.height != null }.toString(),
+                        "audio_candidate_count" to candidates.count { it.format.kind == MediaKind.Audio }.toString(),
+                        "image_candidate_count" to candidates.count { it.format.kind == MediaKind.Image }.toString(),
+                        "streaming_manifest_count" to candidates.count { it.streamingManifest }.toString(),
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
@@ -292,6 +320,7 @@ class SocialPlatformResolver(
         index: Int,
         requestHeaders: Map<String, String>?,
         audioPresence: Boolean?,
+        sourceContext: MediaSourceContext,
     ): MediaCandidate? {
         val mime = runCatching { URI(sourceUrl).rawQuery.orEmpty() }
             .getOrDefault("")
@@ -356,6 +385,7 @@ class SocialPlatformResolver(
             ),
             requestHeaders = requestHeaders.orEmpty().filterKeys(::safeHeader),
             sessionCookieHost = safeHost(sourceUrl),
+            sourceContext = sourceContext,
             streamingManifest = streamingManifest,
         )
     }
