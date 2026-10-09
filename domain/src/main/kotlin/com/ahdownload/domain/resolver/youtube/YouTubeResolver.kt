@@ -63,8 +63,10 @@ class YouTubeResolver(
             ?: return failure(FailureCode.ResolverUnavailable, "تعذر تحديد معرف فيديو YouTube.")
 
         var lastFailure: ResolverResult.Failure? = null
+        var pageHtml: String? = null
         try {
             val html = httpClient.get(request.link.normalizedUrl)
+            pageHtml = html
             if (isBotChallenge(html)) {
                 lastFailure = ResolverResult.Failure(
                     FailureCode.ResolverUnavailable,
@@ -177,6 +179,37 @@ class YouTubeResolver(
             )
         }
 
+        // The Android client can expose direct formats even when the initial page,
+        // WEB Player API, and embedded-player path fail. Attempt it before accepting raw
+        // WebView network observations as a fallback candidate catalog.
+        val androidResponse = pageHtml?.let { capturedHtml ->
+            runCatching {
+                playerClient.fetchAndroidPlayerResponse(
+                    html = capturedHtml,
+                    videoUrl = request.link.normalizedUrl,
+                    operationId = request.operationId,
+                )
+            }.getOrNull()
+        }
+        if (androidResponse != null) {
+            val androidResult = parser.parsePlayerResponse(androidResponse)
+            if (androidResult is ResolverResult.Success) {
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    type = "youtube.android_fallback_selected",
+                    reason = "android_player_after_primary_failures",
+                    operation = "youtube.resolve",
+                    context = diagnosticContext(videoId, request.operationId) + mapOf(
+                        "candidate_count" to androidResult.candidates.size.toString(),
+                    ),
+                    throwable = null,
+                )
+                return filterKind(enrichWithSessionIfNeeded(androidResult, request), request)
+            }
+            lastFailure = androidResult as? ResolverResult.Failure ?: lastFailure
+            logPlayerFailure(videoId, androidResult, "android_player_after_primary_failures", request.operationId)
+        }
+
         val provider = sessionProvider ?: return failure(
             lastFailure?.code ?: FailureCode.ResolverUnavailable,
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
@@ -215,6 +248,25 @@ class YouTubeResolver(
             ),
             throwable = null,
         )
+
+        val classifiedBrowserCandidates = snapshot.videoUrls.size + snapshot.audioUrls.size
+        if (snapshot.browserMediaObservedCount > classifiedBrowserCandidates) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.browser_media_unclassified",
+                reason = "observed_gvs_requests_missing_media_mime_and_itag",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "observed_request_count" to snapshot.browserMediaObservedCount.toString(),
+                    "classified_video_count" to snapshot.videoUrls.size.toString(),
+                    "classified_audio_count" to snapshot.audioUrls.size.toString(),
+                    "unclassified_request_count" to
+                        (snapshot.browserMediaObservedCount - classifiedBrowserCandidates).coerceAtLeast(0).toString(),
+                    "player_response_obtained" to (!snapshot.playerResponse.isNullOrBlank()).toString(),
+                ),
+                throwable = null,
+            )
+        }
 
         logger.log(
             if (snapshot.browserPoTokenObserved) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,

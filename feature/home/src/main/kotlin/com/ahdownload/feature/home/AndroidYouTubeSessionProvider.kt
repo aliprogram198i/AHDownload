@@ -28,6 +28,57 @@ internal fun shouldLoadYouTubeEmbeddedFallback(
         !embeddedFallbackLoaded &&
         (observedMediaCount == 0 || !hasPlayerResponse)
 
+/**
+ * Only classify a captured Google Video Server URL when it carries media identity:
+ * an explicit MIME/type or a recognized media itag. Bare /videoplayback requests
+ * can be partial/SABR traffic and must not be mislabeled as video downloads.
+ */
+internal fun classifyYouTubeObservedMediaUrl(rawUrl: String): String? {
+    val uri = runCatching { java.net.URI(rawUrl) }.getOrNull() ?: return null
+    val host = uri.host?.lowercase().orEmpty()
+    if (host != "googlevideo.com" && !host.endsWith(".googlevideo.com")) return null
+    if (!uri.path.orEmpty().contains("/videoplayback")) return null
+
+    val query = uri.rawQuery.orEmpty().split('&').mapNotNull { component ->
+        val separator = component.indexOf('=')
+        if (separator <= 0) return@mapNotNull null
+        val key = runCatching {
+            java.net.URLDecoder.decode(component.substring(0, separator), "UTF-8")
+        }.getOrDefault(component.substring(0, separator)).lowercase()
+        val value = runCatching {
+            java.net.URLDecoder.decode(component.substring(separator + 1), "UTF-8")
+        }.getOrDefault(component.substring(separator + 1))
+        key to value
+    }.toMap()
+
+    val mime = (query["mime"] ?: query["type"]).orEmpty().lowercase()
+    when {
+        mime.startsWith("audio/") -> return "audio"
+        mime.startsWith("video/") -> return "video"
+    }
+
+    val itag = query["itag"]
+    return when {
+        itag in YOUTUBE_AUDIO_ITAGS -> "audio"
+        itag in YOUTUBE_VIDEO_ITAGS -> "video"
+        else -> null
+    }
+}
+
+private val YOUTUBE_AUDIO_ITAGS = setOf(
+    "139", "140", "141", "171", "172",
+    "249", "250", "251", "256", "258",
+    "325", "328", "599", "600",
+)
+
+private val YOUTUBE_VIDEO_ITAGS = setOf(
+    "18", "22", "37", "43", "44", "45", "46", "59", "78",
+    "160", "133", "134", "135", "136", "137", "264", "266",
+    "298", "299", "242", "243", "244", "247", "248", "271",
+    "272", "278", "308", "313", "315", "394", "395", "396",
+    "397", "398", "399", "400", "401",
+)
+
 class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessionProvider {
     @SuppressLint("SetJavaScriptEnabled")
     override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
@@ -149,13 +200,12 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     browserRequestHeaders[resourceUrl] = safeHeaders
                 }
 
-                when {
-                    Regex("""[?&](?:mime|type)=audio(?:%2f|/)""").containsMatchIn(lower) ->
-                        audios.add(resourceUrl)
-                    Regex("""[?&](?:mime|type)=video(?:%2f|/)""").containsMatchIn(lower) ->
-                        videos.add(resourceUrl)
-                    else ->
-                        videos.add(resourceUrl)
+                when (classifyYouTubeObservedMediaUrl(resourceUrl)) {
+                    "audio" -> audios.add(resourceUrl)
+                    "video" -> videos.add(resourceUrl)
+                    // Keep the observation/header evidence for diagnostics, but never
+                    // promote a URL with neither MIME nor itag into a download candidate.
+                    else -> Unit
                 }
             }
 
@@ -226,10 +276,23 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     const isHttp=x=>/^https?:\/\//i.test(x);
                     const isM3u8=x=>/.m3u8(?:[?#]|$)/i.test(x);
                     const isGoogleVideo=x=>{try{return new URL(x).hostname.toLowerCase().endsWith(".googlevideo.com")}catch(_){return false}};
-                    const classify=x=>{try{const q=new URL(x).search.toLowerCase();if(q.includes("mime=audio%2f")||q.includes("mime=audio/")||q.includes("type=audio%2f")||q.includes("type=audio/"))return a;if(q.includes("mime=video%2f")||q.includes("mime=video/")||q.includes("type=video%2f")||q.includes("type=video/"))return v}catch(_){}return null};
-                    const addResource=x=>{if(!isHttp(x)||isM3u8(x))return;const target=classify(x);if(target)target.add(x);else if(isGoogleVideo(x)&&/\/videoplayback(?:[/?]|$)/i.test(x))v.add(x)};
+                    const audioItags=new Set(["139","140","141","171","172","249","250","251","256","258","325","328","599","600"]);
+                    const videoItags=new Set(["18","22","37","43","44","45","46","59","78","160","133","134","135","136","137","264","266","298","299","242","243","244","247","248","271","272","278","308","313","315","394","395","396","397","398","399","400","401"]);
+                    const classify=x=>{try{
+                      const u=new URL(x),mime=(u.searchParams.get("mime")||u.searchParams.get("type")||"").toLowerCase();
+                      if(mime.startsWith("audio/"))return a;
+                      if(mime.startsWith("video/"))return v;
+                      if(/\/videoplayback(?:[/?]|$)/i.test(u.pathname)){
+                        const itag=u.searchParams.get("itag");
+                        if(audioItags.has(itag))return a;
+                        if(videoItags.has(itag))return v;
+                      }
+                    }catch(_){}return null};
+                    const addResource=x=>{if(!isHttp(x)||isM3u8(x))return;const target=classify(x);if(target)target.add(x)};
                     const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){} 
-                      if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
+                      if(!/^https?:\/\//i.test(x)||/.m3u8(?:[?#]|$)/i.test(x))return;
+                      if(isGoogleVideo(x)&&/\/videoplayback(?:[/?]|$)/i.test(x)){const target=classify(x);if(target)target.add(x);return;}
+                      s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
                       add(v,e.currentSrc);add(v,e.src);
                       e.querySelectorAll('source').forEach(s=>add(v,s.src));
@@ -244,12 +307,39 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                       if(!/^https?:\/\//i.test(u)||/.m3u8(?:[?#]|$)/i.test(u))return;
                       addResource(u)
                     })}catch(_){}
+                    const responseString=value=>{
+                      if(value==null)return null;
+                      if(typeof value==="string"){
+                        try{const parsed=JSON.parse(value);if(parsed&&typeof parsed==="object")value=parsed;}
+                        catch(_){return value.trim()?value:null;}
+                      }
+                      if(value&&typeof value==="object"&&value.playerResponse&&typeof value.playerResponse==="object"&&!value.streamingData)
+                        value=value.playerResponse;
+                      if(value&&typeof value==="object"&&(value.streamingData||value.videoDetails||value.playabilityStatus))
+                        return JSON.stringify(value);
+                      return null;
+                    };
+                    const safeRead=read=>{try{return read()}catch(_){return null}};
                     let p=null;
-                    try{
-                      if(window.ytInitialPlayerResponse)p=JSON.stringify(window.ytInitialPlayerResponse);
-                      else if(window.ytplayer&&window.ytplayer.config&&window.ytplayer.config.args&&window.ytplayer.config.args.player_response)
-                        p=window.ytplayer.config.args.player_response;
-                    }catch(_){}
+                    const moviePlayer=safeRead(()=>document.querySelector("#movie_player")||window.movie_player);
+                    const responseCandidates=[
+                      safeRead(()=>window.ytInitialPlayerResponse),
+                      safeRead(()=>window.ytplayer&&window.ytplayer.config&&window.ytplayer.config.args&&window.ytplayer.config.args.player_response),
+                      safeRead(()=>moviePlayer&&typeof moviePlayer.getPlayerResponse==="function"?moviePlayer.getPlayerResponse():null),
+                      safeRead(()=>window.yt&&window.yt.player&&typeof window.yt.player.getPlayerResponse==="function"?window.yt.player.getPlayerResponse():null),
+                      safeRead(()=>document.querySelector("ytd-player")&&document.querySelector("ytd-player").playerResponse),
+                      safeRead(()=>document.querySelector("ytd-watch-flexy")&&document.querySelector("ytd-watch-flexy").playerResponse)
+                    ];
+                    let fallbackPlayerResponse=null;
+                    for(const candidate of responseCandidates){
+                      const candidateText=responseString(candidate);
+                      if(!candidateText)continue;
+                      if(!fallbackPlayerResponse)fallbackPlayerResponse=candidateText;
+                      // Prefer a response with actual format catalog metadata over a
+                      // lightweight playability/details object from the initial page.
+                      if(candidateText.includes('"streamingData"')){p=candidateText;break;}
+                    }
+                    if(!p)p=fallbackPlayerResponse;
                     try{
                       const play=document.querySelector('.ytp-play-button,#movie_player .ytp-play-button');
                       if(play) play.click();
