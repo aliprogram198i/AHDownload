@@ -240,6 +240,39 @@ private fun HomeScreen(
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
+    val resultKind = state.result?.kind ?: MediaKind.Unknown
+    val primaryOptions = when (resultKind) {
+        MediaKind.Video -> resultSet.video
+        MediaKind.Audio -> resultSet.audio
+        MediaKind.Image -> resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
+        MediaKind.Unknown -> resultSet.all
+    }
+    val directAudioAvailable = resultSet.directAudioSourceAvailable
+    val availableVideoOptions = primaryOptions.filter {
+        val format = it.candidate.format
+        format.kind == MediaKind.Video &&
+            format.hasVideo &&
+            (format.hasAudio || directAudioAvailable)
+    }
+    val rawVideoSourceCount = primaryOptions.count {
+        it.candidate.format.kind == MediaKind.Video && it.candidate.format.hasVideo
+    }
+    val unresolvedVideoSourceCount =
+        (rawVideoSourceCount - availableVideoOptions.size).coerceAtLeast(0)
+    val audioExtractionAvailable = directAudioAvailable || availableVideoOptions.any {
+        it.candidate.format.kind == MediaKind.Video &&
+            it.candidate.format.hasVideo &&
+            it.candidate.format.hasAudio
+    }
+    val actionableAudioOptions = if (audioExtractionAvailable) resultSet.audio else emptyList()
+    val actionableOptions = (
+        availableVideoOptions + actionableAudioOptions +
+            primaryOptions.filter { it.group == com.ahdownload.domain.resolver.MediaResultGroup.Other }
+        ).distinctBy { it.candidate.id }
+    val actionableOptionIds = actionableOptions.mapTo(mutableSetOf()) { it.candidate.id }
+    val smallestActionable = actionableOptions
+        .filter { (it.candidate.format.fileSizeBytes ?: 0L) > 0L }
+        .minByOrNull { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
     val uiContext = rememberUiTraceContext()
     val clipboard = LocalClipboardManager.current
 
@@ -333,7 +366,7 @@ private fun HomeScreen(
         )
     }
 
-    LaunchedEffect(state.resolution?.title, candidates.size, state.error) {
+    LaunchedEffect(state.resolution, resultKind, state.error) {
         if (state.resolution != null || state.error != null) {
             logger.log(
                 DiagnosticLevel.INFO,
@@ -343,17 +376,22 @@ private fun HomeScreen(
                 mapOf(
                     "platform" to (state.result?.platform?.name ?: "unknown"),
                     "candidate_total" to candidates.size.toString(),
-                    "available_total" to resultSet.all.size.toString(),
-                    "best_overall" to (resultSet.bestOverall?.candidate?.id ?: "none"),
-                    "best_quality" to (resultSet.bestQuality?.candidate?.id ?: "none"),
-                    "smallest_size" to (resultSet.smallestSize?.candidate?.id ?: "none"),
-                    "video_format_option_count" to resultSet.video.size.toString(),
-                    "known_video_resolution_count" to resultSet.video
+                    "deduplicated_candidate_total" to resultSet.all.size.toString(),
+                    "available_total" to actionableOptions.size.toString(),
+                    "best_overall" to (resultSet.bestOverall?.candidate?.id
+                        ?.takeIf { it in actionableOptionIds } ?: "none"),
+                    "best_quality" to (resultSet.bestQuality?.candidate?.id
+                        ?.takeIf { it in actionableOptionIds } ?: "none"),
+                    "smallest_size" to (smallestActionable?.candidate?.id ?: "none"),
+                    "video_candidate_count" to rawVideoSourceCount.toString(),
+                    "video_format_option_count" to availableVideoOptions.size.toString(),
+                    "unresolved_video_candidate_count" to unresolvedVideoSourceCount.toString(),
+                    "known_video_resolution_count" to availableVideoOptions
                         .mapNotNull { it.candidate.format.height?.takeIf { height -> height > 0 } }
                         .distinct()
                         .size
                         .toString(),
-                    "unknown_video_quality_count" to resultSet.video.count {
+                    "unknown_video_quality_count" to availableVideoOptions.count {
                         (it.candidate.format.height ?: 0) <= 0
                     }.toString(),
                     "known_audio_bitrate_tier_count" to resultSet.audio.count {
@@ -362,12 +400,21 @@ private fun HomeScreen(
                     "unknown_audio_bitrate_count" to resultSet.audio.count {
                         (it.candidate.format.bitrateKbps ?: 0) <= 0
                     }.toString(),
-                    "video_audio_track_confirmed_count" to resultSet.video.count {
+                    "video_audio_track_confirmed_count" to availableVideoOptions.count {
                         it.candidate.format.hasAudio
                     }.toString(),
-                    "video_audio_track_unconfirmed_count" to resultSet.video.count {
-                        !it.candidate.format.hasAudio
+                    "video_audio_track_unconfirmed_count" to primaryOptions.count {
+                        it.candidate.format.kind == MediaKind.Video &&
+                            it.candidate.format.hasVideo &&
+                            !it.candidate.format.hasAudio
                     }.toString(),
+                    "video_audio_companion_available_count" to availableVideoOptions.count {
+                        !it.candidate.format.hasAudio && directAudioAvailable
+                    }.toString(),
+                    "audio_source_option_count" to resultSet.audio.count {
+                        it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
+                    }.toString(),
+                    "audio_extraction_available" to audioExtractionAvailable.toString(),
                     "browser_observed_candidate_count" to candidates.count {
                         it.sourceContext.name == "BROWSER_OBSERVED"
                     }.toString(),
@@ -861,13 +908,6 @@ private fun HomeScreen(
 
             if (mode == HomeMode.Link) state.resolution?.let { resolution ->
                 item {
-                    val resultKind = state.result?.kind ?: MediaKind.Unknown
-                    val primaryOptions = when (resultKind) {
-                        MediaKind.Video -> resultSet.video
-                        MediaKind.Audio -> resultSet.audio
-                        MediaKind.Image -> resultSet.other.filter { it.candidate.format.kind == MediaKind.Image }
-                        MediaKind.Unknown -> resultSet.all
-                    }
                     val audioOptions = resultSet.audio
                     UnifiedDownloadResultCard(
                         title = resolution.title ?: "محتوى الوسائط",
@@ -1403,24 +1443,43 @@ private fun UnifiedDownloadResultCard(
                         modifier = Modifier.size(18.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("النتيجة جاهزة", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            if (allVideoOptions.isNotEmpty() || audioAvailable) {
+                                "النتيجة جاهزة"
+                            } else {
+                                "بيانات المصدر غير مكتملة"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                        )
                         Text(
                             buildList {
                                 val knownVideoQualities = allVideoOptions.count {
                                     (it.candidate.format.height ?: 0) > 0
                                 }
-                                val unknownVideoSources = allVideoOptions.size - knownVideoQualities
+                                val unknownVideoQualities = allVideoOptions.size - knownVideoQualities
+                                val unresolvedVideoSources = (
+                                    primaryOptions.count {
+                                        it.candidate.format.kind == MediaKind.Video &&
+                                            it.candidate.format.hasVideo
+                                    } - allVideoOptions.size
+                                ).coerceAtLeast(0)
                                 if (knownVideoQualities > 0) add("$knownVideoQualities خيار فيديو + صوت")
-                                if (unknownVideoSources > 0) {
-                                    add("$unknownVideoSources مصدر فيديو غير محدد الجودة")
-                                }
+                                if (unknownVideoQualities > 0) add("$unknownVideoQualities خيار فيديو غير محدد الجودة")
+                                if (unresolvedVideoSources > 0) add("$unresolvedVideoSources مصدر فيديو ببيانات غير مكتملة")
                                 if (audioAvailable) {
-                                    add("${audioOptions.size} جودة/مصدر صوت")
-                                    add("${AudioOutputFormat.entries.size} صيغة إخراج")
+                                    if (audioOptions.isNotEmpty()) {
+                                        add("${audioOptions.size} مصدر صوت")
+                                    } else if (muxedVideoAvailable) {
+                                        add("الصوت متاح ضمن الفيديو")
+                                    }
+                                    add("${AudioOutputFormat.entries.size} صيغة إخراج صوتي")
                                 } else if (showAudioSection) {
-                                    add("مصدر الصوت غير متاح")
+                                    add("لم يُرصد مصدر صوت موثوق")
                                 }
-                            }.joinToString(" · ").ifBlank { "خيارات متاحة" },
+                                if (allVideoOptions.isEmpty() && !audioAvailable) {
+                                    add("لا يوجد خيار تنزيل مؤكد")
+                                }
+                            }.joinToString(" · ").ifBlank { "لم تكتمل بيانات خيارات التنزيل" },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1465,7 +1524,16 @@ private fun UnifiedDownloadResultCard(
                         }
                     }
                 } else {
-                    UnifiedResultEmptyState("لا يتوفر مصدر فيديو قابل للتنزيل لهذا الرابط حاليًا.")
+                    val rawVideoSourceCount = primaryOptions.count {
+                        it.candidate.format.kind == MediaKind.Video && it.candidate.format.hasVideo
+                    }
+                    UnifiedResultEmptyState(
+                        if (rawVideoSourceCount > 0) {
+                            "رُصد مصدر فيديو، لكن البيانات لا تؤكد جودته أو وجود مسار صوت صالح. أعد التحليل بعد تحديث جلسة المنصة."
+                        } else {
+                            "لم يُعثر على مصدر فيديو قابل للتنزيل لهذا الرابط حاليًا."
+                        },
+                    )
                 }
             }
 
@@ -1523,7 +1591,9 @@ private fun UnifiedDownloadResultCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    UnifiedResultEmptyState("لا يوجد مصدر صوتي صالح لهذا الرابط حاليًا.")
+                    UnifiedResultEmptyState(
+                        "لم يُرصد مصدر صوت موثّق؛ لن تتاح صيغ استخراج الصوت حتى يكتمل تحليل المصدر.",
+                    )
                 }
             }
 
