@@ -110,13 +110,16 @@ class SmartResultEngine {
     private fun presentationQualityKey(item: MediaPresentationModel): String {
         val format = item.candidate.format
         return when (item.group) {
-            MediaResultGroup.Video -> format.height
-                ?.takeIf { it > 0 }
-                ?.let { "video-height:$it" }
-                // If the resolver cannot provide height metadata, these are not
-                // distinct user-visible quality options. Keep one best fallback
-                // instead of rendering several identical "Video" placeholder cards.
-                ?: "video-unknown"
+            MediaResultGroup.Video -> {
+                val containerKey = format.container.name
+                format.height
+                    ?.takeIf { it > 0 }
+                    ?.let { "video-height:$it:container:$containerKey" }
+                    // Different actual containers (for example MP4 and WebM) are
+                    // distinct source choices at the same resolution. Within one
+                    // resolution/container tier keep only the best ranked source.
+                    ?: "video-unknown:container:$containerKey"
+            }
             MediaResultGroup.Audio -> format.bitrateKbps
                 ?.takeIf { it > 0 }
                 ?.let { "audio-bitrate:${it / 16 * 16}" }
