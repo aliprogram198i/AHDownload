@@ -108,6 +108,7 @@ import com.ahdownload.domain.resolver.MediaResultRecommendation
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.search.ContentSearchItem
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @Composable
 fun HomeRoute(
@@ -120,6 +121,7 @@ fun HomeRoute(
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     onCopyHomeTrace: () -> String = { "" },
+    onCopyResultCardTrace: () -> String = { "" },
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
@@ -176,6 +178,7 @@ fun HomeRoute(
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
         onCopyHomeTrace = onCopyHomeTrace,
+        onCopyResultCardTrace = onCopyResultCardTrace,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
         currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
@@ -230,6 +233,7 @@ private fun HomeScreen(
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     onCopyHomeTrace: () -> String,
+    onCopyResultCardTrace: () -> String,
     activeDownloads: Int = 0,
     favoriteItems: List<FavoriteItem> = emptyList(),
     currentFavorite: Boolean = false,
@@ -927,10 +931,14 @@ private fun HomeScreen(
                             onToggleFavorite()
                         },
                         primaryOptions = primaryOptions,
+                        sourceCandidates = candidates,
                         audioOptions = audioOptions,
+                        onCopyResultCardTrace = onCopyResultCardTrace,
                         selectedCandidateId = state.selectedCandidateId,
                         selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
+                        downloadQueued = state.downloadQueued,
+                        errorMessage = state.error,
                         selectedAudioOutputFormat = state.selectedAudioOutputFormat,
                         onSelectAudioCandidate = {
                             uiTraceLogger.interaction(
@@ -1342,6 +1350,10 @@ private fun UnifiedDownloadResultCard(
     onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
+    sourceCandidates: List<MediaCandidate>,
+    onCopyResultCardTrace: () -> String,
+    downloadQueued: Boolean,
+    errorMessage: String?,
 ) {
     val directAudioAvailable = audioOptions.any {
         it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
@@ -1365,12 +1377,73 @@ private fun UnifiedDownloadResultCard(
     val selectedVideo = allVideoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
     val selectedAudioSource = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
 
-    val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
-    val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio
+    val hasRawVideoSource = sourceCandidates.any { it.format.kind == MediaKind.Video && it.format.hasVideo }
+    val hasRawAudioSource = sourceCandidates.any { it.format.kind == MediaKind.Audio && it.format.hasAudio }
+    // Keep empty sections visible when the source has been observed but could not be classified.
+    val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video || hasRawVideoSource
+    val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio ||
+        hasRawAudioSource || (kind == MediaKind.Unknown && hasRawVideoSource)
     val canDownload = validatingCandidateId == null && (
         selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ||
             selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null
         )
+
+    val sourceFingerprint = sourceCandidates.joinToString("|") { candidate ->
+        candidate.id + ":" + candidate.format.id + ":" + candidate.format.kind.name + ":" +
+            candidate.format.container.name + ":" + candidate.format.height + ":" +
+            candidate.format.bitrateKbps + ":" + candidate.format.hasVideo + ":" + candidate.format.hasAudio
+    } + "|" + primaryOptions.joinToString(",") { it.candidate.id } +
+        "|" + audioOptions.joinToString(",") { it.candidate.id }
+    val resultGeneration = remember(title, platform, durationMs, kind, sourceFingerprint) {
+        UUID.randomUUID().toString().take(8)
+    }
+    val resultCardTrace = remember(resultGeneration) {
+        ResultCardTraceRecorder(uiTraceLogger, resultGeneration)
+    }
+    val clipboard = LocalClipboardManager.current
+
+    LaunchedEffect(resultGeneration) {
+        resultCardTrace.recordSnapshot(
+            platform = platform,
+            kind = kind,
+            title = title,
+            hasThumbnail = !thumbnailUrl.isNullOrBlank(),
+            durationMs = durationMs,
+            rawCandidates = sourceCandidates,
+            primaryOptions = primaryOptions,
+            videoOptions = allVideoOptions,
+            audioOptions = audioOptions,
+            directAudioAvailable = directAudioAvailable,
+            audioAvailable = audioAvailable,
+            visibleVideoOptions = videoOptions.size,
+            videoOptionsExpanded = showAllVideoOptions,
+            selectedCandidateId = selectedCandidateId,
+            selectedAudioCandidateId = selectedAudioCandidateId,
+            selectedAudioOutputFormat = selectedAudioOutputFormat,
+        )
+    }
+
+    LaunchedEffect(
+        resultGeneration, selectionMode, selectedCandidateId, selectedAudioCandidateId,
+        selectedAudioOutputFormat, validatingCandidateId, downloadQueued, errorMessage,
+        showAllVideoOptions, favorite, canDownload, videoOptions.size,
+    ) {
+        resultCardTrace.recordState(
+            selectionMode = selectionMode?.name ?: "NONE",
+            selectedVideoId = selectedCandidateId,
+            selectedAudioId = selectedAudioCandidateId,
+            selectedAudioOutputFormat = selectedAudioOutputFormat?.name,
+            selectedVideoQuality = selectedVideo?.qualityLabel,
+            selectedAudioQuality = selectedAudioSource?.qualityLabel,
+            validatingCandidateId = validatingCandidateId,
+            downloadQueued = downloadQueued,
+            favorite = favorite,
+            videoOptionsExpanded = showAllVideoOptions,
+            visibleVideoOptions = videoOptions.size,
+            canDownload = canDownload,
+            errorMessage = errorMessage,
+        )
+    }
 
     AHCard(
         modifier = Modifier.fillMaxWidth(),
@@ -1409,7 +1482,14 @@ private fun UnifiedDownloadResultCard(
                 }
 
                 IconButton(
-                    onClick = onToggleFavorite,
+                    onClick = {
+                        resultCardTrace.recordAction(
+                            action = "toggle_favorite",
+                            component = "favorite_button",
+                            context = mapOf("previously_favorite" to favorite.toString()),
+                        )
+                        onToggleFavorite()
+                    },
                     modifier = Modifier.semantics {
                         contentDescription = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
                     },
@@ -1500,6 +1580,17 @@ private fun UnifiedDownloadResultCard(
                         selected = if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo else null,
                         validatingCandidateId = validatingCandidateId,
                         onSelect = {
+                            resultCardTrace.recordAction(
+                                action = "select_video_quality",
+                                component = "video_quality_option",
+                                context = mapOf(
+                                    "candidate_id" to it.candidate.id,
+                                    "quality" to it.qualityLabel,
+                                    "container" to it.candidate.format.container.name,
+                                    "height" to (it.candidate.format.height?.toString() ?: "unknown"),
+                                    "has_audio" to it.candidate.format.hasAudio.toString(),
+                                ),
+                            )
                             selectionMode = OutputSelectionMode.VIDEO
                             onSelect(it)
                         },
@@ -1509,11 +1600,10 @@ private fun UnifiedDownloadResultCard(
                     if (!showAllVideoOptions && allVideoOptions.size > 4) {
                         TextButton(
                             onClick = {
-                                uiTraceLogger.interaction(
-                                    "HOME",
-                                    "video_options_more",
-                                    "show_more_video_options",
-                                    mapOf("available_count" to allVideoOptions.size.toString()),
+                                resultCardTrace.recordAction(
+                                    action = "show_more_video_options",
+                                    component = "video_options_more",
+                                    context = mapOf("available_count" to allVideoOptions.size.toString()),
                                 )
                                 showAllVideoOptions = true
                             },
@@ -1564,6 +1654,16 @@ private fun UnifiedDownloadResultCard(
                             selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioSource else null,
                             validatingCandidateId = validatingCandidateId,
                             onSelect = {
+                                resultCardTrace.recordAction(
+                                    action = "select_audio_source",
+                                    component = "audio_source_option",
+                                    context = mapOf(
+                                        "candidate_id" to it.candidate.id,
+                                        "quality" to it.qualityLabel,
+                                        "bitrate_kbps" to (it.candidate.format.bitrateKbps?.toString() ?: "unknown"),
+                                        "container" to it.candidate.format.container.name,
+                                    ),
+                                )
                                 selectionMode = OutputSelectionMode.AUDIO
                                 onSelectAudioCandidate(it)
                             },
@@ -1580,6 +1680,11 @@ private fun UnifiedDownloadResultCard(
                         selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioOutputFormat else null,
                         enabled = validatingCandidateId == null,
                         onSelect = {
+                            resultCardTrace.recordAction(
+                                action = "select_audio_output_format",
+                                component = "audio_output_format",
+                                context = mapOf("output_format" to it.name, "output_label" to it.label),
+                            )
                             selectionMode = OutputSelectionMode.AUDIO
                             onSelectAudioOutputFormat(it)
                         },
@@ -1612,6 +1717,19 @@ private fun UnifiedDownloadResultCard(
                 },
                 enabled = canDownload,
                 onClick = {
+                    resultCardTrace.recordAction(
+                        action = "request_download",
+                        component = "download_button",
+                        context = mapOf(
+                            "selection_mode" to (selectionMode?.name ?: "NONE"),
+                            "candidate_id" to (
+                                if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo?.candidate?.id
+                                else selectedAudioSource?.candidate?.id
+                            ).orEmpty(),
+                            "output_format" to (selectedAudioOutputFormat?.name ?: "not_audio"),
+                            "can_download" to canDownload.toString(),
+                        ),
+                    )
                     when (selectionMode) {
                         OutputSelectionMode.VIDEO -> selectedVideo?.candidate?.id?.let(onDownload)
                         OutputSelectionMode.AUDIO -> onDownloadAudio(selectedAudioCandidateId)
@@ -1638,6 +1756,28 @@ private fun UnifiedDownloadResultCard(
                         }
                     },
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = {
+                        uiTraceLogger.interaction(
+                            "RESULT_CARD",
+                            "result_card_log_button",
+                            "copy_result_card_trace",
+                            mapOf("result_generation" to resultGeneration, "platform" to (platform ?: "unknown")),
+                        )
+                        clipboard.setText(AnnotatedString(onCopyResultCardTrace()))
+                    },
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("نسخ سجل بطاقة النتائج")
+                }
+            }
         }
     }
 }
