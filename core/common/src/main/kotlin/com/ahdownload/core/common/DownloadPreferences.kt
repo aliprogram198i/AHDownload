@@ -18,7 +18,6 @@ enum class AudioBitratePreference(val kbps: Int, val label: String) {
 }
 
 data class DownloadPreferences(
-    val smartDownload: Boolean = true,
     val wifiOnly: Boolean = false,
     val videoQuality: VideoQualityPreference = VideoQualityPreference.AUTO,
     val audioBitrate: AudioBitratePreference = AudioBitratePreference.AUTO,
