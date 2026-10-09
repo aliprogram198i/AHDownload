@@ -23,7 +23,8 @@ class YouTubePlayerResponseParser {
 
     fun parsePlayerResponse(
         json: String,
-        observedMediaUrls: List<String> = emptyList(),
+        observedVideoUrls: List<String> = emptyList(),
+        observedAudioUrls: List<String> = emptyList(),
     ): ResolverResult =
         runCatching {
             val root = parseJsonObject(json) ?: throw IllegalArgumentException("استجابة YouTube ليست JSON صالحًا.")
@@ -38,7 +39,7 @@ class YouTubePlayerResponseParser {
                 )
             }
 
-            val candidates = buildCandidates(root.obj("streamingData"), observedMediaUrls)
+            val candidates = buildCandidates(root.obj("streamingData"), observedVideoUrls, observedAudioUrls)
             if (candidates.isEmpty()) {
                 ResolverResult.Failure(
                     FailureCode.NoCandidates,
@@ -100,18 +101,17 @@ class YouTubePlayerResponseParser {
 
     private fun buildCandidates(
         streamingData: JsonObject?,
-        observedMediaUrls: List<String>,
+        observedVideoUrls: List<String>,
+        observedAudioUrls: List<String>,
     ): List<MediaCandidate> {
         if (streamingData == null) return emptyList()
 
         // A ciphered YouTube format does not contain a directly usable URL.
-        // Only associate its quality metadata with the exact media URL observed
-        // in the active WebView session for the same itag; never invent a URL or
-        // use the unsigned URL embedded inside signatureCipher.
-        val observedUrlsByItag = observedMediaUrls
-            .filter(::isHttpMediaUrl)
-            .mapNotNull { url -> queryParameter(url, "itag")?.let { it to url } }
-            .groupBy({ it.first }, { it.second })
+        // Only associate its quality metadata with an exact browser-observed
+        // URL for the same itag and media type. Never use the unsigned URL
+        // embedded inside signatureCipher directly.
+        val observedVideoUrlsByItag = observedUrlsByItag(observedVideoUrls)
+        val observedAudioUrlsByItag = observedUrlsByItag(observedAudioUrls)
 
         return sequenceOf(streamingData.array("formats"), streamingData.array("adaptiveFormats"))
             .filterNotNull()
@@ -119,31 +119,43 @@ class YouTubePlayerResponseParser {
             .mapNotNull {
                 it.takeIf(JsonElement::isJsonObject)
                     ?.asJsonObject
-                    ?.toCandidate(observedUrlsByItag)
+                    ?.toCandidate(observedVideoUrlsByItag, observedAudioUrlsByItag)
             }
             .distinctBy { it.id }
             .toList()
     }
 
+    private fun observedUrlsByItag(urls: List<String>): Map<String, List<String>> =
+        urls.asSequence()
+            .filter(::isHttpMediaUrl)
+            .mapNotNull { url -> queryParameter(url, "itag")?.let { it to url } }
+            .groupBy({ it.first }, { it.second })
+
     private fun JsonObject.toCandidate(
-        observedUrlsByItag: Map<String, List<String>>,
+        observedVideoUrlsByItag: Map<String, List<String>>,
+        observedAudioUrlsByItag: Map<String, List<String>>,
     ): MediaCandidate? {
         val formatId = string("itag") ?: return null
         val mimeType = string("mimeType") ?: return null
+        val mediaKind = when {
+            mimeType.startsWith("video/") -> MediaKind.Video
+            mimeType.startsWith("audio/") -> MediaKind.Audio
+            else -> return null
+        }
         val directUrl = string("url")?.takeIf(::isHttpMediaUrl)
         val ciphered = !string("signatureCipher").isNullOrBlank() ||
             !string("cipher").isNullOrBlank()
+        val observedUrlsByItag = when (mediaKind) {
+            MediaKind.Video -> observedVideoUrlsByItag
+            MediaKind.Audio -> observedAudioUrlsByItag
+            else -> emptyMap()
+        }
         val observedUrl = if (directUrl == null && ciphered) {
             observedUrlsByItag[formatId]?.firstOrNull()
         } else {
             null
         }
         val url = directUrl ?: observedUrl ?: return null
-        val mediaKind = when {
-            mimeType.startsWith("video/") -> MediaKind.Video
-            mimeType.startsWith("audio/") -> MediaKind.Audio
-            else -> return null
-        }
         val codecs = Regex("""codecs="([^"]+)"""").find(mimeType)?.groupValues?.get(1)
             ?.split(',')
             ?.map(String::trim)
