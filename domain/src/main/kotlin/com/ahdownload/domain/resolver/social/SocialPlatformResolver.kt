@@ -80,6 +80,8 @@ class SocialPlatformResolver(
                         "operation_id" to (request.operationId ?: "none"),
                         "media_count" to session.mediaUrls.size.toString(),
                         "headers_count" to session.requestHeadersByUrl.size.toString(),
+                        "inspection_attempt_count" to session.inspectionAttemptCount.toString(),
+                        "inspection_callback_count" to session.inspectionCallbackCount.toString(),
                         "instagram_api_status" to (
                             session.instagramApiStatus
                                 ?: if (platform == MediaPlatform.Instagram) "not_reported" else "not_applicable"
