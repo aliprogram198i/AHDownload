@@ -1717,6 +1717,19 @@ private fun UnifiedDownloadResultCard(
                 },
                 enabled = canDownload,
                 onClick = {
+                    resultCardTrace.recordAction(
+                        action = "request_download",
+                        component = "download_button",
+                        context = mapOf(
+                            "selection_mode" to (selectionMode?.name ?: "NONE"),
+                            "candidate_id" to (
+                                if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo?.candidate?.id
+                                else selectedAudioSource?.candidate?.id
+                            ).orEmpty(),
+                            "output_format" to (selectedAudioOutputFormat?.name ?: "not_audio"),
+                            "can_download" to canDownload.toString(),
+                        ),
+                    )
                     when (selectionMode) {
                         OutputSelectionMode.VIDEO -> selectedVideo?.candidate?.id?.let(onDownload)
                         OutputSelectionMode.AUDIO -> onDownloadAudio(selectedAudioCandidateId)
@@ -1743,6 +1756,28 @@ private fun UnifiedDownloadResultCard(
                         }
                     },
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = {
+                        uiTraceLogger.interaction(
+                            "RESULT_CARD",
+                            "result_card_log_button",
+                            "copy_result_card_trace",
+                            mapOf("result_generation" to resultGeneration, "platform" to (platform ?: "unknown")),
+                        )
+                        clipboard.setText(AnnotatedString(onCopyResultCardTrace()))
+                    },
+                ) {
+                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("نسخ سجل بطاقة النتائج")
+                }
+            }
         }
     }
 }
