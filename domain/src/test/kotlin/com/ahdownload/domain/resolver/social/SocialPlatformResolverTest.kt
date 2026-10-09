@@ -139,12 +139,12 @@ class SocialPlatformResolverTest {
         assertTrue(result is ResolverResult.Success)
         assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
         assertEquals(listOf(pageUrl, captionedUrl, plainUrl), fetchedUrls)
-        val events = events.filter { it.first == "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT" }
-        assertEquals(2, events.size)
-        assertEquals("captioned", events[0].second["embed_variant"])
-        assertEquals("no_media", events[0].second["fallback_status"])
-        assertEquals("plain", events[1].second["embed_variant"])
-        assertEquals("media_found", events[1].second["fallback_status"])
+        val embedEvents = events.filter { it.first == "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT" }
+        assertEquals(2, embedEvents.size)
+        assertEquals("captioned", embedEvents[0].second["embed_variant"])
+        assertEquals("no_media", embedEvents[0].second["fallback_status"])
+        assertEquals("plain", embedEvents[1].second["embed_variant"])
+        assertEquals("media_found", embedEvents[1].second["fallback_status"])
     }
 
     @Test
