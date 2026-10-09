@@ -188,6 +188,7 @@ class ResultCardTraceRecorder(
         downloadQueued: Boolean,
         favorite: Boolean,
         videoOptionsExpanded: Boolean,
+        visibleVideoOptions: Int,
         canDownload: Boolean,
         errorMessage: String?,
     ) {
@@ -209,6 +210,7 @@ class ResultCardTraceRecorder(
             "download_queued" to downloadQueued.toString(),
             "favorite" to favorite.toString(),
             "video_options_expanded" to videoOptionsExpanded.toString(),
+            "visible_video_options" to visibleVideoOptions.toString(),
             "error_present" to (!errorMessage.isNullOrBlank()).toString(),
             "error_category" to classifyError(errorMessage),
             "error_summary" to sanitizeError(errorMessage),
