@@ -275,6 +275,43 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun instagramInspectionFailureCountersAreIncludedInDiagnostics() = runTest {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "https://www.instagram.com/reel/ABC123/",
+                    mediaUrls = emptyList(),
+                    instagramApiStatus = "inspection_callback_missing",
+                    inspectionAttemptCount = 4,
+                    inspectionCallbackCount = 0,
+                ),
+            ),
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = RecordingTextClient { },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram).copy(
+                    originalUrl = "https://www.instagram.com/reel/ABC123/",
+                    normalizedUrl = "https://www.instagram.com/reel/ABC123/",
+                ),
+                operationId = "instagram-inspection-test",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        val event = events.single { it.first == "SOCIAL_BROWSER_SESSION_RESULT" }
+        assertEquals("inspection_callback_missing", event.second["instagram_api_status"])
+        assertEquals("4", event.second["inspection_attempt_count"])
+        assertEquals("0", event.second["inspection_callback_count"])
+    }
+
+    @Test
     fun observedVideoWithAudioTrackRemainsMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = SocialPlatformResolver(
