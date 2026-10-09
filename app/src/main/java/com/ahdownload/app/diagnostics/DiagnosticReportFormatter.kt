@@ -262,7 +262,11 @@ object DiagnosticReportFormatter {
                 else -> "NOT_STARTED"
             },
             "download" to when {
-                events.any { it.type.contains("DOWNLOAD_COMPLETED", ignoreCase = true) } -> "COMPLETED"
+                events.any { it.type.contains("DOWNLOAD_COMPLETED", ignoreCase = true) } ||
+                    has("DOWNLOAD_DESTINATION_COMMITTED") ||
+                    has("DOWNLOAD_DESTINATION_COPY_FAILED") ||
+                    has("AUDIO_EXTRACTION_COMPLETED") ||
+                    has("MEDIASTORE_PUBLISH_FAILED") -> "COMPLETED"
                 events.any { it.operation.contains("download", ignoreCase = true) && it.type.contains("DOWNLOAD", ignoreCase = true) } -> "STARTED"
                 else -> "NOT_STARTED"
             },
@@ -305,14 +309,40 @@ object DiagnosticReportFormatter {
         rejected: Int,
         accepted: Int,
     ): String {
+        if (latestError == null) return "NONE"
+
+        // Destination failures happen after resolution, validation, and local output creation.
+        // Do not report an earlier successful validation phase as the failing stage.
+        when (latestError.type) {
+            "DOWNLOAD_DESTINATION_COPY_FAILED" -> {
+                val parts = mutableListOf<String>()
+                if (accepted > 0) parts += "validation_passed"
+                parts += "download_completed_locally"
+                if (events.any { it.type == "AUDIO_EXTRACTION_COMPLETED" }) {
+                    parts += "audio_extraction_completed"
+                }
+                parts += "destination_copy_failed"
+                return parts.joinToString(" -> ")
+            }
+            "MEDIASTORE_PUBLISH_FAILED" -> {
+                val parts = mutableListOf<String>()
+                if (accepted > 0) parts += "validation_passed"
+                parts += "download_completed_locally"
+                if (events.any { it.type == "AUDIO_EXTRACTION_COMPLETED" }) {
+                    parts += "audio_extraction_completed"
+                }
+                parts += "mediastore_publish_failed"
+                return parts.joinToString(" -> ")
+            }
+        }
+
         val parts = mutableListOf<String>()
         if (events.any { it.type.contains("RESOLVER", ignoreCase = true) || it.context["platform"] == "YouTube" }) parts += "resolver"
         if (events.any { it.type.contains("CANDIDATE", ignoreCase = true) }) parts += "candidate"
         if (events.any { it.type.contains("VALIDATION", ignoreCase = true) }) parts += "validation"
         if (rejected > 0) parts += "candidate_rejected"
         if (accepted == 0 && rejected > 0) parts += "no_valid_source"
-        if (latestError?.type?.contains("SMART_CENTER", ignoreCase = true) == true) parts += "ui_error"
-        if (latestError == null) return "NONE"
+        if (latestError.type.contains("SMART_CENTER", ignoreCase = true)) parts += "ui_error"
         return if (parts.isEmpty()) (latestError.context["failure_code"] ?: latestError.type)
         else parts.distinct().joinToString(" -> ")
     }
