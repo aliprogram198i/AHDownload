@@ -9,9 +9,10 @@ class SmartResultEngine {
             .filter { it.sourceUrl.startsWith("http://") || it.sourceUrl.startsWith("https://") }
             .map(::normalize)
 
-        // Present one best source per actual quality tier. Multiple YouTube
-        // clients/containers can expose the same resolution or bitrate; those
-        // are alternate sources, not separate quality buttons.
+        // Video choices are grouped by resolution + real source container.
+        // Duplicate URLs/codecs within that tier are alternates, not separate
+        // buttons. Audio source choices remain one best source per bitrate tier;
+        // the independent output-format grid offers the supported conversions.
         val video = parsed
             .filter { it.group == MediaResultGroup.Video }
             .sortedWith(videoComparator)
@@ -129,8 +130,8 @@ class SmartResultEngine {
     }
 
     private fun qualityLabel(c: MediaCandidate): String = when {
-        c.format.kind == MediaKind.Video && c.format.height != null -> "${c.format.height}p"
-        c.format.kind == MediaKind.Audio && c.format.bitrateKbps != null -> "${c.format.bitrateKbps} kbps"
+        c.format.kind == MediaKind.Video && (c.format.height ?: 0) > 0 -> "${c.format.height}p"
+        c.format.kind == MediaKind.Audio && (c.format.bitrateKbps ?: 0) > 0 -> "${c.format.bitrateKbps} kbps"
         c.format.kind == MediaKind.Video -> "Video"
         c.format.kind == MediaKind.Audio -> "Audio"
         else -> "Media"
