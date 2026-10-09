@@ -13,7 +13,7 @@ import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.youtube.YouTubeResolver
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
-import com.ahdownload.domain.resolver.social.SocialPlatformResolver
+import com.ahdownload.domain.resolver.social.*
 import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.CandidateValidator
 import com.ahdownload.domain.validation.OkHttpMediaProbe
@@ -76,13 +76,7 @@ class HomeResolver(
             MediaPlatform.Pinterest,
             MediaPlatform.Reddit,
             MediaPlatform.Twitch,
-            MediaPlatform.Vimeo -> {
-                val provider = browserMediaSessionProvider ?: return ResolverResult.Failure(
-                    com.ahdownload.domain.resolver.FailureCode.ResolverUnavailable,
-                    "محرك تصفح الوسائط غير متاح في هذا الإصدار.",
-                )
-                SocialPlatformResolver(provider, logger).resolve(ResolverRequest(link, operationId = operationId))
-            }
+            MediaPlatform.Vimeo -> resolveSocial(link, operationId)
             else -> ResolverResult.Failure(
                 com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
                 "المنصة غير مدعومة في المحرك الحالي.",
@@ -92,6 +86,31 @@ class HomeResolver(
         return when (result) {
             is ResolverResult.Success -> result.copy(candidates = candidateRanker.rank(result.candidates))
             is ResolverResult.Failure -> result
+        }
+    }
+
+    private suspend fun resolveSocial(link: MediaLink, operationId: String?): ResolverResult {
+        val provider = browserMediaSessionProvider ?: return ResolverResult.Failure(
+            com.ahdownload.domain.resolver.FailureCode.ResolverUnavailable,
+            "محرك تصفح الوسائط غير متاح في هذا الإصدار.",
+        )
+        val request = ResolverRequest(link, operationId = operationId)
+
+        // Each social platform is routed to its own fixed-identity adapter.
+        return when (link.platform) {
+            MediaPlatform.Instagram -> InstagramResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.Facebook -> FacebookResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.TikTok -> TikTokResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.X -> XResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.Snapchat -> SnapchatResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.Pinterest -> PinterestResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.Reddit -> RedditResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.Twitch -> TwitchResolverAdapter(provider, logger).resolve(request)
+            MediaPlatform.Vimeo -> VimeoResolverAdapter(provider, logger).resolve(request)
+            else -> ResolverResult.Failure(
+                com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
+                "المنصة غير مدعومة في محرك التواصل الاجتماعي.",
+            )
         }
     }
 
