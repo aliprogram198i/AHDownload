@@ -113,11 +113,14 @@ class SmartResultEngine {
             MediaResultGroup.Video -> format.height
                 ?.takeIf { it > 0 }
                 ?.let { "video-height:$it" }
-                ?: "video-unknown:${item.candidate.sourceUrl}"
+                // If the resolver cannot provide height metadata, these are not
+                // distinct user-visible quality options. Keep one best fallback
+                // instead of rendering several identical "Video" placeholder cards.
+                ?: "video-unknown"
             MediaResultGroup.Audio -> format.bitrateKbps
                 ?.takeIf { it > 0 }
                 ?.let { "audio-bitrate:${it / 16 * 16}" }
-                ?: "audio-unknown:${item.candidate.sourceUrl}"
+                ?: "audio-unknown"
             MediaResultGroup.Other -> item.candidate.sourceUrl
         }
     }
