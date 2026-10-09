@@ -9,10 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: cloud-android-smoke-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   emulator-smoke:
     name: Build, install, and run Android instrumentation tests
