@@ -141,18 +141,35 @@ class SmartResultEngineTest {
     }
 
     @Test
-    fun keepsDifferentFrameRatesAsDistinctOptions() {
+    fun showsOneVideoOptionPerResolutionAndPrefersHigherFrameRate() {
         val fps30 = candidate("v1080-30", MediaKind.Video, 1080, 4500, 20000000).copy(
             format = candidate("v1080-30", MediaKind.Video, 1080, 4500, 20000000).format.copy(fps = 30.0),
         )
         val fps60 = candidate("v1080-60", MediaKind.Video, 1080, 4500, 20000000).copy(
             format = candidate("v1080-60", MediaKind.Video, 1080, 4500, 20000000).format.copy(fps = 60.0),
         )
+        val fps720 = candidate("v720", MediaKind.Video, 720, 2500, 10000000)
 
-        val result = SmartResultEngine().build(listOf(fps30, fps60))
+        val result = SmartResultEngine().build(listOf(fps30, fps60, fps720))
 
         assertEquals(2, result.video.size)
-        assertEquals(listOf("v1080-60", "v1080-30"), result.video.map { it.candidate.id })
+        assertEquals(listOf("v1080-60", "v720"), result.video.map { it.candidate.id })
+    }
+
+    @Test
+    fun showsOneAudioOptionPerBitrate() {
+        val a160 = candidate("a160-m4a", MediaKind.Audio, null, 160, 5000000).copy(
+            format = candidate("a160-m4a", MediaKind.Audio, null, 160, 5000000).format.copy(container = MediaContainer.M4a),
+        )
+        val a160Duplicate = candidate("a160-webm", MediaKind.Audio, null, 160, 6000000).copy(
+            format = candidate("a160-webm", MediaKind.Audio, null, 160, 6000000).format.copy(container = MediaContainer.Webm),
+        )
+        val a128 = candidate("a128", MediaKind.Audio, null, 128, 4000000)
+
+        val result = SmartResultEngine().build(listOf(a160Duplicate, a128, a160))
+
+        assertEquals(2, result.audio.size)
+        assertEquals(listOf("a160-m4a", "a128"), result.audio.map { it.candidate.id })
     }
 
     private fun candidate(
