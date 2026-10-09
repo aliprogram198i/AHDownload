@@ -305,6 +305,44 @@ class AndroidBrowserMediaSessionProvider(
                         }
                         return [...new Set(found)].slice(0,32);
                       };
+                      const collectMarkupMedia=markup=>{
+                        const found=[];
+                        const add=raw=>{
+                          if(typeof raw!=='string'||!raw.trim())return;
+                          try{
+                            const value=new URL(raw.trim(),location.href).href;
+                            const parsed=new URL(value);
+                            const path=parsed.pathname.toLowerCase();
+                            if(/\.(?:jpe?g|png|webp|gif|avif|heic|heif)$/.test(path))return;
+                            const ext=path.substring(path.lastIndexOf('.')+1);
+                            if(['mp4','m4v','webm','mov','mkv','3gp','avi','m3u8','mpd','m4a','mp3','aac','ogg','flac','wav'].includes(ext)||
+                               ((parsed.hostname.toLowerCase().endsWith('.cdninstagram.com')||
+                                 parsed.hostname.toLowerCase()==='cdninstagram.com'||
+                                 parsed.hostname.toLowerCase().endsWith('.fbcdn.net'))&&
+                                /\/(?:o1\/v\/|v\/t|video)/.test(path))){
+                              found.push(value);
+                            }
+                          }catch(_){}
+                        };
+                        try{
+                          const doc=new DOMParser().parseFromString(String(markup||''),'text/html');
+                          doc.querySelectorAll(
+                            'video[src],video source[src],audio[src],audio source[src],'+
+                            'meta[property="og:video"],meta[property="og:video:url"],'+
+                            'meta[property="og:video:secure_url"],meta[name="twitter:player:stream"],'+
+                            'link[rel="preload"][as="video"]'
+                          ).forEach(node=>add(
+                            node.getAttribute('src')||node.getAttribute('content')||node.getAttribute('href')
+                          ));
+                          doc.querySelectorAll('script[type="application/ld+json"]').forEach(node=>{
+                            try{found.push(...collectMedia(JSON.parse(node.textContent||'')));}catch(_){}
+                          });
+                          const scripts=[...doc.scripts].slice(0,80)
+                            .map(node=>(node.textContent||'').slice(0,60000)).join('\n').slice(0,600000);
+                          found.push(...collectTextMedia(scripts));
+                        }catch(_){}
+                        return [...new Set(found)].slice(0,32);
+                      };
                       const requestMedia=async target=>{
                         const response=await fetch(target,{
                           method:'GET',
@@ -321,6 +359,7 @@ class AndroidBrowserMediaSessionProvider(
                         try{payload=JSON.parse(body);}catch(_){}
                         let media=payload?collectMedia(payload):[];
                         if(!media.length)media=collectTextMedia(body);
+                        if(!media.length)media=collectMarkupMedia(body);
                         return {
                           status:media.length?'success_media':(payload?'success_no_media':'response_not_json'),
                           media:media
@@ -347,6 +386,11 @@ class AndroidBrowserMediaSessionProvider(
                               pageUrl.searchParams.set('__a','1');
                               pageUrl.searchParams.set('__d','dis');
                               targets.push({label:'page_query',url:pageUrl.pathname+pageUrl.search});
+                              const embedUrl=new URL(pageUrl.toString());
+                              embedUrl.search='';
+                              embedUrl.hash='';
+                              embedUrl.pathname=embedUrl.pathname.replace(/\/+$/,'')+'/embed/captioned/';
+                              targets.push({label:'embed',url:embedUrl.pathname});
                             }
                           }catch(_){}
                           for(const target of targets){
@@ -630,6 +674,9 @@ class AndroidBrowserMediaSessionProvider(
                             scheduleInspection(view, 900L)
                             scheduleInspection(view, 2200L)
                             scheduleInspection(view, 4000L)
+                            scheduleInspection(view, 6500L)
+                            scheduleInspection(view, 9000L)
+                            scheduleInspection(view, 11500L)
                         }
                     }
 
@@ -647,6 +694,9 @@ class AndroidBrowserMediaSessionProvider(
                         scheduleInspection(view, 1400L)
                         scheduleInspection(view, 2600L)
                         scheduleInspection(view, 4200L)
+                        scheduleInspection(view, 6500L)
+                        scheduleInspection(view, 9000L)
+                        scheduleInspection(view, 11500L)
                         main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
                     }
                 }
