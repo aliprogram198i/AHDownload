@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import java.io.File
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -20,6 +21,13 @@ class FileDownloadRepositoryTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        context.deleteFileStore()
+        context.deleteDownloadTestOutput()
+    }
+
+    @After
+    fun tearDown() {
+        context.deleteDownloadTestOutput()
         context.deleteFileStore()
     }
 
@@ -86,13 +94,14 @@ class FileDownloadRepositoryTest {
     private fun task() = DownloadTask(
         id = "instrumented-task",
         sourceUrl = "https://example.com/video.mp4",
-        destinationPath = "/data/local/tmp/video.mp4",
+        destinationPath = File(context.filesDir, "download-test-output/video.mp4").absolutePath,
     )
 
     private fun Context.deleteFileStore() {
-        deleteFile("downloads/downloads.json")
-        deleteFile("downloads/downloads.json.bak")
-        deleteFile("downloads/downloads.json.lck")
-        deleteFile("downloads")
+        File(filesDir, "downloads").deleteRecursively()
+    }
+
+    private fun Context.deleteDownloadTestOutput() {
+        File(filesDir, "download-test-output").deleteRecursively()
     }
 }
