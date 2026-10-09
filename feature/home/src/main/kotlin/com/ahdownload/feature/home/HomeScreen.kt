@@ -108,6 +108,7 @@ import com.ahdownload.domain.resolver.MediaResultRecommendation
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.search.ContentSearchItem
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @Composable
 fun HomeRoute(
@@ -120,6 +121,7 @@ fun HomeRoute(
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     onCopyHomeTrace: () -> String = { "" },
+    onCopyResultCardTrace: () -> String = { "" },
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
@@ -176,6 +178,7 @@ fun HomeRoute(
         onClearRecentLinks = viewModel::clearRecentLinks,
         uiTraceLogger = uiTraceLogger,
         onCopyHomeTrace = onCopyHomeTrace,
+        onCopyResultCardTrace = onCopyResultCardTrace,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
         currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
@@ -230,6 +233,7 @@ private fun HomeScreen(
     onClearRecentLinks: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     onCopyHomeTrace: () -> String,
+    onCopyResultCardTrace: () -> String,
     activeDownloads: Int = 0,
     favoriteItems: List<FavoriteItem> = emptyList(),
     currentFavorite: Boolean = false,
@@ -927,10 +931,14 @@ private fun HomeScreen(
                             onToggleFavorite()
                         },
                         primaryOptions = primaryOptions,
+                        sourceCandidates = candidates,
                         audioOptions = audioOptions,
+                        onCopyResultCardTrace = onCopyResultCardTrace,
                         selectedCandidateId = state.selectedCandidateId,
                         selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
+                        downloadQueued = state.downloadQueued,
+                        errorMessage = state.error,
                         selectedAudioOutputFormat = state.selectedAudioOutputFormat,
                         onSelectAudioCandidate = {
                             uiTraceLogger.interaction(
@@ -1342,6 +1350,10 @@ private fun UnifiedDownloadResultCard(
     onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
+    sourceCandidates: List<MediaCandidate>,
+    onCopyResultCardTrace: () -> String,
+    downloadQueued: Boolean,
+    errorMessage: String?,
 ) {
     val directAudioAvailable = audioOptions.any {
         it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
@@ -1365,8 +1377,12 @@ private fun UnifiedDownloadResultCard(
     val selectedVideo = allVideoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
     val selectedAudioSource = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
 
-    val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
-    val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio
+    val hasRawVideoSource = sourceCandidates.any { it.format.kind == MediaKind.Video && it.format.hasVideo }
+    val hasRawAudioSource = sourceCandidates.any { it.format.kind == MediaKind.Audio && it.format.hasAudio }
+    // Keep empty sections visible when the source has been observed but could not be classified.
+    val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video || hasRawVideoSource
+    val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio ||
+        hasRawAudioSource || (kind == MediaKind.Unknown && hasRawVideoSource)
     val canDownload = validatingCandidateId == null && (
         selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ||
             selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null
