@@ -33,6 +33,11 @@ class AndroidBrowserMediaSessionProvider(
             var settleFinish: Runnable? = null
             var finished = false
             var firstMediaObservedAt = 0L
+            var inspectionAttemptCount = 0
+            var inspectionCallbackCount = 0
+            var inspectionSerial = 0
+            var activeInspectionSerial = 0
+            var inspectionInFlight = false
             lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
@@ -131,7 +136,11 @@ class AndroidBrowserMediaSessionProvider(
                 settleFinish?.let(main::removeCallbacks)
                 finalUrl = webView?.url ?: url
                 if (platform == MediaPlatform.Instagram && instagramApiStatus == null) {
-                    instagramApiStatus = "page_not_inspected"
+                    instagramApiStatus = when {
+                        inspectionAttemptCount == 0 -> "page_not_inspected"
+                        inspectionCallbackCount == 0 -> "inspection_callback_missing"
+                        else -> "inspection_status_unavailable"
+                    }
                 }
                 val result = BrowserMediaSession(
                     platform = platform,
@@ -144,6 +153,8 @@ class AndroidBrowserMediaSessionProvider(
                     mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
                     requestHeadersByUrl = requestHeaders.toMap(),
                     instagramApiStatus = instagramApiStatus,
+                    inspectionAttemptCount = inspectionAttemptCount,
+                    inspectionCallbackCount = inspectionCallbackCount,
                 )
                 webView?.stopLoading()
                 webView?.destroy()
@@ -177,7 +188,33 @@ class AndroidBrowserMediaSessionProvider(
             }
 
             inspect = fun(view: WebView) {
-                if (finished) return
+                if (finished || inspectionInFlight) return
+                inspectionInFlight = true
+                val inspectionId = ++inspectionSerial
+                activeInspectionSerial = inspectionId
+                inspectionAttemptCount++
+                if (
+                    platform == MediaPlatform.Instagram &&
+                    instagramApiStatus in setOf(
+                        null,
+                        "inspection_callback_timeout",
+                        "script_no_result",
+                        "script_result_parse_error",
+                    )
+                ) {
+                    instagramApiStatus = "inspection_started"
+                }
+                main.postDelayed({
+                    if (!finished && activeInspectionSerial == inspectionId && inspectionInFlight) {
+                        inspectionInFlight = false
+                        if (
+                            platform == MediaPlatform.Instagram &&
+                            instagramApiStatus in setOf(null, "inspection_started", "pending")
+                        ) {
+                            instagramApiStatus = "inspection_callback_timeout"
+                        }
+                    }
+                }, 1800L)
                 val script = """
                     (function(){
                       const instagramShortcode=__IG_SHORTCODE__;
@@ -343,20 +380,43 @@ class AndroidBrowserMediaSessionProvider(
                       }).filter(Boolean);
                       const sources=[...document.querySelectorAll('source')]
                         .map(e=>e.src||e.getAttribute('data-src')).filter(Boolean);
-                      const perf=(performance.getEntriesByType('resource')||[]).map(e=>e.name).filter(Boolean);
-                      const scripts=[...document.scripts].map(s=>s.textContent||'').join('\n');
-                      const clean=scripts
-                        .replace(/\\u002f/gi,'/')
-                        .replace(/\\u0026/gi,'&')
-                        .replace(/\\u003f/gi,'?')
-                        .replace(/\\u003d/gi,'=')
-                        .replace(/\\u003a/gi,':')
-                        .replace(/\\\//g,'/');
+                      const isMediaCandidate=raw=>{
+                        if(typeof raw!=='string'||!/^https?:\/\//i.test(raw))return false;
+                        try{
+                          const u=new URL(raw,location.href);
+                          const path=u.pathname.toLowerCase();
+                          if(/\.(?:jpe?g|png|webp|gif|avif|heic|heif)$/.test(path))return false;
+                          if(/\.(?:mp4|m4v|webm|mov|mkv|3gp|avi|m3u8|mpd|m4a|mp3|aac|ogg|flac|wav)$/.test(path))return true;
+                          const host=u.hostname.toLowerCase();
+                          return (host.endsWith('.fbcdn.net')||host.endsWith('.cdninstagram.com')||host==='cdninstagram.com')&&
+                            /\/(?:o1\/v\/|v\/t|video)/.test(path);
+                        }catch(_){return false;}
+                      };
+                      // Filter by media shape before limiting: Instagram often loads many JS/image resources first.
+                      const perf=(performance.getEntriesByType('resource')||[])
+                        .map(e=>e.name).filter(isMediaCandidate).slice(0,80);
                       const embedded=[];
-                      const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url)"\s*:\s*"([^"]+)"/g;
-                      let match;
-                      while((match=keyRe.exec(clean))!==null) embedded.push(match[1]);
-                      const embeddedUrls=(clean.match(/https?:\/\/[^"'<>\\\s]+/g)||[]);
+                      if(document.readyState==='complete'&&!window.__ahInstagramInlineScanDone){
+                        window.__ahInstagramInlineScanDone=true;
+                        const scripts=[...document.scripts].slice(0,80)
+                          .map(s=>(s.textContent||'').slice(0,100000)).join('\n').slice(0,900000);
+                        const clean=scripts
+                          .replace(/\\u002f/gi,'/')
+                          .replace(/\\u0026/gi,'&')
+                          .replace(/\\u003f/gi,'?')
+                          .replace(/\\u003d/gi,'=')
+                          .replace(/\\u003a/gi,':')
+                          .replace(/\\\//g,'/');
+                        const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url)"\s*:\s*"([^"]+)"/g;
+                        let mediaMatch;
+                        while((mediaMatch=keyRe.exec(clean))!==null){
+                          const candidate=mediaMatch[1];
+                          if(isMediaCandidate(candidate))embedded.push(candidate);
+                        }
+                        const embeddedUrls=(clean.match(/https?:\/\/[^"'<>\\\s]+/g)||[])
+                          .filter(isMediaCandidate).slice(0,80);
+                        embedded.push(...embeddedUrls);
+                      }
                       const d=[...document.querySelectorAll('video')].map(v=>v.duration).filter(x=>Number.isFinite(x)&&x>0);
                       return JSON.stringify({
                         title:meta('meta[property="og:title"]')||meta('meta[name="twitter:title"]')||document.title||null,
@@ -367,9 +427,8 @@ class AndroidBrowserMediaSessionProvider(
                           ...sources,
                           ...perf,
                           ...embedded,
-                          ...embeddedUrls,
                           ...(window.__ahInstagramApiMedia||[])
-                        ])].slice(0,120),
+                        ])].filter(isMediaCandidate).slice(0,64),
                         instagramApiStatus:window.__ahInstagramApiStatus ||
                           (instagramShortcode ? 'pending' : 'not_applicable'),
                         mediaAudio:elements
@@ -379,8 +438,15 @@ class AndroidBrowserMediaSessionProvider(
                     .replace("__IG_SHORTCODE__", JSONObject.quote(instagramShortcode.orEmpty()))
                     .replace("__IG_MEDIA_ID__", JSONObject.quote(instagramMediaId.orEmpty()))
                 view.evaluateJavascript(script) { raw ->
+                    inspectionCallbackCount++
+                    if (activeInspectionSerial == inspectionId) inspectionInFlight = false
+                    if (inspectionId != activeInspectionSerial || finished) return@evaluateJavascript
                     if (raw.isNullOrBlank() || raw == "null") {
-                        if (platform == MediaPlatform.Instagram && instagramApiStatus == null) {
+                        if (
+                            platform == MediaPlatform.Instagram &&
+                            instagramApiStatus != "success_media" &&
+                            instagramApiStatus != "login_required"
+                        ) {
                             instagramApiStatus = "script_no_result"
                         }
                         return@evaluateJavascript
@@ -393,7 +459,16 @@ class AndroidBrowserMediaSessionProvider(
                         val reportedInstagramApiStatus = json.optString("instagramApiStatus")
                             .takeIf { it.isNotBlank() }
                         if (reportedInstagramApiStatus != null &&
-                            (reportedInstagramApiStatus != "pending" || instagramApiStatus == null)
+                            (
+                                reportedInstagramApiStatus != "pending" ||
+                                    instagramApiStatus in setOf(
+                                        null,
+                                        "inspection_started",
+                                        "inspection_callback_timeout",
+                                        "script_no_result",
+                                        "script_result_parse_error",
+                                    )
+                            )
                         ) {
                             instagramApiStatus = reportedInstagramApiStatus
                         }
@@ -411,6 +486,14 @@ class AndroidBrowserMediaSessionProvider(
                         }
                         json.optJSONArray("media")?.let { array ->
                             for (i in 0 until array.length()) observe(array.optString(i))
+                        }
+                    }.onFailure {
+                        if (
+                            platform == MediaPlatform.Instagram &&
+                            instagramApiStatus != "success_media" &&
+                            instagramApiStatus != "login_required"
+                        ) {
+                            instagramApiStatus = "script_result_parse_error"
                         }
                     }
                     // Do not terminate on the first discovered URL; Instagram
