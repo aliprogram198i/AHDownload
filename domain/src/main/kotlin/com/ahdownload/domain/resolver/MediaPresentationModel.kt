@@ -30,6 +30,43 @@ data class SmartResultSet(
     val smallestSize: MediaPresentationModel?,
 ) {
     val hiddenCount: Int get() = (all.size - visible.size).coerceAtLeast(0)
+
+    /** A direct audio-only source that can be used for audio extraction or muxing. */
+    val directAudioSourceAvailable: Boolean
+        get() = audio.any {
+            it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
+        }
+
+    /**
+     * Video choices are actionable only when they contain audio or a separate,
+     * valid audio source is available for the merge pipeline.
+     */
+    val videoWithAudioOptions: List<MediaPresentationModel>
+        get() = video.filter { item ->
+            val format = item.candidate.format
+            format.kind == MediaKind.Video &&
+                format.hasVideo &&
+                (format.hasAudio || directAudioSourceAvailable)
+        }
+
+    val muxedVideoSourceAvailable: Boolean
+        get() = video.any {
+            val format = it.candidate.format
+            format.kind == MediaKind.Video && format.hasVideo && format.hasAudio
+        }
+
+    val audioExtractionAvailable: Boolean
+        get() = directAudioSourceAvailable || muxedVideoSourceAvailable
+
+    /** Video sources omitted from the video+audio picker due to missing audio proof. */
+    val unresolvedVideoCandidateCount: Int
+        get() = video.count {
+            val format = it.candidate.format
+            format.kind == MediaKind.Video &&
+                format.hasVideo &&
+                !format.hasAudio &&
+                !directAudioSourceAvailable
+        }
 }
 
 internal fun MediaCandidate.resultGroup(): MediaResultGroup = when (format.kind) {
