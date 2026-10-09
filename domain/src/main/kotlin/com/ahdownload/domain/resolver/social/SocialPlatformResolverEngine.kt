@@ -6,6 +6,7 @@ import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.*
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import java.net.URI
 import java.net.URLDecoder
@@ -218,8 +219,7 @@ class SocialPlatformResolverEngine(
                     if (candidate == null) unclassifiedSourceCount++
                     candidate
                 }
-                // Instagram often exposes a poster/thumbnail beside the playback source.
-                // A Reel/video request must not present that image as a downloadable video.
+                // A video request must never present an image-only poster as a downloadable video.
                 val rejectedImageCandidateCount = if (request.link.kind == MediaKind.Video) {
                     builtCandidates.count { !strategy.shouldKeepCandidate(request.link.kind, it.format.kind) }
                 } else {
