@@ -40,6 +40,11 @@ internal class DownloadRecordJsonCodec(
                 if (companionHeaders == null || companionHeaders.isJsonNull) {
                     task.add("companionAudioRequestHeaders", com.google.gson.JsonObject())
                 }
+
+                val companionManifest = task.get("companionAudioStreamingManifest")
+                if (companionManifest == null || companionManifest.isJsonNull) {
+                    task.addProperty("companionAudioStreamingManifest", false)
+                }
             }
 
             root.toString()
