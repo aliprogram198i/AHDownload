@@ -1388,6 +1388,63 @@ private fun UnifiedDownloadResultCard(
             selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null
         )
 
+    val sourceFingerprint = sourceCandidates.joinToString("|") { candidate ->
+        candidate.id + ":" + candidate.format.id + ":" + candidate.format.kind.name + ":" +
+            candidate.format.container.name + ":" + candidate.format.height + ":" +
+            candidate.format.bitrateKbps + ":" + candidate.format.hasVideo + ":" + candidate.format.hasAudio
+    } + "|" + primaryOptions.joinToString(",") { it.candidate.id } +
+        "|" + audioOptions.joinToString(",") { it.candidate.id }
+    val resultGeneration = remember(title, platform, durationMs, kind, sourceFingerprint) {
+        UUID.randomUUID().toString().take(8)
+    }
+    val resultCardTrace = remember(resultGeneration) {
+        ResultCardTraceRecorder(uiTraceLogger, resultGeneration)
+    }
+    val clipboard = LocalClipboardManager.current
+
+    LaunchedEffect(resultGeneration) {
+        resultCardTrace.recordSnapshot(
+            platform = platform,
+            kind = kind,
+            title = title,
+            hasThumbnail = !thumbnailUrl.isNullOrBlank(),
+            durationMs = durationMs,
+            rawCandidates = sourceCandidates,
+            primaryOptions = primaryOptions,
+            videoOptions = allVideoOptions,
+            audioOptions = audioOptions,
+            directAudioAvailable = directAudioAvailable,
+            audioAvailable = audioAvailable,
+            visibleVideoOptions = videoOptions.size,
+            videoOptionsExpanded = showAllVideoOptions,
+            selectedCandidateId = selectedCandidateId,
+            selectedAudioCandidateId = selectedAudioCandidateId,
+            selectedAudioOutputFormat = selectedAudioOutputFormat,
+        )
+    }
+
+    LaunchedEffect(
+        resultGeneration, selectionMode, selectedCandidateId, selectedAudioCandidateId,
+        selectedAudioOutputFormat, validatingCandidateId, downloadQueued, errorMessage,
+        showAllVideoOptions, favorite, canDownload, videoOptions.size,
+    ) {
+        resultCardTrace.recordState(
+            selectionMode = selectionMode?.name ?: "NONE",
+            selectedVideoId = selectedCandidateId,
+            selectedAudioId = selectedAudioCandidateId,
+            selectedAudioOutputFormat = selectedAudioOutputFormat?.name,
+            selectedVideoQuality = selectedVideo?.qualityLabel,
+            selectedAudioQuality = selectedAudioSource?.qualityLabel,
+            validatingCandidateId = validatingCandidateId,
+            downloadQueued = downloadQueued,
+            favorite = favorite,
+            videoOptionsExpanded = showAllVideoOptions,
+            visibleVideoOptions = videoOptions.size,
+            canDownload = canDownload,
+            errorMessage = errorMessage,
+        )
+    }
+
     AHCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
