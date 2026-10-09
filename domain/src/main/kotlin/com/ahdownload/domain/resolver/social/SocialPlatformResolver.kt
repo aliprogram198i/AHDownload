@@ -13,6 +13,7 @@ import java.net.URLDecoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -135,21 +136,47 @@ class SocialPlatformResolver(
                         null,
                     )
                     try {
-                        fallback = pageClient.get(pageUrl)
-                            .let { WebPageMediaParser.parse(it, pageUrl) }
-                        logger.log(
-                            DiagnosticLevel.INFO,
-                            "SOCIAL_PAGE_FETCH_RESULT",
-                            "اكتمل جلب وتحليل HTML الاحتياطي",
-                            "social.resolve.page_fetch",
-                            mapOf(
-                                "platform" to platform.name,
-                                "operation_id" to (request.operationId ?: "none"),
-                                "page_url_source" to pageUrlSource,
-                                "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
-                            ),
-                            null,
-                        )
+                        // Instagram can spend nearly the entire resolver budget in WebView.
+                        // Bound its independent HTML fallback to avoid converting a recoverable
+                        // no-candidate result into a resolver timeout.
+                        val pageFetchTimeoutMs = if (platform == MediaPlatform.Instagram) {
+                            INSTAGRAM_PAGE_FETCH_TIMEOUT_MS
+                        } else {
+                            SOCIAL_PAGE_FETCH_TIMEOUT_MS
+                        }
+                        val html = withTimeoutOrNull(pageFetchTimeoutMs) {
+                            pageClient.get(pageUrl)
+                        }
+                        if (html == null) {
+                            logger.log(
+                                DiagnosticLevel.WARNING,
+                                "SOCIAL_PAGE_FETCH_TIMEOUT",
+                                "انتهت مهلة جلب HTML الاحتياطي",
+                                "social.resolve.page_fetch",
+                                mapOf(
+                                    "platform" to platform.name,
+                                    "operation_id" to (request.operationId ?: "none"),
+                                    "page_url_source" to pageUrlSource,
+                                    "timeout_ms" to pageFetchTimeoutMs.toString(),
+                                ),
+                                null,
+                            )
+                        } else {
+                            fallback = WebPageMediaParser.parse(html, pageUrl)
+                            logger.log(
+                                DiagnosticLevel.INFO,
+                                "SOCIAL_PAGE_FETCH_RESULT",
+                                "اكتمل جلب وتحليل HTML الاحتياطي",
+                                "social.resolve.page_fetch",
+                                mapOf(
+                                    "platform" to platform.name,
+                                    "operation_id" to (request.operationId ?: "none"),
+                                    "page_url_source" to pageUrlSource,
+                                    "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
+                                ),
+                                null,
+                            )
+                        }
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
@@ -436,5 +463,6 @@ class SocialPlatformResolver(
     private companion object {
         const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
         const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
+        const val INSTAGRAM_PAGE_FETCH_TIMEOUT_MS = 4_500L
     }
 }
