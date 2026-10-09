@@ -498,7 +498,7 @@ class SocialPlatformResolver(
         return runCatching {
             val uri = URI(pageUrl)
             val host = uri.host?.lowercase().orEmpty()
-            if (host != "vimeo.com" && host != "www.vimeo.com") return null
+            if (host != "vimeo.com" && host != "www.vimeo.com" && host != "player.vimeo.com") return null
             val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
             val videoIndex = segments.indexOfLast { it.matches(Regex("""\d{5,}""")) }
             if (videoIndex < 0) return null
