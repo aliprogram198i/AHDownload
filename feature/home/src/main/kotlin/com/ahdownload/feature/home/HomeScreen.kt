@@ -1303,10 +1303,16 @@ private fun UnifiedDownloadResultCard(
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
 ) {
+    val directAudioAvailable = audioOptions.any {
+        it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
+    }
+    // A video-only representation is a valid "video + audio" choice only when
+    // the resolver also supplied a direct audio track that can be merged at download time.
     val allVideoOptions = primaryOptions
         .filter {
             it.candidate.format.kind == MediaKind.Video &&
-                it.candidate.format.hasVideo
+                it.candidate.format.hasVideo &&
+                (it.candidate.format.hasAudio || directAudioAvailable)
         }
         .distinctBy { it.candidate.id }
 
@@ -1314,12 +1320,9 @@ private fun UnifiedDownloadResultCard(
     var selectionMode by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf<OutputSelectionMode?>(null) }
 
     val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
-    val directAudioAvailable = audioOptions.any {
-        it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
-    }
     val muxedVideoAvailable = allVideoOptions.any { it.candidate.format.hasAudio }
     val audioAvailable = directAudioAvailable || muxedVideoAvailable
-    val selectedVideo = videoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
+    val selectedVideo = allVideoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
     val selectedAudioSource = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
 
     val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
@@ -1407,12 +1410,13 @@ private fun UnifiedDownloadResultCard(
                                     (it.candidate.format.height ?: 0) > 0
                                 }
                                 val unknownVideoSources = allVideoOptions.size - knownVideoQualities
-                                if (knownVideoQualities > 0) add("$knownVideoQualities خيار فيديو")
+                                if (knownVideoQualities > 0) add("$knownVideoQualities خيار فيديو + صوت")
                                 if (unknownVideoSources > 0) {
                                     add("$unknownVideoSources مصدر فيديو غير محدد الجودة")
                                 }
                                 if (audioAvailable) {
-                                    add("${AudioOutputFormat.entries.size} صيغ إخراج صوت")
+                                    add("${audioOptions.size} جودة/مصدر صوت")
+                                    add("${AudioOutputFormat.entries.size} صيغة إخراج")
                                 } else if (showAudioSection) {
                                     add("مصدر الصوت غير متاح")
                                 }
@@ -1427,8 +1431,8 @@ private fun UnifiedDownloadResultCard(
             if (showVideoSection) {
                 AHSectionHeader(
                     icon = Icons.Rounded.VideoFile,
-                    title = "استخراج الفيديو",
-                    subtitle = "اختر الجودة والصيغة المتاحتين في المصدر؛ كل تركيبة جودة وصيغة تظهر مرة واحدة.",
+                    title = "الفيديو + الصوت",
+                    subtitle = "اختر جودة الفيديو. إذا كان الصوت في مسار منفصل، سيُدمجه التطبيق عند التنزيل.",
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1886,7 +1890,11 @@ private fun formatOptionPrimaryLabel(
     }
 
     return when (model.candidate.format.kind) {
-        MediaKind.Audio -> containerLabel(model.candidate.format.container)
+        MediaKind.Audio -> model.candidate.format.bitrateKbps
+            ?.takeIf { it > 0 }
+            ?.let { "$it kbps" }
+            ?: model.qualityLabel.takeIf { it.isNotBlank() && !it.equals("Audio", ignoreCase = true) }
+            ?: containerLabel(model.candidate.format.container)
         MediaKind.Video -> "استخراج"
         else -> "صوت"
     }
@@ -1902,10 +1910,8 @@ private fun formatOptionSecondaryLabel(
         return when (format.kind) {
             MediaKind.Audio -> buildList {
                 normalizeCodecForUi(format.audioCodec)?.let(::add)
-                model.qualityLabel
-                    .takeIf { it.isNotBlank() && !it.equals("Audio", ignoreCase = true) }
-                    ?.let(::add)
-            }.joinToString(" · ").ifBlank { "مسار صوتي مباشر" }
+                containerLabel(format.container).takeIf { it != "صيغة غير معروفة" }?.let(::add)
+            }.distinct().joinToString(" · ").ifBlank { "مسار صوتي مباشر" }
 
             MediaKind.Video -> buildList {
                 add("من " + (format.height?.let { "${it}p" } ?: "الفيديو"))
@@ -1916,7 +1922,11 @@ private fun formatOptionSecondaryLabel(
         }
     }
 
-    return containerLabel(format.container)
+    return buildList {
+        add(containerLabel(format.container))
+        normalizeCodecForUi(format.videoCodec)?.let(::add)
+        normalizeCodecForUi(format.audioCodec)?.let(::add)
+    }.distinct().joinToString(" · ")
 }
 
 private fun formatOptionMetaLabel(
@@ -1940,11 +1950,11 @@ private fun formatOptionMetaLabel(
             model.fpsLabel?.let(::add)
             model.sizeLabel?.let(::add)
             if (format.kind == MediaKind.Video) {
-                add(if (format.hasAudio) "صوت مدمج" else "لا يوجد صوت مدمج مؤكد")
+                add(if (format.hasAudio) "صوت مدمج" else "سيُدمج الصوت عند التنزيل")
             }
         }.joinToString(" · ").ifBlank {
             when (format.kind) {
-                MediaKind.Video -> "لا يوجد صوت مدمج مؤكد"
+                MediaKind.Video -> "سيُدمج الصوت عند التنزيل"
                 MediaKind.Audio -> "مسار صوت مباشر"
                 else -> "نوع الوسائط غير محدد"
             }
