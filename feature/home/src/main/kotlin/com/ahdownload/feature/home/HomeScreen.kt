@@ -347,6 +347,27 @@ private fun HomeScreen(
                     "best_overall" to (resultSet.bestOverall?.candidate?.id ?: "none"),
                     "best_quality" to (resultSet.bestQuality?.candidate?.id ?: "none"),
                     "smallest_size" to (resultSet.smallestSize?.candidate?.id ?: "none"),
+                    "known_video_quality_count" to resultSet.video.count {
+                        (it.candidate.format.height ?: 0) > 0
+                    }.toString(),
+                    "unknown_video_quality_count" to resultSet.video.count {
+                        (it.candidate.format.height ?: 0) <= 0
+                    }.toString(),
+                    "known_audio_bitrate_count" to resultSet.audio.count {
+                        (it.candidate.format.bitrateKbps ?: 0) > 0
+                    }.toString(),
+                    "unknown_audio_bitrate_count" to resultSet.audio.count {
+                        (it.candidate.format.bitrateKbps ?: 0) <= 0
+                    }.toString(),
+                    "video_audio_track_confirmed_count" to resultSet.video.count {
+                        it.candidate.format.hasAudio
+                    }.toString(),
+                    "video_audio_track_unconfirmed_count" to resultSet.video.count {
+                        !it.candidate.format.hasAudio
+                    }.toString(),
+                    "browser_observed_candidate_count" to candidates.count {
+                        it.sourceContext.name == "BROWSER_OBSERVED"
+                    }.toString(),
                 ),
                 null,
             )
@@ -1379,8 +1400,19 @@ private fun UnifiedDownloadResultCard(
                         Text("النتيجة جاهزة", style = MaterialTheme.typography.labelLarge)
                         Text(
                             buildList {
-                                if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
-                                if (audioAvailable) add("${AudioOutputFormat.entries.size} صيغ صوت")
+                                val knownVideoQualities = allVideoOptions.count {
+                                    (it.candidate.format.height ?: 0) > 0
+                                }
+                                val unknownVideoSources = allVideoOptions.size - knownVideoQualities
+                                if (knownVideoQualities > 0) add("$knownVideoQualities جودة فيديو")
+                                if (unknownVideoSources > 0) {
+                                    add("$unknownVideoSources مصدر فيديو غير محدد الجودة")
+                                }
+                                if (audioAvailable) {
+                                    add("${AudioOutputFormat.entries.size} صيغ إخراج صوت")
+                                } else if (showAudioSection) {
+                                    add("مصدر الصوت غير متاح")
+                                }
                             }.joinToString(" · ").ifBlank { "خيارات متاحة" },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1393,7 +1425,7 @@ private fun UnifiedDownloadResultCard(
                 AHSectionHeader(
                     icon = Icons.Rounded.VideoFile,
                     title = "فيديو",
-                    subtitle = "الجودة المختارة تعني فيديو + صوت عندما يتوفر المصدر المدمج.",
+                    subtitle = "يُذكر الصوت كمُدمج فقط عندما تؤكد بيانات المصدر ذلك؛ وإلا نوضح الحاجة إلى مسار صوت منفصل.",
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1509,7 +1541,15 @@ private fun UnifiedDownloadResultCard(
                     .fillMaxWidth()
                     .semantics {
                         contentDescription = when (selectionMode) {
-                            OutputSelectionMode.VIDEO -> "تنزيل الفيديو مع الصوت"
+                            OutputSelectionMode.VIDEO -> when {
+                                selectedVideo?.candidate?.format?.hasAudio == true ->
+                                    "تنزيل الفيديو مع الصوت"
+                                selectedVideo != null && directAudioAvailable ->
+                                    "تنزيل الفيديو مع دمج مسار صوت منفصل"
+                                selectedVideo != null ->
+                                    "تنزيل الفيديو فقط؛ لم يتأكد توفر صوت للدمج"
+                                else -> "اختر جودة الفيديو أولًا"
+                            }
                             OutputSelectionMode.AUDIO -> selectedAudioOutputFormat
                                 ?.let { "تنزيل الصوت بصيغة ${it.label}" }
                                 ?: "اختر صيغة الصوت أولًا"
@@ -1834,7 +1874,8 @@ private fun formatOptionPrimaryLabel(
         return model.candidate.format.height
             ?.takeIf { it > 0 }
             ?.let { "${it}p" }
-            ?: model.qualityLabel
+            ?: model.qualityLabel.takeIf { it.isNotBlank() && !it.equals("Video", ignoreCase = true) }
+            ?: "جودة غير معروفة"
     }
 
     return when (model.candidate.format.kind) {
@@ -1891,7 +1932,17 @@ private fun formatOptionMetaLabel(
         buildList {
             model.fpsLabel?.let(::add)
             model.sizeLabel?.let(::add)
-        }.joinToString(" · ").ifBlank { "صورة + صوت" }
+        }.joinToString(" · ").ifBlank {
+            when (format.kind) {
+                MediaKind.Video -> if (format.hasAudio) {
+                    "مسار فيديو وصوت مدمج"
+                } else {
+                    "وجود الصوت غير مؤكد؛ قد يلزم مسار صوت منفصل"
+                }
+                MediaKind.Audio -> "مسار صوت مباشر"
+                else -> "نوع الوسائط غير محدد"
+            }
+        }
     }
 }
 
