@@ -377,7 +377,7 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("action=INSPECT_STORAGE"))
         assertTrue(
             report.contains(
-                "FAILURE_CHAIN\\nvalidation_passed -> download_completed_locally -> " +
+                "FAILURE_CHAIN\nvalidation_passed -> download_completed_locally -> " +
                     "audio_extraction_completed -> destination_copy_failed",
             ),
         )

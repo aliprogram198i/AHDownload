@@ -43,7 +43,7 @@ jobs:
       - name: Compile and test
         run: |
           set -euo pipefail
-          gradle --no-daemon testDebugUnitTest assembleDebug
+          gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
 
   release:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
