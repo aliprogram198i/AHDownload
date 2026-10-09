@@ -320,7 +320,16 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                       safeRead(()=>document.querySelector("ytd-player")&&document.querySelector("ytd-player").playerResponse),
                       safeRead(()=>document.querySelector("ytd-watch-flexy")&&document.querySelector("ytd-watch-flexy").playerResponse)
                     ];
-                    for(const candidate of responseCandidates){p=responseString(candidate);if(p)break;}
+                    let fallbackPlayerResponse=null;
+                    for(const candidate of responseCandidates){
+                      const candidateText=responseString(candidate);
+                      if(!candidateText)continue;
+                      if(!fallbackPlayerResponse)fallbackPlayerResponse=candidateText;
+                      // Prefer a response with actual format catalog metadata over a
+                      // lightweight playability/details object from the initial page.
+                      if(candidateText.includes('"streamingData"')){p=candidateText;break;}
+                    }
+                    if(!p)p=fallbackPlayerResponse;
                     try{
                       const play=document.querySelector('.ytp-play-button,#movie_player .ytp-play-button');
                       if(play) play.click();
