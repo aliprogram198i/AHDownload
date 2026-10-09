@@ -59,8 +59,8 @@ internal fun classifyYouTubeObservedMediaUrl(rawUrl: String): String? {
 
     val itag = query["itag"]
     return when {
-        !itag.isNullOrBlank() && itag in YOUTUBE_AUDIO_ITAGS -> "audio"
-        !itag.isNullOrBlank() -> "video"
+        itag in YOUTUBE_AUDIO_ITAGS -> "audio"
+        itag in YOUTUBE_VIDEO_ITAGS -> "video"
         else -> null
     }
 }
@@ -69,6 +69,14 @@ private val YOUTUBE_AUDIO_ITAGS = setOf(
     "139", "140", "141", "171", "172",
     "249", "250", "251", "256", "258",
     "325", "328", "599", "600",
+)
+
+private val YOUTUBE_VIDEO_ITAGS = setOf(
+    "18", "22", "37", "43", "44", "45", "46", "59", "78",
+    "160", "133", "134", "135", "136", "137", "264", "266",
+    "298", "299", "242", "243", "244", "247", "248", "271",
+    "272", "278", "308", "313", "315", "394", "395", "396",
+    "397", "398", "399", "400", "401",
 )
 
 class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessionProvider {
@@ -269,13 +277,15 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     const isM3u8=x=>/.m3u8(?:[?#]|$)/i.test(x);
                     const isGoogleVideo=x=>{try{return new URL(x).hostname.toLowerCase().endsWith(".googlevideo.com")}catch(_){return false}};
                     const audioItags=new Set(["139","140","141","171","172","249","250","251","256","258","325","328","599","600"]);
+                    const videoItags=new Set(["18","22","37","43","44","45","46","59","78","160","133","134","135","136","137","264","266","298","299","242","243","244","247","248","271","272","278","308","313","315","394","395","396","397","398","399","400","401"]);
                     const classify=x=>{try{
                       const u=new URL(x),mime=(u.searchParams.get("mime")||u.searchParams.get("type")||"").toLowerCase();
                       if(mime.startsWith("audio/"))return a;
                       if(mime.startsWith("video/"))return v;
                       if(/\/videoplayback(?:[/?]|$)/i.test(u.pathname)){
                         const itag=u.searchParams.get("itag");
-                        if(itag)return audioItags.has(itag)?a:v;
+                        if(audioItags.has(itag))return a;
+                        if(videoItags.has(itag))return v;
                       }
                     }catch(_){}return null};
                     const addResource=x=>{if(!isHttp(x)||isM3u8(x))return;const target=classify(x);if(target)target.add(x)};
