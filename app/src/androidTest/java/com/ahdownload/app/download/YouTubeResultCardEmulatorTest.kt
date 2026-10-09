@@ -4,12 +4,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import androidx.compose.ui.test.assertExists
-import androidx.compose.ui.test.fetchSemanticsNodes
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
