@@ -56,8 +56,16 @@ class SocialPlatformResolver(
             )
         }
 
+        val effectiveTimeoutMs = if (
+            platform == MediaPlatform.Instagram && resolveTimeoutMs == SOCIAL_RESOLVE_TIMEOUT_MS
+        ) {
+            INSTAGRAM_SOCIAL_RESOLVE_TIMEOUT_MS
+        } else {
+            resolveTimeoutMs
+        }
+
         return try {
-            withTimeout(resolveTimeoutMs) {
+            withTimeout(effectiveTimeoutMs) {
                 logger.log(
                     DiagnosticLevel.INFO,
                     "SOCIAL_RESOLUTION_STARTED",
@@ -361,7 +369,7 @@ class SocialPlatformResolver(
                 "social.resolve",
                 mapOf(
                     "platform" to platform.name,
-                    "timeout_ms" to resolveTimeoutMs.toString(),
+                    "timeout_ms" to effectiveTimeoutMs.toString(),
                     "operation_id" to (request.operationId ?: "none"),
                 ),
                 error,
@@ -529,6 +537,7 @@ class SocialPlatformResolver(
 
     private companion object {
         const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
+        const val INSTAGRAM_SOCIAL_RESOLVE_TIMEOUT_MS = 27_000L
         const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
         const val INSTAGRAM_EMBED_FETCH_TIMEOUT_MS = 3_500L
     }
