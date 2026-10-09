@@ -25,12 +25,22 @@ class SmartResultEngine {
             .filter { it.group == MediaResultGroup.Other }
             .distinctBy { it.candidate.sourceUrl }
         val normalized = (video + audio + other).sortedByDescending { it.score }
-        val playableVideo = video.filter { it.candidate.format.hasVideo && it.candidate.format.hasAudio }
-        val presentationVideo = playableVideo.ifEmpty { video }
+        val directAudioSourceAvailable = audio.any {
+            it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
+        }
+        val presentationVideo = video.filter { item ->
+            val format = item.candidate.format
+            format.kind == MediaKind.Video &&
+                format.hasVideo &&
+                (format.hasAudio || directAudioSourceAvailable)
+        }
 
+        // Do not recommend an unverified video-only browser URL as a ready
+        // download choice. Keep that source in diagnostics, but not as the
+        // best overall/quality option when no audio track can be confirmed.
         val bestOverall = presentationVideo.firstOrNull()
             ?: audio.firstOrNull()
-            ?: normalized.firstOrNull()
+            ?: other.firstOrNull()
         val bestQuality = presentationVideo.maxWithOrNull(
             compareBy<MediaPresentationModel> { it.candidate.format.height ?: 0 }
                 .thenBy { it.candidate.format.fps ?: 0.0 }
