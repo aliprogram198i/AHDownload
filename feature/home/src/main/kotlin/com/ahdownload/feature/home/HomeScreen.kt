@@ -347,13 +347,16 @@ private fun HomeScreen(
                     "best_overall" to (resultSet.bestOverall?.candidate?.id ?: "none"),
                     "best_quality" to (resultSet.bestQuality?.candidate?.id ?: "none"),
                     "smallest_size" to (resultSet.smallestSize?.candidate?.id ?: "none"),
-                    "known_video_quality_count" to resultSet.video.count {
-                        (it.candidate.format.height ?: 0) > 0
-                    }.toString(),
+                    "video_format_option_count" to resultSet.video.size.toString(),
+                    "known_video_resolution_count" to resultSet.video
+                        .mapNotNull { it.candidate.format.height?.takeIf { height -> height > 0 } }
+                        .distinct()
+                        .size
+                        .toString(),
                     "unknown_video_quality_count" to resultSet.video.count {
                         (it.candidate.format.height ?: 0) <= 0
                     }.toString(),
-                    "known_audio_bitrate_count" to resultSet.audio.count {
+                    "known_audio_bitrate_tier_count" to resultSet.audio.count {
                         (it.candidate.format.bitrateKbps ?: 0) > 0
                     }.toString(),
                     "unknown_audio_bitrate_count" to resultSet.audio.count {
@@ -1454,7 +1457,7 @@ private fun UnifiedDownloadResultCard(
                             enabled = validatingCandidateId == null,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text("عرض المزيد من الجودات")
+                            Text("عرض المزيد من الصيغ والجودات")
                         }
                     }
                 } else {
