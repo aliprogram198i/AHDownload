@@ -33,4 +33,6 @@ data class MediaCandidate(
      * acquired through the manifest-aware FFmpeg path instead of byte streaming.
      */
     val streamingManifest: Boolean = false,
+    /** True when the paired audio URL itself is an HLS/DASH manifest. */
+    val companionAudioStreamingManifest: Boolean = false,
 )
