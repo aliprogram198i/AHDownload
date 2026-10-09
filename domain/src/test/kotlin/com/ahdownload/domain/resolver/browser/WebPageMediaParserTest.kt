@@ -147,4 +147,29 @@ class WebPageMediaParserTest {
             result.mediaUrls,
         )
     }
+
+    @Test
+    fun extractsFallbackDashAndHlsSourcesFromRedditVideoJson() {
+        val response = """{
+            "reddit_video": {
+              "fallback_url": "https:\\/\\/v.redd.it\\/clip\\/DASH_720.mp4?source=fallback",
+              "dash_url": "https:\\/\\/v.redd.it\\/clip\\/DASHPlaylist.mpd",
+              "hls_url": "https:\\/\\/v.redd.it\\/clip\\/HLSPlaylist.m3u8"
+            }
+        }"""
+
+        val result = WebPageMediaParser.parse(
+            html = response,
+            baseUrl = "https://www.reddit.com/r/example/comments/abc123/video/",
+        )
+
+        assertEquals(
+            setOf(
+                "https://v.redd.it/clip/DASH_720.mp4?source=fallback",
+                "https://v.redd.it/clip/DASHPlaylist.mpd",
+                "https://v.redd.it/clip/HLSPlaylist.m3u8",
+            ),
+            result.mediaUrls.toSet(),
+        )
+    }
 }
