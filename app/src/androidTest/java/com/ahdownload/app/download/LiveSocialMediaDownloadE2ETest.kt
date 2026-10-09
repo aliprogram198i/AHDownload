@@ -271,13 +271,18 @@ class LiveSocialMediaDownloadE2ETest {
             val record = app.downloadRepository.listHistory().firstOrNull {
                 it.task.sourcePageUrl == sourcePageUrl && it.task.displayName == displayName
             }
-            if (record != null && record.status in setOf(
-                    DownloadStatus.COMPLETED,
+            if (record != null) {
+                // DownloadCoordinator marks bytes as completed before DownloadWorker has
+                // committed the file into MediaStore and persisted destinationUri. Keep waiting
+                // during that publish window so this live test never mistakes an intermediate
+                // COMPLETED record for a completed, user-visible download.
+                val isTerminalFailure = record.status in setOf(
                     DownloadStatus.FAILED,
                     DownloadStatus.CANCELLED,
                 )
-            ) {
-                return record
+                val isPublished = record.status == DownloadStatus.COMPLETED &&
+                    !record.destinationUri.isNullOrBlank()
+                if (isTerminalFailure || isPublished) return record
             }
             delay(750L)
         }
