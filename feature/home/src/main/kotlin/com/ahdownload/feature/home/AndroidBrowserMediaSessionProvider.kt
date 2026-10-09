@@ -614,6 +614,10 @@ class AndroidBrowserMediaSessionProvider(
                             scheduleInspection(view, 900L)
                             scheduleInspection(view, 2200L)
                             scheduleInspection(view, 4000L)
+                            scheduleInspection(view, 6000L)
+                            scheduleInspection(view, 8000L)
+                            scheduleInspection(view, 10000L)
+                            scheduleInspection(view, 12000L)
                         }
                     }
 
@@ -631,11 +635,17 @@ class AndroidBrowserMediaSessionProvider(
                         scheduleInspection(view, 1400L)
                         scheduleInspection(view, 2600L)
                         scheduleInspection(view, 4200L)
+                        // The GraphQL request is asynchronous; keep checking for its result
+                        // until shortly before the bounded Instagram session timeout.
+                        scheduleInspection(view, 6500L)
+                        scheduleInspection(view, 8500L)
+                        scheduleInspection(view, 10500L)
+                        scheduleInspection(view, 12500L)
                         main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
                     }
                 }
                 timeout = Runnable { finish() }
-                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 14000L else 10000L
+                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 18000L else 10000L
                 main.postDelayed(timeout!!, sessionTimeoutMs)
                 view.loadUrl(url)
             }
