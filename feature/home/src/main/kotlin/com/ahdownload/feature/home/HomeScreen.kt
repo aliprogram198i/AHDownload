@@ -1524,7 +1524,11 @@ private fun UnifiedDownloadResultCard(
                 text = when {
                     validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
                     selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ->
-                        "تنزيل " + buildQualityLine(selectedVideo)
+                        "تنزيل " + buildQualityLine(selectedVideo) + when {
+                            selectedVideo.candidate.format.hasAudio -> ""
+                            directAudioAvailable -> " · دمج الصوت"
+                            else -> " · فيديو فقط"
+                        }
                     selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null ->
                         "تنزيل " + audioOutputFormatButtonLabel(selectedAudioOutputFormat)
                     else -> "اختر خيارًا للتنزيل"
