@@ -157,6 +157,22 @@ class AndroidBrowserMediaSessionProvider(
                 val script = """
                     (function(){
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
+                      // Instagram may defer the actual CDN request until its player starts.
+                      // Prime at most two video elements silently so the WebView can observe the
+                      // real media request; never click page controls or follow login prompts.
+                      const videoNodes=[...document.querySelectorAll('video')].slice(0,2);
+                      videoNodes.forEach(v=>{
+                        try{
+                          v.muted=true;
+                          v.playsInline=true;
+                          v.setAttribute('playsinline','');
+                          if(v.readyState===0) v.load();
+                          if(v.paused){
+                            const playback=v.play();
+                            if(playback&&typeof playback.catch==='function') playback.catch(()=>{});
+                          }
+                        }catch(_){}
+                      });
                       const elements=[...document.querySelectorAll('video,audio')].map(e=>{
                         const url=e.currentSrc||e.src||e.getAttribute('data-src');
                         const tag=e.tagName.toLowerCase();
