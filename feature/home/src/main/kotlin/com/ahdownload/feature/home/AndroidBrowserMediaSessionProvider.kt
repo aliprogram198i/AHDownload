@@ -310,7 +310,6 @@ class AndroidBrowserMediaSessionProvider(
                               const tokenMatch=source.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
                               return tokenMatch?tokenMatch[1]:'';
                             };
-                            let requestMarkup=markup;
                             let lsd=extractLsd(markup);
                             let lsdWarmupStatus='not_needed';
                             // Some public permalink responses do not include __eqmc/LSD. Fetch the
@@ -338,66 +337,40 @@ class AndroidBrowserMediaSessionProvider(
                                 lsdWarmupStatus='network_error';
                               }
                             }
+                            // LSD is optional for PolarisPostRootQuery. Some public/logged-out
+                            // responses omit it; do not abort source discovery solely because
+                            // the page omitted this web-app token.
                             if(!lsd){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_missing_lsd_home_'+lsdWarmupStatus;
-                              return;
+                              window.__ahInstagramApiStatus='graphql_lsd_unavailable_home_'+lsdWarmupStatus;
                             }
                             let csrf='';
                             try{
                               const csrfMatch=(document.cookie||'').match(/(?:^|;\s*)csrftoken=([^;]+)/);
                               csrf=csrfMatch?decodeURIComponent(csrfMatch[1]):'';
                             }catch(_){}
-                            const jazoest='2'+Array.from(lsd).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
-                            const hsMatch=requestMarkup.match(/"__hs"\s*:\s*"([^"]+)"/);
-                            const hs=hsMatch?hsMatch[1]:'19624.HYP:instagram_web_pkg.2.1..0.0';
                             const variables={
                               shortcode:instagramShortcode,
-                              fetch_comment_count:0,
-                              fetch_related_profile_media_count:0,
-                              parent_comment_count:0,
-                              child_comment_count:0,
-                              fetch_like_count:0,
-                              fetch_tagged_user_count:0,
-                              fetch_preview_comment_count:0,
-                              has_threaded_comments:false,
-                              hoisted_comment_id:null,
-                              hoisted_reply_id:null,
                               __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider:false
                             };
                             const form=new URLSearchParams();
-                            const fields={
-                              av:'0',
-                              __d:'www',
-                              __user:'0',
-                              __a:'1',
-                              __req:'3',
-                              __hs:hs,
-                              dpr:'2',
-                              __ccg:'UNKNOWN',
-                              __comet_req:'7',
-                              fb_api_caller_class:'RelayModern',
-                              fb_api_req_friendly_name:'PolarisPostRootQuery',
-                              variables:JSON.stringify(variables),
-                              server_timestamps:'true',
-                              doc_id:'27128499623469141',
-                              lsd:lsd,
-                              jazoest:jazoest
-                            };
-                            Object.entries(fields).forEach(([key,value])=>form.set(key,String(value)));
+                            form.set('doc_id','27128499623469141');
+                            form.set('variables',JSON.stringify(variables));
+                            if(lsd){
+                              form.set('lsd',lsd);
+                              const jazoest='2'+Array.from(lsd).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
+                              form.set('jazoest',jazoest);
+                            }
                             const graphqlHeaders={
                               'Accept':'*/*',
                               'Content-Type':'application/x-www-form-urlencoded',
                               'X-IG-App-ID':'936619743392459',
-                              'X-ASBD-ID':'359341',
-                              'X-IG-WWW-Claim':'0',
-                              'X-FB-Friendly-Name':'PolarisPostRootQuery',
-                              'X-FB-LSD':lsd,
                               'X-Requested-With':'XMLHttpRequest',
                               'Origin':location.origin,
-                              'Referer':location.href
+                              'Referer':location.origin+'/'
                             };
                             if(csrf)graphqlHeaders['X-CSRFToken']=csrf;
-                            const response=await fetch('/api/graphql',{
+                            if(lsd)graphqlHeaders['X-FB-LSD']=lsd;
+                            const response=await fetch('/graphql/query',{
                               method:'POST',
                               credentials:'include',
                               headers:graphqlHeaders,
