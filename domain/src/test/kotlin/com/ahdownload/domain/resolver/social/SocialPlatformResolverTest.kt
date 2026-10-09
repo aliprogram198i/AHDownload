@@ -38,6 +38,60 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun instagramPublicEmbedFallbackResolvesVideoWhenPageHtmlHasNoMedia() = runTest {
+        val pageUrl = "https://www.instagram.com/p/ABC123/"
+        val embedUrl = "https://www.instagram.com/p/ABC123/embed/captioned/"
+        val mediaUrl = "https://scontent.cdninstagram.com/o1/v/t2/f2/m367/clip.mp4?token=opaque"
+        val fetchedUrls = mutableListOf<String>()
+        val requestHeaders = mutableMapOf<String, Map<String, String>>()
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = pageUrl,
+                    mediaUrls = emptyList(),
+                    instagramApiStatus = "legacy_network_error_graphql_error",
+                ),
+            ),
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    fetchedUrls += url
+                    return if (url == embedUrl) {
+                        """<html><head><meta property="og:video" content="$mediaUrl"></head></html>"""
+                    } else {
+                        """<html><head><title>Instagram</title></head><body></body></html>"""
+                    }
+                }
+
+                override suspend fun get(url: String, headers: Map<String, String>): String {
+                    requestHeaders[url] = headers
+                    return get(url)
+                }
+            },
+        )
+
+        val requestLink = link(MediaPlatform.Instagram).copy(
+            originalUrl = pageUrl,
+            normalizedUrl = pageUrl,
+        )
+        val result = resolver.resolve(ResolverRequest(link = requestLink, operationId = "instagram-embed-fallback-test"))
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
+        assertEquals(listOf(pageUrl, embedUrl), fetchedUrls)
+        assertEquals(pageUrl, requestHeaders[embedUrl]?.get("Referer"))
+        assertTrue(requestHeaders[embedUrl]?.get("User-Agent").orEmpty().contains("Android"))
+        val embedEvent = events.single { it.first == "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT" }
+        assertEquals("media_found", embedEvent.second["fallback_status"])
+        assertEquals("1", embedEvent.second["media_count"])
+        assertEquals("instagram-embed-fallback-test", embedEvent.second["operation_id"])
+    }
+
+    @Test
     fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = SocialPlatformResolver(
