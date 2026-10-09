@@ -298,9 +298,10 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                       addResource(u)
                     })}catch(_){}
                     const responseString=value=>{
-                      if(!value)return null;
+                      if(value==null)return null;
                       if(typeof value==="string"){
-                        try{const parsed=JSON.parse(value);if(parsed&&typeof parsed==="object")value=parsed;else return null}catch(_){return null}
+                        try{const parsed=JSON.parse(value);if(parsed&&typeof parsed==="object")value=parsed;}
+                        catch(_){return value.trim()?value:null;}
                       }
                       if(value&&typeof value==="object"&&value.playerResponse&&typeof value.playerResponse==="object"&&!value.streamingData)
                         value=value.playerResponse;
@@ -308,19 +309,18 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         return JSON.stringify(value);
                       return null;
                     };
+                    const safeRead=read=>{try{return read()}catch(_){return null}};
                     let p=null;
-                    try{
-                      const moviePlayer=document.querySelector("#movie_player")||window.movie_player;
-                      const responseCandidates=[
-                        window.ytInitialPlayerResponse,
-                        window.ytplayer&&window.ytplayer.config&&window.ytplayer.config.args&&window.ytplayer.config.args.player_response,
-                        moviePlayer&&typeof moviePlayer.getPlayerResponse==="function"?moviePlayer.getPlayerResponse():null,
-                        window.yt&&window.yt.player&&typeof window.yt.player.getPlayerResponse==="function"?window.yt.player.getPlayerResponse():null,
-                        document.querySelector("ytd-player")&&document.querySelector("ytd-player").playerResponse,
-                        document.querySelector("ytd-watch-flexy")&&document.querySelector("ytd-watch-flexy").playerResponse
-                      ];
-                      for(const candidate of responseCandidates){p=responseString(candidate);if(p)break;}
-                    }catch(_){}
+                    const moviePlayer=safeRead(()=>document.querySelector("#movie_player")||window.movie_player);
+                    const responseCandidates=[
+                      safeRead(()=>window.ytInitialPlayerResponse),
+                      safeRead(()=>window.ytplayer&&window.ytplayer.config&&window.ytplayer.config.args&&window.ytplayer.config.args.player_response),
+                      safeRead(()=>moviePlayer&&typeof moviePlayer.getPlayerResponse==="function"?moviePlayer.getPlayerResponse():null),
+                      safeRead(()=>window.yt&&window.yt.player&&typeof window.yt.player.getPlayerResponse==="function"?window.yt.player.getPlayerResponse():null),
+                      safeRead(()=>document.querySelector("ytd-player")&&document.querySelector("ytd-player").playerResponse),
+                      safeRead(()=>document.querySelector("ytd-watch-flexy")&&document.querySelector("ytd-watch-flexy").playerResponse)
+                    ];
+                    for(const candidate of responseCandidates){p=responseString(candidate);if(p)break;}
                     try{
                       const play=document.querySelector('.ytp-play-button,#movie_player .ytp-play-button');
                       if(play) play.click();
