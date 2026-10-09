@@ -105,6 +105,7 @@ class SocialPlatformResolver(
                 val pageUrl = pageUrlCandidate?.second
                 val pageUrlSource = pageUrlCandidate?.first ?: "none"
                 var fallback: ParsedPageMedia? = null
+                var platformFallback: ParsedPageMedia? = null
 
                 if (pageUrl == null) {
                     logger.log(
@@ -135,17 +136,32 @@ class SocialPlatformResolver(
                         null,
                     )
                     try {
-                        fallback = pageClient.get(pageUrl)
+                        // Reddit embeds its actual video rendition URLs in the public post JSON.
+                        // Prefer that first-party JSON representation for comment/post URLs rather
+                        // than depending on HTML hydration fields alone.
+                        val pageFetchUrl = if (platform == MediaPlatform.Reddit) {
+                            redditJsonEndpoint(pageUrl) ?: pageUrl
+                        } else {
+                            pageUrl
+                        }
+                        val fetchMode = if (pageFetchUrl != pageUrl) "REDDIT_JSON" else "HTML"
+                        val fetchHeaders = if (fetchMode == "REDDIT_JSON") {
+                            mapOf("Accept" to "application/json")
+                        } else {
+                            emptyMap()
+                        }
+                        fallback = pageClient.get(pageFetchUrl, fetchHeaders)
                             .let { WebPageMediaParser.parse(it, pageUrl) }
                         logger.log(
                             DiagnosticLevel.INFO,
                             "SOCIAL_PAGE_FETCH_RESULT",
-                            "اكتمل جلب وتحليل HTML الاحتياطي",
+                            "اكتمل جلب وتحليل الصفحة الاحتياطية",
                             "social.resolve.page_fetch",
                             mapOf(
                                 "platform" to platform.name,
                                 "operation_id" to (request.operationId ?: "none"),
                                 "page_url_source" to pageUrlSource,
+                                "page_fetch_mode" to fetchMode,
                                 "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
                             ),
                             null,
@@ -169,11 +185,66 @@ class SocialPlatformResolver(
                     }
                 }
 
-                val title = session.title ?: fallback?.title
-                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl
-                val duration = session.durationMs ?: fallback?.durationMs
+                // Vimeo public pages commonly expose a player/config endpoint rather than
+                // a progressive MP4 URL in the initial HTML. Only query the trusted Vimeo player
+                // endpoint, and only when the normal page/session scanners found no media source.
+                if (
+                    platform == MediaPlatform.Vimeo &&
+                    !pageUrl.isNullOrBlank() &&
+                    fallback?.mediaUrls.isNullOrEmpty()
+                ) {
+                    val configUrl = vimeoConfigEndpoint(pageUrl)
+                    if (configUrl != null) {
+                        try {
+                            val config = pageClient.get(
+                                configUrl,
+                                mapOf(
+                                    "Accept" to "application/json",
+                                    "Referer" to pageUrl,
+                                ),
+                            )
+                            platformFallback = WebPageMediaParser.parse(config, configUrl)
+                            logger.log(
+                                if (platformFallback?.mediaUrls.isNullOrEmpty()) DiagnosticLevel.WARNING else DiagnosticLevel.INFO,
+                                "SOCIAL_PLATFORM_MEDIA_FETCH_RESULT",
+                                "اكتمل فحص إعدادات مشغل Vimeo",
+                                "social.resolve.platform_fallback",
+                                mapOf(
+                                    "platform" to platform.name,
+                                    "operation_id" to (request.operationId ?: "none"),
+                                    "source_media_count" to platformFallback?.mediaUrls?.size?.toString().orEmpty(),
+                                ),
+                                null,
+                            )
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            logger.log(
+                                DiagnosticLevel.WARNING,
+                                "SOCIAL_PLATFORM_MEDIA_FETCH_FAILED",
+                                "تعذر جلب إعدادات مشغل Vimeo",
+                                "social.resolve.platform_fallback",
+                                mapOf(
+                                    "platform" to platform.name,
+                                    "operation_id" to (request.operationId ?: "none"),
+                                    "exception_type" to error::class.java.simpleName,
+                                ),
+                                null,
+                            )
+                        }
+                    }
+                }
+
+                val title = session.title ?: fallback?.title ?: platformFallback?.title
+                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: platformFallback?.thumbnailUrl
+                val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs
                 val fallbackMediaCount = fallback?.mediaUrls?.size ?: 0
-                val urls = (session.mediaUrls + fallback?.mediaUrls.orEmpty())
+                val platformFallbackMediaCount = platformFallback?.mediaUrls?.size ?: 0
+                val urls = (
+                    session.mediaUrls +
+                        fallback?.mediaUrls.orEmpty() +
+                        platformFallback?.mediaUrls.orEmpty()
+                    )
                     .distinct()
                     .take(64)
 
@@ -187,6 +258,7 @@ class SocialPlatformResolver(
                         "operation_id" to (request.operationId ?: "none"),
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
+                        "platform_fallback_media_count" to platformFallbackMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
                         "page_url_source" to pageUrlSource,
                     ),
@@ -406,6 +478,37 @@ class SocialPlatformResolver(
             sourceContext = sourceContext,
             streamingManifest = streamingManifest,
         )
+    }
+
+    private fun redditJsonEndpoint(pageUrl: String): String? {
+        return runCatching {
+            val uri = URI(pageUrl)
+            val host = uri.host?.lowercase().orEmpty()
+            if (host != "reddit.com" && !host.endsWith(".reddit.com")) return null
+            val path = uri.path.orEmpty().trimEnd('/')
+            if (!Regex("""/comments/[a-z0-9]+(?:/|$)""", RegexOption.IGNORE_CASE).containsMatchIn(path)) {
+                return null
+            }
+            val jsonPath = if (path.endsWith(".json", ignoreCase = true)) path else "$path.json"
+            URI(uri.scheme ?: "https", uri.authority, jsonPath, "raw_json=1", null).toASCIIString()
+        }.getOrNull()
+    }
+
+    private fun vimeoConfigEndpoint(pageUrl: String): String? {
+        return runCatching {
+            val uri = URI(pageUrl)
+            val host = uri.host?.lowercase().orEmpty()
+            if (host != "vimeo.com" && host != "www.vimeo.com") return null
+            val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+            val videoIndex = segments.indexOfLast { it.matches(Regex("""\d{5,}""")) }
+            if (videoIndex < 0) return null
+            val videoId = segments[videoIndex]
+            // Vimeo unlisted links may include a privacy hash immediately after the numeric ID.
+            val privacyHash = segments.getOrNull(videoIndex + 1)
+                ?.takeIf { it.matches(Regex("""[A-Za-z0-9]{6,}""")) }
+            "https://player.vimeo.com/video/$videoId/config" +
+                (privacyHash?.let { "?h=$it" } ?: "")
+        }.getOrNull()
     }
 
     private fun isHttpPageUrl(value: String?): Boolean {
