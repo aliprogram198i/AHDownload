@@ -1482,7 +1482,14 @@ private fun UnifiedDownloadResultCard(
                 }
 
                 IconButton(
-                    onClick = onToggleFavorite,
+                    onClick = {
+                        resultCardTrace.recordAction(
+                            action = "toggle_favorite",
+                            component = "favorite_button",
+                            context = mapOf("previously_favorite" to favorite.toString()),
+                        )
+                        onToggleFavorite()
+                    },
                     modifier = Modifier.semantics {
                         contentDescription = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة"
                     },
@@ -1573,6 +1580,17 @@ private fun UnifiedDownloadResultCard(
                         selected = if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo else null,
                         validatingCandidateId = validatingCandidateId,
                         onSelect = {
+                            resultCardTrace.recordAction(
+                                action = "select_video_quality",
+                                component = "video_quality_option",
+                                context = mapOf(
+                                    "candidate_id" to it.candidate.id,
+                                    "quality" to it.qualityLabel,
+                                    "container" to it.candidate.format.container.name,
+                                    "height" to (it.candidate.format.height?.toString() ?: "unknown"),
+                                    "has_audio" to it.candidate.format.hasAudio.toString(),
+                                ),
+                            )
                             selectionMode = OutputSelectionMode.VIDEO
                             onSelect(it)
                         },
@@ -1582,11 +1600,10 @@ private fun UnifiedDownloadResultCard(
                     if (!showAllVideoOptions && allVideoOptions.size > 4) {
                         TextButton(
                             onClick = {
-                                uiTraceLogger.interaction(
-                                    "HOME",
-                                    "video_options_more",
-                                    "show_more_video_options",
-                                    mapOf("available_count" to allVideoOptions.size.toString()),
+                                resultCardTrace.recordAction(
+                                    action = "show_more_video_options",
+                                    component = "video_options_more",
+                                    context = mapOf("available_count" to allVideoOptions.size.toString()),
                                 )
                                 showAllVideoOptions = true
                             },
@@ -1637,6 +1654,16 @@ private fun UnifiedDownloadResultCard(
                             selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioSource else null,
                             validatingCandidateId = validatingCandidateId,
                             onSelect = {
+                                resultCardTrace.recordAction(
+                                    action = "select_audio_source",
+                                    component = "audio_source_option",
+                                    context = mapOf(
+                                        "candidate_id" to it.candidate.id,
+                                        "quality" to it.qualityLabel,
+                                        "bitrate_kbps" to (it.candidate.format.bitrateKbps?.toString() ?: "unknown"),
+                                        "container" to it.candidate.format.container.name,
+                                    ),
+                                )
                                 selectionMode = OutputSelectionMode.AUDIO
                                 onSelectAudioCandidate(it)
                             },
@@ -1653,6 +1680,11 @@ private fun UnifiedDownloadResultCard(
                         selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioOutputFormat else null,
                         enabled = validatingCandidateId == null,
                         onSelect = {
+                            resultCardTrace.recordAction(
+                                action = "select_audio_output_format",
+                                component = "audio_output_format",
+                                context = mapOf("output_format" to it.name, "output_label" to it.label),
+                            )
                             selectionMode = OutputSelectionMode.AUDIO
                             onSelectAudioOutputFormat(it)
                         },
