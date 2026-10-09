@@ -1266,8 +1266,7 @@ private fun UnifiedDownloadResultCard(
     val allVideoOptions = primaryOptions
         .filter {
             it.candidate.format.kind == MediaKind.Video &&
-                it.candidate.format.hasVideo &&
-                it.candidate.format.hasAudio
+                it.candidate.format.hasVideo
         }
         .distinctBy { it.candidate.id }
 
@@ -1278,7 +1277,8 @@ private fun UnifiedDownloadResultCard(
     val directAudioAvailable = audioOptions.any {
         it.candidate.format.kind == MediaKind.Audio && it.candidate.format.hasAudio
     }
-    val audioAvailable = directAudioAvailable || allVideoOptions.isNotEmpty()
+    val muxedVideoAvailable = allVideoOptions.any { it.candidate.format.hasAudio }
+    val audioAvailable = directAudioAvailable || muxedVideoAvailable
     val selectedVideo = videoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
 
     val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video
