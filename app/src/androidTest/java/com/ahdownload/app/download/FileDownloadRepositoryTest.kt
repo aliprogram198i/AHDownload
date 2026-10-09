@@ -90,9 +90,8 @@ class FileDownloadRepositoryTest {
     )
 
     private fun Context.deleteFileStore() {
-        deleteFile("downloads/downloads.json")
-        deleteFile("downloads/downloads.json.bak")
-        deleteFile("downloads/downloads.json.lck")
-        deleteFile("downloads")
+        // Context.deleteFile accepts only a simple file name, not a relative path
+        // containing separators. Delete the repository's test directory safely.
+        File(filesDir, "downloads").deleteRecursively()
     }
 }
