@@ -63,8 +63,10 @@ class YouTubeResolver(
             ?: return failure(FailureCode.ResolverUnavailable, "تعذر تحديد معرف فيديو YouTube.")
 
         var lastFailure: ResolverResult.Failure? = null
+        var pageHtml: String? = null
         try {
             val html = httpClient.get(request.link.normalizedUrl)
+            pageHtml = html
             if (isBotChallenge(html)) {
                 lastFailure = ResolverResult.Failure(
                     FailureCode.ResolverUnavailable,
@@ -180,13 +182,15 @@ class YouTubeResolver(
         // The Android client can expose direct formats even when the initial page,
         // WEB Player API, and embedded-player path fail. Attempt it before accepting raw
         // WebView network observations as a fallback candidate catalog.
-        val androidResponse = runCatching {
-            playerClient.fetchAndroidPlayerResponse(
-                html = html,
-                videoUrl = request.link.normalizedUrl,
-                operationId = request.operationId,
-            )
-        }.getOrNull()
+        val androidResponse = pageHtml?.let { capturedHtml ->
+            runCatching {
+                playerClient.fetchAndroidPlayerResponse(
+                    html = capturedHtml,
+                    videoUrl = request.link.normalizedUrl,
+                    operationId = request.operationId,
+                )
+            }.getOrNull()
+        }
         if (androidResponse != null) {
             val androidResult = parser.parsePlayerResponse(androidResponse)
             if (androidResult is ResolverResult.Success) {
