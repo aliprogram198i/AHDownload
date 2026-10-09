@@ -15,8 +15,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 48
-        versionName = "1.4.26"
+        versionCode = 49
+        versionName = "1.4.27"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
