@@ -247,7 +247,7 @@ class AndroidBrowserMediaSessionProvider(
                             }
                           };
                           const visit=(node,depth)=>{
-                            if(!node || depth>12) return;
+                            if(!node || depth>32) return;
                             if(Array.isArray(node)){
                               node.slice(0,150).forEach(item=>visit(item,depth+1));
                               return;
@@ -306,22 +306,60 @@ class AndroidBrowserMediaSessionProvider(
                             }
                             const markup=document.documentElement
                               ?(document.documentElement.innerHTML||''):'';
-                            const lsdMatch=markup.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
-                            const lsd=lsdMatch?lsdMatch[1]:'';
-                            const csrfMatch=(document.cookie||'')
-                              .match(/(?:^|;\s*)csrftoken=([^;]+)/);
-                            const csrf=csrfMatch?decodeURIComponent(csrfMatch[1]):'';
+                            // Prefer the current logged-out Polaris query. Instagram rotated the
+                            // older media_id query; this request is bound to the public shortcode
+                            // and the fresh token issued by the page session.
+                            let lsd='';
+                            try{
+                              const eqmc=document.getElementById('__eqmc');
+                              const eqmcJson=JSON.parse(eqmc?(eqmc.textContent||'{}'):'{}');
+                              if(typeof eqmcJson.l==='string')lsd=eqmcJson.l;
+                            }catch(_){}
+                            if(!lsd){
+                              const lsdMatch=markup.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
+                              lsd=lsdMatch?lsdMatch[1]:'';
+                            }
                             if(!lsd){
                               window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_missing_lsd';
                               return;
                             }
+                            const jazoest='2'+Array.from(lsd).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
+                            const hsMatch=markup.match(/"__hs"\s*:\s*"([^"]+)"/);
+                            const hs=hsMatch?hsMatch[1]:'19624.HYP:instagram_web_pkg.2.1..0.0';
+                            const variables={
+                              shortcode:instagramShortcode,
+                              fetch_comment_count:0,
+                              fetch_related_profile_media_count:0,
+                              parent_comment_count:0,
+                              child_comment_count:0,
+                              fetch_like_count:0,
+                              fetch_tagged_user_count:0,
+                              fetch_preview_comment_count:0,
+                              has_threaded_comments:false,
+                              hoisted_comment_id:null,
+                              hoisted_reply_id:null,
+                              __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider:false
+                            };
                             const form=new URLSearchParams();
-                            form.set('lsd',lsd);
-                            form.set('fb_api_caller_class','RelayModern');
-                            form.set('fb_api_req_friendly_name','PolarisLoggedOutDesktopWWWPostRootContentQuery');
-                            form.set('server_timestamps','true');
-                            form.set('variables',JSON.stringify({media_id:instagramMediaId}));
-                            form.set('doc_id','27130156389949648');
+                            const fields={
+                              av:'0',
+                              __d:'www',
+                              __user:'0',
+                              __a:'1',
+                              __req:'3',
+                              __hs:hs,
+                              dpr:'2',
+                              __ccg:'UNKNOWN',
+                              __comet_req:'7',
+                              fb_api_caller_class:'RelayModern',
+                              fb_api_req_friendly_name:'PolarisPostRootQuery',
+                              variables:JSON.stringify(variables),
+                              server_timestamps:'true',
+                              doc_id:'27128499623469141',
+                              lsd:lsd,
+                              jazoest:jazoest
+                            };
+                            Object.entries(fields).forEach(([key,value])=>form.set(key,String(value)));
                             const response=await fetch('/api/graphql',{
                               method:'POST',
                               credentials:'include',
@@ -331,7 +369,7 @@ class AndroidBrowserMediaSessionProvider(
                                 'X-IG-App-ID':'936619743392459',
                                 'X-ASBD-ID':'359341',
                                 'X-IG-WWW-Claim':'0',
-                                'X-FB-Friendly-Name':'PolarisLoggedOutDesktopWWWPostRootContentQuery',
+                                'X-FB-Friendly-Name':'PolarisPostRootQuery',
                                 'X-FB-LSD':lsd,
                                 'X-CSRFToken':csrf,
                                 'X-Requested-With':'XMLHttpRequest',
@@ -340,24 +378,48 @@ class AndroidBrowserMediaSessionProvider(
                               },
                               body:form.toString()
                             });
+                            const responseText=await response.text();
                             if(!response.ok){
                               window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_http_'+response.status;
                               return;
                             }
-                            const payload=await response.json();
-                            const found=collectMedia(payload);
+                            let payload=null;
+                            try{
+                              const cleaned=responseText.trim().replace(/^for\s*\(\s*;;\s*\)\s*;\s*/,'');
+                              payload=JSON.parse(cleaned);
+                            }catch(_){}
+                            const found=payload?collectMedia(payload):[];
                             if(found.length){
                               window.__ahInstagramApiMedia=found;
                               window.__ahInstagramApiStatus='success_media';
                             }else{
-                              const message=String(payload.message||'').toLowerCase();
-                              const errors=Array.isArray(payload.errors)&&payload.errors.length>0;
-                              window.__ahInstagramApiStatus=
-                                (payload.require_login===true || message==='login_required')
-                                  ?'login_required'
-                                  :(errors?'graphql_rejected':'legacy_'+legacyStatus+'_graphql_no_media');
-                            }
-                          }catch(_){window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_error';}
+                              const lowerResponse=responseText.slice(0,800000).toLowerCase();
+                              const responseHasLogin=/login_required|require_login|accounts\/login/.test(lowerResponse);
+                              const responseHasGraphqlError=Boolean(payload&&Array.isArray(payload.errors)&&payload.errors.length);
+                              const responseIsJson=Boolean(payload);
+                              // Some logged-out Instagram pages return the useful relay object in
+                              // data-sjs HTML instead of JSON. Parse only structured JSON scripts;
+                              // do not log or persist their contents.
+                              const relayScripts=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
+                              const relayMedia=[];
+                              for(const script of relayScripts){
+                                try{
+                                  const relayPayload=JSON.parse(script.textContent||'');
+                                  relayMedia.push(...collectMedia(relayPayload));
+                                  if(relayMedia.length>=32)break;
+                                }catch(_){}
+                              }
+                              const uniqueRelay=[...new Set(relayMedia)].slice(0,32);
+                              if(uniqueRelay.length){
+                                window.__ahInstagramApiMedia=uniqueRelay;
+                                window.__ahInstagramApiStatus='success_media_sjs';
+                              }else{
+                                window.__ahInstagramApiStatus=
+                                  responseHasLogin?'login_required':
+                                  responseHasGraphqlError?'graphql_rejected':
+                                  responseIsJson?'graphql_no_media':'graphql_non_json';
+                              }
+                            }                          }catch(_){window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_error';}
                         })();
                       }
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
@@ -406,8 +468,17 @@ class AndroidBrowserMediaSessionProvider(
                       const embedded=[];
                       if(document.readyState==='complete'&&!window.__ahInstagramInlineScanDone){
                         window.__ahInstagramInlineScanDone=true;
-                        const scripts=[...document.scripts].slice(0,80)
+                        const scripts=[...document.scripts].slice(0,100)
                           .map(s=>(s.textContent||'').slice(0,100000)).join('\n').slice(0,900000);
+                        // Parse structured Instagram data-sjs blobs first: URLs may be nested far
+                        // below xig_polaris_media and need JSON-aware traversal, not a shallow regex.
+                        const structuredMedia=[];
+                        const dataSjs=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
+                        dataSjs.forEach(script=>{
+                          try{structuredMedia.push(...collectMedia(JSON.parse(script.textContent||'')));}
+                          catch(_){}
+                        });
+                        embedded.push(...structuredMedia);
                         const clean=scripts
                           .replace(/\\u002f/gi,'/')
                           .replace(/\\u0026/gi,'&')
