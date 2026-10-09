@@ -177,6 +177,35 @@ class YouTubeResolver(
             )
         }
 
+        // The Android client can expose direct formats even when the initial page,
+        // WEB Player API, and embedded-player path fail. Attempt it before accepting raw
+        // WebView network observations as a fallback candidate catalog.
+        val androidResponse = runCatching {
+            playerClient.fetchAndroidPlayerResponse(
+                html = html,
+                videoUrl = request.link.normalizedUrl,
+                operationId = request.operationId,
+            )
+        }.getOrNull()
+        if (androidResponse != null) {
+            val androidResult = parser.parsePlayerResponse(androidResponse)
+            if (androidResult is ResolverResult.Success) {
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    type = "youtube.android_fallback_selected",
+                    reason = "android_player_after_primary_failures",
+                    operation = "youtube.resolve",
+                    context = diagnosticContext(videoId, request.operationId) + mapOf(
+                        "candidate_count" to androidResult.candidates.size.toString(),
+                    ),
+                    throwable = null,
+                )
+                return filterKind(enrichWithSessionIfNeeded(androidResult, request), request)
+            }
+            lastFailure = androidResult as? ResolverResult.Failure ?: lastFailure
+            logPlayerFailure(videoId, androidResult, "android_player_after_primary_failures", request.operationId)
+        }
+
         val provider = sessionProvider ?: return failure(
             lastFailure?.code ?: FailureCode.ResolverUnavailable,
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
