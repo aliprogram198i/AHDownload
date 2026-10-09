@@ -1404,7 +1404,7 @@ private fun UnifiedDownloadResultCard(
                                     (it.candidate.format.height ?: 0) > 0
                                 }
                                 val unknownVideoSources = allVideoOptions.size - knownVideoQualities
-                                if (knownVideoQualities > 0) add("$knownVideoQualities جودة فيديو")
+                                if (knownVideoQualities > 0) add("$knownVideoQualities خيار فيديو")
                                 if (unknownVideoSources > 0) {
                                     add("$unknownVideoSources مصدر فيديو غير محدد الجودة")
                                 }
@@ -1424,8 +1424,8 @@ private fun UnifiedDownloadResultCard(
             if (showVideoSection) {
                 AHSectionHeader(
                     icon = Icons.Rounded.VideoFile,
-                    title = "فيديو",
-                    subtitle = "يُذكر الصوت كمُدمج فقط عندما تؤكد بيانات المصدر ذلك؛ وإلا نوضح الحاجة إلى مسار صوت منفصل.",
+                    title = "استخراج الفيديو",
+                    subtitle = "اختر الجودة والصيغة المتاحتين في المصدر؛ كل تركيبة جودة وصيغة تظهر مرة واحدة.",
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1458,7 +1458,7 @@ private fun UnifiedDownloadResultCard(
                         }
                     }
                 } else {
-                    UnifiedResultEmptyState("لا يتوفر حاليًا خيار فيديو مع الصوت.")
+                    UnifiedResultEmptyState("لا يتوفر مصدر فيديو قابل للتنزيل لهذا الرابط حاليًا.")
                 }
             }
 
@@ -1480,7 +1480,7 @@ private fun UnifiedDownloadResultCard(
                 if (audioAvailable) {
                     if (audioOptions.isNotEmpty()) {
                         Text(
-                            "جودة مصدر الصوت",
+                            "جودة وصيغة مصدر الصوت",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1974,7 +1974,7 @@ private fun audioFormatLabel(model: MediaPresentationModel): String {
 private fun buildQualityLine(model: MediaPresentationModel): String {
     val format = model.candidate.format
     return when (format.kind) {
-        MediaKind.Video -> model.qualityLabel + " · " + containerLabel(format.container)
+        MediaKind.Video -> (format.height?.takeIf { it > 0 }?.let { "${it}p" } ?: "جودة غير معروفة") + " · " + containerLabel(format.container)
         MediaKind.Audio -> model.qualityLabel + " · " + containerLabel(format.container)
         else -> model.qualityLabel
     }
