@@ -178,6 +178,7 @@ class LiveSocialMediaDownloadE2ETest {
                     (SystemClock.elapsedRealtime() - started) + "ms"
                 Log.e(TAG, report.last(), error)
             }
+            logTargetDiagnostics(app, target.name)
             Log.i(TAG, report.last())
         }
 
@@ -189,6 +190,63 @@ class LiveSocialMediaDownloadE2ETest {
             "Live public-video emulator acceptance tests: " + passed + " passed, " + failed + " failed.\n" + summary,
             failed == 0 && passed == targets.size,
         )
+    }
+
+
+    private fun logTargetDiagnostics(app: AHDownloadApplication, targetName: String) {
+        val operationPrefix = "live-e2e-" + targetName
+        val diagnosticKeys = setOf(
+            "operation_id",
+            "platform",
+            "media_count",
+            "headers_count",
+            "inspection_attempt_count",
+            "inspection_callback_count",
+            "instagram_api_status",
+            "title_present",
+            "duration_present",
+            "page_url_source",
+            "page_fetch_mode",
+            "fallback_media_count",
+            "platform_fallback_media_count",
+            "source_url_count",
+            "candidate_count",
+            "video_candidate_count",
+            "video_with_audio_count",
+            "video_without_audio_count",
+            "http_status",
+            "status_code",
+            "method",
+            "content_type",
+            "content_length_bytes",
+            "validation_result",
+            "failure_code",
+            "exception_type",
+            "host",
+            "stage",
+            "classification",
+            "root_cause",
+            "failure",
+        )
+        val events = app.diagnosticLogger.list()
+            .filter { event ->
+                val id = event.context["operation_id"].orEmpty()
+                id == operationPrefix || id.startsWith(operationPrefix + "-")
+            }
+            .take(80)
+            .asReversed()
+        if (events.isEmpty()) {
+            Log.i(TAG, "DIAG | " + targetName + " | no operation-scoped diagnostic records")
+            return
+        }
+        for (event in events) {
+            val context = event.context.filterKeys { it in diagnosticKeys }
+            Log.i(
+                TAG,
+                "DIAG | " + targetName + " | " + event.type + " | " +
+                    event.reason.replace('\\n', ' ').take(120) + " | " + context,
+            )
+        }
     }
 
     private suspend fun awaitTerminalRecord(
