@@ -86,7 +86,7 @@ class FileDownloadRepositoryTest {
     private fun task() = DownloadTask(
         id = "instrumented-task",
         sourceUrl = "https://example.com/video.mp4",
-        destinationPath = "/data/local/tmp/video.mp4",
+        destinationPath = File(context.cacheDir, "video.mp4").absolutePath,
     )
 
     private fun Context.deleteFileStore() {
