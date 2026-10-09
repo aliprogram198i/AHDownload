@@ -51,7 +51,7 @@ object WebPageMediaParser {
 
             // Instagram application state commonly exposes direct media under
             // one of these keys even when OpenGraph/video elements are absent.
-            Regex("""(?is)"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url)"\s*:\s*"([^"]+)"""")
+            Regex("""(?is)"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url|fallback_url|fallbackUrl|dash_url|dashUrl|hls_url|hlsUrl|scrubberMediaUrl|scrubber_media_url|progressive_url|progressiveUrl|download_url|browser_native_sd_url|browser_native_hd_url|sd_src|hd_src|playable_url)"\s*:\s*"([^"]+)"""")
                 .findAll(searchableHtml)
                 .forEach { add(absolute(it.groupValues[1])) }
 
