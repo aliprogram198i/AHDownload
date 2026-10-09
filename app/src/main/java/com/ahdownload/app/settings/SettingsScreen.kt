@@ -186,15 +186,6 @@ fun SettingsRoute(
             item {
                 SettingsCard {
                     SettingsSwitchRow(
-                        title = "التنزيل الذكي",
-                        description = "اختيار أفضل مصدر صالح تلقائيًا عند بدء تنزيل جديد.",
-                        checked = preferences.smartDownload,
-                        onCheckedChange = {
-                            preferencesStore.setSmartDownload(it)
-                            preferences = preferences.copy(smartDownload = it)
-                        },
-                    )
-                    SettingsSwitchRow(
                         title = "Wi‑Fi فقط",
                         description = "تقييد التنزيلات الجديدة على شبكة Wi‑Fi.",
                         checked = preferences.wifiOnly,
@@ -682,8 +673,12 @@ class DownloadPreferencesStore(context: android.content.Context) : DownloadPrefe
         android.content.Context.MODE_PRIVATE,
     )
 
+    init {
+        // Remove the retired setting without affecting other download preferences.
+        preferences.edit().remove("smart_download").apply()
+    }
+
     override fun read(): DownloadPreferences = DownloadPreferences(
-        smartDownload = preferences.getBoolean("smart_download", true),
         wifiOnly = preferences.getBoolean("wifi_only", false),
         videoQuality = VideoQualityPreference.entries.firstOrNull {
             it.wireValue == preferences.getString("video_quality", "auto")
@@ -692,10 +687,6 @@ class DownloadPreferencesStore(context: android.content.Context) : DownloadPrefe
             it.kbps == preferences.getInt("audio_bitrate", 0)
         } ?: AudioBitratePreference.AUTO,
     )
-
-    fun setSmartDownload(enabled: Boolean) {
-        preferences.edit().putBoolean("smart_download", enabled).apply()
-    }
 
     fun setWifiOnly(enabled: Boolean) {
         preferences.edit().putBoolean("wifi_only", enabled).apply()
