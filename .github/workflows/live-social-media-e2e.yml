@@ -45,7 +45,7 @@ jobs:
       - name: Compile production app and instrumentation tests
         run: |
           set -euo pipefail
-          gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
+          gradle --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' testDebugUnitTest assembleDebug assembleDebugAndroidTest
 
       - name: Run real social video downloads on Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -59,7 +59,7 @@ jobs:
           script: |
             set -eu
             mkdir -p live-e2e-artifacts
-            if gradle --no-daemon connectedDebugAndroidTest --stacktrace > live-e2e-artifacts/connected-debug-android-test.log 2>&1; then
+            if gradle --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' connectedDebugAndroidTest --stacktrace > live-e2e-artifacts/connected-debug-android-test.log 2>&1; then
               test_status=0
             else
               test_status=$?
