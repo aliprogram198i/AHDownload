@@ -1936,13 +1936,12 @@ private fun formatOptionMetaLabel(
         buildList {
             model.fpsLabel?.let(::add)
             model.sizeLabel?.let(::add)
+            if (format.kind == MediaKind.Video) {
+                add(if (format.hasAudio) "صوت مدمج" else "لا يوجد صوت مدمج مؤكد")
+            }
         }.joinToString(" · ").ifBlank {
             when (format.kind) {
-                MediaKind.Video -> if (format.hasAudio) {
-                    "مسار فيديو وصوت مدمج"
-                } else {
-                    "وجود الصوت غير مؤكد؛ قد يلزم مسار صوت منفصل"
-                }
+                MediaKind.Video -> "لا يوجد صوت مدمج مؤكد"
                 MediaKind.Audio -> "مسار صوت مباشر"
                 else -> "نوع الوسائط غير محدد"
             }
