@@ -130,6 +130,9 @@ class AndroidBrowserMediaSessionProvider(
                 timeout?.let(main::removeCallbacks)
                 settleFinish?.let(main::removeCallbacks)
                 finalUrl = webView?.url ?: url
+                if (platform == MediaPlatform.Instagram && instagramApiStatus == null) {
+                    instagramApiStatus = "page_not_inspected"
+                }
                 val result = BrowserMediaSession(
                     platform = platform,
                     pageUrl = url,
@@ -376,6 +379,12 @@ class AndroidBrowserMediaSessionProvider(
                     .replace("__IG_SHORTCODE__", JSONObject.quote(instagramShortcode.orEmpty()))
                     .replace("__IG_MEDIA_ID__", JSONObject.quote(instagramMediaId.orEmpty()))
                 view.evaluateJavascript(script) { raw ->
+                    if (raw.isNullOrBlank() || raw == "null") {
+                        if (platform == MediaPlatform.Instagram && instagramApiStatus == null) {
+                            instagramApiStatus = "script_no_result"
+                        }
+                        return@evaluateJavascript
+                    }
                     runCatching {
                         val decoded = runCatching {
                             JSONTokener(raw).nextValue() as? String ?: raw
@@ -435,6 +444,21 @@ class AndroidBrowserMediaSessionProvider(
                     setAcceptThirdPartyCookies(view, true)
                 }
                 view.webViewClient = object : WebViewClient() {
+                    override fun onPageStarted(
+                        view: WebView,
+                        pageUrl: String?,
+                        favicon: android.graphics.Bitmap?,
+                    ) {
+                        super.onPageStarted(view, pageUrl, favicon)
+                        if (platform == MediaPlatform.Instagram) {
+                            // Do not wait for onPageFinished: Instagram pages may keep loading
+                            // indefinitely while the initial HTML/JS is already inspectable.
+                            view.postDelayed({ inspect(view) }, 900L)
+                            view.postDelayed({ inspect(view) }, 2200L)
+                            view.postDelayed({ inspect(view) }, 4000L)
+                        }
+                    }
+
                     override fun shouldInterceptRequest(
                         view: WebView,
                         request: WebResourceRequest,
@@ -455,7 +479,8 @@ class AndroidBrowserMediaSessionProvider(
                     }
                 }
                 timeout = Runnable { finish() }
-                main.postDelayed(timeout!!, 10000L)
+                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 14000L else 10000L
+                main.postDelayed(timeout!!, sessionTimeoutMs)
                 view.loadUrl(url)
             }
         }
