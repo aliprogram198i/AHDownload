@@ -1,0 +1,93 @@
+name: Cloud Android Smoke Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-android-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emulator-smoke:
+    name: Build, install, and run Android instrumentation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools emulator"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install project SDK components
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "platforms;android-37.1" "build-tools;36.1.0"
+
+      - name: Run JVM tests and compile APKs
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
+
+      - name: Boot Android emulator and run instrumentation tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: "-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none"
+          disable-animations: true
+          script: gradle --no-daemon connectedDebugAndroidTest
+
+      - name: Collect emulator logs and test reports
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p cloud-test-results
+          adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk cloud-test-results/
+          fi
+          if [ -d app/build/outputs/androidTest-results/connected ]; then
+            cp -R app/build/outputs/androidTest-results/connected cloud-test-results/instrumentation-results
+          fi
+          if [ -d app/build/reports/androidTests/connected ]; then
+            cp -R app/build/reports/androidTests/connected cloud-test-results/instrumentation-report
+          fi
+          if [ -d app/build/reports/tests/testDebugUnitTest ]; then
+            cp -R app/build/reports/tests/testDebugUnitTest cloud-test-results/unit-test-report
+          fi
+          find cloud-test-results -maxdepth 3 -type f -printf '%p (%s bytes)\n' || true
+
+      - name: Upload APK, logs, and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahdownload-cloud-android-results-${{ github.run_id }}
+          path: cloud-test-results/
+          if-no-files-found: warn
+          retention-days: 7
