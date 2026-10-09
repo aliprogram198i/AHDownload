@@ -216,6 +216,25 @@ class YouTubeResolver(
             throwable = null,
         )
 
+        val classifiedBrowserCandidates = snapshot.videoUrls.size + snapshot.audioUrls.size
+        if (snapshot.browserMediaObservedCount > classifiedBrowserCandidates) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.browser_media_unclassified",
+                reason = "observed_gvs_requests_missing_media_mime_and_itag",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "observed_request_count" to snapshot.browserMediaObservedCount.toString(),
+                    "classified_video_count" to snapshot.videoUrls.size.toString(),
+                    "classified_audio_count" to snapshot.audioUrls.size.toString(),
+                    "unclassified_request_count" to
+                        (snapshot.browserMediaObservedCount - classifiedBrowserCandidates).coerceAtLeast(0).toString(),
+                    "player_response_obtained" to (!snapshot.playerResponse.isNullOrBlank()).toString(),
+                ),
+                throwable = null,
+            )
+        }
+
         logger.log(
             if (snapshot.browserPoTokenObserved) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "youtube.gvs_strategy",
