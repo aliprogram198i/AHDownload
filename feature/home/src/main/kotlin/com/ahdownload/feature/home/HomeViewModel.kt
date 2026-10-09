@@ -1039,12 +1039,6 @@ class HomeViewModel(
         smart: com.ahdownload.domain.resolver.SmartResultSet,
         preferences: DownloadPreferences,
     ): String? {
-        if (!preferences.smartDownload) {
-            return smart.bestOverall?.candidate?.id
-                ?: smart.bestQuality?.candidate?.id
-                ?: candidates.firstOrNull()?.id
-        }
-
         val video = candidates
             .filter { it.format.kind == MediaKind.Video && it.format.hasAudio }
             .sortedWith(
