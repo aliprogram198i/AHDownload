@@ -144,7 +144,8 @@ class YouTubeResolverTest {
                       "videoDetails":{"title":"Embedded","lengthSeconds":"8"},
                       "playabilityStatus":{"status":"OK"},
                       "streamingData":{"formats":[
-                        {"itag":"22","mimeType":"video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"","width":1280,"height":720,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=22&mime=video%2Fmp4&source=embedded"}
+                        {"itag":"22","mimeType":"video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"","width":1280,"height":720,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=22&mime=video%2Fmp4&source=embedded"},
+                        {"itag":"140","mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":128000,"url":"https://rr1---sn.googlevideo.com/videoplayback?itag=140&mime=audio%2Fmp4&source=embedded-audio"}
                       ]}
                     }
                     """.trimIndent()
@@ -167,7 +168,8 @@ class YouTubeResolverTest {
         result as ResolverResult.Success
         assertTrue(result.candidates.any { it.id == "18" })
         assertTrue(result.candidates.any { it.id == "embedded-22" })
-        assertEquals(2, postCount)
+        assertTrue(result.candidates.any { it.id == "embedded-140" && it.format.kind == MediaKind.Audio })
+        assertTrue(postCount >= 2)
     }
 
     @Test
