@@ -425,6 +425,7 @@ private fun AHRoot(
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
             onCopyHomeTrace = uiTraceLogger::exportHomeText,
+            onCopyResultCardTrace = uiTraceLogger::exportResultCardText,
             activeDownloads = activeDownloads,
             preferencesProvider = downloadPreferencesProvider,
             favoriteRepository = favoriteRepository,
