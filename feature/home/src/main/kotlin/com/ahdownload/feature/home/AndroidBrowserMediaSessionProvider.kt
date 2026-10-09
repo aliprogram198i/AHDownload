@@ -695,9 +695,6 @@ class AndroidBrowserMediaSessionProvider(
                         scheduleInspection(view, 1400L)
                         scheduleInspection(view, 3000L)
                         scheduleInspection(view, 5200L)
-                        if (platform == MediaPlatform.Instagram) {
-                            scheduleInstagramEmbedFallback(view, 7000L)
-                        }
                         main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
                     }
                 }
