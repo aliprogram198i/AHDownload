@@ -105,12 +105,15 @@ object WebPageMediaParser {
 
     private fun normalizeEmbeddedUrlEscapes(value: String): String =
         value
-            .replace("\\/", "/")
-            .replace("\\u002F", "/", ignoreCase = true)
-            .replace("\\u0026", "&", ignoreCase = true)
-            .replace("\\u003F", "?", ignoreCase = true)
-            .replace("\\u003D", "=", ignoreCase = true)
-            .replace("\\u003A", ":", ignoreCase = true)
+            // Instagram payloads may be escaped more than once (for example, nested JSON
+            // inside a JavaScript string). Normalize repeated escape prefixes, not just one.
+            .replace(Regex("""\\+u002f""", RegexOption.IGNORE_CASE), "/")
+            .replace(Regex("""\\+u0026""", RegexOption.IGNORE_CASE), "&")
+            .replace(Regex("""\\+u003f""", RegexOption.IGNORE_CASE), "?")
+            .replace(Regex("""\\+u003d""", RegexOption.IGNORE_CASE), "=")
+            .replace(Regex("""\\+u003a""", RegexOption.IGNORE_CASE), ":")
+            .replace(Regex("""\\+/"""), "/")
+            .replace("\\\"", "\"")
 
     private fun decodeHtml(value: String): String {
         val htmlDecoded = normalizeEmbeddedUrlEscapes(value)

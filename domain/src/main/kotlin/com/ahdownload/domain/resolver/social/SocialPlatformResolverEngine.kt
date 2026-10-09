@@ -223,6 +223,7 @@ class SocialPlatformResolverEngine(
                                 put("response_chars", instagramEmbedResponseChars.toString())
                                 put("media_count", (parsed?.mediaUrls?.size ?: 0).toString())
                                 put("login_wall_detected", instagramEmbedLoginWall.toString())
+                                embedBody?.let { putAll(instagramEmbedMarkers(it)) }
                                 instagramEmbedExceptionType?.let { put("exception_type", it) }
                             },
                             null,
@@ -497,6 +498,24 @@ class SocialPlatformResolverEngine(
             "login_required" in sample ||
             "log in to instagram" in sample ||
             "sign up to see photos and videos" in sample
+    }
+
+    /** Emits only booleans; never logs HTML, media URLs, cookies, or signed query strings. */
+    private fun instagramEmbedMarkers(body: String): Map<String, String> {
+        val sample = body.take(800_000).lowercase()
+        fun has(vararg markers: String) = markers.any { it in sample }.toString()
+        return mapOf(
+            "marker_video_url_key" to has("video_url"),
+            "marker_video_versions_key" to has("video_versions"),
+            "marker_playback_url_key" to has("playback_url"),
+            "marker_content_url_key" to has("contenturl", "content_url"),
+            "marker_og_video" to has("og:video"),
+            "marker_video_element" to has("<video"),
+            "marker_instagram_cdn" to has("cdninstagram", "fbcdn.net", "scontent"),
+            "marker_login_or_checkpoint" to has("accounts/login", "login_required", "checkpoint_required"),
+            "marker_challenge_or_rate_limit" to has("challenge_required", "please wait a few minutes", "rate limit"),
+            "marker_response_error" to has("graphql_error", "feedback_required", "restricted_access"),
+        )
     }
 
     private fun isHttpPageUrl(value: String?): Boolean {
