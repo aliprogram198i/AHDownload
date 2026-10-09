@@ -15,6 +15,29 @@ import org.junit.Test
 
 class SocialPlatformResolverTest {
     @Test
+    fun instagramApiDiscoveredMediaGetsSafeRefererFallback() = runTest {
+        val mediaUrl = "https://scontent.cdninstagram.com/o1/v/t2/f2/m367/AQExample.mp4?token=1"
+        val resolver = SocialPlatformResolver(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = "https://www.instagram.com/reel/ABC123/",
+                    mediaUrls = listOf(mediaUrl),
+                    instagramApiStatus = "success_media",
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(ResolverRequest(link = link(MediaPlatform.Instagram)))
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(
+            "https://www.instagram.com/",
+            (result as ResolverResult.Success).candidates.single().requestHeaders["Referer"],
+        )
+    }
+
+    @Test
     fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = SocialPlatformResolver(
