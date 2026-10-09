@@ -121,6 +121,21 @@ class WebPageMediaParserTest {
         )
     }
     @Test
+    fun extractsMediaUrlFromDoubleEscapedInstagramJsonString() {
+        val html = """<script type="application/json">{\"video_url\":\"https:\\/\\/scontent.cdninstagram.com\\/o1\\/v\\/t2\\/f2\\/clip.mp4?token=1\\u0026part=2\"}</script>"""
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://www.instagram.com/reel/ABC123/",
+        )
+
+        assertEquals(
+            "https://scontent.cdninstagram.com/o1/v/t2/f2/clip.mp4?token=1&part=2",
+            result.mediaUrls.single(),
+        )
+    }
+
+    @Test
     fun extractsVideoVersionsFromInstagramShortcodeApiJsonAndIgnoresThumbnail() {
         val response = """{
             "items": [{

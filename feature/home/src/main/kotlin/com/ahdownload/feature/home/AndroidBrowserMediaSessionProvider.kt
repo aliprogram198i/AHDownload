@@ -17,7 +17,6 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import kotlin.coroutines.resume
 import java.net.URI
-import java.math.BigInteger
 import java.util.concurrent.ConcurrentHashMap
 
 class AndroidBrowserMediaSessionProvider(
@@ -59,7 +58,26 @@ class AndroidBrowserMediaSessionProvider(
             } else {
                 null
             }
-            val instagramMediaId = instagramShortcode?.let(::decodeInstagramShortcode)
+            val instagramMediaType = if (platform == MediaPlatform.Instagram) {
+                runCatching {
+                    URI(url).path.orEmpty().split('/').filter(String::isNotBlank)
+                        .firstOrNull { it.lowercase() in setOf("reel", "reels", "p", "tv") }
+                        ?.lowercase()
+                }.getOrNull()
+            } else {
+                null
+            }
+            val instagramEmbedUrls = if (
+                platform == MediaPlatform.Instagram &&
+                instagramShortcode != null &&
+                instagramMediaType != null
+            ) {
+                val base = "https://www.instagram.com/$instagramMediaType/$instagramShortcode"
+                listOf("$base/embed/captioned/", "$base/embed/")
+            } else {
+                emptyList()
+            }
+            var instagramEmbedFallbackAttempt = 0
             var instagramApiStatus: String? = null
             var title: String? = null
             var thumbnail: String? = null
@@ -134,6 +152,29 @@ class AndroidBrowserMediaSessionProvider(
                 // until attachment. Use the main Handler so inspection runs in the background session.
                 main.postDelayed({
                     if (!finished && webView === view) inspect(view)
+                }, delayMs)
+            }
+
+            fun tryInstagramEmbedFallback(view: WebView) {
+                if (
+                    platform != MediaPlatform.Instagram ||
+                    finished ||
+                    webView !== view ||
+                    mediaUrls.isNotEmpty()
+                ) return
+                val nextUrl = instagramEmbedUrls.getOrNull(instagramEmbedFallbackAttempt) ?: return
+                instagramEmbedFallbackAttempt += 1
+                // The server-side HTML fallback often contains only the JS shell. Loading the
+                // public embed in WebView lets its player execute and exposes genuine CDN requests.
+                instagramApiStatus = "webview_embed_attempt_$instagramEmbedFallbackAttempt"
+                view.loadUrl(nextUrl)
+            }
+
+            fun scheduleInstagramEmbedFallback(view: WebView, delayMs: Long) {
+                main.postDelayed({
+                    if (!finished && webView === view && mediaUrls.isEmpty()) {
+                        tryInstagramEmbedFallback(view)
+                    }
                 }, delayMs)
             }
 
@@ -226,7 +267,6 @@ class AndroidBrowserMediaSessionProvider(
                 val script = """
                     (function(){
                       const instagramShortcode=__IG_SHORTCODE__;
-                      const instagramMediaId=__IG_MEDIA_ID__;
                       // Keep credentials in WebView. Try the lightweight endpoint first,
                       // then the current GraphQL path used by the Instagram web extractor.
                       if(instagramShortcode && !window.__ahInstagramApiRequestStarted){
@@ -247,7 +287,7 @@ class AndroidBrowserMediaSessionProvider(
                             }
                           };
                           const visit=(node,depth)=>{
-                            if(!node || depth>12) return;
+                            if(!node || depth>32) return;
                             if(Array.isArray(node)){
                               node.slice(0,150).forEach(item=>visit(item,depth+1));
                               return;
@@ -300,64 +340,126 @@ class AndroidBrowserMediaSessionProvider(
                             }
                           }catch(_){legacyStatus='network_error';}
                           try{
-                            if(!instagramMediaId){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_invalid_shortcode';
-                              return;
-                            }
                             const markup=document.documentElement
                               ?(document.documentElement.innerHTML||''):'';
-                            const lsdMatch=markup.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
-                            const lsd=lsdMatch?lsdMatch[1]:'';
-                            const csrfMatch=(document.cookie||'')
-                              .match(/(?:^|;\s*)csrftoken=([^;]+)/);
-                            const csrf=csrfMatch?decodeURIComponent(csrfMatch[1]):'';
+                            const extractLsd=source=>{
+                              const eqmc=source.match(/<script\b[^>]*\bid=["']__eqmc["'][^>]*>([\s\S]*?)<\/script>/i);
+                              if(eqmc&&eqmc[1]){
+                                try{
+                                  const parsedEqmc=JSON.parse(eqmc[1]);
+                                  if(typeof parsedEqmc.l==='string'&&parsedEqmc.l)return parsedEqmc.l;
+                                }catch(_){}
+                              }
+                              const tokenMatch=source.match(/\["LSD",\[\],\{"token":"([^"]+)"/);
+                              return tokenMatch?tokenMatch[1]:'';
+                            };
+                            let lsd=extractLsd(markup);
+                            let lsdWarmupStatus='not_needed';
+                            // Some public permalink responses do not include __eqmc/LSD. Fetch the
+                            // public homepage once in the same WebView session to obtain the fresh
+                            // token instead of abandoning the current post immediately.
                             if(!lsd){
-                              window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_missing_lsd';
-                              return;
+                              try{
+                                const homeResponse=await fetch('/',{
+                                  method:'GET',
+                                  credentials:'include',
+                                  headers:{
+                                    'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                    'X-IG-App-ID':'936619743392459'
+                                  }
+                                });
+                                if(homeResponse.ok){
+                                  const homeMarkup=await homeResponse.text();
+                                  requestMarkup=homeMarkup+'\n'+markup;
+                                  lsd=extractLsd(homeMarkup);
+                                  lsdWarmupStatus=lsd?'token_found':'token_absent';
+                                }else{
+                                  lsdWarmupStatus='http_'+homeResponse.status;
+                                }
+                              }catch(_){
+                                lsdWarmupStatus='network_error';
+                              }
                             }
+                            // LSD is optional for PolarisPostRootQuery. Some public/logged-out
+                            // responses omit it; do not abort source discovery solely because
+                            // the page omitted this web-app token.
+                            if(!lsd){
+                              window.__ahInstagramApiStatus='graphql_lsd_unavailable_home_'+lsdWarmupStatus;
+                            }
+                            let csrf='';
+                            try{
+                              const csrfMatch=(document.cookie||'').match(/(?:^|;\s*)csrftoken=([^;]+)/);
+                              csrf=csrfMatch?decodeURIComponent(csrfMatch[1]):'';
+                            }catch(_){}
+                            const variables={
+                              shortcode:instagramShortcode,
+                              __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider:false
+                            };
                             const form=new URLSearchParams();
-                            form.set('lsd',lsd);
-                            form.set('fb_api_caller_class','RelayModern');
-                            form.set('fb_api_req_friendly_name','PolarisLoggedOutDesktopWWWPostRootContentQuery');
-                            form.set('server_timestamps','true');
-                            form.set('variables',JSON.stringify({media_id:instagramMediaId}));
-                            form.set('doc_id','27130156389949648');
-                            const response=await fetch('/api/graphql',{
+                            form.set('doc_id','27128499623469141');
+                            form.set('variables',JSON.stringify(variables));
+                            if(lsd){
+                              form.set('lsd',lsd);
+                              const jazoest='2'+Array.from(lsd).reduce((sum,ch)=>sum+ch.charCodeAt(0),0);
+                              form.set('jazoest',jazoest);
+                            }
+                            const graphqlHeaders={
+                              'Accept':'*/*',
+                              'Content-Type':'application/x-www-form-urlencoded',
+                              'X-IG-App-ID':'936619743392459',
+                              'X-Requested-With':'XMLHttpRequest',
+                              'Origin':location.origin,
+                              'Referer':location.origin+'/'
+                            };
+                            if(csrf)graphqlHeaders['X-CSRFToken']=csrf;
+                            if(lsd)graphqlHeaders['X-FB-LSD']=lsd;
+                            const response=await fetch('/graphql/query',{
                               method:'POST',
                               credentials:'include',
-                              headers:{
-                                'Accept':'*/*',
-                                'Content-Type':'application/x-www-form-urlencoded',
-                                'X-IG-App-ID':'936619743392459',
-                                'X-ASBD-ID':'359341',
-                                'X-IG-WWW-Claim':'0',
-                                'X-FB-Friendly-Name':'PolarisLoggedOutDesktopWWWPostRootContentQuery',
-                                'X-FB-LSD':lsd,
-                                'X-CSRFToken':csrf,
-                                'X-Requested-With':'XMLHttpRequest',
-                                'Origin':location.origin,
-                                'Referer':location.href
-                              },
+                              headers:graphqlHeaders,
                               body:form.toString()
                             });
+                            const responseText=await response.text();
                             if(!response.ok){
                               window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_http_'+response.status;
                               return;
                             }
-                            const payload=await response.json();
-                            const found=collectMedia(payload);
+                            let payload=null;
+                            try{
+                              const cleaned=responseText.trim().replace(/^for\s*\(\s*;;\s*\)\s*;\s*/,'');
+                              payload=JSON.parse(cleaned);
+                            }catch(_){}
+                            const found=payload?collectMedia(payload):[];
                             if(found.length){
                               window.__ahInstagramApiMedia=found;
                               window.__ahInstagramApiStatus='success_media';
                             }else{
-                              const message=String(payload.message||'').toLowerCase();
-                              const errors=Array.isArray(payload.errors)&&payload.errors.length>0;
-                              window.__ahInstagramApiStatus=
-                                (payload.require_login===true || message==='login_required')
-                                  ?'login_required'
-                                  :(errors?'graphql_rejected':'legacy_'+legacyStatus+'_graphql_no_media');
-                            }
-                          }catch(_){window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_error';}
+                              const lowerResponse=responseText.slice(0,800000).toLowerCase();
+                              const responseHasLogin=/login_required|require_login|accounts\/login/.test(lowerResponse);
+                              const responseHasGraphqlError=Boolean(payload&&Array.isArray(payload.errors)&&payload.errors.length);
+                              const responseIsJson=Boolean(payload);
+                              // Some logged-out Instagram pages return useful relay JSON inside
+                              // data-sjs scripts instead of the GraphQL response body.
+                              const relayScripts=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
+                              const relayMedia=[];
+                              for(const script of relayScripts){
+                                try{
+                                  const relayPayload=JSON.parse(script.textContent||'');
+                                  relayMedia.push(...collectMedia(relayPayload));
+                                  if(relayMedia.length>=32)break;
+                                }catch(_){}
+                              }
+                              const uniqueRelay=[...new Set(relayMedia)].slice(0,32);
+                              if(uniqueRelay.length){
+                                window.__ahInstagramApiMedia=uniqueRelay;
+                                window.__ahInstagramApiStatus='success_media_sjs';
+                              }else{
+                                window.__ahInstagramApiStatus=
+                                  responseHasLogin?'login_required':
+                                  responseHasGraphqlError?'graphql_rejected':
+                                  responseIsJson?'graphql_no_media':'graphql_non_json';
+                              }
+                            }                          }catch(_){window.__ahInstagramApiStatus='legacy_'+legacyStatus+'_graphql_error';}
                         })();
                       }
                       const meta=s=>{const e=document.querySelector(s);return e?e.content:null};
@@ -406,8 +508,17 @@ class AndroidBrowserMediaSessionProvider(
                       const embedded=[];
                       if(document.readyState==='complete'&&!window.__ahInstagramInlineScanDone){
                         window.__ahInstagramInlineScanDone=true;
-                        const scripts=[...document.scripts].slice(0,80)
+                        const scripts=[...document.scripts].slice(0,100)
                           .map(s=>(s.textContent||'').slice(0,100000)).join('\n').slice(0,900000);
+                        // Parse structured Instagram data-sjs blobs first: URLs may be nested far
+                        // below xig_polaris_media and need JSON-aware traversal, not a shallow regex.
+                        const structuredMedia=[];
+                        const dataSjs=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
+                        dataSjs.forEach(script=>{
+                          try{structuredMedia.push(...collectMedia(JSON.parse(script.textContent||'')));}
+                          catch(_){}
+                        });
+                        embedded.push(...structuredMedia);
                         const clean=scripts
                           .replace(/\\u002f/gi,'/')
                           .replace(/\\u0026/gi,'&')
@@ -444,7 +555,6 @@ class AndroidBrowserMediaSessionProvider(
                     })();
                 """.trimIndent()
                     .replace("__IG_SHORTCODE__", JSONObject.quote(instagramShortcode.orEmpty()))
-                    .replace("__IG_MEDIA_ID__", JSONObject.quote(instagramMediaId.orEmpty()))
                 view.evaluateJavascript(script) { raw ->
                     inspectionCallbackCount++
                     if (activeInspectionSerial == inspectionId) inspectionInFlight = false
@@ -542,11 +652,32 @@ class AndroidBrowserMediaSessionProvider(
                     ) {
                         super.onPageStarted(view, pageUrl, favicon)
                         if (platform == MediaPlatform.Instagram) {
-                            // Do not wait for onPageFinished: Instagram pages may keep loading
-                            // indefinitely while the initial HTML/JS is already inspectable.
+                            // Keep polling bounded. If the normal permalink does not expose a
+                            // playable source, switch to the public embed and observe its player.
                             scheduleInspection(view, 900L)
                             scheduleInspection(view, 2200L)
-                            scheduleInspection(view, 4000L)
+                            scheduleInspection(view, 4200L)
+                            scheduleInstagramEmbedFallback(view, 7000L)
+                        }
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        error: android.webkit.WebResourceError,
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        if (
+                            platform == MediaPlatform.Instagram &&
+                            request.isForMainFrame &&
+                            mediaUrls.isEmpty()
+                        ) {
+                            // Do not treat a main-frame failure as an extraction success or wait
+                            // for onPageFinished; move to the public embed fallback promptly.
+                            instagramApiStatus = "webview_main_frame_error_${error.errorCode}"
+                            main.postDelayed({
+                                tryInstagramEmbedFallback(view)
+                            }, 300L)
                         }
                     }
 
@@ -560,35 +691,21 @@ class AndroidBrowserMediaSessionProvider(
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         finalUrl = pageUrl
-                        scheduleInspection(view, 450L)
+                        scheduleInspection(view, 350L)
                         scheduleInspection(view, 1400L)
-                        scheduleInspection(view, 2600L)
-                        scheduleInspection(view, 4200L)
+                        scheduleInspection(view, 3000L)
+                        scheduleInspection(view, 5200L)
                         main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
                     }
                 }
                 timeout = Runnable { finish() }
-                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 14000L else 10000L
+                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 26000L else 10000L
                 main.postDelayed(timeout!!, sessionTimeoutMs)
                 view.loadUrl(url)
             }
         }
 
     private companion object {
-        fun decodeInstagramShortcode(shortcode: String): String? {
-            val value = if (shortcode.length > 28) shortcode.dropLast(28) else shortcode
-            if (value.isEmpty()) return null
-            val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-            var mediaId = BigInteger.ZERO
-            for (character in value) {
-                val digit = alphabet.indexOf(character)
-                if (digit < 0) return null
-                mediaId = mediaId.multiply(BigInteger.valueOf(64L))
-                    .add(BigInteger.valueOf(digit.toLong()))
-            }
-            return mediaId.toString()
-        }
-
         const val MAX_MEDIA_URLS = 64
         const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"

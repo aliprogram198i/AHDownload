@@ -86,13 +86,10 @@ class FileDownloadRepositoryTest {
     private fun task() = DownloadTask(
         id = "instrumented-task",
         sourceUrl = "https://example.com/video.mp4",
-        destinationPath = "/data/local/tmp/video.mp4",
+        destinationPath = File(context.cacheDir, "video.mp4").absolutePath,
     )
 
     private fun Context.deleteFileStore() {
-        deleteFile("downloads/downloads.json")
-        deleteFile("downloads/downloads.json.bak")
-        deleteFile("downloads/downloads.json.lck")
-        deleteFile("downloads")
+        File(filesDir, "downloads").deleteRecursively()
     }
 }
