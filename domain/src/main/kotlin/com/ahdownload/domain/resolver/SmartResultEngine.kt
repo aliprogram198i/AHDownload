@@ -161,11 +161,13 @@ class SmartResultEngine {
         .thenByDescending { videoContainerCompatibility(it.candidate.format.container) }
         .thenByDescending { it.candidate.format.bitrateKbps ?: 0 }
         .thenBy { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
+        .thenBy { it.candidate.id }
 
     private val audioComparator = compareByDescending<MediaPresentationModel> { it.candidate.format.bitrateKbps ?: 0 }
         .thenByDescending { audioContainerCompatibility(it.candidate.format.container) }
         .thenByDescending { audioCodecCompatibility(it.candidate.format.audioCodec) }
         .thenBy { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
+        .thenBy { it.candidate.id }
 
     private fun videoCodecCompatibility(codec: String?): Int = when (normalizeCodec(codec)) {
         "H.264" -> 3
