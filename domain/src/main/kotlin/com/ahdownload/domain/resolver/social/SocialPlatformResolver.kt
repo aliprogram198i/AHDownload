@@ -13,6 +13,7 @@ import java.net.URLDecoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -235,15 +236,80 @@ class SocialPlatformResolver(
                     }
                 }
 
-                val title = session.title ?: fallback?.title ?: platformFallback?.title
-                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: platformFallback?.thumbnailUrl
-                val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs
+                // Instagram may expose media through its public embed even when the
+                // shortcode API/GraphQL response is blocked or the original HTML is a login shell.
+                // Keep this as a bounded, first-party fallback and never attempt to bypass access controls.
+                var instagramEmbedFallback: ParsedPageMedia? = null
+                var instagramEmbedResponseChars = 0
+                var instagramEmbedLoginWall = false
+                var instagramEmbedExceptionType: String? = null
+                if (
+                    platform == MediaPlatform.Instagram &&
+                    !pageUrl.isNullOrBlank() &&
+                    session.mediaUrls.isEmpty() &&
+                    fallback?.mediaUrls.isNullOrEmpty()
+                ) {
+                    val embedUrl = instagramEmbedEndpoint(pageUrl)
+                    if (embedUrl != null) {
+                        val embedHeaders = mapOf(
+                            "Accept" to "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+                            "Accept-Language" to "en-US,en;q=0.8",
+                            "Referer" to pageUrl,
+                            "User-Agent" to "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+                        )
+                        val parsed = try {
+                            withTimeoutOrNull(INSTAGRAM_EMBED_FETCH_TIMEOUT_MS) {
+                                val body = pageClient.get(embedUrl, embedHeaders)
+                                instagramEmbedResponseChars = body.length
+                                instagramEmbedLoginWall = looksLikeInstagramLoginWall(body)
+                                WebPageMediaParser.parse(body, pageUrl)
+                            }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            instagramEmbedExceptionType = error::class.java.simpleName
+                            null
+                        }
+                        if (parsed != null && parsed.mediaUrls.isNotEmpty()) {
+                            instagramEmbedFallback = parsed
+                        }
+                        val embedStatus = when {
+                            instagramEmbedExceptionType != null -> "request_failed"
+                            parsed == null -> "request_timeout"
+                            parsed.mediaUrls.isNotEmpty() -> "media_found"
+                            instagramEmbedLoginWall -> "login_wall"
+                            else -> "no_media"
+                        }
+                        logger.log(
+                            if (embedStatus == "media_found") DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                            "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT",
+                            "اكتمل فحص مسار تضمين Instagram العام",
+                            "social.resolve.instagram_embed",
+                            buildMap {
+                                put("platform", platform.name)
+                                put("operation_id", request.operationId ?: "none")
+                                put("fallback_status", embedStatus)
+                                put("response_chars", instagramEmbedResponseChars.toString())
+                                put("media_count", (parsed?.mediaUrls?.size ?: 0).toString())
+                                put("login_wall_detected", instagramEmbedLoginWall.toString())
+                                instagramEmbedExceptionType?.let { put("exception_type", it) }
+                            },
+                            null,
+                        )
+                    }
+                }
+
+                val title = session.title ?: fallback?.title ?: platformFallback?.title ?: instagramEmbedFallback?.title
+                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: platformFallback?.thumbnailUrl ?: instagramEmbedFallback?.thumbnailUrl
+                val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs ?: instagramEmbedFallback?.durationMs
                 val fallbackMediaCount = fallback?.mediaUrls?.size ?: 0
                 val platformFallbackMediaCount = platformFallback?.mediaUrls?.size ?: 0
+                val instagramEmbedMediaCount = instagramEmbedFallback?.mediaUrls?.size ?: 0
                 val urls = (
                     session.mediaUrls +
                         fallback?.mediaUrls.orEmpty() +
-                        platformFallback?.mediaUrls.orEmpty()
+                        platformFallback?.mediaUrls.orEmpty() +
+                        instagramEmbedFallback?.mediaUrls.orEmpty()
                     )
                     .distinct()
                     .take(64)
@@ -259,6 +325,7 @@ class SocialPlatformResolver(
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
                         "platform_fallback_media_count" to platformFallbackMediaCount.toString(),
+                        "instagram_embed_media_count" to instagramEmbedMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
                         "page_url_source" to pageUrlSource,
                     ),
@@ -332,6 +399,7 @@ class SocialPlatformResolver(
                         "streaming_manifest_count" to candidates.count { it.streamingManifest }.toString(),
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
+                        "instagram_embed_media_count" to instagramEmbedMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
                         "unclassified_source_count" to unclassifiedSourceCount.toString(),
                         "page_url_source" to pageUrlSource,
@@ -494,6 +562,29 @@ class SocialPlatformResolver(
         }.getOrNull()
     }
 
+    private fun instagramEmbedEndpoint(pageUrl: String): String? {
+        val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return null
+        val host = uri.host?.lowercase().orEmpty()
+        if (uri.scheme?.lowercase() != "https" || host !in setOf("instagram.com", "www.instagram.com")) {
+            return null
+        }
+        val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        val typeIndex = segments.indexOfFirst { it.lowercase() in setOf("p", "reel", "reels", "tv") }
+        if (typeIndex < 0) return null
+        val mediaType = segments[typeIndex].lowercase()
+        val shortcode = segments.getOrNull(typeIndex + 1) ?: return null
+        if (!shortcode.matches(Regex("""[A-Za-z0-9_-]{5,}"""))) return null
+        return "https://www.instagram.com/$mediaType/$shortcode/embed/captioned/"
+    }
+
+    private fun looksLikeInstagramLoginWall(body: String): Boolean {
+        val sample = body.take(250_000).lowercase()
+        return "accounts/login" in sample ||
+            "login_required" in sample ||
+            "log in to instagram" in sample ||
+            "sign up to see photos and videos" in sample
+    }
+
     private fun vimeoConfigEndpoint(pageUrl: String): String? {
         return runCatching {
             val uri = URI(pageUrl)
@@ -539,5 +630,6 @@ class SocialPlatformResolver(
     private companion object {
         const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
         const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
+        const val INSTAGRAM_EMBED_FETCH_TIMEOUT_MS = 3_500L
     }
 }
