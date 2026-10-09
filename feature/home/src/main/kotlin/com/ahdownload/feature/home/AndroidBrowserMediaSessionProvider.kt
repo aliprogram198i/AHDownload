@@ -129,6 +129,14 @@ class AndroidBrowserMediaSessionProvider(
                 }
             }
 
+            fun scheduleInspection(view: WebView, delayMs: Long) {
+                // This resolver WebView is intentionally unattached; View.postDelayed may queue work
+                // until attachment. Use the main Handler so inspection runs in the background session.
+                main.postDelayed({
+                    if (!finished && webView === view) inspect(view)
+                }, delayMs)
+            }
+
             fun finish() {
                 if (finished) return
                 finished = true
@@ -174,7 +182,7 @@ class AndroidBrowserMediaSessionProvider(
                         firstMediaObservedAt = System.currentTimeMillis()
                     }
                     webView?.let { view ->
-                        view.postDelayed({ inspect(view) }, 250L)
+                        scheduleInspection(view, 250L)
                     }
 
                     // Keep collecting media after the first playable request until
@@ -536,9 +544,9 @@ class AndroidBrowserMediaSessionProvider(
                         if (platform == MediaPlatform.Instagram) {
                             // Do not wait for onPageFinished: Instagram pages may keep loading
                             // indefinitely while the initial HTML/JS is already inspectable.
-                            view.postDelayed({ inspect(view) }, 900L)
-                            view.postDelayed({ inspect(view) }, 2200L)
-                            view.postDelayed({ inspect(view) }, 4000L)
+                            scheduleInspection(view, 900L)
+                            scheduleInspection(view, 2200L)
+                            scheduleInspection(view, 4000L)
                         }
                     }
 
@@ -552,13 +560,11 @@ class AndroidBrowserMediaSessionProvider(
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         finalUrl = pageUrl
-                        view.postDelayed({ inspect(view) }, 450L)
-                        view.postDelayed({ inspect(view) }, 1400L)
-                        view.postDelayed({ inspect(view) }, 2600L)
-                        view.postDelayed({ inspect(view) }, 4200L)
-                        view.postDelayed({
-                            if (mediaUrls.isNotEmpty()) finish()
-                        }, 6200L)
+                        scheduleInspection(view, 450L)
+                        scheduleInspection(view, 1400L)
+                        scheduleInspection(view, 2600L)
+                        scheduleInspection(view, 4200L)
+                        main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
                     }
                 }
                 timeout = Runnable { finish() }
