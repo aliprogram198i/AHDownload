@@ -42,8 +42,12 @@ class AndroidBrowserMediaSessionProvider(
                     val mediaIndex = segments.indexOfFirst {
                         it.lowercase() in setOf("reel", "reels", "p", "tv")
                     }
-                    segments.getOrNull(mediaIndex + 1)?.takeIf {
-                        it.matches(Regex("[A-Za-z0-9_-]{5,}"))
+                    if (mediaIndex >= 0) {
+                        segments.getOrNull(mediaIndex + 1)?.takeIf {
+                            it.matches(Regex("[A-Za-z0-9_-]{5,}"))
+                        }
+                    } else {
+                        null
                     }
                 }.getOrNull()
             } else {
@@ -202,9 +206,14 @@ class AndroidBrowserMediaSessionProvider(
                             if(!result || !result.payload) return;
                             const discovered=[];
                             const addVideoUrl=raw=>{
-                              if(typeof raw!=='string' || !/^https?:\\/\\//i.test(raw)) return;
-                              if(/\\.(?:mp4|m3u8|mpd)(?:[?#]|$)/i.test(raw) ||
-                                 /\\/(?:o1\\/v|v\\/t)[^?#]*/i.test(raw)){
+                              if(typeof raw!=='string' ||
+                                 !(raw.startsWith('https://') || raw.startsWith('http://'))) return;
+                              const path=raw.split('?')[0].split('#')[0].toLowerCase();
+                              if(['.jpg','.jpeg','.png','.webp','.gif','.avif','.heic','.heif']
+                                  .some(ext=>path.endsWith(ext))) return;
+                              if(['.mp4','.m4v','.webm','.mov','.m3u8','.mpd']
+                                  .some(ext=>path.endsWith(ext)) ||
+                                 path.includes('/o1/v/') || path.includes('/v/t')){
                                 discovered.push(raw);
                               }
                             };

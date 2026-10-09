@@ -127,11 +127,11 @@ class WebPageMediaParserTest {
               "video_versions": [{
                 "width": 720,
                 "height": 1280,
-                "url": "https:\\/\\/scontent.cdninstagram.com\\/o1\\/v\\/t2\\/f2\\/m367\\/AQExample.mp4?token=1"
+                "url": "https:\/\/scontent.cdninstagram.com\/o1\/v\/t2\/f2\/m367\/AQExample.mp4?token=1"
               }],
               "image_versions2": {
                 "candidates": [{
-                  "url": "https:\\/\\/scontent.cdninstagram.com\\/o1\\/v\\/t16\\/f1\\/m999\\/thumbnail.jpg?token=2"
+                  "url": "https:\/\/scontent.cdninstagram.com\/o1\/v\/t16\/f1\/m999\/thumbnail.jpg?token=2"
                 }]
               }
             }]
@@ -147,5 +147,4 @@ class WebPageMediaParserTest {
             result.mediaUrls,
         )
     }
-
 }
