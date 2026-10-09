@@ -397,13 +397,23 @@ class AndroidBrowserMediaSessionProvider(
                         (async()=>{
                           let fallbackStatus='not_attempted';
                           const targets=[];
-                          targets.push({
-                            label:'shortcode',
-                            url:new URL(
-                              '/api/v1/media/shortcode/'+encodeURIComponent(instagramShortcode)+'/',
-                              location.origin
-                            ).toString()
-                          });
+                          const currentHost=String(location.hostname||'').toLowerCase();
+                          const currentProtocol=String(location.protocol||'').toLowerCase();
+                          const trustedInstagramHost=currentHost==='instagram.com'||
+                            currentHost.endsWith('.instagram.com');
+                          if(trustedInstagramHost&&
+                             (currentProtocol==='https:'||currentProtocol==='http:')){
+                            // Avoid a top-level URL-constructor exception aborting every Instagram
+                            // fallback on older or unusual WebView origins.
+                            const instagramOrigin=currentProtocol+'//'+location.host;
+                            targets.push({
+                              label:'shortcode',
+                              url:instagramOrigin+'/api/v1/media/shortcode/'+
+                                encodeURIComponent(instagramShortcode)+'/'
+                            });
+                          }else{
+                            fallbackStatus='shortcode_untrusted_origin';
+                          }
                           try{
                             // Some public pages expose their hydrated media through the
                             // page JSON variant even when the shortcode endpoint is blocked.
