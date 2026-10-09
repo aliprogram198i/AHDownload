@@ -71,6 +71,9 @@ class PersistentUiTraceLogger(
 
     fun exportHomeText(): String = HomeTraceReportFormatter.format(list())
 
+    @Synchronized
+    fun exportResultCardText(): String = ResultCardTraceReportFormatter.format(list())
+
     private fun read(): List<UiTraceEvent> {
         val json = preferences.getString(KEY_EVENTS, null) ?: return emptyList()
         return runCatching {
