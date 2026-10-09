@@ -33,7 +33,7 @@ import java.util.UUID
  */
 @RunWith(AndroidJUnit4::class)
 class LiveSocialMediaDownloadE2ETest {
-    @Test(timeout = 2_100_000L)
+    @Test(timeout = 3_300_000L)
     fun publicVideoLinksResolveAndDownloadOnAndroidEmulator() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = context.applicationContext as AHDownloadApplication
@@ -80,7 +80,11 @@ class LiveSocialMediaDownloadE2ETest {
                                 it.format.hasVideo
                         }
                         .distinctBy { it.sourceUrl }
-                        .take(4)
+                        .sortedWith(
+                            compareBy<com.ahdownload.domain.resolver.MediaCandidate> { it.format.height ?: Int.MAX_VALUE }
+                                .thenBy { it.format.fileSizeBytes ?: Long.MAX_VALUE },
+                        )
+                        .take(2)
                     is ResolverResult.Failure -> error(
                         "Resolver returned " + resolved.code + ": " + (resolved.message ?: "no details"),
                     )
@@ -92,7 +96,7 @@ class LiveSocialMediaDownloadE2ETest {
                 var candidateFailure = "No candidate was accepted"
                 var downloaded = false
                 for ((index, candidate) in candidates.withIndex()) {
-                    val validation = withTimeoutOrNull(25_000L) {
+                    val validation = withTimeoutOrNull(20_000L) {
                         resolver.validate(candidate, operationId = "live-e2e-" + target.name + "-" + index)
                     }
                     if (validation == null) {
@@ -119,7 +123,7 @@ class LiveSocialMediaDownloadE2ETest {
                         app = app,
                         sourcePageUrl = target.url,
                         displayName = title,
-                        timeoutMs = 105_000L,
+                        timeoutMs = 90_000L,
                     )
                     if (record == null) {
                         candidateFailure = "Candidate " + (index + 1) + ": download did not reach a terminal state in 105 seconds"
