@@ -2,6 +2,7 @@ package com.ahdownload.domain.resolver.social
 
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.HttpTextClient
+import com.ahdownload.domain.resolver.PlatformAdapter
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.browser.BrowserMediaSession
@@ -17,7 +18,7 @@ class SocialPlatformResolverTest {
     @Test
     fun instagramApiDiscoveredMediaGetsSafeRefererFallback() = runTest {
         val mediaUrl = "https://scontent.cdninstagram.com/o1/v/t2/f2/m367/AQExample.mp4?token=1"
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -40,7 +41,7 @@ class SocialPlatformResolverTest {
     @Test
     fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
-        val resolver = SocialPlatformResolver(
+        val resolver = TikTokResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.TikTok,
@@ -67,7 +68,7 @@ class SocialPlatformResolverTest {
 
     @Test
     fun hangingBrowserSessionReturnsExplicitTimeoutFailure() = runTest {
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = object : BrowserMediaSessionProvider {
                 override suspend fun snapshot(
                     url: String,
@@ -95,7 +96,7 @@ class SocialPlatformResolverTest {
 
     @Test
     fun hangingPageFetchReturnsExplicitTimeoutFailure() = runTest {
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -143,7 +144,7 @@ class SocialPlatformResolverTest {
         val pageUrl = "https://www.instagram.com/reel/ABC123/"
         val mediaUrl = "https://cdn.example.com/video.mp4"
         val fetchedUrls = mutableListOf<String>()
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -171,7 +172,7 @@ class SocialPlatformResolverTest {
     fun customSchemeUrlsNeverReachHttpPageClient() = runTest {
         val mediaUrl = "https://cdn.example.com/video.mp4"
         val fetchedUrls = mutableListOf<String>()
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -201,7 +202,7 @@ class SocialPlatformResolverTest {
         val mediaUrl = "https://cdn.example.com/video.mp4"
         val fetchedUrls = mutableListOf<String>()
         val html = """<html><head><meta property="og:video" content="$mediaUrl"></head></html>"""
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -242,7 +243,7 @@ class SocialPlatformResolverTest {
         val operationId = "instagram-op-test"
         val loggedContexts = mutableListOf<Pair<String, Map<String, String>>>()
         val mediaUrl = "https://cdn.example.com/video.mp4"
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -277,7 +278,7 @@ class SocialPlatformResolverTest {
     @Test
     fun instagramInspectionFailureCountersAreIncludedInDiagnostics() = runTest {
         val events = mutableListOf<Pair<String, Map<String, String>>>()
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -314,7 +315,7 @@ class SocialPlatformResolverTest {
     @Test
     fun observedVideoWithAudioTrackRemainsMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -339,7 +340,7 @@ class SocialPlatformResolverTest {
     fun instagramVideoRequestRejectsImageThumbnailAndReportsTheReason() = runTest {
         val thumbnailUrl = "https://scontent.cdninstagram.com/o1/v/t16/f1/m999/thumbnail.jpg?stp=dst-jpg"
         val events = mutableListOf<Pair<String, Map<String, String>>>()
-        val resolver = SocialPlatformResolver(
+        val resolver = InstagramResolverAdapter(
             provider = FakeProvider(
                 BrowserMediaSession(
                     platform = MediaPlatform.Instagram,
@@ -368,6 +369,42 @@ class SocialPlatformResolverTest {
         val resolutionEvent = events.single { it.first == "SOCIAL_RESOLUTION_RESULT" }
         assertEquals("1", resolutionEvent.second["rejected_image_candidate_count"])
         assertEquals("0", resolutionEvent.second["video_candidate_count"])
+    }
+
+    @Test
+    fun everySocialPlatformHasItsOwnFixedIdentityAdapter() = runTest {
+        val provider = FakeProvider(
+            BrowserMediaSession(
+                platform = MediaPlatform.Instagram,
+                pageUrl = "https://www.instagram.com/reel/ABC123/",
+                mediaUrls = emptyList(),
+            ),
+        )
+        val adapters: List<Pair<MediaPlatform, PlatformAdapter>> = listOf(
+            MediaPlatform.Instagram to InstagramResolverAdapter(provider),
+            MediaPlatform.Facebook to FacebookResolverAdapter(provider),
+            MediaPlatform.TikTok to TikTokResolverAdapter(provider),
+            MediaPlatform.X to XResolverAdapter(provider),
+            MediaPlatform.Snapchat to SnapchatResolverAdapter(provider),
+            MediaPlatform.Pinterest to PinterestResolverAdapter(provider),
+            MediaPlatform.Reddit to RedditResolverAdapter(provider),
+            MediaPlatform.Twitch to TwitchResolverAdapter(provider),
+            MediaPlatform.Vimeo to VimeoResolverAdapter(provider),
+        )
+
+        assertEquals(9, adapters.map { it.first }.distinct().size)
+        assertEquals(adapters.map { it.first }.toSet(), adapters.map { it.second.capability.platform }.toSet())
+
+        adapters.forEach { (_, adapter) ->
+            val result = adapter.resolve(
+                ResolverRequest(link = link(MediaPlatform.YouTube)),
+            )
+            assertTrue(result is ResolverResult.Failure)
+            assertEquals(
+                com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
+                (result as ResolverResult.Failure).code,
+            )
+        }
     }
 
     private fun link(platform: MediaPlatform) =
