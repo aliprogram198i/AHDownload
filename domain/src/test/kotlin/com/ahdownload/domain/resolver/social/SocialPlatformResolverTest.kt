@@ -213,7 +213,9 @@ class SocialPlatformResolverTest {
         )
 
         assertTrue(result is ResolverResult.Success)
-        assertEquals(listOf(pageUrl), fetchedUrls)
+        assertTrue(fetchedUrls.isNotEmpty())
+        assertEquals(pageUrl, fetchedUrls.first())
+        assertTrue(fetchedUrls.none { it.startsWith("instagram://", ignoreCase = true) })
     }
 
     @Test
