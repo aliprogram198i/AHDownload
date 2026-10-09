@@ -58,6 +58,26 @@ class AndroidBrowserMediaSessionProvider(
             } else {
                 null
             }
+            val instagramMediaType = if (platform == MediaPlatform.Instagram) {
+                runCatching {
+                    URI(url).path.orEmpty().split('/').filter(String::isNotBlank)
+                        .firstOrNull { it.lowercase() in setOf("reel", "reels", "p", "tv") }
+                        ?.lowercase()
+                }.getOrNull()
+            } else {
+                null
+            }
+            val instagramEmbedUrls = if (
+                platform == MediaPlatform.Instagram &&
+                instagramShortcode != null &&
+                instagramMediaType != null
+            ) {
+                val base = "https://www.instagram.com/$instagramMediaType/$instagramShortcode"
+                listOf("$base/embed/captioned/", "$base/embed/")
+            } else {
+                emptyList()
+            }
+            var instagramEmbedFallbackAttempt = 0
             var instagramApiStatus: String? = null
             var title: String? = null
             var thumbnail: String? = null
@@ -132,6 +152,29 @@ class AndroidBrowserMediaSessionProvider(
                 // until attachment. Use the main Handler so inspection runs in the background session.
                 main.postDelayed({
                     if (!finished && webView === view) inspect(view)
+                }, delayMs)
+            }
+
+            fun tryInstagramEmbedFallback(view: WebView) {
+                if (
+                    platform != MediaPlatform.Instagram ||
+                    finished ||
+                    webView !== view ||
+                    mediaUrls.isNotEmpty()
+                ) return
+                val nextUrl = instagramEmbedUrls.getOrNull(instagramEmbedFallbackAttempt) ?: return
+                instagramEmbedFallbackAttempt += 1
+                // The server-side HTML fallback often contains only the JS shell. Loading the
+                // public embed in WebView lets its player execute and exposes genuine CDN requests.
+                instagramApiStatus = "webview_embed_attempt_$instagramEmbedFallbackAttempt"
+                view.loadUrl(nextUrl)
+            }
+
+            fun scheduleInstagramEmbedFallback(view: WebView, delayMs: Long) {
+                main.postDelayed({
+                    if (!finished && webView === view && mediaUrls.isEmpty()) {
+                        tryInstagramEmbedFallback(view)
+                    }
                 }, delayMs)
             }
 
@@ -609,15 +652,32 @@ class AndroidBrowserMediaSessionProvider(
                     ) {
                         super.onPageStarted(view, pageUrl, favicon)
                         if (platform == MediaPlatform.Instagram) {
-                            // Do not wait for onPageFinished: Instagram pages may keep loading
-                            // indefinitely while the initial HTML/JS is already inspectable.
+                            // Keep polling bounded. If the normal permalink does not expose a
+                            // playable source, switch to the public embed and observe its player.
                             scheduleInspection(view, 900L)
                             scheduleInspection(view, 2200L)
-                            scheduleInspection(view, 4000L)
-                            scheduleInspection(view, 6000L)
-                            scheduleInspection(view, 8000L)
-                            scheduleInspection(view, 10000L)
-                            scheduleInspection(view, 12000L)
+                            scheduleInspection(view, 4200L)
+                            scheduleInstagramEmbedFallback(view, 7000L)
+                        }
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        error: android.webkit.WebResourceError,
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        if (
+                            platform == MediaPlatform.Instagram &&
+                            request.isForMainFrame &&
+                            mediaUrls.isEmpty()
+                        ) {
+                            // Do not treat a main-frame failure as an extraction success or wait
+                            // for onPageFinished; move to the public embed fallback promptly.
+                            instagramApiStatus = "webview_main_frame_error_${error.errorCode}"
+                            main.postDelayed({
+                                tryInstagramEmbedFallback(view)
+                            }, 300L)
                         }
                     }
 
@@ -631,21 +691,18 @@ class AndroidBrowserMediaSessionProvider(
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
                         finalUrl = pageUrl
-                        scheduleInspection(view, 450L)
+                        scheduleInspection(view, 350L)
                         scheduleInspection(view, 1400L)
-                        scheduleInspection(view, 2600L)
-                        scheduleInspection(view, 4200L)
-                        // The GraphQL request is asynchronous; keep checking for its result
-                        // until shortly before the bounded Instagram session timeout.
-                        scheduleInspection(view, 6500L)
-                        scheduleInspection(view, 8500L)
-                        scheduleInspection(view, 10500L)
-                        scheduleInspection(view, 12500L)
+                        scheduleInspection(view, 3000L)
+                        scheduleInspection(view, 5200L)
+                        if (platform == MediaPlatform.Instagram) {
+                            scheduleInstagramEmbedFallback(view, 7000L)
+                        }
                         main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
                     }
                 }
                 timeout = Runnable { finish() }
-                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 18000L else 10000L
+                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 26000L else 10000L
                 main.postDelayed(timeout!!, sessionTimeoutMs)
                 view.loadUrl(url)
             }
