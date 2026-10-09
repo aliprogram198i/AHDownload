@@ -90,9 +90,6 @@ class FileDownloadRepositoryTest {
     )
 
     private fun Context.deleteFileStore() {
-        deleteFile("downloads/downloads.json")
-        deleteFile("downloads/downloads.json.bak")
-        deleteFile("downloads/downloads.json.lck")
-        deleteFile("downloads")
+        File(filesDir, "downloads").deleteRecursively()
     }
 }
