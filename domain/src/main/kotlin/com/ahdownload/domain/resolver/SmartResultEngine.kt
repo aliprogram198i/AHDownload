@@ -9,9 +9,10 @@ class SmartResultEngine {
             .filter { it.sourceUrl.startsWith("http://") || it.sourceUrl.startsWith("https://") }
             .map(::normalize)
 
-        // Present one best source per actual quality tier. Multiple YouTube
-        // clients/containers can expose the same resolution or bitrate; those
-        // are alternate sources, not separate quality buttons.
+        // Video choices are grouped by resolution + real source container.
+        // Duplicate URLs/codecs within that tier are alternates, not separate
+        // buttons. Audio source choices remain one best source per bitrate tier;
+        // the independent output-format grid offers the supported conversions.
         val video = parsed
             .filter { it.group == MediaResultGroup.Video }
             .sortedWith(videoComparator)
@@ -110,13 +111,16 @@ class SmartResultEngine {
     private fun presentationQualityKey(item: MediaPresentationModel): String {
         val format = item.candidate.format
         return when (item.group) {
-            MediaResultGroup.Video -> format.height
-                ?.takeIf { it > 0 }
-                ?.let { "video-height:$it" }
-                // If the resolver cannot provide height metadata, these are not
-                // distinct user-visible quality options. Keep one best fallback
-                // instead of rendering several identical "Video" placeholder cards.
-                ?: "video-unknown"
+            MediaResultGroup.Video -> {
+                val containerKey = format.container.name
+                format.height
+                    ?.takeIf { it > 0 }
+                    ?.let { "video-height:$it:container:$containerKey" }
+                    // Different actual containers (for example MP4 and WebM) are
+                    // distinct source choices at the same resolution. Within one
+                    // resolution/container tier keep only the best ranked source.
+                    ?: "video-unknown:container:$containerKey"
+            }
             MediaResultGroup.Audio -> format.bitrateKbps
                 ?.takeIf { it > 0 }
                 ?.let { "audio-bitrate:${it / 16 * 16}" }
@@ -126,8 +130,8 @@ class SmartResultEngine {
     }
 
     private fun qualityLabel(c: MediaCandidate): String = when {
-        c.format.kind == MediaKind.Video && c.format.height != null -> "${c.format.height}p"
-        c.format.kind == MediaKind.Audio && c.format.bitrateKbps != null -> "${c.format.bitrateKbps} kbps"
+        c.format.kind == MediaKind.Video && (c.format.height ?: 0) > 0 -> "${c.format.height}p"
+        c.format.kind == MediaKind.Audio && (c.format.bitrateKbps ?: 0) > 0 -> "${c.format.bitrateKbps} kbps"
         c.format.kind == MediaKind.Video -> "Video"
         c.format.kind == MediaKind.Audio -> "Audio"
         else -> "Media"

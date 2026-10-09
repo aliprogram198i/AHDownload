@@ -141,6 +141,49 @@ class SmartResultEngineTest {
     }
 
     @Test
+    fun showsEachUniqueResolutionAndContainerOnce() {
+        val mp4Thirty = candidate("mp4-1080-30", MediaKind.Video, 1080, 4200, 20_000_000).copy(
+            format = candidate("mp4-1080-30", MediaKind.Video, 1080, 4200, 20_000_000).format.copy(
+                fps = 30.0,
+                container = MediaContainer.Mp4,
+                videoCodec = "avc1.640028",
+            ),
+        )
+        val mp4Sixty = candidate("mp4-1080-60", MediaKind.Video, 1080, 4700, 22_000_000).copy(
+            format = candidate("mp4-1080-60", MediaKind.Video, 1080, 4700, 22_000_000).format.copy(
+                fps = 60.0,
+                container = MediaContainer.Mp4,
+                videoCodec = "avc1.640028",
+            ),
+        )
+        val webm1080 = candidate("webm-1080", MediaKind.Video, 1080, 5000, 23_000_000).copy(
+            format = candidate("webm-1080", MediaKind.Video, 1080, 5000, 23_000_000).format.copy(
+                fps = 30.0,
+                container = MediaContainer.Webm,
+                videoCodec = "vp9",
+                audioCodec = "opus",
+            ),
+        )
+        val mp4720 = candidate("mp4-720", MediaKind.Video, 720, 2500, 10_000_000).copy(
+            format = candidate("mp4-720", MediaKind.Video, 720, 2500, 10_000_000).format.copy(
+                container = MediaContainer.Mp4,
+            ),
+        )
+
+        val result = SmartResultEngine().build(listOf(mp4Thirty, webm1080, mp4Sixty, mp4720))
+
+        assertEquals(3, result.video.size)
+        assertEquals(
+            setOf("mp4-1080-60", "webm-1080", "mp4-720"),
+            result.video.map { it.candidate.id }.toSet(),
+        )
+        assertEquals(
+            3,
+            result.video.map { it.candidate.format.height to it.candidate.format.container }.distinct().size,
+        )
+    }
+
+    @Test
     fun showsOneVideoOptionPerResolutionAndPrefersHigherFrameRate() {
         val fps30 = candidate("v1080-30", MediaKind.Video, 1080, 4500, 20000000).copy(
             format = candidate("v1080-30", MediaKind.Video, 1080, 4500, 20000000).format.copy(fps = 30.0),
