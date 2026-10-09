@@ -21,14 +21,28 @@ class SocialPlatformResolver(
     private val provider: BrowserMediaSessionProvider,
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
-    private val pageClient: HttpTextClient = OkHttpTextClient(
+    pageClient: HttpTextClient? = null,
+    instagramPageClientOverride: HttpTextClient? = null,
+) : PlatformAdapter {
+
+    private val pageClient = pageClient ?: OkHttpTextClient(
         client = OkHttpClient.Builder()
             .callTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .connectTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .readTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .build(),
-    ),
-) : PlatformAdapter {
+    )
+
+    // OkHttpTextClient executes synchronously on Dispatchers.IO. Coroutine timeouts alone
+    // cannot reliably stop its underlying socket, so Instagram gets a real OkHttp call timeout.
+    // Tests that inject pageClient automatically use that same client unless they override this.
+    private val instagramPageClient = instagramPageClientOverride ?: pageClient ?: OkHttpTextClient(
+        client = OkHttpClient.Builder()
+            .callTimeout(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .connectTimeout(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .readTimeout(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .build(),
+    )
 
     private val supported = setOf(
         MediaPlatform.Instagram,
@@ -374,7 +388,7 @@ class SocialPlatformResolver(
             for (target in targets) {
                 val response = try {
                     withTimeoutOrNull(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS) {
-                        pageClient.get(target.url, target.headers)
+                        instagramPageClient.get(target.url, target.headers)
                     }
                 } catch (error: CancellationException) {
                     throw error
@@ -641,7 +655,6 @@ class SocialPlatformResolver(
     private companion object {
         const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
         const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
-        const val INSTAGRAM_PAGE_FETCH_TIMEOUT_MS = 4_500L
         const val INSTAGRAM_PAGE_FETCH_BUDGET_MS = 4_500L
         const val INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS = 1_050L
         const val INSTAGRAM_WEB_APP_ID = "936619743392459"
