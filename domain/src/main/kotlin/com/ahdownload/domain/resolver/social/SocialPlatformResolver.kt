@@ -25,7 +25,10 @@ class SocialPlatformResolver(
     instagramPageClientOverride: HttpTextClient? = null,
 ) : PlatformAdapter {
 
-    private val pageClient = pageClient ?: OkHttpTextClient(
+    // Preserve the constructor injection separately from the non-null default clients below.
+    private val injectedPageClient = pageClient
+
+    private val pageClient = injectedPageClient ?: OkHttpTextClient(
         client = OkHttpClient.Builder()
             .callTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .connectTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
@@ -36,7 +39,7 @@ class SocialPlatformResolver(
     // OkHttpTextClient executes synchronously on Dispatchers.IO. Coroutine timeouts alone
     // cannot reliably stop its underlying socket, so Instagram gets a real OkHttp call timeout.
     // Tests that inject pageClient automatically use that same client unless they override this.
-    private val instagramPageClient = instagramPageClientOverride ?: pageClient ?: OkHttpTextClient(
+    private val instagramPageClient = instagramPageClientOverride ?: injectedPageClient ?: OkHttpTextClient(
         client = OkHttpClient.Builder()
             .callTimeout(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .connectTimeout(INSTAGRAM_PAGE_FETCH_ATTEMPT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
