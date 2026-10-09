@@ -375,6 +375,7 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("classification=STORAGE"))
         assertTrue(report.contains("root_cause=STORAGE_ERROR"))
         assertTrue(report.contains("action=INSPECT_STORAGE"))
+        assertTrue(report.contains("download=COMPLETED"))
         assertTrue(
             report.contains(
                 "FAILURE_CHAIN\nvalidation_passed -> download_completed_locally -> " +

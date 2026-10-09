@@ -262,7 +262,11 @@ object DiagnosticReportFormatter {
                 else -> "NOT_STARTED"
             },
             "download" to when {
-                events.any { it.type.contains("DOWNLOAD_COMPLETED", ignoreCase = true) } -> "COMPLETED"
+                events.any { it.type.contains("DOWNLOAD_COMPLETED", ignoreCase = true) } ||
+                    has("DOWNLOAD_DESTINATION_COMMITTED") ||
+                    has("DOWNLOAD_DESTINATION_COPY_FAILED") ||
+                    has("AUDIO_EXTRACTION_COMPLETED") ||
+                    has("MEDIASTORE_PUBLISH_FAILED") -> "COMPLETED"
                 events.any { it.operation.contains("download", ignoreCase = true) && it.type.contains("DOWNLOAD", ignoreCase = true) } -> "STARTED"
                 else -> "NOT_STARTED"
             },
