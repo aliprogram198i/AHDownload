@@ -682,19 +682,6 @@ class HomeViewModel(
             downloadQueued = false,
         )
     }
-    private fun bestCompanionAudioCandidate(candidates: List<MediaCandidate>): MediaCandidate? =
-        candidates
-            .asSequence()
-            .filter { it.format.kind == MediaKind.Audio && it.format.hasAudio }
-            .sortedWith(
-                compareByDescending<MediaCandidate> {
-                    it.format.container == com.ahdownload.domain.resolver.MediaContainer.M4a ||
-                        it.format.container == com.ahdownload.domain.resolver.MediaContainer.Aac
-                }
-                    .thenByDescending { it.format.bitrateKbps ?: 0 },
-            )
-            .firstOrNull()
-
     private fun downloadSelected(
         candidateId: String,
         extractAudio: Boolean = false,
@@ -728,39 +715,30 @@ class HomeViewModel(
             )
             try {
                 var candidateToValidate = candidate
-                var companionAudioCandidate: MediaCandidate? = null
+                var companionAudioCandidatesToTry: List<MediaCandidate> = emptyList()
                 if (
                     !extractAudio &&
                     candidate.format.kind == MediaKind.Video &&
                     candidate.format.hasVideo &&
                     !candidate.format.hasAudio
                 ) {
-                    val audioCandidate = bestCompanionAudioCandidate(
+                    companionAudioCandidatesToTry = rankedCompanionAudioCandidates(
                         state.resolution?.candidates.orEmpty(),
                     )
-                    if (audioCandidate == null) {
-                        // Track detection from WebView is best-effort. Do not block the
-                        // original file: a progressive MP4 may already contain its audio.
+                    if (companionAudioCandidatesToTry.isEmpty()) {
+                        // Never silently queue a source known to be video-only.
                         logger.log(
                             DiagnosticLevel.WARNING,
                             "AUDIO_COMPANION_NOT_FOUND",
-                            "لم يتم اكتشاف مصدر صوت منفصل؛ سيُنزل التطبيق مصدر الفيديو الأصلي كما هو.",
+                            "لم يتم اكتشاف مصدر صوت منفصل؛ يلزم التحقق من وجود صوت أو اختيار جودة مدمجة.",
                             "download.prepare",
                             mapOf(
                                 "candidate_id" to candidate.id,
                                 "operation_id" to validationOperationId,
                                 "platform" to (state.result?.platform?.name ?: "unknown"),
-                                "download_original_source" to "true",
+                                "companion_audio_candidate_count" to "0",
                             ),
                             null,
-                        )
-                    } else {
-                        companionAudioCandidate = audioCandidate
-                        candidateToValidate = candidate.copy(
-                            companionAudioSourceUrl = audioCandidate.sourceUrl,
-                            companionAudioRequestHeaders = audioCandidate.requestHeaders,
-                            companionAudioSessionCookieHost = audioCandidate.sessionCookieHost,
-                            companionAudioStreamingManifest = audioCandidate.streamingManifest,
                         )
                     }
                 }
@@ -898,10 +876,10 @@ class HomeViewModel(
                                         refreshedCandidate.format.hasVideo &&
                                         !refreshedCandidate.format.hasAudio
                                     ) {
-                                        companionAudioCandidate = bestCompanionAudioCandidate(
+                                        companionAudioCandidatesToTry = rankedCompanionAudioCandidates(
                                             refreshed.candidates,
                                         )
-                                        if (companionAudioCandidate == null) {
+                                        if (companionAudioCandidatesToTry.isEmpty()) {
                                             logger.log(
                                                 DiagnosticLevel.WARNING,
                                                 "MUX_AUDIO_CANDIDATE_MISSING",
@@ -945,28 +923,61 @@ class HomeViewModel(
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
                         var enqueueCandidate = validation.candidate.copy(sourceUrl = validation.finalUrl)
-                        if (!extractAudio && companionAudioCandidate != null) {
-                            val audioValidation = resolver.validate(companionAudioCandidate, validationOperationId)
-                            if (audioValidation !is CandidateValidationResult.Valid) {
+                        if (
+                            !extractAudio &&
+                            enqueueCandidate.format.kind == MediaKind.Video &&
+                            enqueueCandidate.format.hasVideo &&
+                            !enqueueCandidate.format.hasAudio
+                        ) {
+                            var audioCandidatesChecked = 0
+                            val validatedAudio = validateCompanionAudioCandidates(
+                                candidates = companionAudioCandidatesToTry,
+                            ) { audioOption ->
+                                audioCandidatesChecked++
+                                resolver.validate(audioOption, validationOperationId).also { audioResult ->
+                                    if (audioResult is CandidateValidationResult.Invalid) {
+                                        logger.log(
+                                            DiagnosticLevel.WARNING,
+                                            "MUX_AUDIO_CANDIDATE_REJECTED",
+                                            "رُفض مصدر صوت مرافق؛ ستتم تجربة المصدر التالي إن وُجد",
+                                            "download.validate.audio",
+                                            mapOf(
+                                                "video_candidate_id" to enqueueCandidate.id,
+                                                "audio_candidate_id" to audioOption.id,
+                                                "audio_candidates_checked" to audioCandidatesChecked.toString(),
+                                                "operation_id" to validationOperationId,
+                                                "validation_result" to "invalid",
+                                            ),
+                                            null,
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (validatedAudio == null) {
+                                val audioCandidateCount = companionAudioCandidatesToTry.size
                                 _uiState.value = _uiState.value.copy(
                                     validatingCandidateId = null,
-                                    error = "تعذر التحقق من مسار الصوت المطلوب لدمج الفيديو.",
+                                    error = "تعذر التحقق من أي مصدر صوت صالح لهذه الجودة. لم يبدأ التنزيل؛ اختر جودة تحتوي على الصوت المدمج أو أعد تحليل الرابط.",
                                     downloadQueued = false,
                                 )
                                 logger.log(
                                     DiagnosticLevel.WARNING,
                                     "MUX_AUDIO_VALIDATION_FAILED",
-                                    "فشل التحقق من مسار الصوت المرافق للفيديو",
+                                    "لم يُعثر على مصدر صوت مرافق صالح بعد تجربة الخيارات المتاحة",
                                     "download.validate",
                                     mapOf(
-                                        "video_candidate_id" to candidate.id,
-                                        "audio_candidate_id" to companionAudioCandidate.id,
+                                        "video_candidate_id" to enqueueCandidate.id,
+                                        "audio_candidate_count" to audioCandidateCount.toString(),
+                                        "audio_candidates_checked" to audioCandidatesChecked.toString(),
                                         "operation_id" to validationOperationId,
                                     ),
                                     null,
                                 )
                                 return@launch
                             }
+
+                            val audioValidation = validatedAudio.validation
                             enqueueCandidate = enqueueCandidate.copy(
                                 companionAudioSourceUrl = audioValidation.finalUrl,
                                 companionAudioRequestHeaders = audioValidation.candidate.requestHeaders,
