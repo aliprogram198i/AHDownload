@@ -1,5 +1,9 @@
 package com.ahdownload.app.diagnostics
 
+import com.ahdownload.core.designsystem.DiagnosticButton
+import com.ahdownload.core.designsystem.DiagnosticOutlinedButton
+import com.ahdownload.core.designsystem.DiagnosticIconButton
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -120,7 +124,11 @@ private fun DiagnosticsScreen(
             TopAppBar(
                 title = { Text("سجل الأخطاء") },
                 navigationIcon = {
-                    IconButton(onClick = {
+                    DiagnosticIconButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.iconbutton.01",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("DIAGNOSTICS", "back_button", "back")
                         onBack()
                     }) {
@@ -128,7 +136,11 @@ private fun DiagnosticsScreen(
                     }
                 },
                 actions = {
-                    IconButton(
+                    DiagnosticIconButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.iconbutton.02",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_latest_incident")
                             clipboard.setText(AnnotatedString(report))
@@ -137,10 +149,18 @@ private fun DiagnosticsScreen(
                     ) {
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ التقرير")
                     }
-                    IconButton(onClick = onRefresh) {
+                    DiagnosticIconButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.iconbutton.03",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",onClick = onRefresh) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                     }
-                    IconButton(
+                    DiagnosticIconButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.iconbutton.04",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                         onClick = { showClearConfirmation = true },
                         enabled = logs.isNotEmpty(),
                     ) {
@@ -260,7 +280,11 @@ private fun DiagnosticsScreen(
                 }
 
                 item {
-                    OutlinedButton(
+                    DiagnosticOutlinedButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.outlinedbutton.01",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             showTechnical = !showTechnical
                             uiTraceLogger.interaction(
@@ -319,7 +343,11 @@ private fun DiagnosticsScreen(
                 Text("سيتم حذف السجل المحلي للتشخيص من هذا الجهاز. لا يؤثر ذلك على الملفات أو التنزيلات.")
             },
             confirmButton = {
-                Button(
+                DiagnosticButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.button.01",
+            trackingLabel = "button_control",
+            disabledReason = "callsite_precondition_not_explicit",
                     onClick = {
                         showClearConfirmation = false
                         onClear()
@@ -329,7 +357,11 @@ private fun DiagnosticsScreen(
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showClearConfirmation = false }) {
+                DiagnosticOutlinedButton(
+            trackingScreen = "DIAGNOSTICS",
+            trackingId = "DIAGNOSTICS.outlinedbutton.02",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",onClick = { showClearConfirmation = false }) {
                     Text("إلغاء")
                 }
             },

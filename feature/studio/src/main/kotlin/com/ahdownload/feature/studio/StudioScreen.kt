@@ -1,5 +1,9 @@
 package com.ahdownload.feature.studio
 
+import com.ahdownload.core.designsystem.DiagnosticButton
+import com.ahdownload.core.designsystem.DiagnosticOutlinedButton
+import com.ahdownload.core.designsystem.DiagnosticIconButton
+
 import android.content.Context
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -110,7 +114,11 @@ fun StudioRoute(
             TopAppBar(
                 title = { Text("Smart Studio") },
                 navigationIcon = {
-                    IconButton(onClick = {
+                    DiagnosticIconButton(
+            trackingScreen = "STUDIO",
+            trackingId = "STUDIO.iconbutton.01",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("STUDIO", "back_button", "back")
                         onBack()
                     }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع") }
@@ -179,7 +187,11 @@ fun StudioRoute(
 
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        DiagnosticButton(
+            trackingScreen = "STUDIO",
+            trackingId = "STUDIO.button.01",
+            trackingLabel = "button_control",
+            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("STUDIO", "open_button", "open")
                                 onOpen()
@@ -190,7 +202,11 @@ fun StudioRoute(
                             Spacer(Modifier.width(6.dp))
                             Text("فتح الملف")
                         }
-                        OutlinedButton(
+                        DiagnosticOutlinedButton(
+            trackingScreen = "STUDIO",
+            trackingId = "STUDIO.outlinedbutton.01",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("STUDIO", "share_button", "share")
                                 onShare()
@@ -236,7 +252,11 @@ fun StudioRoute(
                     info.audioMimeType == "audio/aac"
                 if (record.task.mediaKind == MediaKind.Video && canExtractAudio) {
                     item {
-                        Button(
+                        DiagnosticButton(
+            trackingScreen = "STUDIO",
+            trackingId = "STUDIO.button.02",
+            trackingLabel = "button_control",
+            disabledReason = "callsite_precondition_not_explicit",
                             enabled = !extracting,
                             onClick = {
                                 extracting = true

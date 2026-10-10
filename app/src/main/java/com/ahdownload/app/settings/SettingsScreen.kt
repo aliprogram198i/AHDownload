@@ -1,5 +1,11 @@
 package com.ahdownload.app.settings
 
+import com.ahdownload.core.designsystem.DiagnosticButton
+import com.ahdownload.core.designsystem.DiagnosticOutlinedButton
+import com.ahdownload.core.designsystem.DiagnosticIconButton
+import com.ahdownload.core.designsystem.DiagnosticFilterChip
+import com.ahdownload.core.designsystem.DiagnosticSwitch
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -130,7 +136,11 @@ fun SettingsRoute(
             TopAppBar(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
-                    IconButton(onClick = {
+                    DiagnosticIconButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.iconbutton.01",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("SETTINGS", "back_button", "back")
                         onBack()
                     }) {
@@ -141,6 +151,7 @@ fun SettingsRoute(
         },
         bottomBar = {
             AHBottomNavigationBar(
+                trackingScreen = "SETTINGS",
                 selected = AHBottomNavDestination.SETTINGS,
                 activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
@@ -197,7 +208,11 @@ fun SettingsRoute(
                     Text("جودة الفيديو الافتراضية", style = MaterialTheme.typography.titleSmall)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(VideoQualityPreference.entries) { quality ->
-                            FilterChip(
+                            DiagnosticFilterChip(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.filterchip.01",
+            trackingLabel = "filterchip_control",
+            disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.videoQuality == quality,
                                 onClick = {
                                     preferencesStore.setVideoQuality(quality)
@@ -210,7 +225,11 @@ fun SettingsRoute(
                     Text("جودة الصوت الافتراضية", style = MaterialTheme.typography.titleSmall)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(AudioBitratePreference.entries) { bitrate ->
-                            FilterChip(
+                            DiagnosticFilterChip(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.filterchip.02",
+            trackingLabel = "filterchip_control",
+            disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.audioBitrate == bitrate,
                                 onClick = {
                                     preferencesStore.setAudioBitrate(bitrate)
@@ -259,7 +278,11 @@ fun SettingsRoute(
                         }
                     }
 
-                    Button(
+                    DiagnosticButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.button.01",
+            trackingLabel = "button_control",
+            disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder")
                             onPickDownloadFolder()
@@ -270,7 +293,11 @@ fun SettingsRoute(
                     }
 
                     if (location.isCustom) {
-                        OutlinedButton(
+                        DiagnosticOutlinedButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.outlinedbutton.01",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset")
                                 store.resetToDefault()
@@ -279,7 +306,11 @@ fun SettingsRoute(
                         ) {
                             Text("العودة للمجلد الافتراضي")
                         }
-                        OutlinedButton(
+                        DiagnosticOutlinedButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.outlinedbutton.02",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog")
                                 folderError = null
@@ -316,7 +347,11 @@ fun SettingsRoute(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        IconButton(
+                        DiagnosticIconButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.iconbutton.02",
+            trackingLabel = "iconbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "storage_refresh", "refresh")
                                 storageInfo = StorageInfoReader.read(context)
@@ -388,7 +423,11 @@ fun SettingsRoute(
                     }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(AHThemeMode.entries) { mode ->
-                            FilterChip(
+                            DiagnosticFilterChip(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.filterchip.03",
+            trackingLabel = "filterchip_control",
+            disabledReason = "callsite_precondition_not_explicit",
                                 selected = themeMode == mode,
                                 onClick = {
                                     uiTraceLogger.interaction(
@@ -501,7 +540,11 @@ fun SettingsRoute(
                         }
                     }
 
-                    OutlinedButton(
+                    DiagnosticOutlinedButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.outlinedbutton.03",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "diagnostics_button", "open_diagnostics")
                             onOpenDiagnostics()
@@ -512,7 +555,11 @@ fun SettingsRoute(
                         Text("فتح سجل الأخطاء")
                     }
 
-                    OutlinedButton(
+                    DiagnosticOutlinedButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.outlinedbutton.04",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "ui_diagnostics_button", "open_ui_diagnostics")
                             onOpenUiDiagnostics()
@@ -574,7 +621,11 @@ fun SettingsRoute(
                 }
             },
             confirmButton = {
-                Button(
+                DiagnosticButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.button.02",
+            trackingLabel = "button_control",
+            disabledReason = "callsite_precondition_not_explicit",
                     enabled = folderName.trim().isNotBlank(),
                     onClick = {
                         val created = runCatching {
@@ -597,7 +648,11 @@ fun SettingsRoute(
                 }
             },
             dismissButton = {
-                OutlinedButton(onClick = { showFolderDialog = false }) {
+                DiagnosticOutlinedButton(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.outlinedbutton.05",
+            trackingLabel = "outlinedbutton_control",
+            disabledReason = "callsite_precondition_not_explicit",onClick = { showFolderDialog = false }) {
                     Text("إلغاء")
                 }
             },
@@ -659,7 +714,11 @@ private fun SettingsSwitchRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        DiagnosticSwitch(
+            trackingScreen = "SETTINGS",
+            trackingId = "SETTINGS.switch.01",
+            trackingLabel = "setting_toggle",
+            disabledReason = "callsite_precondition_not_explicit",checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

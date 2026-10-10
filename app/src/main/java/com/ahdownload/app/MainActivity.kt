@@ -31,6 +31,8 @@ import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.app.settings.ThemePreferenceStore
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.core.designsystem.LocalDiagnosticUiTraceLogger
+import androidx.compose.runtime.CompositionLocalProvider
 import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadRecord
@@ -472,7 +474,7 @@ private fun AHRoot(
             onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
-            onOpenUiDiagnostics = { push(RootDestination.UiDiagnostics) },
+            onOpenUiDiagnostics = { push(RootDestination.Diagnostics) },
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateDownloads = { root(RootDestination.Downloads) },
@@ -488,5 +490,6 @@ private fun AHRoot(
             logger = uiTraceLogger,
             onBack = ::popOrHome,
         )
+        }
     }
 }
