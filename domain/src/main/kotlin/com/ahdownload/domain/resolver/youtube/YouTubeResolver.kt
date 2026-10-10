@@ -235,6 +235,27 @@ class YouTubeResolver(
             throwable = null,
         )
 
+        val observedCandidateUrls = (snapshot.videoUrls + snapshot.audioUrls).distinct()
+        val eligibleBrowserUrls = observedCandidateUrls.count { url ->
+            isDirectHttpMedia(url) && hasDirectMediaMetadata(url)
+        }
+        val unclassifiedBrowserRequestCount =
+            (snapshot.browserMediaObservedCount - eligibleBrowserUrls).coerceAtLeast(0)
+        if (unclassifiedBrowserRequestCount > 0) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.browser_protocol_requests_excluded",
+                reason = "observed_googlevideo_requests_lacked_direct_media_format_metadata",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "observed_request_count" to snapshot.browserMediaObservedCount.toString(),
+                    "eligible_direct_media_url_count" to eligibleBrowserUrls.toString(),
+                    "excluded_unclassified_request_count" to unclassifiedBrowserRequestCount.toString(),
+                ),
+                throwable = null,
+            )
+        }
+
         if (snapshot.browserMediaObservedCount == 0) {
             logger.log(
                 DiagnosticLevel.WARNING,
@@ -655,7 +676,7 @@ class YouTubeResolver(
             snapshot.videoUrls.map { it to MediaKind.Video } +
                 snapshot.audioUrls.map { it to MediaKind.Audio }
             )
-            .filter { (url, _) -> isDirectHttpMedia(url) }
+            .filter { (url, _) -> isDirectHttpMedia(url) && hasDirectMediaMetadata(url) }
             .distinctBy { (url, _) -> url }
 
         return observedUrls.mapIndexedNotNull { index, (url, poolKind) ->
@@ -722,6 +743,25 @@ class YouTubeResolver(
         return (lower.startsWith("https://") || lower.startsWith("http://")) &&
             !lower.contains(".m3u8") &&
             !lower.startsWith("blob:")
+    }
+
+    /**
+     * YouTube WebView resource capture also sees protocol endpoints such as SABR/UMP.
+     * A GoogleVideo URL is not a raw media file merely because it ends in /videoplayback.
+     * Require either an audio/video MIME hint or a recognized direct-media itag.
+     */
+    private fun hasDirectMediaMetadata(url: String): Boolean {
+        if (mediaKindFromUrl(url) != null) return true
+        if (KNOWN_YOUTUBE_FORMATS[extractItag(url)] != null) return true
+        if (isYouTubeMediaHost(url)) return false
+
+        val extension = runCatching {
+            URI(url).path.orEmpty().substringAfterLast('.', "").lowercase()
+        }.getOrDefault("")
+        return extension in setOf(
+            "mp4", "m4v", "webm", "mkv", "mov", "3gp",
+            "m4a", "mp3", "aac", "ogg", "opus", "flac", "wav",
+        )
     }
 
     private fun containerFor(url: String, kind: MediaKind): MediaContainer {
