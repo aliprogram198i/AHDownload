@@ -474,9 +474,17 @@ object DiagnosticDataSanitizer {
         "(?i)(cookie|set-cookie|authorization|token|password|passwd|secret|signature|sig|api[_-]?key|po[_-]?token)(\\s*[:=]\\s*)[^\\s&;,]+",
     )
 
+    private val safeMetadataKeys = setOf(
+        "diagnostic_session_id", "event_sequence", "process_uptime_ms", "thread", "thread_id",
+    )
+
     fun sanitizeContext(context: Map<String, String>): Map<String, String> =
         context.mapValues { (key, value) ->
-            if (sensitiveKey.containsMatchIn(key)) "[REDACTED]" else sanitizeText(value)
+            when {
+                key.lowercase() in safeMetadataKeys -> sanitizeText(value)
+                sensitiveKey.containsMatchIn(key) -> "[REDACTED]"
+                else -> sanitizeText(value)
+            }
         }
 
     fun sanitizeText(value: String): String {

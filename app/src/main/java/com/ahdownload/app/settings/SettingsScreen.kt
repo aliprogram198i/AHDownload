@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -83,7 +82,6 @@ fun SettingsRoute(
     onThemeChanged: (AHThemeMode) -> Unit,
     onPickDownloadFolder: () -> Unit,
     onOpenDiagnostics: () -> Unit,
-    onOpenUiDiagnostics: () -> Unit,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
     onNavigateDownloads: () -> Unit,
@@ -552,23 +550,10 @@ fun SettingsRoute(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Rounded.ErrorOutline, contentDescription = null)
-                        Text("فتح سجل الأخطاء")
+                        Text("فتح مركز التشخيص")
                     }
 
-                    DiagnosticOutlinedButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.outlinedbutton.04",
-            trackingLabel = "outlinedbutton_control",
-            disabledReason = "callsite_precondition_not_explicit",
-                        onClick = {
-                            uiTraceLogger.interaction("SETTINGS", "ui_diagnostics_button", "open_ui_diagnostics")
-                            onOpenUiDiagnostics()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Rounded.BugReport, contentDescription = null)
-                        Text("تشخيص الواجهة")
-                    }
+                    
                 }
             }
 

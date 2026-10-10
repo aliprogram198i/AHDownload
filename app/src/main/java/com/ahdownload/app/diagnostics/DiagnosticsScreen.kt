@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
+import com.ahdownload.core.common.UiTraceEvent
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
@@ -59,15 +60,25 @@ import com.ahdownload.core.designsystem.rememberUiTraceContext
 @Composable
 fun DiagnosticsRoute(
     logger: PersistentDiagnosticLogger,
-    uiTraceLogger: UiTraceLogger,
+    uiTraceLogger: PersistentUiTraceLogger,
     onBack: () -> Unit,
 ) {
     var logs by remember { mutableStateOf(logger.list()) }
+    var uiEvents by remember { mutableStateOf(uiTraceLogger.list()) }
     val clipboard = LocalClipboardManager.current
     val uiContext = rememberUiTraceContext()
 
     LaunchedEffect(Unit) {
         logs = logger.list()
+        uiEvents = uiTraceLogger.list()
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(1000L)
+            logs = logger.list()
+            uiEvents = uiTraceLogger.list()
+        }
     }
 
     LaunchedEffect(logs) {
@@ -75,25 +86,28 @@ fun DiagnosticsRoute(
         uiTraceLogger.snapshot(
             screen = "DIAGNOSTICS",
             component = "DiagnosticsScreen",
-            components = "topbar,incident_summary,pipeline,technical_details,refresh_button,copy_button,clear_button",
-            stateSummary = "latest_error=" + (latestError != null) + ";stored_events=" + logs.size,
+            components = "topbar,incident_summary,pipeline,technical_details,interaction_timeline,refresh_button,copy_button,clear_button",
+            stateSummary = "latest_error=" + (latestError != null) + ";stored_diagnostics=" + logs.size + ";ui_events=" + uiEvents.size,
             context = uiContext,
         )
     }
 
     DiagnosticsScreen(
         logs = logs,
+        uiEvents = uiEvents,
         clipboard = clipboard,
         uiTraceLogger = uiTraceLogger,
         onBack = onBack,
         onRefresh = {
             uiTraceLogger.interaction("DIAGNOSTICS", "refresh_button", "refresh")
             logs = logger.list()
+            uiEvents = uiTraceLogger.list()
         },
         onClear = {
             uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear")
             logger.clear()
             logs = emptyList()
+            uiEvents = emptyList()
         },
     )
 }
@@ -102,6 +116,7 @@ fun DiagnosticsRoute(
 @Composable
 private fun DiagnosticsScreen(
     logs: List<DiagnosticLog>,
+    uiEvents: List<UiTraceEvent>,
     clipboard: ClipboardManager,
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
@@ -111,6 +126,7 @@ private fun DiagnosticsScreen(
     val latestError = remember(logs) { logs.firstOrNull { it.level == DiagnosticLevel.ERROR } }
     val report = remember(logs) { DiagnosticReportFormatter.format(logs, maxEvents = 120) }
     var showTechnical by remember { mutableStateOf(false) }
+    var showInteractionTrace by remember { mutableStateOf(true) }
     var showClearConfirmation by remember { mutableStateOf(false) }
 
     val rootCause = remember(report) { reportValue(report, "root_cause") }
@@ -118,11 +134,34 @@ private fun DiagnosticsScreen(
     val stage = remember(report) { reportValue(report, "stage") }
     val action = remember(report) { reportValue(report, "action") }
     val whatHappened = remember(report) { reportValue(report, "what_happened") }
+    val unifiedReport = remember(report, uiEvents) {
+        buildString {
+            appendLine(report)
+            appendLine()
+            appendLine("UNIFIED_UI_INTERACTION_TRACE")
+            uiEvents.sortedBy { it.timestampEpochMs }.takeLast(400).forEach { event ->
+                val safeContext = DiagnosticDataSanitizer.sanitizeContext(event.context)
+                    .filterKeys { it !in UI_ENVIRONMENT_KEYS }
+                    .toSortedMap()
+                    .entries
+                    .joinToString(" ") { (key, value) -> "$key=$value" }
+                append(event.sequence).append(" | ")
+                    .append(formatDiagnosticTime(event.timestampEpochMs)).append(" | ")
+                    .append(event.level.name).append(" | ")
+                    .append(event.screen).append(" | ")
+                    .append(event.component).append(" | ")
+                    .append(event.event)
+                event.state?.let { append(" state=").append(it) }
+                if (safeContext.isNotBlank()) append(" | ").append(safeContext)
+                appendLine()
+            }
+        }.trimEnd()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("سجل الأخطاء") },
+                title = { Text("مركز التشخيص") },
                 navigationIcon = {
                     DiagnosticIconButton(
             trackingScreen = "DIAGNOSTICS",
@@ -143,7 +182,7 @@ private fun DiagnosticsScreen(
             disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_latest_incident")
-                            clipboard.setText(AnnotatedString(report))
+                            clipboard.setText(AnnotatedString(unifiedReport))
                         },
                         enabled = latestError != null,
                     ) {
@@ -227,6 +266,77 @@ private fun DiagnosticsScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "تتبع الأزرار والتفاعلات",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "الأحداث المسجلة: ${uiEvents.size}. يشمل الظهور والحالة والضغط وإرسال الإجراء وعودة معالج الحدث أو الاستثناء المتزامن.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        DiagnosticOutlinedButton(
+                            trackingScreen = "DIAGNOSTICS",
+                            trackingId = "DIAGNOSTICS.interaction_timeline.toggle",
+                            trackingLabel = "تبديل عرض التسلسل الزمني",
+                            onClick = { showInteractionTrace = !showInteractionTrace },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (showInteractionTrace) "إخفاء التسلسل الزمني" else "عرض التسلسل الزمني")
+                        }
+                    }
+                }
+            }
+
+            if (showInteractionTrace) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            val recentEvents = uiEvents.sortedByDescending { it.timestampEpochMs }.take(100)
+                            if (recentEvents.isEmpty()) {
+                                Text("لا توجد أحداث واجهة مسجلة بعد.")
+                            } else {
+                                recentEvents.forEach { event ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            event.event + (event.state?.let { " · " + it } ?: ""),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        val controlId = event.context["control_id"]
+                                            ?: event.context["action"]
+                                            ?: event.component
+                                        Text(
+                                            event.screen + " · " + event.component + " · " + controlId,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        event.context["control_label"]?.takeIf { it.isNotBlank() }?.let { label ->
+                                            Text(label, style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Text(
+                                            formatDiagnosticTime(event.timestampEpochMs),
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
+                                    androidx.compose.material3.HorizontalDivider()
+                                }
+                            }
                         }
                     }
                 }
@@ -338,7 +448,7 @@ private fun DiagnosticsScreen(
     if (showClearConfirmation) {
         AlertDialog(
             onDismissRequest = { showClearConfirmation = false },
-            title = { Text("مسح سجل الأخطاء؟") },
+            title = { Text("مسح سجل التشخيص؟") },
             text = {
                 Text("سيتم حذف السجل المحلي للتشخيص من هذا الجهاز. لا يؤثر ذلك على الملفات أو التنزيلات.")
             },
@@ -430,6 +540,15 @@ private fun pipelineStateLabel(value: String): String =
         "STARTED" -> "قيد التنفيذ"
         else -> value.ifBlank { "غير معروف" }
     }
+
+private val UI_ENVIRONMENT_KEYS = setOf(
+    "app_package", "app_version_name", "app_version_code", "app_build_type",
+    "app_target_sdk", "app_first_install_ms", "app_last_update_ms",
+    "android_sdk", "android_release", "device_manufacturer", "device_model",
+    "device_brand", "device_product", "locale", "timezone", "is_24_hour_format",
+    "process_id", "available_memory_bytes", "low_memory", "app_uptime_ms",
+    "process_uptime_ms", "thread", "thread_id", "diagnostic_session_id", "event_sequence",
+)
 
 private fun userFriendlyTitle(rootCause: String, fallbackType: String): String =
     when {

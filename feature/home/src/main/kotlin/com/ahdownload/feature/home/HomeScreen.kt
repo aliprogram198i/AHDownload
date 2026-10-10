@@ -1221,7 +1221,7 @@ private fun SearchResultCard(
                     )
                 }
             }
-            androidx.compose.material3.DiagnosticFilterChip(
+            DiagnosticFilterChip(
             trackingScreen = "HOME",
             trackingId = "HOME.filterchip.03",
             trackingLabel = "filterchip_control",

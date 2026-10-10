@@ -21,7 +21,6 @@ import androidx.compose.runtime.mutableStateListOf
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
-import com.ahdownload.app.diagnostics.UiDiagnosticsRoute
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.download.MediaAudioExtractor
 import com.ahdownload.app.favorites.FavoritesStore
@@ -412,6 +411,7 @@ private fun AHRoot(
         backStack.removeLast()
     }
 
+    CompositionLocalProvider(LocalDiagnosticUiTraceLogger provides uiTraceLogger) {
     when (backStack.last()) {
         RootDestination.Welcome -> WelcomeRoute(
             onContinue = { root(RootDestination.Home) },
@@ -474,7 +474,6 @@ private fun AHRoot(
             onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
-            onOpenUiDiagnostics = { push(RootDestination.Diagnostics) },
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateDownloads = { root(RootDestination.Downloads) },
@@ -486,8 +485,9 @@ private fun AHRoot(
             uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
         )
-        RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
-            logger = uiTraceLogger,
+        RootDestination.UiDiagnostics -> DiagnosticsRoute(
+            logger = logger,
+            uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
         )
         }
