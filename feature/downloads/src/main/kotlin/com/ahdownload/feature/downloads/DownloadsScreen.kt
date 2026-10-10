@@ -11,6 +11,12 @@ import android.content.ContentValues
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.text.format.DateUtils
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -767,6 +773,31 @@ private fun DownloadRecordCard(
     val progress = record.totalBytes
         ?.takeIf { it > 0 }
         ?.let { (record.bytesDownloaded.toFloat() / it.toFloat()).coerceIn(0f, 1f) }
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress ?: 0f,
+        animationSpec = tween(durationMillis = 180),
+        label = "downloadProgress",
+    )
+    var previousStatus by remember(record.task.id) { mutableStateOf(record.status) }
+    var showSuccessAnimation by remember(record.task.id) { mutableStateOf(false) }
+
+    LaunchedEffect(record.status) {
+        if (
+            record.status == DownloadStatus.COMPLETED &&
+            previousStatus != DownloadStatus.COMPLETED &&
+            fileAvailable
+        ) {
+            showSuccessAnimation = true
+        }
+        previousStatus = record.status
+    }
+
+    LaunchedEffect(showSuccessAnimation) {
+        if (showSuccessAnimation) {
+            delay(2_000)
+            showSuccessAnimation = false
+        }
+    }
     val title = record.task.displayName?.takeIf { it.isNotBlank() }
         ?: record.task.destinationPath.substringAfterLast(File.separatorChar)
 
@@ -844,6 +875,36 @@ private fun DownloadRecordCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+
+                    AnimatedVisibility(
+                        visible = showSuccessAnimation && fileAvailable,
+                        enter = fadeIn(animationSpec = tween(220)) +
+                            scaleIn(initialScale = 0.94f, animationSpec = tween(220)),
+                        exit = fadeOut(animationSpec = tween(160)),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f),
+                            contentColor = MaterialTheme.colorScheme.tertiary,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Icon(
+                                    Icons.Rounded.CheckCircle,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                                Text(
+                                    "اكتمل بنجاح",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
+                    }
                 }
 
                 DiagnosticIconButton(
@@ -984,32 +1045,64 @@ private fun DownloadRecordCard(
                 }
             }
 
-            if (progress != null && record.status == DownloadStatus.DOWNLOADING) {
+            if (record.status == DownloadStatus.DOWNLOADING) {
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val stats = transferStats
+                    Text(
+                        buildString {
+                            append((progress * 100).toInt())
+                            append("% · ")
+                            append(formatBytes(record.bytesDownloaded))
+                            append(" / ")
+                            append(formatBytes(record.totalBytes ?: record.bytesDownloaded))
+                            stats?.bytesPerSecond?.takeIf { it > 0L }?.let {
+                                append(" · ")
+                                append(formatBytes(it))
+                                append("/s")
+                                val total = record.totalBytes
+                                if (total != null && total > 0L && it > 0L && total > record.bytesDownloaded) {
+                                    val etaSeconds = (total - record.bytesDownloaded) / it
+                                    append(" · ")
+                                    append(formatDurationSeconds(etaSeconds))
+                                }
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "جاري التنزيل · الحجم الإجمالي غير متاح بعد",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (record.status == DownloadStatus.PAUSED && progress != null) {
                 LinearProgressIndicator(
                     progress = { progress },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val stats = transferStats
                 Text(
-                    buildString {
-                        append((progress * 100).toInt())
-                        append("% · ")
-                        append(formatBytes(record.bytesDownloaded))
-                        append(" / ")
-                        append(formatBytes(record.totalBytes ?: record.bytesDownloaded))
-                        stats?.bytesPerSecond?.takeIf { it > 0L }?.let {
-                            append(" · ")
-                            append(formatBytes(it))
-                            append("/s")
-                            val total = record.totalBytes
-                            if (total != null && it > 0L && total > record.bytesDownloaded) {
-                                val etaSeconds = (total - record.bytesDownloaded) / it
-                                append(" · ")
-                                append(formatDurationSeconds(etaSeconds))
-                            }
-                        }
-                    },
+                    "${(progress * 100).toInt()}% · متوقف مؤقتًا",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
+                LinearProgressIndicator(
+                    progress = { 1f },
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    formatBytes(record.bytesDownloaded) +
+                        (record.totalBytes?.let { " / " + formatBytes(it) } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else if (record.bytesDownloaded > 0L) {
                 Text(
@@ -1264,7 +1357,7 @@ private fun statusLabel(status: DownloadStatus): String = when (status) {
 @Composable
 private fun statusColor(status: DownloadStatus) = when (status) {
     DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
-    DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+    DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 

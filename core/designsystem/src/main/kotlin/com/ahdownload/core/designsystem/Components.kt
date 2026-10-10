@@ -98,13 +98,13 @@ fun AHGradientPrimaryButton(
                 Text(
                     text = text,
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.size(8.dp))
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                     contentDescription = null,
-                    tint = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -225,12 +225,12 @@ fun AHStatusPill(
     modifier: Modifier = Modifier,
 ) {
     val containerColor = if (success) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = if (success) {
-        MaterialTheme.colorScheme.primary
+        MaterialTheme.colorScheme.tertiary
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
