@@ -186,9 +186,10 @@ class PerformanceLogStore(context: Context) {
     }
 
     private fun loadEntries(): List<PerformanceLogEntry> = runCatching {
+        val cutoff = System.currentTimeMillis() - RETENTION_MS
         gson.fromJson<List<PerformanceLogEntry>>(preferences.getString(KEY_ENTRIES, null), listType)
             .orEmpty()
-            .filter { it.durationMs >= 0L && it.completedAtEpochMs >= it.startedAtEpochMs }
+            .filter { it.durationMs >= 0L && it.completedAtEpochMs >= cutoff }
             .sortedByDescending { it.completedAtEpochMs }
             .take(MAX_ENTRIES)
     }.getOrDefault(emptyList())
