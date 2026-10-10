@@ -528,8 +528,8 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("action=INSPECT_RESOLVER"))
         assertTrue(report.contains("resolution=FAILED"))
         assertTrue(report.contains("candidates=0"))
-        assertTrue(report.contains("FAILURE_CHAIN\\nresolver -> no_candidates_extracted"))
-        assertTrue(!report.contains("FAILURE_CHAIN\\nresolver -> candidate"))
+        assertTrue(report.contains("FAILURE_CHAIN\nresolver -> no_candidates_extracted"))
+        assertTrue(!report.contains("FAILURE_CHAIN\nresolver -> candidate"))
     }
 
 
