@@ -15,14 +15,17 @@ AHDownload is being rebuilt from an empty repository with a modular Android arch
 
 ## Current modules
 
-- `app`: application shell
-- `core:common`: shared primitives
+- `app`: application composition root, download execution, settings, storage, and diagnostics
+- `core:common`: shared primitives and diagnostic contracts
 - `core:designsystem`: visual language and reusable components
-- `domain`: business-level URL normalization
+- `domain`: URL normalization, media models, resolver contracts, platform adapters, and validation
 - `feature:welcome`: animated first-run experience
+- `feature:home`: URL analysis, YouTube search, platform resolution, and the unified video/audio result card
+- `feature:downloads`: download queue and download-history UI
+- `feature:studio`: inspection tools for downloaded media
 
 ## Planned boundaries
 
-`feature:auth`, `feature:home`, `feature:analyzer`, `feature:media`, `feature:downloads`, `feature:history`, `feature:studio`, `feature:settings`, `data:local`, `data:remote`, `resolver`, and `downloader`.
+Future work includes `feature:auth`, `feature:analyzer`, `feature:media`, `feature:history`, and further separation of `data:local`, `data:remote`, resolver, and downloader implementation details where that reduces coupling.
 
 Legacy resolver code, embedded Python, old storage logic, and previous UI are intentionally not carried forward.
