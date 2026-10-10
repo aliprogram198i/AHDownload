@@ -1045,32 +1045,64 @@ private fun DownloadRecordCard(
                 }
             }
 
-            if (progress != null && record.status == DownloadStatus.DOWNLOADING) {
+            if (record.status == DownloadStatus.DOWNLOADING) {
+                if (progress != null) {
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    val stats = transferStats
+                    Text(
+                        buildString {
+                            append((progress * 100).toInt())
+                            append("% · ")
+                            append(formatBytes(record.bytesDownloaded))
+                            append(" / ")
+                            append(formatBytes(record.totalBytes ?: record.bytesDownloaded))
+                            stats?.bytesPerSecond?.takeIf { it > 0L }?.let {
+                                append(" · ")
+                                append(formatBytes(it))
+                                append("/s")
+                                val total = record.totalBytes
+                                if (total != null && total > 0L && it > 0L && total > record.bytesDownloaded) {
+                                    val etaSeconds = (total - record.bytesDownloaded) / it
+                                    append(" · ")
+                                    append(formatDurationSeconds(etaSeconds))
+                                }
+                            }
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        "جاري التنزيل · الحجم الإجمالي غير متاح بعد",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (record.status == DownloadStatus.PAUSED && progress != null) {
                 LinearProgressIndicator(
-                    progress = { animatedProgress },
+                    progress = { progress },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val stats = transferStats
                 Text(
-                    buildString {
-                        append((progress * 100).toInt())
-                        append("% · ")
-                        append(formatBytes(record.bytesDownloaded))
-                        append(" / ")
-                        append(formatBytes(record.totalBytes ?: record.bytesDownloaded))
-                        stats?.bytesPerSecond?.takeIf { it > 0L }?.let {
-                            append(" · ")
-                            append(formatBytes(it))
-                            append("/s")
-                            val total = record.totalBytes
-                            if (total != null && it > 0L && total > record.bytesDownloaded) {
-                                val etaSeconds = (total - record.bytesDownloaded) / it
-                                append(" · ")
-                                append(formatDurationSeconds(etaSeconds))
-                            }
-                        }
-                    },
+                    "${(progress * 100).toInt()}% · متوقف مؤقتًا",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
+                LinearProgressIndicator(
+                    progress = { 1f },
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    formatBytes(record.bytesDownloaded) +
+                        (record.totalBytes?.let { " / " + formatBytes(it) } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else if (record.bytesDownloaded > 0L) {
                 Text(
