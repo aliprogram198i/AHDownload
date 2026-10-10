@@ -38,6 +38,9 @@ import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadProcessingMode
+import com.ahdownload.app.performance.PerformanceMetrics
+import com.ahdownload.feature.downloads.DownloadPerformanceSummary
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
@@ -371,6 +374,35 @@ private fun AHRoot(
     openDownloadsOnStart: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
+    val performanceEntries by performanceLogStore.entries.collectAsStateWithLifecycle(initialValue = emptyList())
+    val latestPerformanceByTaskId = remember(performanceEntries) {
+        performanceEntries
+            .filter { it.kind == "DOWNLOAD" && !it.taskId.isNullOrBlank() }
+            .groupBy { it.taskId!! }
+            .mapValues { (_, entries) -> entries.maxByOrNull { it.completedAtEpochMs }!! }
+    }
+    val downloadPerformanceSummaries = remember(history, latestPerformanceByTaskId) {
+        history.mapNotNull { record ->
+            val taskIds = if (record.task.processingMode == DownloadProcessingMode.MuxVideoAudio) {
+                listOf(record.task.id, record.task.id + "-audio")
+            } else {
+                listOf(record.task.id)
+            }
+            val latestStages = taskIds.mapNotNull { latestPerformanceByTaskId[it] }
+            if (latestStages.isEmpty()) {
+                null
+            } else {
+                val durationMs = latestStages.sumOf { it.durationMs }
+                val transferredBytes = latestStages.sumOf { it.bytesDownloaded }
+                record.task.id to DownloadPerformanceSummary(
+                    durationMs = durationMs,
+                    transferredBytes = transferredBytes,
+                    averageBytesPerSecond = PerformanceMetrics.bytesPerSecond(transferredBytes, durationMs),
+                    peakBytesPerSecond = latestStages.maxOfOrNull { it.peakBytesPerSecond } ?: 0L,
+                )
+            }
+        }.toMap()
+    }
     var studioRecord by remember { mutableStateOf<DownloadRecord?>(null) }
 
     val activeDownloads = history.count {
@@ -466,6 +498,7 @@ private fun AHRoot(
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
+            performanceSummaries = downloadPerformanceSummaries,
         )
         RootDestination.Studio -> studioRecord?.let { record ->
             StudioRoute(
