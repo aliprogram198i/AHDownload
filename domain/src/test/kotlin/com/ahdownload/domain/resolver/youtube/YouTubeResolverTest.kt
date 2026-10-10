@@ -619,4 +619,94 @@ class YouTubeResolverTest {
         assertEquals("2.20260708.00.00", candidate.requestHeaders["X-YouTube-Client-Version"])
     }
 
+
+    @Test
+    fun triesAndroidPlayerWhenWebAndEmbeddedPlayersHaveNoUsableFormats() = runBlocking {
+        val clients = mutableListOf<String>()
+        val html = """{"INNERTUBE_API_KEY":"test-key","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2"}}}"""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(url: String, body: String): String {
+                val name = Regex("\\"clientName\\":\\"([^\\"]+)\\"")
+                    .find(body)?.groupValues?.get(1).orEmpty()
+                clients += name
+                return when (name) {
+                    "ANDROID" -> """{
+                        "videoDetails":{"title":"Android fallback","lengthSeconds":"12"},
+                        "playabilityStatus":{"status":"OK"},
+                        "streamingData":{"formats":[
+                          {"itag":"18","mimeType":"video/mp4; codecs=\\"avc1.42001E, mp4a.40.2\\"","width":640,"height":360,
+                           "url":"https://rr1---sn.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4&source=android"}
+                        ]}
+                    }"""
+                    "WEB_EMBEDDED_PLAYER" -> """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"This video is unavailable"}}"""
+                    else -> """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"Video unavailable"}}"""
+                }
+            }
+        }
+
+        val result = YouTubeResolver(client).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    normalizedUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        val success = result as ResolverResult.Success
+        assertEquals("Android fallback", success.title)
+        assertTrue(success.candidates.any { it.sourceUrl.contains("source=android") })
+        assertEquals(listOf("WEB", "WEB_EMBEDDED_PLAYER", "ANDROID"), clients)
+    }
+
+    @Test
+    fun doesNotExposeUnclassifiedGoogleVideoProtocolRequestsAsRawVideoCandidates() = runBlocking {
+        val clients = mutableListOf<String>()
+        val html = """{"INNERTUBE_API_KEY":"test-key","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2"}}}"""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(url: String, body: String): String {
+                val name = Regex("\\"clientName\\":\\"([^\\"]+)\\"")
+                    .find(body)?.groupValues?.get(1).orEmpty()
+                clients += name
+                return """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"Video unavailable"}}"""
+            }
+        }
+        val protocolUrls = listOf(
+            "https://rr2.googlevideo.com/videoplayback?source=youtube&rn=1",
+            "https://rr2.googlevideo.com/videoplayback?source=youtube&rn=2",
+            "https://rr2.googlevideo.com/videoplayback?source=youtube&rn=3",
+        )
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = protocolUrls,
+                audioUrls = emptyList(),
+                playerResponse = null,
+                authenticated = false,
+                browserMediaObservedCount = protocolUrls.size,
+            )
+        }
+
+        val result = YouTubeResolver(client, sessionProvider = session).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    normalizedUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(listOf("WEB", "WEB_EMBEDDED_PLAYER", "ANDROID"), clients)
+    }
+
 }
