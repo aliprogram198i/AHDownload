@@ -55,6 +55,35 @@ class OkHttpMediaProbeTest {
     }
 
     @Test
+    fun returnsYouTubeUmpProbeResultWithoutTreatingItAsVideoOrRetryingItHere() = runTest {
+        val requestCount = mutableListOf<String>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val request = chain.request()
+                requestCount += request.method
+                Response.Builder()
+                    .request(request)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(200)
+                    .message("OK")
+                    .header("Content-Type", "application/vnd.yt-ump")
+                    .body(byteArrayOf(0).toResponseBody("application/vnd.yt-ump".toMediaType()))
+                    .build()
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://rr2.googlevideo.com/videoplayback",
+            headers = emptyMap(),
+            operationId = "op-youtube-ump",
+        )
+
+        assertEquals(200, result.statusCode)
+        assertEquals("application/vnd.yt-ump", result.contentType)
+        assertEquals(listOf("GET"), requestCount)
+    }
+
+    @Test
     fun keepsHeadThenRangeFallbackForGenericMedia() = runTest {
         val methods = mutableListOf<String>()
         val ranges = mutableListOf<String?>()
