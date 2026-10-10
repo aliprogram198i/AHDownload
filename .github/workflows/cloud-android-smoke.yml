@@ -12,7 +12,7 @@ permissions:
 jobs:
   emulator-smoke:
     name: Build, install, and run Android instrumentation tests
-    runs-on: macos-15-intel
+    runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
@@ -53,6 +53,21 @@ jobs:
           printf '%s\n' "$test_exit_code" > cloud-test-results/build-exit-code.txt
           exit "$test_exit_code"
 
+      - name: Enable KVM access for Android emulator
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device /dev/kvm is not available on this runner." >&2
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+          ls -l /dev/kvm
+
       - name: Boot Android emulator and run instrumentation tests
         timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
@@ -64,6 +79,7 @@ jobs:
           emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none"
           disable-animations: true
           emulator-boot-timeout: 600
+          disable-linux-hw-accel: false
           script: gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest
 
       - name: Collect emulator logs and test reports
