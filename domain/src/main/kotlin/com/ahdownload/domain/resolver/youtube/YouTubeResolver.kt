@@ -752,7 +752,7 @@ class YouTubeResolver(
      */
     private fun hasDirectMediaMetadata(url: String): Boolean {
         if (mediaKindFromUrl(url) != null) return true
-        if (KNOWN_YOUTUBE_FORMATS.containsKey(extractItag(url))) return true
+        if (KNOWN_YOUTUBE_FORMATS[extractItag(url)] != null) return true
         if (isYouTubeMediaHost(url)) return false
 
         val extension = runCatching {
