@@ -8,6 +8,7 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.webkit.CookieManager
 import androidx.core.app.NotificationCompat
+import androidx.core.content.FileProvider
 import android.app.PendingIntent
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -392,6 +393,29 @@ class DownloadWorker(
                 }
                 completedRecord = completedRecord.copy(
                     destinationUri = published.getOrThrow().toString(),
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+            } else {
+                // Before Android 10, keep the file in app-specific external storage but
+                // provide a safe content:// URI so the app can open, share, and delete it.
+                val localFile = java.io.File(task.destinationPath)
+                if (!localFile.isFile || localFile.length() <= 0L) {
+                    val detail = "اكتمل النقل دون ملف محلي صالح للنشر."
+                    persistDestinationFailure(completedRecord, detail)
+                    return Result.failure(
+                        workDataOf(
+                            KEY_FAILURE_CODE to "destination_storage_error",
+                            KEY_FAILURE_DETAIL to detail,
+                        ),
+                    )
+                }
+                val destinationUri = FileProvider.getUriForFile(
+                    applicationContext,
+                    "${applicationContext.packageName}.fileprovider",
+                    localFile,
+                )
+                completedRecord = completedRecord.copy(
+                    destinationUri = destinationUri.toString(),
                     updatedAtEpochMs = System.currentTimeMillis(),
                 )
             }
