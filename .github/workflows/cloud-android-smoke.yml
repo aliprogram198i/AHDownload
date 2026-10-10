@@ -80,7 +80,14 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           disable-linux-hw-accel: false
-          script: gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest
+          script: |
+            set +e
+            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest
+            test_exit_code=$?
+            mkdir -p cloud-test-results
+            adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat capture failed" >> cloud-test-results/emulator-logcat.txt
+            printf '%s\n' "$test_exit_code" > cloud-test-results/instrumentation-exit-code.txt
+            exit "$test_exit_code"
 
       - name: Collect emulator logs and test reports
         if: always()
@@ -88,10 +95,12 @@ jobs:
         run: |
           set +e
           mkdir -p cloud-test-results
-          if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -qE '^emulator-[0-9]+[[:space:]]+device$'; then
-            adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat collection failed" >> cloud-test-results/emulator-logcat.txt
-          else
-            printf '%s\n' "No running Android emulator was available for logcat collection." > cloud-test-results/emulator-logcat.txt
+          if [ ! -s cloud-test-results/emulator-logcat.txt ]; then
+            if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -qE '^emulator-[0-9]+[[:space:]]+device$'; then
+              adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat collection failed" >> cloud-test-results/emulator-logcat.txt
+            else
+              printf '%s\n' "Emulator logcat was not captured before emulator teardown." > cloud-test-results/emulator-logcat.txt
+            fi
           fi
           if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
             cp app/build/outputs/apk/debug/app-debug.apk cloud-test-results/
