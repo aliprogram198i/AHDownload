@@ -52,4 +52,18 @@ class YouTubeSessionFallbackPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun doesNotLoadEmbeddedFallbackWhenPlayerResponseRequiresSignInOrAgeVerification() {
+        assertFalse(
+            shouldLoadYouTubeEmbeddedFallback(
+                attempt = 5,
+                observedMediaCount = 0,
+                hasPlayerResponse = true,
+                embeddedFallbackLoaded = false,
+                requiresAuthentication = true,
+            ),
+        )
+    }
+
 }

@@ -102,8 +102,9 @@ class YouTubeResolver(
                 }
                 return filterKind(enrichWithSessionIfNeeded(base, request), request)
             }
-            lastFailure = direct as? ResolverResult.Failure
+            lastFailure = preferFailure(lastFailure, direct as? ResolverResult.Failure)
             logPlayerFailure(videoId, direct, "page", request.operationId)
+            if (lastFailure?.code != FailureCode.AuthenticationRequired) {
             val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
@@ -129,7 +130,7 @@ class YouTubeResolver(
                     }
                     return filterKind(enrichWithSessionIfNeeded(base, request), request)
                 }
-                lastFailure = apiResult as? ResolverResult.Failure ?: lastFailure
+                lastFailure = preferFailure(lastFailure, apiResult as? ResolverResult.Failure)
                 logPlayerFailure(videoId, apiResult, "youtubei_player", request.operationId)
             }
 
@@ -158,8 +159,9 @@ class YouTubeResolver(
                     )
                     return filterKind(enrichWithSessionIfNeeded(embeddedResult, request), request)
                 }
-                lastFailure = embeddedResult as? ResolverResult.Failure ?: lastFailure
+                lastFailure = preferFailure(lastFailure, embeddedResult as? ResolverResult.Failure)
                 logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
+            }
             }
         } catch (error: Exception) {
             val challenge = error.message?.takeIf(::isBotChallenge)
@@ -322,8 +324,28 @@ class YouTubeResolver(
                 }
                 return filterKind(sessionResult, request)
             }
-            lastFailure = webResult as? ResolverResult.Failure ?: lastFailure
+            lastFailure = preferFailure(lastFailure, webResult as? ResolverResult.Failure)
             logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
+        }
+
+        if (lastFailure?.code == FailureCode.AuthenticationRequired && !snapshot.authenticated) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.authentication_required",
+                reason = "age_restricted_or_sign_in_required_without_authenticated_session",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "authenticated" to "false",
+                    "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
+                    "candidate_count" to sessionCandidates(snapshot).size.toString(),
+                ),
+                throwable = null,
+            )
+            return failure(
+                FailureCode.AuthenticationRequired,
+                lastFailure?.message ?: "يتطلب هذا الفيديو تسجيل الدخول إلى YouTube وتأكيد أهلية العمر.",
+                context = diagnosticContext(videoId, request.operationId),
+            )
         }
 
         val headers = buildMap {
@@ -341,7 +363,7 @@ class YouTubeResolver(
                 if (api != null) {
                     val result = parser.parsePlayerResponse(api)
                     if (result is ResolverResult.Success) return filterKind(withSessionHeaders(result, snapshot), request)
-                    lastFailure = result as? ResolverResult.Failure ?: lastFailure
+                    lastFailure = preferFailure(lastFailure, result as? ResolverResult.Failure)
                     logPlayerFailure(videoId, result, "youtubei_player_session", request.operationId)
                 }
             }
@@ -404,13 +426,30 @@ class YouTubeResolver(
         if (result is ResolverResult.Failure) {
             logger.log(
                 DiagnosticLevel.WARNING,
-                type = "youtube_player_no_candidates",
+                type = if (result.code == FailureCode.AuthenticationRequired) {
+                    "youtube.authentication_required"
+                } else {
+                    "youtube_player_no_candidates"
+                },
                 reason = result.message ?: result.code.name,
                 operation = "youtube.resolve",
-                context = diagnosticContext(videoId, operationId) + mapOf("fallback" to fallback),
+                context = diagnosticContext(videoId, operationId) + mapOf(
+                    "fallback" to fallback,
+                    "failure_code" to result.code.name,
+                ),
                 throwable = null,
             )
         }
+    }
+
+    private fun preferFailure(
+        previous: ResolverResult.Failure?,
+        next: ResolverResult.Failure?,
+    ): ResolverResult.Failure? = when {
+        next?.code == FailureCode.AuthenticationRequired -> next
+        previous?.code == FailureCode.AuthenticationRequired -> previous
+        next != null -> next
+        else -> previous
     }
 
     private suspend fun augmentWithAndroidFallback(

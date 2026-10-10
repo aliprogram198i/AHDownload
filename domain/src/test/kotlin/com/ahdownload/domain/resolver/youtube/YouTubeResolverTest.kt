@@ -665,4 +665,57 @@ class YouTubeResolverTest {
         )
     }
 
+
+    @Test
+    fun ageGateStopsAlternatePlayerClientsAndReturnsAuthenticationRequired() = runBlocking {
+        val ageGateResponse = """
+            {
+              "playabilityStatus": {
+                "status": "LOGIN_REQUIRED",
+                "reason": "Sign in to confirm your age"
+              }
+            }
+        """.trimIndent()
+        var playerApiRequests = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                "<script>var ytInitialPlayerResponse = $ageGateResponse;</script>"
+
+            override suspend fun postJson(url: String, body: String): String {
+                playerApiRequests++
+                return "{}"
+            }
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = emptyList(),
+                audioUrls = emptyList(),
+                playerResponse = ageGateResponse,
+                authenticated = false,
+            )
+        }
+
+        val result = YouTubeResolver(client, sessionProvider = session).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=agegate1",
+                    normalizedUrl = "https://www.youtube.com/watch?v=agegate1",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+                operationId = "age-gate-test",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        result as ResolverResult.Failure
+        assertEquals(
+            com.ahdownload.domain.resolver.FailureCode.AuthenticationRequired,
+            result.code,
+        )
+        assertTrue(result.message.orEmpty().contains("تأكيد الأهلية العمرية"))
+        assertEquals(0, playerApiRequests)
+    }
+
 }
