@@ -70,6 +70,13 @@ class ResultCardTraceRecorder(
                 "unknown_video_quality_count" to videoOptions.count {
                     (it.candidate.format.height ?: 0) <= 0
                 }.toString(),
+                "video_only_fallback_option_count" to videoOptions.count {
+                    it.candidate.format.kind == MediaKind.Video &&
+                        it.candidate.format.hasVideo &&
+                        !it.candidate.format.hasAudio &&
+                        !directAudioAvailable &&
+                        it.candidate.id != "direct"
+                }.toString(),
                 "unresolved_video_source_count" to rawCandidates.count {
                     it.format.kind == MediaKind.Video && it.format.hasVideo &&
                         !it.format.hasAudio && !directAudioAvailable
@@ -100,9 +107,13 @@ class ResultCardTraceRecorder(
         rawCandidates.forEachIndexed { index, candidate ->
             val format = candidate.format
             val actionableState = when {
+                candidate.id in videoIds &&
+                    format.kind == MediaKind.Video && format.hasVideo &&
+                    !format.hasAudio && !directAudioAvailable && candidate.id != "direct" ->
+                    "VIDEO_ONLY_FALLBACK_OPTION"
+                candidate.id in videoIds -> "VIDEO_PICKER_OPTION"
                 format.kind == MediaKind.Video && format.hasVideo &&
                     !format.hasAudio && !directAudioAvailable -> "BLOCKED_AUDIO_TRACK_UNCONFIRMED"
-                candidate.id in videoIds -> "VIDEO_PICKER_OPTION"
                 candidate.id in audioIds -> "AUDIO_SOURCE_OPTION"
                 candidate.id in primaryIds -> "PRIMARY_RESULT_OTHER_OR_HIDDEN"
                 format.kind == MediaKind.Video && !format.hasVideo -> "BLOCKED_VIDEO_TRACK_MISSING"
