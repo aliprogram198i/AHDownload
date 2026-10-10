@@ -249,7 +249,7 @@ private fun PerformanceEntryCard(entry: PerformanceLogEntry) {
     }
 }
 
-private fun List<Double>.averageOrNull(): Double? = takeIf { it.isNotEmpty() }?.average()
+private fun List<Long>.averageOrNull(): Double? = takeIf { it.isNotEmpty() }?.average()
 
 private fun outcomeLabel(outcome: String): String = when {
     outcome == "SUCCESS" -> "نجح التحليل"
