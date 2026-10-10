@@ -14,6 +14,12 @@ import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
+private const val YOUTUBE_AGE_RESTRICTED_MESSAGE =
+    "يتطلب هذا الفيديو تسجيل الدخول إلى YouTube وتأكيد الأهلية العمرية للحساب. أكمل التحقق المطلوب في YouTube بالحساب المؤهل، ثم أعد التحليل. قد لا تُشارك جلسة تطبيق YouTube أو المتصفح الخارجي مع AHDownload، ولا يمكن للتطبيق تجاوز قيود العمر."
+
+private const val YOUTUBE_SIGN_IN_REQUIRED_MESSAGE =
+    "يتطلب هذا الفيديو جلسة YouTube مسجلة الدخول. قد لا تُشارك جلسة تطبيق YouTube أو المتصفح الخارجي مع AHDownload؛ لا يمكن للتطبيق تجاوز متطلبات الوصول."
+
 class YouTubePlayerResponseParser {
     fun parse(html: String): ResolverResult {
         val playerResponse = extractPlayerResponse(html)
@@ -33,10 +39,7 @@ class YouTubePlayerResponseParser {
             val playabilityStatus = playability?.string("status")
             if (playabilityStatus != null && playabilityStatus != "OK") {
                 val reason = playability.string("reason") ?: "status=$playabilityStatus"
-                return ResolverResult.Failure(
-                    FailureCode.ResolverUnavailable,
-                    "YouTube رفض تشغيل الفيديو: $reason",
-                )
+                return classifyPlayabilityFailure(playabilityStatus, reason)
             }
 
             val candidates = buildCandidates(root.obj("streamingData"), observedVideoUrls, observedAudioUrls)
@@ -60,6 +63,64 @@ class YouTubePlayerResponseParser {
                 "تعذر تحليل استجابة YouTube: " + (error.message ?: error::class.simpleName.orEmpty()),
             )
         }
+
+    /**
+     * True only when a captured Player Response explicitly reports an access/sign-in
+     * requirement. This is used to avoid retrying alternate player clients against
+     * an age gate, not to work around the gate.
+     */
+    fun requiresAuthentication(playerResponseJson: String?): Boolean {
+        if (playerResponseJson.isNullOrBlank()) return false
+        val root = parseJsonObject(playerResponseJson) ?: return false
+        val playability = root.obj("playabilityStatus") ?: return false
+        val status = playability.string("status")
+        if (status == null || status.equals("OK", ignoreCase = true)) return false
+        val reason = playability.string("reason").orEmpty()
+        return classifyPlayabilityFailure(status, reason).code == FailureCode.AuthenticationRequired
+    }
+
+    private fun classifyPlayabilityFailure(
+        status: String,
+        reason: String,
+    ): ResolverResult.Failure {
+        val normalized = (status + " " + reason).lowercase()
+        val ageRestrictionMarkers = listOf(
+            "sign in to confirm your age",
+            "confirm your age",
+            "age-restricted",
+            "age restricted",
+            "age verification",
+            "يجب تسجيل الدخول لتأكيد عمرك",
+            "تأكيد عمرك",
+            "تأكيد العمر",
+            "التحقق من العمر",
+            "تأكيد الأهلية العمرية",
+        )
+        val signInMarkers = listOf(
+            "sign in",
+            "log in",
+            "login_required",
+            "please sign in",
+            "تسجيل الدخول",
+            "سجّل الدخول",
+        )
+        val ageRestricted = ageRestrictionMarkers.any(normalized::contains)
+        val authenticationRequired = ageRestricted ||
+            status.equals("LOGIN_REQUIRED", ignoreCase = true) ||
+            signInMarkers.any(normalized::contains)
+
+        val code = if (authenticationRequired) {
+            FailureCode.AuthenticationRequired
+        } else {
+            FailureCode.ResolverUnavailable
+        }
+        val message = when {
+            ageRestricted -> YOUTUBE_AGE_RESTRICTED_MESSAGE
+            authenticationRequired -> YOUTUBE_SIGN_IN_REQUIRED_MESSAGE
+            else -> "YouTube رفض تشغيل الفيديو: $reason"
+        }
+        return ResolverResult.Failure(code, message)
+    }
 
     private fun parseJsonObject(raw: String): JsonObject? {
         val candidates = linkedSetOf<String>()

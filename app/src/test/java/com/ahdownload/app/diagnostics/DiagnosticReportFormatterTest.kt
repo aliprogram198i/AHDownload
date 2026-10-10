@@ -415,4 +415,64 @@ class DiagnosticReportFormatterTest {
             "event_sequence" to sequence,
         ),
     )
+
+    @Test
+    fun classifiesYouTubeAgeGateAsAuthenticationNotResolverOrNetworkFailure() {
+        val session = "session-age-gate"
+        val operation = "op-age-gate"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "ANALYSIS_STARTED",
+                level = DiagnosticLevel.INFO,
+                reason = "started",
+                session = session,
+                operation = operation,
+                context = mapOf("platform" to "YouTube"),
+            ).copy(operation = "home.analyze"),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "youtube.authentication_required",
+                level = DiagnosticLevel.WARNING,
+                reason = "age_restricted_or_sign_in_required_without_authenticated_session",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "authenticated" to "false",
+                    "failure_code" to "AuthenticationRequired",
+                    "browser_media_observed" to "0",
+                ),
+            ).copy(operation = "youtube.resolve"),
+            event(
+                time = 3_000L,
+                sequence = "3",
+                type = "AUTH_REQUIRED",
+                level = DiagnosticLevel.ERROR,
+                reason = "AuthenticationRequired",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "failure_code" to "AuthenticationRequired",
+                    "reason" to "يتطلب هذا الفيديو تسجيل الدخول إلى YouTube وتأكيد الأهلية العمرية.",
+                ),
+            ).copy(operation = "home.resolve"),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("classification=AUTHENTICATION"))
+        assertTrue(report.contains("root_cause=AUTHENTICATION_REQUIRED"))
+        assertTrue(report.contains("action=COMPLETE_YOUTUBE_AGE_VERIFICATION"))
+        assertTrue(report.contains("resolution=FAILED"))
+        assertTrue(report.contains("failure=AUTHENTICATION_REQUIRED"))
+        assertTrue(report.contains("FAILURE_CHAIN\nresolver -> authentication_required"))
+        assertTrue(!report.contains("classification=NETWORK"))
+        assertTrue(!report.contains("action=INSPECT_RESOLVER"))
+    }
+
 }

@@ -11,6 +11,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.ahdownload.domain.resolver.youtube.YouTubeSessionProvider
+import com.ahdownload.domain.resolver.youtube.YouTubePlayerResponseParser
 import com.ahdownload.domain.resolver.youtube.YouTubeSessionSnapshot
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONTokener
@@ -23,9 +24,11 @@ internal fun shouldLoadYouTubeEmbeddedFallback(
     observedMediaCount: Int,
     hasPlayerResponse: Boolean,
     embeddedFallbackLoaded: Boolean,
+    requiresAuthentication: Boolean = false,
 ): Boolean =
     attempt == 5 &&
         !embeddedFallbackLoaded &&
+        !requiresAuthentication &&
         (observedMediaCount == 0 || !hasPlayerResponse)
 
 class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessionProvider {
@@ -219,6 +222,8 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         observedMediaCount = observedGoogleVideoUrls.size,
                         hasPlayerResponse = !playerResponse.isNullOrBlank(),
                         embeddedFallbackLoaded = embeddedFallbackLoaded,
+                        requiresAuthentication = YouTubePlayerResponseParser()
+                            .requiresAuthentication(playerResponse),
                     )
                 ) {
                     val videoId = runCatching {

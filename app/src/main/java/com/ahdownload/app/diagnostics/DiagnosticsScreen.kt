@@ -615,6 +615,7 @@ private val UI_ENVIRONMENT_KEYS = setOf(
 
 private fun userFriendlyTitle(rootCause: String, fallbackType: String): String =
     when {
+        rootCause == "AUTHENTICATION_REQUIRED" -> "يتطلب الفيديو تسجيل الدخول وتأكيد العمر"
         rootCause == "AUDIO_EXTRACTION_FAILED" -> "فشل استخراج الصوت"
         rootCause == "STORAGE_ERROR" -> "تعذر حفظ الملف"
         rootCause.startsWith("HTTP_403") -> "المصدر رفض الطلب"
@@ -636,6 +637,7 @@ private fun userFriendlyStage(value: String): String =
 
 private fun userFriendlyRootCause(value: String): String =
     when {
+        value == "AUTHENTICATION_REQUIRED" -> "تأكيد الوصول إلى حساب YouTube"
         value == "AUDIO_EXTRACTION_FAILED" -> "معالجة الصوت"
         value == "STORAGE_ERROR" -> "التخزين"
         value == "MEDIA_VALIDATION_FAILED" -> "التحقق من الوسائط"
@@ -647,6 +649,7 @@ private fun userFriendlyRootCause(value: String): String =
 
 private fun userFriendlyClassification(value: String): String =
     when (value) {
+        "AUTHENTICATION" -> "مصادقة YouTube"
         "AUDIO_PROCESSING" -> "معالجة الصوت"
         "STORAGE" -> "التخزين"
         "NETWORK" -> "الشبكة / المصدر"
@@ -657,6 +660,8 @@ private fun userFriendlyClassification(value: String): String =
 
 private fun userFriendlyAction(value: String): String =
     when (value) {
+        "COMPLETE_YOUTUBE_AGE_VERIFICATION" ->
+            "أكمل تسجيل الدخول والتحقق من العمر في YouTube بالحساب المؤهل، ثم أعد التحليل. قد لا تنتقل جلسة التطبيق الخارجي إلى AHDownload."
         "INSPECT_AUDIO_PROCESSOR" -> "تحقق من معالج الصوت أو جرّب صيغة صوت أخرى."
         "INSPECT_STORAGE" -> "تحقق من مجلد التنزيل والمساحة والصلاحيات."
         "INSPECT_BROWSER_MEDIA_CAPTURE" -> "أعد التحقق من جلسة المصدر أو أعد المحاولة."

@@ -16,6 +16,7 @@ import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.OkHttpTextClient
+import com.ahdownload.domain.resolver.FailureCode
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
@@ -551,11 +552,16 @@ class HomeViewModel(
                     is ResolverResult.Failure -> {
                         logger.log(
                             DiagnosticLevel.ERROR,
-                            "RESOLVER",
+                            if (resolution.code == FailureCode.AuthenticationRequired) {
+                                "AUTH_REQUIRED"
+                            } else {
+                                "RESOLVER"
+                            },
                             resolution.code.name,
                             "home.resolve",
                             mapOf(
                                 "reason" to (resolution.message ?: "تعذر استخراج الوسائط."),
+                                "failure_code" to resolution.code.name,
                                 "operation_id" to operationId,
                                 "platform" to link.platform.name,
                             ),
