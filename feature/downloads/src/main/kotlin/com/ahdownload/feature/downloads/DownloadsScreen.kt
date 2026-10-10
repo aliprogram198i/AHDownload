@@ -66,7 +66,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -107,8 +106,10 @@ import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
 import com.ahdownload.core.designsystem.AHBottomNavigationBar
+import com.ahdownload.core.designsystem.AHProgressBar
 import com.ahdownload.core.designsystem.AHCard
 import com.ahdownload.core.designsystem.rememberUiTraceContext
+import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
@@ -134,6 +135,30 @@ private enum class DownloadFilter(val label: String) {
     Completed("مكتملة"),
     Failed("فشل"),
     Favorites("المفضلة"),
+}
+
+private enum class DownloadMediaFilter(val label: String) {
+    All("الكل"),
+    Video("الفيديو"),
+    Audio("الصوت"),
+}
+
+private enum class DownloadSectionType(val title: String) {
+    Video("الفيديو"),
+    Audio("الصوت"),
+    Other("ملفات أخرى"),
+}
+
+private data class DownloadMediaSection(
+    val type: DownloadSectionType,
+    val records: List<DownloadRecord>,
+)
+
+private fun DownloadRecord.downloadSectionType(): DownloadSectionType = when {
+    task.processingMode == DownloadProcessingMode.ExtractAudio ||
+        task.mediaKind == MediaKind.Audio -> DownloadSectionType.Audio
+    task.mediaKind == MediaKind.Video -> DownloadSectionType.Video
+    else -> DownloadSectionType.Other
 }
 
 @Composable
@@ -309,6 +334,7 @@ private fun DownloadsScreen(
 ) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(DownloadFilter.All) }
+    var mediaFilter by remember { mutableStateOf(DownloadMediaFilter.All) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
     var pendingRename by remember { mutableStateOf<DownloadRecord?>(null) }
@@ -326,7 +352,7 @@ private fun DownloadsScreen(
     }
 
     val normalizedQuery = query.trim().lowercase(Locale.ROOT)
-    val filtered = remember(records, filter, normalizedQuery) {
+    val filtered = remember(records, filter, normalizedQuery, favorites) {
         records
             .filter { record ->
                 val matchesFilter = when (filter) {
@@ -351,6 +377,21 @@ private fun DownloadsScreen(
             )
     }
 
+    val visibleSections = remember(filtered, mediaFilter) {
+        val sectionTypes = when (mediaFilter) {
+            DownloadMediaFilter.All -> DownloadSectionType.entries
+            DownloadMediaFilter.Video -> listOf(DownloadSectionType.Video)
+            DownloadMediaFilter.Audio -> listOf(DownloadSectionType.Audio)
+        }
+        sectionTypes.mapNotNull { type ->
+            filtered.filter { it.downloadSectionType() == type }
+                .takeIf { it.isNotEmpty() }
+                ?.let { DownloadMediaSection(type, it) }
+        }
+    }
+
+    val videoCount = records.count { it.downloadSectionType() == DownloadSectionType.Video }
+    val audioCount = records.count { it.downloadSectionType() == DownloadSectionType.Audio }
     val activeCount = records.count { it.status.isActivelyRunning }
     val pausedCount = records.count { it.status == DownloadStatus.PAUSED }
     val completedCount = records.count { it.status == DownloadStatus.COMPLETED }
@@ -506,6 +547,41 @@ private fun DownloadsScreen(
 
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DownloadMediaFilter.entries.forEach { item ->
+                            val count = when (item) {
+                                DownloadMediaFilter.All -> records.size
+                                DownloadMediaFilter.Video -> videoCount
+                                DownloadMediaFilter.Audio -> audioCount
+                            }
+                            item {
+                                DiagnosticFilterChip(
+                                    trackingScreen = "DOWNLOADS",
+                                    trackingId = "DOWNLOADS.media-filter.${item.name.lowercase(Locale.ROOT)}",
+                                    trackingLabel = item.label,
+                                    disabledReason = "none",
+                                    selected = item == mediaFilter,
+                                    onClick = { mediaFilter = item },
+                                    label = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            when (item) {
+                                                DownloadMediaFilter.All -> Icon(Icons.Rounded.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                DownloadMediaFilter.Video -> Icon(Icons.Rounded.VideoFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                DownloadMediaFilter.Audio -> Icon(Icons.Rounded.AudioFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            }
+                                            Text("${item.label} · $count")
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         DownloadFilter.entries.forEach { item ->
                             val count = when (item) {
                                 DownloadFilter.All -> records.size
@@ -520,9 +596,9 @@ private fun DownloadsScreen(
                             item {
                                 DiagnosticFilterChip(
                                     trackingScreen = "DOWNLOADS",
-                                    trackingId = "DOWNLOADS.filterchip.01",
-                                    trackingLabel = " ",
-                                    disabledReason = "callsite_precondition_not_explicit",
+                                    trackingId = "DOWNLOADS.filterchip.${item.name.lowercase(Locale.ROOT)}",
+                                    trackingLabel = item.label,
+                                    disabledReason = "none",
                                     selected = item == filter,
                                     onClick = { filter = item },
                                     label = { Text(item.label + " " + count) },
@@ -532,7 +608,7 @@ private fun DownloadsScreen(
                     }
                 }
 
-                if (filtered.isEmpty()) {
+                if (visibleSections.isEmpty()) {
                     item {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
@@ -555,60 +631,108 @@ private fun DownloadsScreen(
                         }
                     }
                 } else {
-                    items(filtered, key = { it.task.id }) { record ->
-                        DownloadRecordCard(
-                            record = record,
-                            fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
-                            transferStats = transferStats[record.task.id],
-                            performanceSummary = performanceSummaries[record.task.id],
-                            onPause = {
-                                uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
-                                onPause(record)
-                            },
-                            onResume = {
-                                uiTraceLogger.interaction("DOWNLOADS", "resume_control", "resume")
-                                onResume(record)
-                            },
-                            onCancel = {
-                                uiTraceLogger.interaction("DOWNLOADS", "cancel_control", "cancel")
-                                onCancel(record)
-                            },
-                            onRetry = {
-                                uiTraceLogger.interaction("DOWNLOADS", "retry_control", "retry")
-                                onRetry(record)
-                            },
-                            onDeleteHistory = {
-                                pendingDelete = record
-                            },
-                            onRenameDownload = {
-                                renameValue = record.task.displayName.orEmpty().substringBeforeLast('.', record.task.displayName.orEmpty())
-                                pendingRename = record
-                            },
-                            onOpenDownload = {
-                                uiTraceLogger.interaction("DOWNLOADS", "open_control", "open")
-                                onOpenDownload(record)
-                            },
-                            onShareDownload = {
-                                uiTraceLogger.interaction("DOWNLOADS", "share_control", "share")
-                                onShareDownload(record)
-                            },
-                            onDeleteDownloadFile = {
-                                val deleted = onDeleteDownloadFile(record)
-                                feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
-                            },
-                            onOpenDownloadFolder = {
-                                onOpenDownloadFolder(record)
-                            },
-                            onOpenStudio = {
-                                uiTraceLogger.interaction("DOWNLOADS", "studio_control", "open_studio")
-                                onOpenStudio(record)
-                            },
-                            favorite = FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites,
-                            onToggleFavorite = {
-                                uiTraceLogger.interaction("DOWNLOADS", "favorite_control", "toggle")
-                                onToggleFavorite(record)
-                            },
-                        )
+                    visibleSections.forEach { section ->
+                        item(key = "download-section-${section.type.name}") {
+                            val sectionIcon = when (section.type) {
+                                DownloadSectionType.Video -> Icons.Rounded.VideoFile
+                                DownloadSectionType.Audio -> Icons.Rounded.AudioFile
+                                DownloadSectionType.Other -> Icons.Rounded.Image
+                            }
+                            val sectionContainer = when (section.type) {
+                                DownloadSectionType.Video -> MaterialTheme.colorScheme.primaryContainer
+                                DownloadSectionType.Audio -> MaterialTheme.colorScheme.secondaryContainer
+                                DownloadSectionType.Other -> MaterialTheme.colorScheme.surfaceVariant
+                            }
+                            val sectionContent = when (section.type) {
+                                DownloadSectionType.Video -> MaterialTheme.colorScheme.onPrimaryContainer
+                                DownloadSectionType.Audio -> MaterialTheme.colorScheme.onSecondaryContainer
+                                DownloadSectionType.Other -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = sectionContainer,
+                                    contentColor = sectionContent,
+                                ) {
+                                    Icon(
+                                        sectionIcon,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(9.dp).size(19.dp),
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier.padding(start = 10.dp).weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(section.type.title, style = MaterialTheme.typography.titleMedium)
+                                    Text(
+                                        if (section.records.size == 1) "عنصر واحد" else "${section.records.size} عناصر",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        items(section.records, key = { it.task.id }) { record ->
+                            DownloadRecordCard(
+                                record = record,
+                                fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
+                                transferStats = transferStats[record.task.id],
+                                performanceSummary = performanceSummaries[record.task.id],
+                                onPause = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
+                                    onPause(record)
+                                },
+                                onResume = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "resume_control", "resume")
+                                    onResume(record)
+                                },
+                                onCancel = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "cancel_control", "cancel")
+                                    onCancel(record)
+                                },
+                                onRetry = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "retry_control", "retry")
+                                    onRetry(record)
+                                },
+                                onDeleteHistory = {
+                                    pendingDelete = record
+                                },
+                                onRenameDownload = {
+                                    renameValue = record.task.displayName.orEmpty().substringBeforeLast('.', record.task.displayName.orEmpty())
+                                    pendingRename = record
+                                },
+                                onOpenDownload = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "open_control", "open")
+                                    onOpenDownload(record)
+                                },
+                                onShareDownload = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "share_control", "share")
+                                    onShareDownload(record)
+                                },
+                                onDeleteDownloadFile = {
+                                    val deleted = onDeleteDownloadFile(record)
+                                    feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
+                                },
+                                onOpenDownloadFolder = {
+                                    onOpenDownloadFolder(record)
+                                },
+                                onOpenStudio = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "studio_control", "open_studio")
+                                    onOpenStudio(record)
+                                },
+                                favorite = FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites,
+                                onToggleFavorite = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "favorite_control", "toggle")
+                                    onToggleFavorite(record)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -1046,8 +1170,8 @@ private fun DownloadRecordCard(
 
             if (record.status == DownloadStatus.DOWNLOADING) {
                 if (progress != null) {
-                    LinearProgressIndicator(
-                        progress = { animatedProgress },
+                    AHProgressBar(
+                        progress = animatedProgress,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     val stats = transferStats
@@ -1070,7 +1194,7 @@ private fun DownloadRecordCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 } else {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    AHProgressBar(progress = null, modifier = Modifier.fillMaxWidth())
                     Text(
                         "جاري التنزيل · الحجم الإجمالي غير متاح بعد",
                         style = MaterialTheme.typography.bodySmall,
@@ -1078,8 +1202,8 @@ private fun DownloadRecordCard(
                     )
                 }
             } else if (record.status == DownloadStatus.PAUSED && progress != null) {
-                LinearProgressIndicator(
-                    progress = { progress },
+                AHProgressBar(
+                    progress = progress,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -1089,8 +1213,8 @@ private fun DownloadRecordCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
-                LinearProgressIndicator(
-                    progress = { 1f },
+                AHProgressBar(
+                    progress = 1f,
                     color = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.fillMaxWidth(),
                 )
