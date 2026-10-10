@@ -31,6 +31,27 @@ class DiagnosticDataSanitizerTest {
     }
 
     @Test
+    fun preservesBooleanObservationMetadataButRedactsNonBooleanSecrets() {
+        val sanitized = DiagnosticDataSanitizer.sanitizeContext(
+            mapOf(
+                "browser_po_token_observed" to "true",
+                "po_token_observed" to "false",
+                "cookies_obtained" to "true",
+            ),
+        )
+
+        assertEquals("true", sanitized["browser_po_token_observed"])
+        assertEquals("false", sanitized["po_token_observed"])
+        assertEquals("true", sanitized["cookies_obtained"])
+        assertEquals(
+            "[REDACTED]",
+            DiagnosticDataSanitizer.sanitizeContext(
+                mapOf("po_token_observed" to "private-token-value"),
+            )["po_token_observed"],
+        )
+    }
+
+    @Test
     fun sanitizesSecretsAndFullUrlsInThrowableText() {
         val text = DiagnosticDataSanitizer.sanitizeText(
             "HTTP 403 token=hidden-value at https://media.example/videoplayback?sig=hidden-signature",

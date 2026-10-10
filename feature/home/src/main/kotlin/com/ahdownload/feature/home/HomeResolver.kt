@@ -22,7 +22,7 @@ class HomeResolver(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     sessionProvider: com.ahdownload.domain.resolver.youtube.YouTubeSessionProvider? = null,
     private val youtubeResolver: YouTubeResolver = YouTubeResolver(
-        httpClient = OkHttpTextClient(),
+        httpClient = OkHttpTextClient(logger = logger),
         logger = logger,
         sessionProvider = sessionProvider,
     ),

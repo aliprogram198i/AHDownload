@@ -64,7 +64,7 @@ class YouTubeResolver(
 
         var lastFailure: ResolverResult.Failure? = null
         try {
-            val html = httpClient.get(request.link.normalizedUrl)
+            val html = httpClient.get(request.link.normalizedUrl, emptyMap(), diagnosticContext(videoId, request.operationId) + mapOf("stage" to "RESOLUTION"))
             if (isBotChallenge(html)) {
                 lastFailure = ResolverResult.Failure(
                     FailureCode.ResolverUnavailable,
@@ -357,7 +357,7 @@ class YouTubeResolver(
             put("Referer", "https://www.youtube.com/")
         }
         if (headers.containsKey("Cookie")) {
-            val sessionHtml = runCatching { httpClient.get(request.link.normalizedUrl, headers) }.getOrNull()
+            val sessionHtml = runCatching { httpClient.get(request.link.normalizedUrl, headers, diagnosticContext(videoId, request.operationId) + mapOf("stage" to "RESOLUTION")) }.getOrNull()
             if (sessionHtml != null) {
                 val direct = parser.parse(sessionHtml)
                 if (direct is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(direct, request), request)
@@ -853,6 +853,7 @@ class YouTubeResolver(
     }
 
     private fun diagnosticContext(videoId: String, operationId: String?): Map<String, String> = buildMap {
+        put("platform", "YouTube")
         put("video_id", videoId)
         operationId?.takeIf { it.isNotBlank() }?.let { put("operation_id", it) }
     }

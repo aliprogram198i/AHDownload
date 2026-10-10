@@ -37,7 +37,7 @@ internal class YouTubePlayerClient(
         val endpoint = "https://www.youtube.com/youtubei/v1/player?key=" +
             URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
 
-        return runCatching { httpClient.postJson(endpoint, payload.toString(), headers) }.getOrElse { error ->
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), headers, requestContext(videoId, operationId)) }.getOrElse { error ->
             logFailure("youtube.player_request_failed", "فشل طلب YouTube Player API: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
             null
         }
@@ -88,7 +88,7 @@ internal class YouTubePlayerClient(
         val endpoint = "https://www.youtube.com/youtubei/v1/player?key=" +
             URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
 
-        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders) }.getOrElse { error ->
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders, requestContext(videoId, operationId)) }.getOrElse { error ->
             logFailure("youtube.embedded_player_failed", "فشل مسار YouTube Embedded Player: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
             null
         }
@@ -138,10 +138,17 @@ internal class YouTubePlayerClient(
             put("Referer", "https://www.youtube.com/")
         }
 
-        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders) }.getOrElse { error ->
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders, requestContext(videoId, operationId)) }.getOrElse { error ->
             logFailure("youtube.android_player_failed", "فشل مسار YouTube Android Player: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
             null
         }
+    }
+
+    private fun requestContext(videoId: String?, operationId: String?): Map<String, String> = buildMap {
+        put("platform", "YouTube")
+        put("stage", "RESOLUTION")
+        videoId?.takeIf { it.isNotBlank() }?.let { put("video_id", it) }
+        operationId?.takeIf { it.isNotBlank() }?.let { put("operation_id", it) }
     }
 
     private fun logFailure(type: String, reason: String, videoId: String?, operationId: String?, error: Throwable? = null) {
