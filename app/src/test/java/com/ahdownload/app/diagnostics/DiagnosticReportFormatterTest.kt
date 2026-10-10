@@ -253,6 +253,44 @@ class DiagnosticReportFormatterTest {
     }
 
     @Test
+    fun YouTubeBotChallengeIsNotReportedAsAnAgeGate() {
+        val session = "session-bot-challenge"
+        val operation = "op-bot-challenge"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "youtube.bot_challenge_detected",
+                level = DiagnosticLevel.WARNING,
+                reason = "YouTube asks for bot verification",
+                session = session,
+                operation = operation,
+                context = mapOf("platform" to "YouTube"),
+            ).copy(operation = "youtube.resolve"),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "AUTH_REQUIRED",
+                level = DiagnosticLevel.ERROR,
+                reason = "AuthenticationRequired",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "failure_code" to "AuthenticationRequired",
+                ),
+            ).copy(operation = "home.resolve"),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("root_cause=YOUTUBE_BOT_CHALLENGE"))
+        assertTrue(report.contains("classification=UPSTREAM_CHALLENGE"))
+        assertTrue(report.contains("action=REFRESH_YOUTUBE_SESSION_AFTER_BOT_CHECK"))
+        assertTrue(!report.contains("action=COMPLETE_YOUTUBE_AGE_VERIFICATION"))
+    }
+
+    @Test
     fun unavailableYouTubePlaybackDoesNotGetMisdiagnosedAsPoTokenOnly() {
         val session = "session-unavailable"
         val operation = "op-unavailable"
