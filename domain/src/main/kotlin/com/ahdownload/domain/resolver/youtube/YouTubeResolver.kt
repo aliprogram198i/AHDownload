@@ -328,16 +328,20 @@ class YouTubeResolver(
             logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
         }
 
-        if (lastFailure?.code == FailureCode.AuthenticationRequired && !snapshot.authenticated) {
+        val sessionCandidates = sessionCandidates(snapshot)
+        if (
+            lastFailure?.code == FailureCode.AuthenticationRequired &&
+            sessionCandidates.isEmpty()
+        ) {
             logger.log(
                 DiagnosticLevel.WARNING,
                 type = "youtube.authentication_required",
-                reason = "age_restricted_or_sign_in_required_without_authenticated_session",
+                reason = "age_restricted_or_sign_in_required_without_usable_media_candidates",
                 operation = "youtube.resolve",
                 context = diagnosticContext(videoId, request.operationId) + mapOf(
-                    "authenticated" to "false",
+                    "authenticated_cookie_hint" to snapshot.authenticated.toString(),
                     "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
-                    "candidate_count" to sessionCandidates(snapshot).size.toString(),
+                    "candidate_count" to sessionCandidates.size.toString(),
                 ),
                 throwable = null,
             )
@@ -369,7 +373,7 @@ class YouTubeResolver(
             }
         }
 
-        val webCandidates = sessionCandidates(snapshot)
+        val webCandidates = sessionCandidates
         if (webCandidates.isNotEmpty()) {
             logger.log(
                 DiagnosticLevel.INFO,

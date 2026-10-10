@@ -692,7 +692,7 @@ class YouTubeResolverTest {
                 videoUrls = emptyList(),
                 audioUrls = emptyList(),
                 playerResponse = ageGateResponse,
-                authenticated = false,
+                authenticated = true,
             )
         }
 
@@ -715,6 +715,7 @@ class YouTubeResolverTest {
             result.code,
         )
         assertTrue(result.message.orEmpty().contains("تأكيد الأهلية العمرية"))
+        // A cookie-name hint is not proof that YouTube has granted age-gated playback.
         assertEquals(0, playerApiRequests)
     }
 
