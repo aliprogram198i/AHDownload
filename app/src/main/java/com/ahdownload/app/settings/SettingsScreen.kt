@@ -764,7 +764,8 @@ private fun formatPerformanceDuration(durationMs: Long): String = when {
     else -> String.format(java.util.Locale.getDefault(), "%.2f ثانية", durationMs / 1_000.0)
 }
 
-private fun formatDiagnosticTime(epochMs: Long): String =    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+private fun formatDiagnosticTime(epochMs: Long): String =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         .format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
 
 class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
