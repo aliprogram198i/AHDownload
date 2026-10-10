@@ -19,6 +19,8 @@ import com.ahdownload.app.R
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SelectedDirectoryStorage
+import com.ahdownload.app.performance.PerformanceLogStore
+import com.ahdownload.domain.download.DownloadEngine
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadCoordinator
@@ -165,14 +167,18 @@ class DownloadWorker(
         }
 
         val queue = PersistentDownloadQueue(repository)
-        val engine = StreamingDownloadEngine(
-            source = OkHttpDownloadByteStream(
-                logger = diagnosticsLogger(),
-                dynamicHeaders = { url, headers ->
-                    dynamicHeadersFor(url, task.sessionCookieHost, headers)
-                },
+        val applicationServices = applicationContext.applicationContext as com.ahdownload.app.AHDownloadApplication
+        val engine = PerformanceTrackingDownloadEngine(
+            delegate = StreamingDownloadEngine(
+                source = OkHttpDownloadByteStream(
+                    logger = diagnosticsLogger(),
+                    dynamicHeaders = { url, headers ->
+                        dynamicHeadersFor(url, task.sessionCookieHost, headers)
+                    },
+                ),
+                sink = LocalAtomicFileSink(),
             ),
-            sink = LocalAtomicFileSink(),
+            performanceLogStore = applicationServices.performanceLogStore,
         )
 
         val controlStore = DownloadControlStore(applicationContext)
@@ -638,12 +644,33 @@ class DownloadWorker(
                 .getCookie(sourceTask.sourceUrl)
                 ?.takeIf { it.isNotBlank() }
 
-            val result = FfmpegManifestDownloader().download(
-                sourceUrl = sourceTask.sourceUrl,
-                outputFile = java.io.File(sourceTask.destinationPath),
-                requestHeaders = sourceTask.requestHeaders,
-                cookie = cookie,
-            )
+            val performanceStore = (applicationContext.applicationContext as com.ahdownload.app.AHDownloadApplication).performanceLogStore
+            val performanceSession = performanceStore.beginDownload(sourceTask)
+            val result = try {
+                FfmpegManifestDownloader().download(
+                    sourceUrl = sourceTask.sourceUrl,
+                    outputFile = java.io.File(sourceTask.destinationPath),
+                    requestHeaders = sourceTask.requestHeaders,
+                    cookie = cookie,
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                performanceStore.finishDownload(performanceSession, "CANCELLED")
+                throw cancelled
+            } catch (error: Throwable) {
+                performanceStore.finishDownload(performanceSession, "FAILED")
+                throw error
+            }
+            if (result.isSuccess) {
+                val outputFile = result.getOrNull()?.takeIf { it.isFile }
+                performanceStore.finishDownload(
+                    session = performanceSession,
+                    outcome = "COMPLETED",
+                    bytesDownloadedOverride = outputFile?.length(),
+                    totalBytesOverride = outputFile?.length(),
+                )
+            } else {
+                performanceStore.finishDownload(performanceSession, "FAILED_MANIFEST")
+            }
             if (result.isFailure) {
                 val error = result.exceptionOrNull()
                 diagnostics.log(
@@ -702,7 +729,7 @@ class DownloadWorker(
         task: DownloadTask,
         videoTask: DownloadTask,
         audioTask: DownloadTask,
-        engine: StreamingDownloadEngine,
+        engine: DownloadEngine,
         repository: com.ahdownload.domain.download.DownloadRepository,
         controlStore: DownloadControlStore,
         diagnostics: PersistentDiagnosticLogger,

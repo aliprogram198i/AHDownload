@@ -28,6 +28,8 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.app.settings.ThemePreferenceStore
+import com.ahdownload.app.performance.PerformanceLogRoute
+import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.core.designsystem.LocalDiagnosticUiTraceLogger
@@ -36,6 +38,9 @@ import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadProcessingMode
+import com.ahdownload.app.performance.PerformanceMetrics
+import com.ahdownload.feature.downloads.DownloadPerformanceSummary
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
@@ -53,6 +58,7 @@ private enum class RootDestination {
     Settings,
     Studio,
     UiDiagnostics,
+    Performance,
 }
 
 class MainActivity : ComponentActivity() {
@@ -92,6 +98,7 @@ class MainActivity : ComponentActivity() {
                     },
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
+                    performanceLogStore = applicationServices.performanceLogStore,
                     onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
                         requestNotificationPermissionIfNeeded()
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
@@ -343,6 +350,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
+    performanceLogStore: PerformanceLogStore,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
@@ -366,6 +374,35 @@ private fun AHRoot(
     openDownloadsOnStart: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
+    val performanceEntries by performanceLogStore.entries.collectAsStateWithLifecycle(initialValue = emptyList())
+    val latestPerformanceByTaskId = remember(performanceEntries) {
+        performanceEntries
+            .filter { it.kind == "DOWNLOAD" && !it.taskId.isNullOrBlank() }
+            .groupBy { it.taskId!! }
+            .mapValues { (_, entries) -> entries.maxByOrNull { it.completedAtEpochMs }!! }
+    }
+    val downloadPerformanceSummaries = remember(history, latestPerformanceByTaskId) {
+        history.mapNotNull { record ->
+            val taskIds = if (record.task.processingMode == DownloadProcessingMode.MuxVideoAudio) {
+                listOf(record.task.id, record.task.id + "-audio")
+            } else {
+                listOf(record.task.id)
+            }
+            val latestStages = taskIds.mapNotNull { latestPerformanceByTaskId[it] }
+            if (latestStages.isEmpty()) {
+                null
+            } else {
+                val durationMs = latestStages.sumOf { it.durationMs }
+                val transferredBytes = latestStages.sumOf { it.bytesDownloaded }
+                record.task.id to DownloadPerformanceSummary(
+                    durationMs = durationMs,
+                    transferredBytes = transferredBytes,
+                    averageBytesPerSecond = PerformanceMetrics.bytesPerSecond(transferredBytes, durationMs),
+                    peakBytesPerSecond = latestStages.maxOfOrNull { it.peakBytesPerSecond } ?: 0L,
+                )
+            }
+        }.toMap()
+    }
     var studioRecord by remember { mutableStateOf<DownloadRecord?>(null) }
 
     val activeDownloads = history.count {
@@ -431,6 +468,16 @@ private fun AHRoot(
             activeDownloads = activeDownloads,
             preferencesProvider = downloadPreferencesProvider,
             favoriteRepository = favoriteRepository,
+            onAnalysisPerformance = { sample ->
+                performanceLogStore.recordAnalysis(
+                    operationId = sample.operationId,
+                    platform = sample.platform,
+                    startedAtEpochMs = sample.startedAtEpochMs,
+                    durationMs = sample.durationMs,
+                    outcome = sample.outcome,
+                    candidateCount = sample.candidateCount,
+                )
+            },
         )
         RootDestination.Downloads -> DownloadsRoute(
             repository = downloadRepository,
@@ -451,6 +498,7 @@ private fun AHRoot(
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
+            performanceSummaries = downloadPerformanceSummaries,
         )
         RootDestination.Studio -> studioRecord?.let { record ->
             StudioRoute(
@@ -470,6 +518,8 @@ private fun AHRoot(
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
             diagnosticLogger = logger,
+            performanceLogStore = performanceLogStore,
+            onOpenPerformanceLog = { push(RootDestination.Performance) },
             themeMode = themeMode,
             onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
@@ -479,6 +529,10 @@ private fun AHRoot(
             onNavigateDownloads = { root(RootDestination.Downloads) },
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
+        )
+        RootDestination.Performance -> PerformanceLogRoute(
+            store = performanceLogStore,
+            onBack = ::popOrHome,
         )
         RootDestination.Diagnostics -> DiagnosticsRoute(
             logger = logger,

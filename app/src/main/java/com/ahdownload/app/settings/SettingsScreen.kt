@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.ahdownload.app.BuildConfig
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.app.performance.PerformanceLogStore
+import com.ahdownload.app.performance.PerformanceMetrics
 import com.ahdownload.core.common.AudioBitratePreference
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
@@ -78,6 +80,8 @@ import java.time.format.DateTimeFormatter
 fun SettingsRoute(
     store: DownloadLocationStore,
     diagnosticLogger: PersistentDiagnosticLogger,
+    performanceLogStore: PerformanceLogStore,
+    onOpenPerformanceLog: () -> Unit,
     themeMode: AHThemeMode,
     onThemeChanged: (AHThemeMode) -> Unit,
     onPickDownloadFolder: () -> Unit,
@@ -97,6 +101,7 @@ fun SettingsRoute(
     var folderError by remember { mutableStateOf<String?>(null) }
     var storageInfo by remember(context) { mutableStateOf(StorageInfoReader.read(context)) }
     var latestError by remember { mutableStateOf<DiagnosticLog?>(null) }
+    val performanceEntries by performanceLogStore.entries.collectAsState()
     val uiContext = rememberUiTraceContext()
 
     LaunchedEffect(Unit) {
@@ -483,6 +488,53 @@ fun SettingsRoute(
                 }
             }
 
+            item { SettingsSectionTitle("الأداء وسجل السرعة") }
+
+            item {
+                val latestAnalysis = performanceEntries.firstOrNull { it.kind == "ANALYSIS" }
+                val completedDownloads = performanceEntries.filter { it.kind == "DOWNLOAD" && it.outcome == "COMPLETED" }
+                val averageSpeed = completedDownloads.map { it.averageBytesPerSecond }.filter { it > 0L }.takeIf { it.isNotEmpty() }?.average()
+                SettingsCard {
+                    Text(
+                        "قياس زمن تحليل الروابط وسرعة نقل الملفات، بسجل مستقل عن سجل الأخطاء.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("آخر تحليل", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                latestAnalysis?.let { formatPerformanceDuration(it.durationMs) } ?: "لا توجد بيانات",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("متوسط سرعة التنزيل", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                averageSpeed?.let { PerformanceMetrics.formatSpeed(it.toLong()) } ?: "—",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                    Text(
+                        "العمليات المحفوظة: ${performanceEntries.size} من أصل 200 كحد أقصى.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(onClick = {
+                        uiTraceLogger.interaction("SETTINGS", "performance_log_button", "open_performance_log")
+                        onOpenPerformanceLog()
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Text("فتح سجل الأداء")
+                    }
+                }
+            }
+
             item { SettingsSectionTitle("التشخيص والدعم") }
 
             item {
@@ -705,6 +757,11 @@ private fun SettingsSwitchRow(
             trackingLabel = "setting_toggle",
             disabledReason = "callsite_precondition_not_explicit",checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+private fun formatPerformanceDuration(durationMs: Long): String = when {
+    durationMs < 1_000L -> "${durationMs} مللي ثانية"
+    else -> String.format(java.util.Locale.getDefault(), "%.2f ثانية", durationMs / 1_000.0)
 }
 
 private fun formatDiagnosticTime(epochMs: Long): String =

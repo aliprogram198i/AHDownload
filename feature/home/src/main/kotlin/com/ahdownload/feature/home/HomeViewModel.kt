@@ -1,6 +1,7 @@
 package com.ahdownload.feature.home
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -47,6 +48,15 @@ enum class ResultFilter(val label: String) {
     Other("ملفات"),
 }
 
+data class LinkAnalysisPerformance(
+    val operationId: String,
+    val platform: String,
+    val startedAtEpochMs: Long,
+    val durationMs: Long,
+    val outcome: String,
+    val candidateCount: Int,
+)
+
 data class HomeUiState(
     val url: String = "",
     val analyzing: Boolean = false,
@@ -88,6 +98,7 @@ class HomeViewModel(
         DownloadEnqueueResult.REJECTED
     },
     private val preferencesProvider: DownloadPreferencesProvider,
+    private val onAnalysisPerformance: (LinkAnalysisPerformance) -> Unit = {},
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(HomeUiState(recentLinks = recentLinkStore.list()))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -472,8 +483,23 @@ class HomeViewModel(
             autoAnalyzeJob = null
         }
 
+        val startedAtEpochMs = System.currentTimeMillis()
+        val startedAtElapsedMs = SystemClock.elapsedRealtime()
+        val operationId = UUID.randomUUID().toString()
         val link = analyzer.analyze(current)
         if (link == null) {
+            runCatching {
+                onAnalysisPerformance(
+                    LinkAnalysisPerformance(
+                        operationId = operationId,
+                        platform = "Unknown",
+                        startedAtEpochMs = startedAtEpochMs,
+                        durationMs = (SystemClock.elapsedRealtime() - startedAtElapsedMs).coerceAtLeast(0L),
+                        outcome = "INVALID_URL",
+                        candidateCount = 0,
+                    ),
+                )
+            }
             logger.log(
                 DiagnosticLevel.ERROR,
                 "INVALID_URL",
@@ -494,7 +520,6 @@ class HomeViewModel(
         }
 
         analysisJob?.cancel()
-        val operationId = UUID.randomUUID().toString()
         logger.log(
             DiagnosticLevel.INFO,
             "ANALYSIS_STARTED",
@@ -517,6 +542,23 @@ class HomeViewModel(
         )
 
         analysisJob = viewModelScope.launch {
+            var performanceRecorded = false
+            fun recordAnalysisPerformance(outcome: String, candidateCount: Int = 0) {
+                if (performanceRecorded) return
+                performanceRecorded = true
+                runCatching {
+                    onAnalysisPerformance(
+                        LinkAnalysisPerformance(
+                            operationId = operationId,
+                            platform = link.platform.name,
+                            startedAtEpochMs = startedAtEpochMs,
+                            durationMs = (SystemClock.elapsedRealtime() - startedAtElapsedMs).coerceAtLeast(0L),
+                            outcome = outcome,
+                            candidateCount = candidateCount.coerceAtLeast(0),
+                        ),
+                    )
+                }
+            }
             try {
                 _uiState.value = _uiState.value.copy(analyzing = false, resolving = true)
                 when (val resolution = resolver.resolve(link, operationId)) {
@@ -547,6 +589,10 @@ class HomeViewModel(
                                 null
                             },
                         )
+                        recordAnalysisPerformance(
+                            outcome = if (resolution.candidates.isEmpty()) "EMPTY" else "SUCCESS",
+                            candidateCount = resolution.candidates.size,
+                        )
                     }
 
                     is ResolverResult.Failure -> {
@@ -573,9 +619,11 @@ class HomeViewModel(
                             resolution = null,
                             error = resolution.message ?: "تعذر استخراج الوسائط: " + resolution.code,
                         )
+                        recordAnalysisPerformance("FAILED")
                     }
                 }
             } catch (error: CancellationException) {
+                recordAnalysisPerformance("CANCELLED")
                 throw error
             } catch (error: Throwable) {
                 logger.log(
@@ -595,6 +643,7 @@ class HomeViewModel(
                     resolution = null,
                     error = "حدث خطأ غير متوقع أثناء استخراج الوسائط.",
                 )
+                recordAnalysisPerformance("FAILED")
             }
         }
     }
@@ -1250,6 +1299,7 @@ class HomeViewModel(
         private val logger: DiagnosticLogger,
         private val context: Context,
         private val preferencesProvider: DownloadPreferencesProvider,
+        private val onAnalysisPerformance: (LinkAnalysisPerformance) -> Unit = {},
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             @Suppress("UNCHECKED_CAST")
@@ -1265,6 +1315,7 @@ class HomeViewModel(
                 preferencesProvider = preferencesProvider,
                 onDownloadRequested = onDownloadRequested,
                 onAudioOnlyRequested = onAudioOnlyRequested,
+                onAnalysisPerformance = onAnalysisPerformance,
             ) as T
         }
     }
