@@ -138,7 +138,7 @@ internal class YouTubePlayerClient(
             put("Referer", "https://www.youtube.com/")
         }
 
-        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders) }.getOrElse { error ->
+        return runCatching { httpClient.postJson(endpoint, payload.toString(), requestHeaders, requestContext(videoId, operationId)) }.getOrElse { error ->
             logFailure("youtube.android_player_failed", "فشل مسار YouTube Android Player: " + (error.message ?: error::class.simpleName.orEmpty()), videoId, operationId, error)
             null
         }
