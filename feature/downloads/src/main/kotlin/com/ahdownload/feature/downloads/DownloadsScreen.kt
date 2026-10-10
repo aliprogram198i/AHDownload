@@ -106,6 +106,10 @@ import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.canBeCancelled
+import com.ahdownload.domain.download.canBeResumed
+import com.ahdownload.domain.download.canBeRemovedFromHistory
+import com.ahdownload.domain.download.isActivelyRunning
 import com.ahdownload.domain.favorites.FavoriteItem
 import com.ahdownload.domain.favorites.FavoriteKey
 import com.ahdownload.domain.favorites.FavoriteRepository
@@ -120,6 +124,7 @@ import java.util.Locale
 private enum class DownloadFilter(val label: String) {
     All("الكل"),
     Active("نشطة"),
+    Paused("متوقفة"),
     Completed("مكتملة"),
     Failed("فشل"),
     Favorites("المفضلة"),
@@ -206,7 +211,7 @@ fun DownloadsRoute(
             add("search")
             add("filters")
             if (records.isEmpty()) add("empty_state") else add("download_cards")
-            if (records.any { it.status in ACTIVE_STATUSES }) add("active_controls")
+            if (records.any { it.status.isActivelyRunning || it.status == DownloadStatus.PAUSED }) add("active_controls")
             if (records.any { it.status == DownloadStatus.FAILED }) add("retry_controls")
             if (records.any { it.status == DownloadStatus.COMPLETED }) add("completed_actions")
             add("bottom_navigation")
@@ -216,7 +221,8 @@ fun DownloadsRoute(
             component = "DownloadsScreen",
             components = componentNames,
             stateSummary = "records=" + records.size +
-                ";active=" + records.count { it.status in ACTIVE_STATUSES } +
+                ";active=" + records.count { it.status.isActivelyRunning } +
+                ";paused=" + records.count { it.status == DownloadStatus.PAUSED } +
                 ";completed=" + records.count { it.status == DownloadStatus.COMPLETED } +
                 ";failed=" + records.count { it.status == DownloadStatus.FAILED },
             context = uiContext,
@@ -319,7 +325,8 @@ private fun DownloadsScreen(
             .filter { record ->
                 val matchesFilter = when (filter) {
                     DownloadFilter.All -> true
-                    DownloadFilter.Active -> record.status in ACTIVE_STATUSES
+                    DownloadFilter.Active -> record.status.isActivelyRunning
+                    DownloadFilter.Paused -> record.status == DownloadStatus.PAUSED
                     DownloadFilter.Completed -> record.status == DownloadStatus.COMPLETED
                     DownloadFilter.Failed -> record.status == DownloadStatus.FAILED
                     DownloadFilter.Favorites -> FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites
@@ -333,12 +340,13 @@ private fun DownloadsScreen(
                     )
             }
             .sortedWith(
-                compareByDescending<DownloadRecord> { it.status in ACTIVE_STATUSES }
+                compareByDescending<DownloadRecord> { it.status.isActivelyRunning }
                     .thenByDescending { it.updatedAtEpochMs },
             )
     }
 
-    val activeCount = records.count { it.status in ACTIVE_STATUSES }
+    val activeCount = records.count { it.status.isActivelyRunning }
+    val pausedCount = records.count { it.status == DownloadStatus.PAUSED }
     val completedCount = records.count { it.status == DownloadStatus.COMPLETED }
     val failedCount = records.count { it.status == DownloadStatus.FAILED }
 
@@ -350,7 +358,7 @@ private fun DownloadsScreen(
                     Column {
                         Text("التنزيلات")
                         Text(
-                            "$activeCount نشطة · $completedCount مكتملة",
+                            "$activeCount نشطة · $pausedCount متوقفة · $completedCount مكتملة",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -371,7 +379,7 @@ private fun DownloadsScreen(
                     }
                 },
                 actions = {
-                    if (activeCount > 0 || records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.CANCELLED) }) {
+                    if (activeCount > 0 || records.any { it.status.canBeCancelled || it.status.canBeResumed }) {
                         Box {
                             DiagnosticIconButton(
                                 trackingScreen = "DOWNLOADS",
@@ -396,6 +404,8 @@ private fun DownloadsScreen(
                                             onPauseAll()
                                         },
                                     )
+                                }
+                                if (records.any { it.status.canBeCancelled }) {
                                     DiagnosticDropdownMenuItem(
                                         trackingScreen = "DOWNLOADS",
                                         trackingId = "DOWNLOADS.dropdownmenuitem.02",
@@ -408,7 +418,7 @@ private fun DownloadsScreen(
                                         },
                                     )
                                 }
-                                if (records.any { it.status in setOf(DownloadStatus.PAUSED, DownloadStatus.FAILED, DownloadStatus.CANCELLED) }) {
+                                if (records.any { it.status.canBeResumed }) {
                                     DiagnosticDropdownMenuItem(
                                         trackingScreen = "DOWNLOADS",
                                         trackingId = "DOWNLOADS.dropdownmenuitem.03",
@@ -494,6 +504,7 @@ private fun DownloadsScreen(
                             val count = when (item) {
                                 DownloadFilter.All -> records.size
                                 DownloadFilter.Active -> activeCount
+                                DownloadFilter.Paused -> pausedCount
                                 DownloadFilter.Completed -> completedCount
                                 DownloadFilter.Failed -> failedCount
                                 DownloadFilter.Favorites -> records.count {
@@ -543,6 +554,7 @@ private fun DownloadsScreen(
                             record = record,
                             fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
                             transferStats = transferStats[record.task.id],
+                            performanceSummary = performanceSummaries[record.task.id],
                             onPause = {
                                 uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
                                 onPause(record)
@@ -954,7 +966,7 @@ private fun DownloadRecordCard(
                                 },
                             )
                         }
-                        if (record.status !in ACTIVE_STATUSES) {
+                        if (record.status.canBeRemovedFromHistory) {
                             DiagnosticDropdownMenuItem(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.dropdownmenuitem.11",
@@ -1008,7 +1020,7 @@ private fun DownloadRecordCard(
                 )
             }
 
-            if (record.status !in ACTIVE_STATUSES && performanceSummary != null &&
+            if (record.status.canBeRemovedFromHistory && performanceSummary != null &&
                 (performanceSummary.transferredBytes > 0L || performanceSummary.durationMs > 0L)
             ) {
                 Text(
@@ -1256,19 +1268,6 @@ private fun statusColor(status: DownloadStatus) = when (status) {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-private fun failureSummary(record: DownloadRecord): String = when (record.failureCode) {
-    "network_error" -> "تعذر الوصول إلى المصدر بسبب الشبكة. أعد المحاولة."
-    "http_error" -> when (record.failureDetail) {
-        "403" -> "المصدر رفض الطلب مؤقتًا. ستُعاد محاولة الحصول على مصدر صالح."
-        "404" -> "لم يعد المصدر متاحًا."
-        "429" -> "المصدر طلب الانتظار قبل المحاولة التالية."
-        else -> "تعذر الوصول إلى المصدر حاليًا. أعد المحاولة."
-    }
-    "destination_storage_error" -> "تعذر حفظ الملف في مجلد التنزيل المحدد."
-    "cancelled" -> "تم إلغاء التنزيل."
-    else -> "تعذر إكمال التنزيل. أعد المحاولة."
-}
-
 private fun destinationLabel(record: DownloadRecord): String = when {
     record.destinationUri?.startsWith("content://") == true -> "محفوظ في مجلد الجهاز"
     record.destinationUri != null -> "محفوظ على الجهاز"
@@ -1296,14 +1295,6 @@ private fun kindLabel(kind: MediaKind): String = when (kind) {
     MediaKind.Image -> "صورة"
     MediaKind.Unknown -> "ملف"
 }
-
-private val ACTIVE_STATUSES = setOf(
-    DownloadStatus.QUEUED,
-    DownloadStatus.PREPARING,
-    DownloadStatus.DOWNLOADING,
-    DownloadStatus.PAUSED,
-)
-
 
 private data class TransferSample(
     val bytes: Long,

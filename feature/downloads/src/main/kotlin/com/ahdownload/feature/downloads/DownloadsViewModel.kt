@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.canBeCancelled
+import com.ahdownload.domain.download.canBePaused
+import com.ahdownload.domain.download.canBeRemovedFromHistory
+import com.ahdownload.domain.download.canBeResumed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.StateFlow
@@ -26,25 +30,19 @@ class DownloadsViewModel(
     }
 
     fun pause(record: DownloadRecord) {
-        if (record.status in setOf(DownloadStatus.QUEUED, DownloadStatus.PREPARING, DownloadStatus.DOWNLOADING)) {
+        if (record.status.canBePaused) {
             controls.pause(record.task.id)
         }
     }
 
     fun resume(record: DownloadRecord) {
-        if (record.status in setOf(DownloadStatus.PAUSED, DownloadStatus.CANCELLED, DownloadStatus.FAILED)) {
+        if (record.status.canBeResumed) {
             controls.resume(record)
         }
     }
 
     fun cancel(record: DownloadRecord) {
-        if (record.status in setOf(
-                DownloadStatus.QUEUED,
-                DownloadStatus.PREPARING,
-                DownloadStatus.DOWNLOADING,
-                DownloadStatus.PAUSED,
-            )
-        ) {
+        if (record.status.canBeCancelled) {
             controls.cancel(record.task.id)
         }
     }
@@ -61,49 +59,24 @@ class DownloadsViewModel(
 
     fun pauseAll() {
         _records.value
-            .filter {
-                it.status in setOf(
-                    DownloadStatus.QUEUED,
-                    DownloadStatus.PREPARING,
-                    DownloadStatus.DOWNLOADING,
-                )
-            }
+            .filter { it.status.canBePaused }
             .forEach { controls.pause(it.task.id) }
     }
 
     fun resumeAll() {
         _records.value
-            .filter {
-                it.status in setOf(
-                    DownloadStatus.PAUSED,
-                    DownloadStatus.CANCELLED,
-                    DownloadStatus.FAILED,
-                )
-            }
+            .filter { it.status.canBeResumed }
             .forEach { controls.resume(it) }
     }
 
     fun cancelAll() {
         _records.value
-            .filter {
-                it.status in setOf(
-                    DownloadStatus.QUEUED,
-                    DownloadStatus.PREPARING,
-                    DownloadStatus.DOWNLOADING,
-                    DownloadStatus.PAUSED,
-                )
-            }
+            .filter { it.status.canBeCancelled }
             .forEach { controls.cancel(it.task.id) }
     }
 
     fun deleteHistory(record: DownloadRecord) {
-        if (record.status !in setOf(
-                DownloadStatus.QUEUED,
-                DownloadStatus.PREPARING,
-                DownloadStatus.DOWNLOADING,
-                DownloadStatus.PAUSED,
-            )
-        ) {
+        if (record.status.canBeRemovedFromHistory) {
             viewModelScope.launch {
                 repository.delete(record.task.id)
             }
