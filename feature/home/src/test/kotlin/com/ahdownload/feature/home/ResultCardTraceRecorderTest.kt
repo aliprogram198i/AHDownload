@@ -8,6 +8,7 @@ import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaContainer
 import com.ahdownload.domain.resolver.MediaFormat
 import com.ahdownload.domain.resolver.MediaSourceContext
+import com.ahdownload.domain.resolver.SmartResultEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -56,12 +57,12 @@ class ResultCardTraceRecorderTest {
             hasThumbnail = true,
             durationMs = 10_000L,
             rawCandidates = listOf(source),
-            primaryOptions = emptyList(),
-            videoOptions = emptyList(),
+            primaryOptions = SmartResultEngine().build(listOf(source)).all,
+            videoOptions = SmartResultEngine().build(listOf(source)).video,
             audioOptions = emptyList(),
             directAudioAvailable = false,
             audioAvailable = false,
-            visibleVideoOptions = 0,
+            visibleVideoOptions = 1,
             videoOptionsExpanded = false,
             selectedCandidateId = null,
             selectedAudioCandidateId = null,
@@ -70,10 +71,12 @@ class ResultCardTraceRecorderTest {
 
         val sourceEvent = events.single { it.event == "SOURCE_CANDIDATE" }
         assertEquals("RESULT_CARD", sourceEvent.screen)
-        assertEquals("BLOCKED_AUDIO_TRACK_UNCONFIRMED", sourceEvent.state)
+        assertEquals("VIDEO_ONLY_FALLBACK_OPTION", sourceEvent.state)
         assertEquals("rr1---sn.googlevideo.com", sourceEvent.context["source_host"])
         assertEquals("1", sourceEvent.context["request_header_count"])
-        assertEquals("0", events.single { it.event == "RESULT_SNAPSHOT" }.context["video_picker_option_count"])
+        val snapshot = events.single { it.event == "RESULT_SNAPSHOT" }
+        assertEquals("1", snapshot.context["video_picker_option_count"])
+        assertEquals("1", snapshot.context["video_only_fallback_option_count"])
 
         val exportedContext = events.joinToString(" ") { it.context.toString() }
         assertFalse(exportedContext.contains("videoplayback"))
