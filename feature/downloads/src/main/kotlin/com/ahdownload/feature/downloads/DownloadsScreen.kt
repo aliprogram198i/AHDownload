@@ -1325,7 +1325,7 @@ private fun statusLabel(status: DownloadStatus): String = when (status) {
 @Composable
 private fun statusColor(status: DownloadStatus) = when (status) {
     DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
-    DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.primary
+    DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
