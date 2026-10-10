@@ -4,6 +4,7 @@ import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaContainer
 import com.ahdownload.domain.resolver.MediaFormat
+import com.ahdownload.domain.resolver.MediaSourceContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -70,6 +71,29 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun rejectsYouTubeUmpResponseAsRawVideo() = kotlinx.coroutines.test.runTest {
+        val result = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "application/vnd.yt-ump",
+                    contentLengthBytes = 1L,
+                    finalUrl = "https://rr2.googlevideo.com/videoplayback",
+                ),
+            ),
+        ).validate(
+            candidate(MediaKind.Video).copy(
+                sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+            ),
+        )
+
+        assertEquals(
+            ValidationFailure.ContentTypeMismatch,
+            assertIs<CandidateValidationResult.Invalid>(result).failure,
+        )
+    }
+
+    @Test
     fun rejectsNonSuccessHttpStatus() = kotlinx.coroutines.test.runTest {
         val result = CandidateValidator(
             FakeProbe(
@@ -96,6 +120,7 @@ class CandidateValidatorTest {
                 url: String,
                 headers: Map<String, String>,
                 operationId: String?,
+                sourceContext: MediaSourceContext,
             ): MediaProbeResult {
                 called = true
                 error("probe must not be called")
@@ -131,6 +156,7 @@ class CandidateValidatorTest {
             url: String,
             headers: Map<String, String>,
             operationId: String?,
+            sourceContext: MediaSourceContext,
         ): MediaProbeResult = result
     }
 }

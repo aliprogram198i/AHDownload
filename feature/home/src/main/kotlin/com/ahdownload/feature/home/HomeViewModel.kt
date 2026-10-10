@@ -22,6 +22,7 @@ import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
 import com.ahdownload.domain.search.ContentSearchItem
 import com.ahdownload.domain.search.ContentSearchProvider
 import com.ahdownload.domain.validation.CandidateValidationResult
+import com.ahdownload.domain.validation.ValidationFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -713,13 +714,12 @@ class HomeViewModel(
                 var youtubeFallbackCandidatesChecked = 0
 
                 val validationFailure = (validation as? CandidateValidationResult.Invalid)?.failure
-                val httpStatusFailure =
-                    validationFailure as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
+                val shouldRefreshYouTube = validationFailure?.shouldRefreshYouTubeAfterValidation() == true
                 val youtubeLink = state.result?.takeIf {
                     it.platform == com.ahdownload.domain.model.MediaPlatform.YouTube
                 }
 
-                if (httpStatusFailure?.code == 403 && youtubeLink != null) {
+                if (shouldRefreshYouTube && youtubeLink != null) {
                     youtubeRefreshAttempted = true
                     logger.log(
                         DiagnosticLevel.WARNING,
@@ -731,6 +731,11 @@ class HomeViewModel(
                             "candidate_format_id" to candidate.format.id,
                             "operation_id" to validationOperationId,
                             "platform" to "YouTube",
+                            "refresh_trigger" to if (validationFailure == ValidationFailure.ContentTypeMismatch) {
+                                "content_type_mismatch"
+                            } else {
+                                "http_403"
+                            },
                         ),
                         null,
                     )
@@ -743,7 +748,7 @@ class HomeViewModel(
                         )
                     ) {
                         is ResolverResult.Success -> {
-                            val refreshedCandidates = if (extractAudio) {
+                            val refreshedCandidates = (if (extractAudio) {
                                 val directAudio = refreshed.candidates
                                     .filter { it.format.kind == MediaKind.Audio && it.format.hasAudio }
                                     .sortedWith(
@@ -787,7 +792,10 @@ class HomeViewModel(
                                             .thenByDescending { it.format.bitrateKbps ?: 0 },
                                     )
                                     .take(6)
-                            }
+                            }).filterNot { refreshedCandidate ->
+                                validationFailure == ValidationFailure.ContentTypeMismatch &&
+                                    refreshedCandidate.sourceUrl == candidate.sourceUrl
+                            }.distinctBy { it.id to it.sourceUrl }
 
                             logger.log(
                                 DiagnosticLevel.INFO,
@@ -858,9 +866,7 @@ class HomeViewModel(
 
                                 val refreshedFailure =
                                     (validation as CandidateValidationResult.Invalid).failure
-                                val refreshedHttpFailure =
-                                    refreshedFailure as? com.ahdownload.domain.validation.ValidationFailure.HttpStatus
-                                if (refreshedHttpFailure?.code != 403) break
+                                if (!refreshedFailure.shouldRefreshYouTubeAfterValidation()) break
                             }
                         }
 
@@ -1256,4 +1262,17 @@ class HomeViewModel(
             ) as T
         }
     }
+}
+
+/**
+ * A single bounded YouTube re-extraction is warranted for an expired source (403)
+ * or a response that is not raw media (for example application/vnd.yt-ump).
+ * Other failures should not trigger extra network work.
+ */
+internal fun ValidationFailure.shouldRefreshYouTubeAfterValidation(): Boolean = when (this) {
+    ValidationFailure.ContentTypeMismatch -> true
+    is ValidationFailure.HttpStatus -> code == 403
+    ValidationFailure.InvalidUrl,
+    ValidationFailure.ProbeFailed,
+    ValidationFailure.HtmlResponse -> false
 }

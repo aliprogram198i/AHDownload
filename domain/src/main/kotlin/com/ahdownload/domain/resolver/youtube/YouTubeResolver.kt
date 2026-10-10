@@ -43,10 +43,10 @@ class YouTubeResolver(
         resolveInternal(request, forceFallbacks = false)
 
     /**
-     * Re-resolves YouTube through the alternate client paths even when the primary
-     * resolver already returned a nominally sufficient candidate. This is used only
-     * after a media source returns HTTP 403 so the refresh gets genuinely fresh
-     * alternatives instead of the same stale candidate.
+     * Re-resolves YouTube through alternate client paths when a selected source fails
+     * validation. Refreshing is used for HTTP 403 and raw-media content-type mismatches,
+     * so the caller can validate genuinely alternate candidates instead of blindly
+     * accepting an unsupported response such as application/vnd.yt-ump.
      */
     suspend fun resolveWithFallbacks(request: ResolverRequest): ResolverResult =
         resolveInternal(request, forceFallbacks = true)
@@ -86,7 +86,7 @@ class YouTubeResolver(
                         logger.log(
                             DiagnosticLevel.INFO,
                             type = "youtube.fallback_clients_forced",
-                            reason = "refresh_after_http_403",
+                            reason = "refresh_after_media_validation_failure",
                             operation = "youtube.resolve",
                             context = diagnosticContext(videoId, request.operationId),
                             throwable = null,
@@ -113,7 +113,7 @@ class YouTubeResolver(
                             logger.log(
                                 DiagnosticLevel.INFO,
                                 type = "youtube.fallback_clients_forced",
-                                reason = "refresh_after_http_403",
+                                reason = "refresh_after_media_validation_failure",
                                 operation = "youtube.resolve",
                                 context = diagnosticContext(videoId, request.operationId),
                                 throwable = null,
