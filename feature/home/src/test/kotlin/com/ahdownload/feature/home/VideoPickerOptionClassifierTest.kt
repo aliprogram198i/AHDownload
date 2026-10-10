@@ -9,6 +9,7 @@ import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.ValidationFailure
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -159,6 +160,75 @@ class VideoPickerOptionClassifierTest {
 
         assertEquals(1, attempts)
         assertEquals(null, result)
+    }
+
+    @Test
+    fun allowsVideoOnlyFallbackWhenNoCompanionAudioSourceExists() {
+        val video = MediaCandidate(
+            id = "browser-video",
+            sourceUrl = "https://cdn.example/video.mp4",
+            format = MediaFormat(
+                id = "video-only",
+                kind = MediaKind.Video,
+                container = MediaContainer.Mp4,
+                hasVideo = true,
+                hasAudio = false,
+            ),
+            sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+        )
+
+        assertTrue(canUseVideoOnlyFallback(video, emptyList()))
+    }
+
+    @Test
+    fun doesNotUseVideoOnlyFallbackWhenCompanionAudioNeedsValidation() {
+        val video = MediaCandidate(
+            id = "browser-video",
+            sourceUrl = "https://cdn.example/video.mp4",
+            format = MediaFormat(
+                id = "video-only",
+                kind = MediaKind.Video,
+                container = MediaContainer.Mp4,
+                hasVideo = true,
+                hasAudio = false,
+            ),
+            sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+        )
+        val audio = MediaCandidate(
+            id = "audio",
+            sourceUrl = "https://cdn.example/audio.m4a",
+            format = MediaFormat(
+                id = "audio",
+                kind = MediaKind.Audio,
+                container = MediaContainer.M4a,
+                hasVideo = false,
+                hasAudio = true,
+            ),
+        )
+
+        assertFalse(canUseVideoOnlyFallback(video, listOf(audio)))
+    }
+
+    @Test
+    fun doesNotUseVideoOnlyFallbackWhenVideoAlreadyHasAudioOrCompanion() {
+        val video = MediaCandidate(
+            id = "video",
+            sourceUrl = "https://cdn.example/video.mp4",
+            format = MediaFormat(
+                id = "video",
+                kind = MediaKind.Video,
+                container = MediaContainer.Mp4,
+                hasVideo = true,
+                hasAudio = true,
+            ),
+        )
+        val pairedVideo = video.copy(
+            format = video.format.copy(hasAudio = false),
+            companionAudioSourceUrl = "https://cdn.example/audio.m4a",
+        )
+
+        assertFalse(canUseVideoOnlyFallback(video, emptyList()))
+        assertFalse(canUseVideoOnlyFallback(pairedVideo, emptyList()))
     }
 
 }
