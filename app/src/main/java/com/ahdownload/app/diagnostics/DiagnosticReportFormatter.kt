@@ -222,9 +222,16 @@ object DiagnosticReportFormatter {
         }
         val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
         val gvsEvidence = events.lastOrNull { it.type == "youtube.gvs_strategy" }
+        val explicitUnavailablePlayback = events.any { event ->
+            val reason = event.reason.lowercase()
+            event.type == "youtube_player_no_candidates" &&
+                ("video unavailable" in reason || "video is unavailable" in reason)
+        }
         return when {
             classification == "AUTHENTICATION" && isYouTube ->
                 "COMPLETE_YOUTUBE_AGE_VERIFICATION"
+            isYouTube && explicitUnavailablePlayback ->
+                "INSPECT_YOUTUBE_PLAYABILITY_OR_VIDEO_ACCESS"
             isYouTube &&
                 gvsEvidence?.context?.get("po_token_observed") == "false" &&
                 gvsEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->
