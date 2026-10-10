@@ -2,9 +2,9 @@ package com.ahdownload.app.diagnostics
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object DiagnosticReportFormatter {
     private const val DEFAULT_MAX_EVENTS = 120
@@ -391,7 +391,5 @@ object DiagnosticReportFormatter {
         }
 
     private fun formatTime(epochMs: Long): String =
-        DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(
-            Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()),
-        )
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date(epochMs))
 }
