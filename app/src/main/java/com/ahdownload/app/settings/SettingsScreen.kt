@@ -759,8 +759,12 @@ private fun SettingsSwitchRow(
     }
 }
 
-private fun formatPerformanceDuration(durationMs: Long): String = when {\n    durationMs < 1_000L -> "${durationMs} مللي ثانية"\n    else -> String.format(java.util.Locale.getDefault(), "%.2f ثانية", durationMs / 1_000.0)\n}\n\nprivate fun formatDiagnosticTime(epochMs: Long): String =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+private fun formatPerformanceDuration(durationMs: Long): String = when {
+    durationMs < 1_000L -> "${durationMs} مللي ثانية"
+    else -> String.format(java.util.Locale.getDefault(), "%.2f ثانية", durationMs / 1_000.0)
+}
+
+private fun formatDiagnosticTime(epochMs: Long): String =    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         .format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
 
 class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
