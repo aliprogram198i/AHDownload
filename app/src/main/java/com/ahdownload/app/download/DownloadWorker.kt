@@ -325,29 +325,33 @@ class DownloadWorker(
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val requestedStatus = if (controlStore.isPaused(task.id)) {
-                DownloadStatus.PAUSED
-            } else {
-                DownloadStatus.CANCELLED
+            // Snapshot the explicit user intent. A rapid resume may supersede this worker's
+            // cancellation before the non-cancellable persistence block runs.
+            val intentAtCancellation = controlStore.intent(task.id)
+            val requestedStatus = when (intentAtCancellation) {
+                "PAUSED" -> DownloadStatus.PAUSED
+                "CANCELLED" -> DownloadStatus.CANCELLED
+                else -> null
             }
-            // WorkManager cancellation stops the worker coroutine. Persist the terminal/control
-            // state in a non-cancellable context so Room history cannot remain stuck on DOWNLOADING.
             withContext(NonCancellable + Dispatchers.IO) {
                 try {
-                    val latest = repository.get(task.id)
-                    if (
-                        latest != null &&
-                        latest.status != DownloadStatus.COMPLETED &&
-                        latest.status != DownloadStatus.FAILED
-                    ) {
-                        repository.upsert(
-                            latest.copy(
-                                status = requestedStatus,
-                                failureCode = null,
-                                failureDetail = null,
-                                updatedAtEpochMs = System.currentTimeMillis(),
-                            ),
-                        )
+                    // Never let a stale worker overwrite the state created by a newer resume.
+                    if (requestedStatus != null && controlStore.intent(task.id) == intentAtCancellation) {
+                        val latest = repository.get(task.id)
+                        if (
+                            latest != null &&
+                            latest.status != DownloadStatus.COMPLETED &&
+                            latest.status != DownloadStatus.FAILED
+                        ) {
+                            repository.upsert(
+                                latest.copy(
+                                    status = requestedStatus,
+                                    failureCode = null,
+                                    failureDetail = null,
+                                    updatedAtEpochMs = System.currentTimeMillis(),
+                                ),
+                            )
+                        }
                     }
                 } catch (_: Exception) {
                     // Keep cancellation semantics even if persistence itself fails.
@@ -356,9 +360,17 @@ class DownloadWorker(
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "DOWNLOAD_WORK_CANCELLED",
-                if (requestedStatus == DownloadStatus.PAUSED) "تم إيقاف التنزيل مؤقتًا" else "تم إلغاء مهمة التنزيل",
+                when (requestedStatus) {
+                    DownloadStatus.PAUSED -> "تم إيقاف التنزيل مؤقتًا"
+                    DownloadStatus.CANCELLED -> "تم إلغاء مهمة التنزيل"
+                    else -> "توقف العامل دون طلب إيقاف مؤقت أو إلغاء مؤكد"
+                },
                 "download.worker",
-                mapOf("task_id" to task.id, "paused_request" to (requestedStatus == DownloadStatus.PAUSED).toString()),
+                mapOf(
+                    "task_id" to task.id,
+                    "control_intent" to (intentAtCancellation ?: "UNSPECIFIED"),
+                    "persisted_status" to (requestedStatus?.name ?: "UNCHANGED"),
+                ),
                 cancelled,
             )
             throw cancelled
