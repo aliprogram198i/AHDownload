@@ -328,10 +328,10 @@ class YouTubeResolver(
             logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
         }
 
-        val sessionCandidates = sessionCandidates(snapshot)
+        val capturedCandidates = sessionCandidates(snapshot)
         if (
             lastFailure?.code == FailureCode.AuthenticationRequired &&
-            sessionCandidates.isEmpty()
+            capturedCandidates.isEmpty()
         ) {
             logger.log(
                 DiagnosticLevel.WARNING,
@@ -341,7 +341,7 @@ class YouTubeResolver(
                 context = diagnosticContext(videoId, request.operationId) + mapOf(
                     "authenticated_cookie_hint" to snapshot.authenticated.toString(),
                     "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
-                    "candidate_count" to sessionCandidates.size.toString(),
+                    "candidate_count" to capturedCandidates.size.toString(),
                 ),
                 throwable = null,
             )
@@ -373,7 +373,7 @@ class YouTubeResolver(
             }
         }
 
-        val webCandidates = sessionCandidates
+        val webCandidates = capturedCandidates
         if (webCandidates.isNotEmpty()) {
             logger.log(
                 DiagnosticLevel.INFO,
