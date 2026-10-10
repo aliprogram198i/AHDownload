@@ -50,6 +50,7 @@ class LiveSocialMediaDownloadE2ETest {
         val targets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
+            Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
         )
 
         for (target in targets) {
