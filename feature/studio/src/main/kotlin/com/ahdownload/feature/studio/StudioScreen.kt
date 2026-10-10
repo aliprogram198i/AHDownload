@@ -115,10 +115,10 @@ fun StudioRoute(
                 title = { Text("Smart Studio") },
                 navigationIcon = {
                     DiagnosticIconButton(
-            trackingScreen = "STUDIO",
-            trackingId = "STUDIO.iconbutton.01",
-            trackingLabel = "STUDIO.iconbutton.01",
-            disabledReason = "callsite_precondition_not_explicit",onClick = {
+                        trackingScreen = "STUDIO",
+                        trackingId = "STUDIO.iconbutton.01",
+                        trackingLabel = "STUDIO.iconbutton.01",
+                        disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("STUDIO", "back_button", "back")
                         onBack()
                     }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع") }
@@ -188,10 +188,10 @@ fun StudioRoute(
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         DiagnosticButton(
-            trackingScreen = "STUDIO",
-            trackingId = "STUDIO.button.01",
-            trackingLabel = "فتح الملف",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "STUDIO",
+                            trackingId = "STUDIO.button.01",
+                            trackingLabel = "فتح الملف",
+                            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("STUDIO", "open_button", "open")
                                 onOpen()
@@ -203,10 +203,10 @@ fun StudioRoute(
                             Text("فتح الملف")
                         }
                         DiagnosticOutlinedButton(
-            trackingScreen = "STUDIO",
-            trackingId = "STUDIO.outlinedbutton.01",
-            trackingLabel = "مشاركة",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "STUDIO",
+                            trackingId = "STUDIO.outlinedbutton.01",
+                            trackingLabel = "مشاركة",
+                            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("STUDIO", "share_button", "share")
                                 onShare()
@@ -253,10 +253,10 @@ fun StudioRoute(
                 if (record.task.mediaKind == MediaKind.Video && canExtractAudio) {
                     item {
                         DiagnosticButton(
-            trackingScreen = "STUDIO",
-            trackingId = "STUDIO.button.02",
-            trackingLabel = "جارٍ استخراج الصوت...",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "STUDIO",
+                            trackingId = "STUDIO.button.02",
+                            trackingLabel = "استخراج الصوت",
+                            disabledReason = "استخراج الصوت جارٍ",
                             enabled = !extracting,
                             onClick = {
                                 extracting = true

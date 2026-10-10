@@ -456,10 +456,10 @@ private fun HomeScreen(
                 },
                 actions = {
                     DiagnosticIconButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.iconbutton.01",
-            trackingLabel = "HOME.iconbutton.01",
-            disabledReason = "callsite_precondition_not_explicit",
+                        trackingScreen = "HOME",
+                        trackingId = "HOME.iconbutton.01",
+                        trackingLabel = "HOME.iconbutton.01",
+                        disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("HOME", "copy_trace_button", "copy_home_trace")
                             clipboard.setText(
@@ -472,10 +472,10 @@ private fun HomeScreen(
                         Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الشاشة الرئيسية")
                     }
                     DiagnosticIconButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.iconbutton.02",
-            trackingLabel = "HOME.iconbutton.02",
-            disabledReason = "callsite_precondition_not_explicit",
+                        trackingScreen = "HOME",
+                        trackingId = "HOME.iconbutton.02",
+                        trackingLabel = "HOME.iconbutton.02",
+                        disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("HOME", "settings_button", "open_settings")
                             onOpenSettings()
@@ -539,10 +539,10 @@ private fun HomeScreen(
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item {
                         DiagnosticFilterChip(
-            trackingScreen = "HOME",
-            trackingId = "HOME.filterchip.01",
-            trackingLabel = "رابط",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.filterchip.01",
+                            trackingLabel = "رابط",
+                            disabledReason = "callsite_precondition_not_explicit",
                             selected = state.mode == HomeMode.Link,
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "mode_link", "switch_to_link")
@@ -554,10 +554,10 @@ private fun HomeScreen(
                     }
                     item {
                         DiagnosticFilterChip(
-            trackingScreen = "HOME",
-            trackingId = "HOME.filterchip.02",
-            trackingLabel = "بحث YouTube",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.filterchip.02",
+                            trackingLabel = "بحث YouTube",
+                            disabledReason = "callsite_precondition_not_explicit",
                             selected = state.mode == HomeMode.Search,
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "mode_search", "switch_to_search")
@@ -609,10 +609,10 @@ private fun HomeScreen(
                             trailingIcon = {
                                 Row {
                                     DiagnosticIconButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.iconbutton.03",
-            trackingLabel = "HOME.iconbutton.03",
-            disabledReason = "callsite_precondition_not_explicit",
+                                        trackingScreen = "HOME",
+                                        trackingId = "HOME.iconbutton.03",
+                                        trackingLabel = "لصق الرابط",
+                                        disabledReason = "التحليل أو استخراج المصدر جارٍ",
                                         enabled = !state.analyzing && !state.resolving,
                                         onClick = {
                                             uiTraceLogger.interaction("HOME", "paste_button", "paste_clipboard")
@@ -643,10 +643,10 @@ private fun HomeScreen(
                                     }
                                     if (state.url.isNotBlank()) {
                                         DiagnosticIconButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.iconbutton.04",
-            trackingLabel = "HOME.iconbutton.04",
-            disabledReason = "callsite_precondition_not_explicit",
+                                            trackingScreen = "HOME",
+                                            trackingId = "HOME.iconbutton.04",
+                                            trackingLabel = "مسح الرابط",
+                                            disabledReason = "التحليل أو استخراج المصدر جارٍ",
                                             enabled = !state.analyzing && !state.resolving,
                                             onClick = {
                                                 uiTraceLogger.interaction(
@@ -678,8 +678,8 @@ private fun HomeScreen(
 
             item {
                 AHGradientPrimaryButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.gradient_primary.02",
+                    trackingScreen = "HOME",
+                    trackingId = "HOME.gradient_primary.02",
                     text = when {
                         state.analyzing -> "جارٍ تجهيز الخيارات..."
                         state.resolving -> "جارٍ تجهيز الخيارات..."
@@ -720,10 +720,10 @@ private fun HomeScreen(
                                 trailingIcon = {
                                     if (state.searchQuery.isNotBlank()) {
                                         DiagnosticIconButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.iconbutton.05",
-            trackingLabel = "HOME.iconbutton.05",
-            disabledReason = "callsite_precondition_not_explicit",onClick = { onSearchQueryChanged("") }) {
+                                            trackingScreen = "HOME",
+                                            trackingId = "HOME.iconbutton.05",
+                                            trackingLabel = "HOME.iconbutton.05",
+                                            disabledReason = "callsite_precondition_not_explicit",onClick = { onSearchQueryChanged("") }) {
                                             Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
                                         }
                                     }
@@ -733,10 +733,10 @@ private fun HomeScreen(
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                             )
                             DiagnosticButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.button.01",
-            trackingLabel = "جاري البحث...",
-            disabledReason = "callsite_precondition_not_explicit",
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.button.01",
+                                trackingLabel = "بحث YouTube",
+                                disabledReason = "عبارة البحث فارغة أو يوجد بحث جارٍ",
                                 onClick = {
                                     uiTraceLogger.interaction("HOME", "search_button", "search_youtube")
                                     onSearch()
@@ -780,10 +780,10 @@ private fun HomeScreen(
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                 )
                                 DiagnosticOutlinedButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.outlinedbutton.01",
-            trackingLabel = "إعادة البحث",
-            disabledReason = "callsite_precondition_not_explicit",
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.outlinedbutton.01",
+                                    trackingLabel = "إعادة البحث",
+                                    disabledReason = "عبارة البحث فارغة أو يوجد بحث جارٍ",
                                     enabled = state.searchQuery.isNotBlank() && !state.searching,
                                     onClick = {
                                         uiTraceLogger.interaction("HOME", "search_retry_button", "retry_search")
@@ -811,10 +811,10 @@ private fun HomeScreen(
                             )
                             if (state.selectedSearchIds.isNotEmpty()) {
                                 DiagnosticTextButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.textbutton.01",
-            trackingLabel = "مسح التحديد",
-            disabledReason = "callsite_precondition_not_explicit",
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.textbutton.01",
+                                    trackingLabel = "مسح التحديد",
+                                    disabledReason = "callsite_precondition_not_explicit",
                                     onClick = {
                                         uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
                                         onClearSearchSelection()
@@ -854,10 +854,10 @@ private fun HomeScreen(
                                     }
                                     if (!state.batchDownloading && state.selectedSearchIds.isNotEmpty()) {
                                         DiagnosticButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.button.02",
-            trackingLabel = "تنزيل ",
-            disabledReason = "callsite_precondition_not_explicit",
+                                            trackingScreen = "HOME",
+                                            trackingId = "HOME.button.02",
+                                            trackingLabel = "تنزيل ",
+                                            disabledReason = "callsite_precondition_not_explicit",
                                             onClick = {
                                                 uiTraceLogger.interaction(
                                                     "HOME",
@@ -1089,10 +1089,10 @@ private fun HomeScreen(
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                             )
                             DiagnosticOutlinedButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.outlinedbutton.02",
-            trackingLabel = "المحاولة مرة أخرى",
-            disabledReason = "callsite_precondition_not_explicit",
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.outlinedbutton.02",
+                                trackingLabel = "المحاولة مرة أخرى",
+                                disabledReason = "الرابط فارغ أو التحليل جارٍ",
                                 onClick = {
                                     uiTraceLogger.interaction("HOME", "retry_button", "retry")
                                     onAnalyze()
@@ -1139,10 +1139,10 @@ private fun HomeScreen(
                                 )
                             }
                             DiagnosticTextButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.textbutton.02",
-            trackingLabel = "فتح السجل",
-            disabledReason = "callsite_precondition_not_explicit",
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.textbutton.02",
+                                trackingLabel = "فتح السجل",
+                                disabledReason = "callsite_precondition_not_explicit",
                                 onClick = {
                                     uiTraceLogger.interaction("HOME", "download_success", "open_downloads")
                                     onOpenDownloads()
@@ -1222,10 +1222,10 @@ private fun SearchResultCard(
                 }
             }
             DiagnosticFilterChip(
-            trackingScreen = "HOME",
-            trackingId = "HOME.filterchip.03",
-            trackingLabel = "محدد",
-            disabledReason = "callsite_precondition_not_explicit",
+                trackingScreen = "HOME",
+                trackingId = "HOME.filterchip.03",
+                trackingLabel = "محدد",
+                disabledReason = "callsite_precondition_not_explicit",
                 selected = selected,
                 onClick = onToggleSelection,
                 label = { Text(if (selected) "محدد" else "تحديد") },
@@ -1258,19 +1258,19 @@ private fun RecentLinksCard(
                     )
                 }
                 DiagnosticTextButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.textbutton.03",
-            trackingLabel = "مسح",
-            disabledReason = "callsite_precondition_not_explicit",onClick = onClear) { Text("مسح") }
+                    trackingScreen = "HOME",
+                    trackingId = "HOME.textbutton.03",
+                    trackingLabel = "مسح",
+                    disabledReason = "callsite_precondition_not_explicit",onClick = onClear) { Text("مسح") }
             }
             links.forEach { link ->
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .tracedClickable(
-                trackingScreen = "HOME",
-                trackingId = "HOME.clickable.02",
-                trackingLabel = "recent_link_item",onClick = { onSelect(link) }),
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.clickable.02",
+                            trackingLabel = "recent_link_item",onClick = { onSelect(link) }),
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
@@ -1566,10 +1566,10 @@ private fun UnifiedDownloadResultCard(
                 }
 
                 DiagnosticIconButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.iconbutton.06",
-            trackingLabel = "HOME.iconbutton.06",
-            disabledReason = "callsite_precondition_not_explicit",
+                    trackingScreen = "HOME",
+                    trackingId = "HOME.iconbutton.06",
+                    trackingLabel = "HOME.iconbutton.06",
+                    disabledReason = "callsite_precondition_not_explicit",
                     onClick = {
                         resultCardTrace.recordAction(
                             action = "toggle_favorite",
@@ -1703,10 +1703,10 @@ private fun UnifiedDownloadResultCard(
 
                     if (!showAllVideoOptions && allVideoOptions.size > 4) {
                         DiagnosticTextButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.textbutton.04",
-            trackingLabel = "عرض المزيد من الصيغ والجودات",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.textbutton.04",
+                            trackingLabel = "عرض المزيد من الصيغ والجودات",
+                            disabledReason = "التحقق من المصدر جارٍ",
                             onClick = {
                                 resultCardTrace.recordAction(
                                     action = "show_more_video_options",
@@ -1840,8 +1840,8 @@ private fun UnifiedDownloadResultCard(
             }
 
             AHGradientPrimaryButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.gradient_primary.01",
+                trackingScreen = "HOME",
+                trackingId = "HOME.gradient_primary.01",
                 text = when {
                     validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
                     selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ->
@@ -1905,10 +1905,10 @@ private fun UnifiedDownloadResultCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 DiagnosticTextButton(
-            trackingScreen = "HOME",
-            trackingId = "HOME.textbutton.05",
-            trackingLabel = "نسخ سجل بطاقة النتائج",
-            disabledReason = "callsite_precondition_not_explicit",
+                    trackingScreen = "HOME",
+                    trackingId = "HOME.textbutton.05",
+                    trackingLabel = "نسخ سجل بطاقة النتائج",
+                    disabledReason = "callsite_precondition_not_explicit",
                     onClick = {
                         uiTraceLogger.interaction(
                             "RESULT_CARD",
@@ -1954,9 +1954,9 @@ private fun AudioOutputFormatGrid(
                         modifier = Modifier
                             .weight(1f)
                             .tracedClickable(
-                trackingScreen = "HOME",
-                trackingId = "HOME.clickable.03",
-                trackingLabel = "audio_output_format_option",enabled = enabled, onClick = { onSelect(format) })
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.clickable.03",
+                                trackingLabel = "audio_output_format_option",enabled = enabled, onClick = { onSelect(format) })
                             .semantics {
                                 contentDescription = if (format == selected) {
                                     "صيغة الإخراج محددة: " + format.label

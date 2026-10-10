@@ -72,26 +72,26 @@ fun UiDiagnosticsRoute(
                 title = { Text("سجل الواجهة المتقدم") },
                 navigationIcon = {
                     DiagnosticIconButton(
-            trackingScreen = "UI_DIAGNOSTICS",
-            trackingId = "UI_DIAGNOSTICS.iconbutton.01",
-            trackingLabel = "UI_DIAGNOSTICS.iconbutton.01",
-            disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "back_button", "back"); onBack() }) {
+                        trackingScreen = "UI_DIAGNOSTICS",
+                        trackingId = "UI_DIAGNOSTICS.iconbutton.01",
+                        trackingLabel = "UI_DIAGNOSTICS.iconbutton.01",
+                        disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "back_button", "back"); onBack() }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
                     }
                 },
                 actions = {
                     DiagnosticIconButton(
-            trackingScreen = "UI_DIAGNOSTICS",
-            trackingId = "UI_DIAGNOSTICS.iconbutton.02",
-            trackingLabel = "UI_DIAGNOSTICS.iconbutton.02",
-            disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh"); events = logger.list() }) {
+                        trackingScreen = "UI_DIAGNOSTICS",
+                        trackingId = "UI_DIAGNOSTICS.iconbutton.02",
+                        trackingLabel = "UI_DIAGNOSTICS.iconbutton.02",
+                        disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh"); events = logger.list() }) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                     }
                     DiagnosticIconButton(
-            trackingScreen = "UI_DIAGNOSTICS",
-            trackingId = "UI_DIAGNOSTICS.iconbutton.03",
-            trackingLabel = "UI_DIAGNOSTICS.iconbutton.03",
-            disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "clear_button", "clear"); logger.clear(); events = emptyList() }) {
+                        trackingScreen = "UI_DIAGNOSTICS",
+                        trackingId = "UI_DIAGNOSTICS.iconbutton.03",
+                        trackingLabel = "UI_DIAGNOSTICS.iconbutton.03",
+                        disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "clear_button", "clear"); logger.clear(); events = emptyList() }) {
                         Icon(Icons.Rounded.DeleteSweep, contentDescription = "مسح سجل الواجهة")
                     }
                 },
@@ -121,10 +121,10 @@ fun UiDiagnosticsRoute(
             }
             item {
                 DiagnosticButton(
-            trackingScreen = "UI_DIAGNOSTICS",
-            trackingId = "UI_DIAGNOSTICS.button.01",
-            trackingLabel = "نسخ التقرير الكامل",
-            disabledReason = "callsite_precondition_not_explicit",
+                    trackingScreen = "UI_DIAGNOSTICS",
+                    trackingId = "UI_DIAGNOSTICS.button.01",
+                    trackingLabel = "نسخ التقرير الكامل",
+                    disabledReason = "التقرير التقني فارغ",
                     onClick = { logger.interaction("UI_DIAGNOSTICS", "copy_button", "copy_full_report"); clipboard.setText(AnnotatedString(report)) },
                     enabled = report.isNotBlank(),
                     modifier = Modifier.fillMaxWidth(),
@@ -135,10 +135,10 @@ fun UiDiagnosticsRoute(
             }
             item {
                 DiagnosticOutlinedButton(
-            trackingScreen = "UI_DIAGNOSTICS",
-            trackingId = "UI_DIAGNOSTICS.outlinedbutton.01",
-            trackingLabel = "نسخ سجل الشاشة الرئيسية",
-            disabledReason = "callsite_precondition_not_explicit",
+                    trackingScreen = "UI_DIAGNOSTICS",
+                    trackingId = "UI_DIAGNOSTICS.outlinedbutton.01",
+                    trackingLabel = "نسخ سجل الشاشة الرئيسية",
+                    disabledReason = "callsite_precondition_not_explicit",
                     onClick = {
                         logger.interaction("UI_DIAGNOSTICS", "copy_home_report_button", "copy_home_report")
                         clipboard.setText(AnnotatedString(homeReport))
@@ -151,10 +151,10 @@ fun UiDiagnosticsRoute(
             }
             item {
                 DiagnosticOutlinedButton(
-            trackingScreen = "UI_DIAGNOSTICS",
-            trackingId = "UI_DIAGNOSTICS.outlinedbutton.02",
-            trackingLabel = "تحديث التقرير",
-            disabledReason = "callsite_precondition_not_explicit",
+                    trackingScreen = "UI_DIAGNOSTICS",
+                    trackingId = "UI_DIAGNOSTICS.outlinedbutton.02",
+                    trackingLabel = "تحديث التقرير",
+                    disabledReason = "callsite_precondition_not_explicit",
                     onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh_report"); events = logger.list() },
                     modifier = Modifier.fillMaxWidth(),
                 ) {

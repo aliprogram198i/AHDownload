@@ -135,10 +135,10 @@ fun SettingsRoute(
                 title = { Text("الإعدادات") },
                 navigationIcon = {
                     DiagnosticIconButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.iconbutton.01",
-            trackingLabel = "SETTINGS.iconbutton.01",
-            disabledReason = "callsite_precondition_not_explicit",onClick = {
+                        trackingScreen = "SETTINGS",
+                        trackingId = "SETTINGS.iconbutton.01",
+                        trackingLabel = "SETTINGS.iconbutton.01",
+                        disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("SETTINGS", "back_button", "back")
                         onBack()
                     }) {
@@ -207,10 +207,10 @@ fun SettingsRoute(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(VideoQualityPreference.entries) { quality ->
                             DiagnosticFilterChip(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.filterchip.01",
-            trackingLabel = "SETTINGS.filterchip.01",
-            disabledReason = "callsite_precondition_not_explicit",
+                                trackingScreen = "SETTINGS",
+                                trackingId = "SETTINGS.filterchip.01",
+                                trackingLabel = "SETTINGS.filterchip.01",
+                                disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.videoQuality == quality,
                                 onClick = {
                                     preferencesStore.setVideoQuality(quality)
@@ -224,10 +224,10 @@ fun SettingsRoute(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(AudioBitratePreference.entries) { bitrate ->
                             DiagnosticFilterChip(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.filterchip.02",
-            trackingLabel = "SETTINGS.filterchip.02",
-            disabledReason = "callsite_precondition_not_explicit",
+                                trackingScreen = "SETTINGS",
+                                trackingId = "SETTINGS.filterchip.02",
+                                trackingLabel = "SETTINGS.filterchip.02",
+                                disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.audioBitrate == bitrate,
                                 onClick = {
                                     preferencesStore.setAudioBitrate(bitrate)
@@ -277,10 +277,10 @@ fun SettingsRoute(
                     }
 
                     DiagnosticButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.button.01",
-            trackingLabel = "تغيير مجلد التنزيل",
-            disabledReason = "callsite_precondition_not_explicit",
+                        trackingScreen = "SETTINGS",
+                        trackingId = "SETTINGS.button.01",
+                        trackingLabel = "تغيير مجلد التنزيل",
+                        disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder")
                             onPickDownloadFolder()
@@ -292,10 +292,10 @@ fun SettingsRoute(
 
                     if (location.isCustom) {
                         DiagnosticOutlinedButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.outlinedbutton.01",
-            trackingLabel = "العودة للمجلد الافتراضي",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "SETTINGS",
+                            trackingId = "SETTINGS.outlinedbutton.01",
+                            trackingLabel = "العودة للمجلد الافتراضي",
+                            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset")
                                 store.resetToDefault()
@@ -305,10 +305,10 @@ fun SettingsRoute(
                             Text("العودة للمجلد الافتراضي")
                         }
                         DiagnosticOutlinedButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.outlinedbutton.02",
-            trackingLabel = "إنشاء مجلد داخل المسار",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "SETTINGS",
+                            trackingId = "SETTINGS.outlinedbutton.02",
+                            trackingLabel = "إنشاء مجلد داخل المسار",
+                            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog")
                                 folderError = null
@@ -346,10 +346,10 @@ fun SettingsRoute(
                             )
                         }
                         DiagnosticIconButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.iconbutton.02",
-            trackingLabel = "SETTINGS.iconbutton.02",
-            disabledReason = "callsite_precondition_not_explicit",
+                            trackingScreen = "SETTINGS",
+                            trackingId = "SETTINGS.iconbutton.02",
+                            trackingLabel = "SETTINGS.iconbutton.02",
+                            disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "storage_refresh", "refresh")
                                 storageInfo = StorageInfoReader.read(context)
@@ -422,10 +422,10 @@ fun SettingsRoute(
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(AHThemeMode.entries) { mode ->
                             DiagnosticFilterChip(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.filterchip.03",
-            trackingLabel = "SETTINGS.filterchip.03",
-            disabledReason = "callsite_precondition_not_explicit",
+                                trackingScreen = "SETTINGS",
+                                trackingId = "SETTINGS.filterchip.03",
+                                trackingLabel = "SETTINGS.filterchip.03",
+                                disabledReason = "callsite_precondition_not_explicit",
                                 selected = themeMode == mode,
                                 onClick = {
                                     uiTraceLogger.interaction(
@@ -539,10 +539,10 @@ fun SettingsRoute(
                     }
 
                     DiagnosticOutlinedButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.outlinedbutton.03",
-            trackingLabel = "فتح مركز التشخيص",
-            disabledReason = "callsite_precondition_not_explicit",
+                        trackingScreen = "SETTINGS",
+                        trackingId = "SETTINGS.outlinedbutton.03",
+                        trackingLabel = "فتح مركز التشخيص",
+                        disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "diagnostics_button", "open_diagnostics")
                             onOpenDiagnostics()
@@ -607,10 +607,10 @@ fun SettingsRoute(
             },
             confirmButton = {
                 DiagnosticButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.button.02",
-            trackingLabel = "إنشاء",
-            disabledReason = "callsite_precondition_not_explicit",
+                    trackingScreen = "SETTINGS",
+                    trackingId = "SETTINGS.button.02",
+                    trackingLabel = "إنشاء",
+                    disabledReason = "اسم المجلد فارغ",
                     enabled = folderName.trim().isNotBlank(),
                     onClick = {
                         val created = runCatching {
@@ -634,10 +634,10 @@ fun SettingsRoute(
             },
             dismissButton = {
                 DiagnosticOutlinedButton(
-            trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.outlinedbutton.05",
-            trackingLabel = "إلغاء",
-            disabledReason = "callsite_precondition_not_explicit",onClick = { showFolderDialog = false }) {
+                    trackingScreen = "SETTINGS",
+                    trackingId = "SETTINGS.outlinedbutton.05",
+                    trackingLabel = "إلغاء",
+                    disabledReason = "callsite_precondition_not_explicit",onClick = { showFolderDialog = false }) {
                     Text("إلغاء")
                 }
             },
