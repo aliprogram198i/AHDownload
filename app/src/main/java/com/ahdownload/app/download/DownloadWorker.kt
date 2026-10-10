@@ -661,14 +661,13 @@ class DownloadWorker(
                 throw error
             }
             if (result.isSuccess) {
-                val outputFile = result.getOrNull()
-                if (outputFile != null && outputFile.isFile) {
-                    performanceStore.observeDownload(
-                        performanceSession,
-                        DownloadState.Downloading(outputFile.length(), outputFile.length()),
-                    )
-                }
-                performanceStore.finishDownload(performanceSession, "COMPLETED")
+                val outputFile = result.getOrNull()?.takeIf { it.isFile }
+                performanceStore.finishDownload(
+                    session = performanceSession,
+                    outcome = "COMPLETED",
+                    bytesDownloadedOverride = outputFile?.length(),
+                    totalBytesOverride = outputFile?.length(),
+                )
             } else {
                 performanceStore.finishDownload(performanceSession, "FAILED_MANIFEST")
             }
