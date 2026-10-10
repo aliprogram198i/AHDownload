@@ -85,8 +85,7 @@ jobs:
             set +e
             # Keep external-platform live downloads in the dedicated manual acceptance workflow.
             # Public platforms can challenge hosted runner IPs, making them unsuitable as deterministic smoke gates.
-            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.notClass=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest
+            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest
             test_exit_code=$?
             mkdir -p cloud-test-results
             adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat capture failed" >> cloud-test-results/emulator-logcat.txt
