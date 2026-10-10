@@ -255,17 +255,14 @@ private fun HomeScreen(
     val directVideoSourceAvailable = candidates.any {
         it.id == "direct" && it.format.kind == MediaKind.Video && it.format.hasVideo
     }
-    val availableVideoOptions = primaryOptions.filter {
-        val format = it.candidate.format
-        format.kind == MediaKind.Video &&
-            format.hasVideo &&
-            (format.hasAudio || directAudioAvailable || it.candidate.id == "direct")
-    }
+    val videoOptionGroups = classifyVideoPickerOptions(primaryOptions, directAudioAvailable)
+    val availableVideoOptions = videoOptionGroups.mainOptions
+    val videoOnlyFallbackOptions = videoOptionGroups.videoOnlyFallback
     val rawVideoSourceCount = primaryOptions.count {
         it.candidate.format.kind == MediaKind.Video && it.candidate.format.hasVideo
     }
     val unresolvedVideoSourceCount =
-        (rawVideoSourceCount - availableVideoOptions.size).coerceAtLeast(0)
+        (rawVideoSourceCount - availableVideoOptions.size - videoOnlyFallbackOptions.size).coerceAtLeast(0)
     val audioExtractionAvailable = directAudioAvailable || directVideoSourceAvailable || availableVideoOptions.any {
         it.candidate.format.kind == MediaKind.Video &&
             it.candidate.format.hasVideo &&
@@ -273,7 +270,7 @@ private fun HomeScreen(
     }
     val actionableAudioOptions = if (audioExtractionAvailable) resultSet.audio else emptyList()
     val actionableOptions = (
-        availableVideoOptions + actionableAudioOptions +
+        availableVideoOptions + videoOnlyFallbackOptions + actionableAudioOptions +
             primaryOptions.filter { it.group == com.ahdownload.domain.resolver.MediaResultGroup.Other }
         ).distinctBy { it.candidate.id }
     val actionableOptionIds = actionableOptions.mapTo(mutableSetOf()) { it.candidate.id }
@@ -392,6 +389,7 @@ private fun HomeScreen(
                     "smallest_size" to (smallestActionable?.candidate?.id ?: "none"),
                     "video_candidate_count" to rawVideoSourceCount.toString(),
                     "video_format_option_count" to availableVideoOptions.size.toString(),
+                    "video_only_fallback_option_count" to videoOnlyFallbackOptions.size.toString(),
                     "unresolved_video_candidate_count" to unresolvedVideoSourceCount.toString(),
                     "known_video_resolution_count" to availableVideoOptions
                         .mapNotNull { it.candidate.format.height?.takeIf { height -> height > 0 } }
@@ -1366,13 +1364,10 @@ private fun UnifiedDownloadResultCard(
     val directVideoSourceAvailable = sourceCandidates.any {
         it.id == "direct" && it.format.kind == MediaKind.Video && it.format.hasVideo
     }
-    val allVideoOptions = primaryOptions
-        .filter {
-            it.candidate.format.kind == MediaKind.Video &&
-                it.candidate.format.hasVideo &&
-                (it.candidate.format.hasAudio || directAudioAvailable || it.candidate.id == "direct")
-        }
-        .distinctBy { it.candidate.id }
+    val videoOptionGroups = classifyVideoPickerOptions(primaryOptions, directAudioAvailable)
+    val allVideoOptions = videoOptionGroups.mainOptions
+    val videoOnlyFallbackOptions = videoOptionGroups.videoOnlyFallback
+    val allSelectableVideoOptions = videoOptionGroups.selectableOptions
 
     var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
     var selectionMode by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf<OutputSelectionMode?>(null) }
@@ -1380,13 +1375,14 @@ private fun UnifiedDownloadResultCard(
     val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
     val muxedVideoAvailable = allVideoOptions.any { it.candidate.format.hasAudio }
     val audioAvailable = directAudioAvailable || muxedVideoAvailable || directVideoSourceAvailable
-    val selectedVideo = allVideoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
+    val selectedVideo = allSelectableVideoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
     val selectedAudioSource = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
 
     val hasRawVideoSource = sourceCandidates.any { it.format.kind == MediaKind.Video && it.format.hasVideo }
     val hasRawAudioSource = sourceCandidates.any { it.format.kind == MediaKind.Audio && it.format.hasAudio }
     // Keep empty sections visible when the source has been observed but could not be classified.
-    val showVideoSection = allVideoOptions.isNotEmpty() || kind == MediaKind.Video || hasRawVideoSource
+    val showVideoSection = allVideoOptions.isNotEmpty() || videoOnlyFallbackOptions.isNotEmpty() ||
+        kind == MediaKind.Video || hasRawVideoSource
     val showAudioSection = audioAvailable || kind == MediaKind.Video || kind == MediaKind.Audio ||
         hasRawAudioSource || (kind == MediaKind.Unknown && hasRawVideoSource)
     val canDownload = validatingCandidateId == null && (
@@ -1399,6 +1395,7 @@ private fun UnifiedDownloadResultCard(
             candidate.format.container.name + ":" + candidate.format.height + ":" +
             candidate.format.bitrateKbps + ":" + candidate.format.hasVideo + ":" + candidate.format.hasAudio
     } + "|" + primaryOptions.joinToString(",") { it.candidate.id } +
+        "|" + videoOnlyFallbackOptions.joinToString(",") { it.candidate.id } +
         "|" + audioOptions.joinToString(",") { it.candidate.id }
     val resultGeneration = remember(title, platform, durationMs, kind, sourceFingerprint) {
         UUID.randomUUID().toString().take(8)
@@ -1417,11 +1414,11 @@ private fun UnifiedDownloadResultCard(
             durationMs = durationMs,
             rawCandidates = sourceCandidates,
             primaryOptions = primaryOptions,
-            videoOptions = allVideoOptions,
+            videoOptions = allSelectableVideoOptions,
             audioOptions = audioOptions,
             directAudioAvailable = directAudioAvailable,
             audioAvailable = audioAvailable,
-            visibleVideoOptions = videoOptions.size,
+            visibleVideoOptions = videoOptions.size + videoOnlyFallbackOptions.size,
             videoOptionsExpanded = showAllVideoOptions,
             selectedCandidateId = selectedCandidateId,
             selectedAudioCandidateId = selectedAudioCandidateId,
@@ -1432,7 +1429,7 @@ private fun UnifiedDownloadResultCard(
     LaunchedEffect(
         resultGeneration, selectionMode, selectedCandidateId, selectedAudioCandidateId,
         selectedAudioOutputFormat, validatingCandidateId, downloadQueued, errorMessage,
-        showAllVideoOptions, favorite, canDownload, videoOptions.size,
+        showAllVideoOptions, favorite, canDownload, videoOptions.size, videoOnlyFallbackOptions.size,
     ) {
         resultCardTrace.recordState(
             selectionMode = selectionMode?.name ?: "NONE",
@@ -1445,7 +1442,7 @@ private fun UnifiedDownloadResultCard(
             downloadQueued = downloadQueued,
             favorite = favorite,
             videoOptionsExpanded = showAllVideoOptions,
-            visibleVideoOptions = videoOptions.size,
+            visibleVideoOptions = videoOptions.size + videoOnlyFallbackOptions.size,
             canDownload = canDownload,
             errorMessage = errorMessage,
         )
@@ -1530,10 +1527,10 @@ private fun UnifiedDownloadResultCard(
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            if (allVideoOptions.isNotEmpty() || audioAvailable) {
-                                "النتيجة جاهزة"
-                            } else {
-                                "بيانات المصدر غير مكتملة"
+                            when {
+                                allVideoOptions.isNotEmpty() || audioAvailable -> "النتيجة جاهزة"
+                                videoOnlyFallbackOptions.isNotEmpty() -> "يتوفر فيديو فقط"
+                                else -> "بيانات المصدر غير مكتملة"
                             },
                             style = MaterialTheme.typography.labelLarge,
                         )
@@ -1547,10 +1544,13 @@ private fun UnifiedDownloadResultCard(
                                     primaryOptions.count {
                                         it.candidate.format.kind == MediaKind.Video &&
                                             it.candidate.format.hasVideo
-                                    } - allVideoOptions.size
+                                    } - allVideoOptions.size - videoOnlyFallbackOptions.size
                                 ).coerceAtLeast(0)
                                 if (knownVideoQualities > 0) add("$knownVideoQualities خيار فيديو + صوت")
                                 if (unknownVideoQualities > 0) add("$unknownVideoQualities خيار فيديو غير محدد الجودة")
+                                if (videoOnlyFallbackOptions.isNotEmpty()) {
+                                    add("${videoOnlyFallbackOptions.size} خيار فيديو فقط · الصوت غير مؤكد")
+                                }
                                 if (unresolvedVideoSources > 0) add("$unresolvedVideoSources مصدر فيديو ببيانات غير مكتملة")
                                 if (audioAvailable) {
                                     if (audioOptions.isNotEmpty()) {
@@ -1562,7 +1562,7 @@ private fun UnifiedDownloadResultCard(
                                 } else if (showAudioSection) {
                                     add("لم يُرصد مصدر صوت موثوق")
                                 }
-                                if (allVideoOptions.isEmpty() && !audioAvailable) {
+                                if (allVideoOptions.isEmpty() && videoOnlyFallbackOptions.isEmpty() && !audioAvailable) {
                                     add("لا يوجد خيار تنزيل مؤكد")
                                 }
                             }.joinToString(" · ").ifBlank { "لم تكتمل بيانات خيارات التنزيل" },
@@ -1576,8 +1576,20 @@ private fun UnifiedDownloadResultCard(
             if (showVideoSection) {
                 AHSectionHeader(
                     icon = Icons.Rounded.VideoFile,
-                    title = "الفيديو + الصوت",
-                    subtitle = "اختر جودة الفيديو. إذا كان الصوت في مسار منفصل، سيُدمجه التطبيق عند التنزيل.",
+                    title = when {
+                        allVideoOptions.isNotEmpty() -> "الفيديو + الصوت"
+                        videoOnlyFallbackOptions.isNotEmpty() -> "الفيديو"
+                        else -> "الفيديو + الصوت"
+                    },
+                    subtitle = when {
+                        allVideoOptions.isNotEmpty() && directAudioAvailable ->
+                            "اختر جودة الفيديو؛ سيُدمج مسار الصوت المنفصل عند التنزيل."
+                        allVideoOptions.isNotEmpty() ->
+                            "اختر جودة تحتوي على صوت مدمج أو مصدر فيديو مباشر؛ سيُوضح التطبيق حالة الصوت لكل خيار."
+                        videoOnlyFallbackOptions.isNotEmpty() ->
+                            "لم يُرصد مسار صوت موثوق؛ الخيارات التالية تحفظ الفيديو فقط."
+                        else -> "اختر جودة الفيديو. إذا كان الصوت في مسار منفصل، سيُدمجه التطبيق عند التنزيل."
+                    },
                 )
 
                 if (videoOptions.isNotEmpty()) {
@@ -1601,6 +1613,7 @@ private fun UnifiedDownloadResultCard(
                             onSelect(it)
                         },
                         audioOnly = false,
+                        mergeAudioWhenMissing = directAudioAvailable,
                     )
 
                     if (!showAllVideoOptions && allVideoOptions.size > 4) {
@@ -1619,18 +1632,47 @@ private fun UnifiedDownloadResultCard(
                             Text("عرض المزيد من الصيغ والجودات")
                         }
                     }
-                } else {
+                } else if (videoOnlyFallbackOptions.isEmpty()) {
                     val rawVideoSourceCount = primaryOptions.count {
                         it.candidate.format.kind == MediaKind.Video && it.candidate.format.hasVideo
                     }
                     UnifiedResultEmptyState(
                         if (rawVideoSourceCount > 0) {
-                            "رُصد مصدر فيديو، لكن البيانات لا تؤكد جودته أو وجود مسار صوت صالح. أعد التحليل بعد تحديث جلسة المنصة."
+                            "رُصد مصدر فيديو، لكن تعذّر تحديد صيغة قابلة للعرض. أعد التحليل بعد تحديث جلسة المنصة."
                         } else {
                             "لم يُعثر على مصدر فيديو قابل للتنزيل لهذا الرابط حاليًا."
                         },
                     )
                 }
+            }
+
+            if (videoOnlyFallbackOptions.isNotEmpty()) {
+                AHSectionHeader(
+                    icon = Icons.Rounded.VideoFile,
+                    title = "تنزيل الفيديو فقط",
+                    subtitle = "لا يوجد مسار صوت موثوق لهذا الخيار. سيُنزّل التطبيق الفيديو الأصلي دون إضافة صوت.",
+                )
+                MediaFormatGrid(
+                    options = videoOnlyFallbackOptions,
+                    selected = if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo else null,
+                    validatingCandidateId = validatingCandidateId,
+                    onSelect = {
+                        resultCardTrace.recordAction(
+                            action = "select_video_only_quality",
+                            component = "video_only_quality_option",
+                            context = mapOf(
+                                "candidate_id" to it.candidate.id,
+                                "quality" to it.qualityLabel,
+                                "container" to it.candidate.format.container.name,
+                                "height" to (it.candidate.format.height?.toString() ?: "unknown"),
+                                "has_audio" to it.candidate.format.hasAudio.toString(),
+                            ),
+                        )
+                        selectionMode = OutputSelectionMode.VIDEO
+                        onSelect(it)
+                    },
+                    audioOnly = false,
+                )
             }
 
             if (showVideoSection && showAudioSection) {
@@ -1964,6 +2006,7 @@ private fun MediaFormatGrid(
     validatingCandidateId: String?,
     onSelect: (MediaPresentationModel) -> Unit,
     audioOnly: Boolean,
+    mergeAudioWhenMissing: Boolean = false,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -1982,6 +2025,7 @@ private fun MediaFormatGrid(
                         enabled = validatingCandidateId == null,
                         onClick = { onSelect(option) },
                         audioOnly = audioOnly,
+                        mergeAudioWhenMissing = mergeAudioWhenMissing,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -2001,6 +2045,7 @@ private fun MediaFormatOption(
     enabled: Boolean,
     onClick: () -> Unit,
     audioOnly: Boolean,
+    mergeAudioWhenMissing: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val format = model.candidate.format
@@ -2011,9 +2056,9 @@ private fun MediaFormatOption(
             .clickable(enabled = enabled, onClick = onClick)
             .semantics {
                 contentDescription = if (selected) {
-                    "الخيار محدد: " + formatOptionAccessibilityLabel(model, audioOnly)
+                    "الخيار محدد: " + formatOptionAccessibilityLabel(model, audioOnly, mergeAudioWhenMissing)
                 } else {
-                    "اختيار: " + formatOptionAccessibilityLabel(model, audioOnly)
+                    "اختيار: " + formatOptionAccessibilityLabel(model, audioOnly, mergeAudioWhenMissing)
                 }
             },
         shape = RoundedCornerShape(14.dp),
@@ -2070,7 +2115,7 @@ private fun MediaFormatOption(
             }
 
             Text(
-                formatOptionMetaLabel(model, audioOnly),
+                formatOptionMetaLabel(model, audioOnly, mergeAudioWhenMissing),
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2151,6 +2196,7 @@ private fun formatOptionSecondaryLabel(
 private fun formatOptionMetaLabel(
     model: MediaPresentationModel,
     audioOnly: Boolean,
+    mergeAudioWhenMissing: Boolean = false,
 ): String {
     val format = model.candidate.format
     return if (audioOnly) {
@@ -2173,13 +2219,18 @@ private fun formatOptionMetaLabel(
                     when {
                         format.hasAudio -> "صوت مدمج"
                         model.candidate.id == "direct" -> "ملف مباشر؛ وجود الصوت غير مؤكد"
-                        else -> "سيُدمج الصوت عند التنزيل"
+                        mergeAudioWhenMissing -> "سيُدمج مسار الصوت المتاح عند التنزيل"
+                        else -> "فيديو فقط · لا يوجد مسار صوت مؤكد"
                     },
                 )
             }
         }.joinToString(" · ").ifBlank {
             when (format.kind) {
-                MediaKind.Video -> "سيُدمج الصوت عند التنزيل"
+                MediaKind.Video -> if (format.hasAudio || mergeAudioWhenMissing) {
+                    "صوت مدمج أو مسار صوت متاح"
+                } else {
+                    "فيديو فقط · لا يوجد مسار صوت مؤكد"
+                }
                 MediaKind.Audio -> "مسار صوت مباشر"
                 else -> "نوع الوسائط غير محدد"
             }
@@ -2190,12 +2241,13 @@ private fun formatOptionMetaLabel(
 private fun formatOptionAccessibilityLabel(
     model: MediaPresentationModel,
     audioOnly: Boolean,
+    mergeAudioWhenMissing: Boolean = false,
 ): String = buildList {
     add(formatOptionPrimaryLabel(model, audioOnly))
     formatOptionSecondaryLabel(model, audioOnly)
         .takeIf { it.isNotBlank() }
         ?.let(::add)
-    formatOptionMetaLabel(model, audioOnly)
+    formatOptionMetaLabel(model, audioOnly, mergeAudioWhenMissing)
         .takeIf { it.isNotBlank() }
         ?.let(::add)
 }.joinToString(" · ")
