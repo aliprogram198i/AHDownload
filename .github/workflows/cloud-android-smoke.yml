@@ -130,31 +130,10 @@ jobs:
             echo "Android instrumentation report is missing; emulator/test execution is not verified." >&2
             exit 1
           fi
-          grep -q '^test_status: PASSED        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ahdownload-cloud-android-results-${{ github.run_id }}
-          path: cloud-test-results/
-          if-no-files-found: warn
-          retention-days: 7
- "$report"
+          grep -q '^test_status: PASSED$' "$report"
           test_count="$(grep -c '^  test_case {' "$report" || true)"
-          passed_count="$(grep -c '^  test_status: PASSED        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ahdownload-cloud-android-results-${{ github.run_id }}
-          path: cloud-test-results/
-          if-no-files-found: warn
-          retention-days: 7
- "$report" || true)"
-          failed_count="$(grep -c '^  test_status: FAILED        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ahdownload-cloud-android-results-${{ github.run_id }}
-          path: cloud-test-results/
-          if-no-files-found: warn
-          retention-days: 7
- "$report" || true)"
+          passed_count="$(grep -c '^  test_status: PASSED$' "$report" || true)"
+          failed_count="$(grep -c '^  test_status: FAILED$' "$report" || true)"
           echo "Instrumented test cases: $test_count; passed: $passed_count; failed: $failed_count"
           if [ "$test_count" -ne 8 ] || [ "$passed_count" -ne 8 ] || [ "$failed_count" -ne 0 ]; then
             echo "Expected exactly 8 passing Android instrumentation tests." >&2
