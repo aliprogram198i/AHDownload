@@ -74,6 +74,9 @@ object DiagnosticReportFormatter {
             "NONE"
         } else {
             when {
+                anchor.type == "AUTH_REQUIRED" ||
+                    anchor.context["failure_code"] == "AuthenticationRequired" ->
+                    "AUTHENTICATION_REQUIRED"
                 anchor.type == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_EXTRACTION_FAILED"
                 anchor.type == "DOWNLOAD_DESTINATION_COPY_FAILED" -> "STORAGE_ERROR"
                 anchor.type == "MEDIASTORE_PUBLISH_FAILED" -> "STORAGE_ERROR"
@@ -198,6 +201,7 @@ object DiagnosticReportFormatter {
             if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
         } else when {
             rootCause.startsWith("HTTP_") -> "NETWORK"
+            rootCause == "AUTHENTICATION_REQUIRED" -> "AUTHENTICATION"
             rootCause == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_PROCESSING"
             rootCause == "STORAGE_ERROR" -> "STORAGE"
             rootCause.contains("VALIDATION", ignoreCase = true) || rootCause.contains("MEDIA", ignoreCase = true) -> "MEDIA_VALIDATION"
@@ -219,6 +223,8 @@ object DiagnosticReportFormatter {
         val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
         val gvsEvidence = events.lastOrNull { it.type == "youtube.gvs_strategy" }
         return when {
+            classification == "AUTHENTICATION" && isYouTube ->
+                "COMPLETE_YOUTUBE_AGE_VERIFICATION"
             isYouTube &&
                 gvsEvidence?.context?.get("po_token_observed") == "false" &&
                 gvsEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->
@@ -242,6 +248,9 @@ object DiagnosticReportFormatter {
         return linkedMapOf(
             "input" to (events.firstNotNullOfOrNull { it.context["input_type"] } ?: "RECEIVED"),
             "resolution" to when {
+                has("AUTH_REQUIRED") ||
+                    has("youtube.authentication_required") ||
+                    events.any { it.context["failure_code"] == "AuthenticationRequired" } -> "FAILED"
                 has("SMART_CENTER_RESULT_READY") ||
                     has("MEDIA_RESOLUTION_COMPLETED") ||
                     has("RESOLUTION_COMPLETED") ||
@@ -295,6 +304,8 @@ object DiagnosticReportFormatter {
         (event.context["http_status"] ?: event.context["status_code"])?.toIntOrNull()
     private fun stageOf(log: DiagnosticLog): String =
         log.context["stage"] ?: when {
+            log.type == "AUTH_REQUIRED" ||
+                log.context["failure_code"] == "AuthenticationRequired" -> "RESOLUTION"
             log.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION"
             log.type.contains("RESOLVER", ignoreCase = true) -> "RESOLUTION"
             log.type.contains("SMART_CENTER", ignoreCase = true) -> "SMART_CENTER"
@@ -314,6 +325,7 @@ object DiagnosticReportFormatter {
         // Destination failures happen after resolution, validation, and local output creation.
         // Do not report an earlier successful validation phase as the failing stage.
         when (latestError.type) {
+            "AUTH_REQUIRED" -> return "resolver -> authentication_required"
             "DOWNLOAD_DESTINATION_COPY_FAILED" -> {
                 val parts = mutableListOf<String>()
                 if (accepted > 0) parts += "validation_passed"

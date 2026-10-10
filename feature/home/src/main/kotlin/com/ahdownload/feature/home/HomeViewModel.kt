@@ -561,6 +561,7 @@ class HomeViewModel(
                             "home.resolve",
                             mapOf(
                                 "reason" to (resolution.message ?: "تعذر استخراج الوسائط."),
+                                "failure_code" to resolution.code.name,
                                 "operation_id" to operationId,
                                 "platform" to link.platform.name,
                             ),
