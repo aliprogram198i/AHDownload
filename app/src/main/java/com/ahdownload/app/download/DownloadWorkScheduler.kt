@@ -39,7 +39,7 @@ class DownloadWorkScheduler(
         require(task.id.isNotBlank()) { "task.id must not be blank" }
         require(task.sourceUrl.isNotBlank()) { "task.sourceUrl must not be blank" }
         require(task.destinationPath.isNotBlank()) { "task.destinationPath must not be blank" }
-        controlStore.clearPaused(task.id)
+        controlStore.markActive(task.id)
 
         val input = buildInputData(task, forceRefresh)
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()
@@ -74,13 +74,13 @@ class DownloadWorkScheduler(
     }
 
     fun resume(record: DownloadRecord) {
-        controlStore.clearPaused(record.task.id)
+        controlStore.markActive(record.task.id)
         enqueueInternal(record.task, forceRefresh = true)
     }
 
     fun cancel(taskId: String) {
         require(taskId.isNotBlank())
-        controlStore.clearPaused(taskId)
+        controlStore.markCancelled(taskId)
         workManager.cancelUniqueWork(uniqueWorkName(taskId))
         persistControlStatus(taskId, DownloadStatus.CANCELLED)
     }
@@ -94,8 +94,12 @@ class DownloadWorkScheduler(
         val store = repository ?: return
         controlStateScope.launch {
             val current = runCatching { store.get(taskId) }.getOrNull() ?: return@launch
-            val pauseRequestStillCurrent = controlStore.isPaused(taskId) == (target == DownloadStatus.PAUSED)
-            if (!pauseRequestStillCurrent) return@launch
+            val expectedIntent = when (target) {
+                DownloadStatus.PAUSED -> "PAUSED"
+                DownloadStatus.CANCELLED -> "CANCELLED"
+                else -> return@launch
+            }
+            if (controlStore.intent(taskId) != expectedIntent) return@launch
             if (current.status == DownloadStatus.COMPLETED || current.status == DownloadStatus.FAILED) return@launch
             if (current.status == DownloadStatus.CANCELLED && target == DownloadStatus.PAUSED) return@launch
             runCatching {
