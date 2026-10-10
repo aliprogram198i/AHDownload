@@ -63,8 +63,10 @@ class YouTubeResolver(
             ?: return failure(FailureCode.ResolverUnavailable, "تعذر تحديد معرف فيديو YouTube.")
 
         var lastFailure: ResolverResult.Failure? = null
+        var pageHtmlForFallback: String? = null
         try {
             val html = httpClient.get(request.link.normalizedUrl)
+            pageHtmlForFallback = html
             if (isBotChallenge(html)) {
                 lastFailure = ResolverResult.Failure(
                     FailureCode.ResolverUnavailable,
@@ -177,6 +179,42 @@ class YouTubeResolver(
             )
         }
 
+        // The Android player path must be attempted even when WEB and WEB_EMBEDDED
+        // return no usable formats. Previously it ran only as an augmentation to an
+        // already successful WEB response, so SABR-only/empty WEB responses skipped
+        // the direct-media client entirely and fell through to raw browser requests.
+        val fallbackHtml = pageHtmlForFallback
+        if (!fallbackHtml.isNullOrBlank()) {
+            val androidResponse = runCatching {
+                playerClient.fetchAndroidPlayerResponse(
+                    html = fallbackHtml,
+                    videoUrl = request.link.normalizedUrl,
+                    operationId = request.operationId,
+                )
+            }.getOrNull()
+            if (androidResponse != null) {
+                val androidResult = parser.parsePlayerResponse(androidResponse)
+                if (androidResult is ResolverResult.Success) {
+                    logger.log(
+                        DiagnosticLevel.INFO,
+                        type = "youtube.android_fallback_selected",
+                        reason = "android_player_after_web_clients_without_media_formats",
+                        operation = "youtube.resolve",
+                        context = diagnosticContext(videoId, request.operationId) + mapOf(
+                            "candidate_count" to androidResult.candidates.size.toString(),
+                        ),
+                        throwable = null,
+                    )
+                    return filterKind(enrichWithSessionIfNeeded(androidResult, request), request)
+                }
+                val androidFailure = androidResult as? ResolverResult.Failure
+                if (androidFailure != null) {
+                    lastFailure = androidFailure
+                    logPlayerFailure(videoId, androidResult, "android_player_after_web_fallback", request.operationId)
+                }
+            }
+        }
+
         val provider = sessionProvider ?: return failure(
             lastFailure?.code ?: FailureCode.ResolverUnavailable,
             lastFailure?.message ?: "تعذر استخراج وسائط YouTube.",
@@ -234,6 +272,24 @@ class YouTubeResolver(
             ),
             throwable = null,
         )
+
+        val listedBrowserUrls = (snapshot.videoUrls + snapshot.audioUrls).distinct().size
+        val unclassifiedBrowserRequestCount =
+            (snapshot.browserMediaObservedCount - listedBrowserUrls).coerceAtLeast(0)
+        if (unclassifiedBrowserRequestCount > 0) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.browser_protocol_requests_excluded",
+                reason = "observed_googlevideo_requests_lacked_direct_media_format_metadata",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "observed_request_count" to snapshot.browserMediaObservedCount.toString(),
+                    "candidate_like_url_count" to listedBrowserUrls.toString(),
+                    "excluded_unclassified_request_count" to unclassifiedBrowserRequestCount.toString(),
+                ),
+                throwable = null,
+            )
+        }
 
         if (snapshot.browserMediaObservedCount == 0) {
             logger.log(
@@ -655,7 +711,7 @@ class YouTubeResolver(
             snapshot.videoUrls.map { it to MediaKind.Video } +
                 snapshot.audioUrls.map { it to MediaKind.Audio }
             )
-            .filter { (url, _) -> isDirectHttpMedia(url) }
+            .filter { (url, _) -> isDirectHttpMedia(url) && hasDirectMediaMetadata(url) }
             .distinctBy { (url, _) -> url }
 
         return observedUrls.mapIndexedNotNull { index, (url, poolKind) ->
@@ -722,6 +778,25 @@ class YouTubeResolver(
         return (lower.startsWith("https://") || lower.startsWith("http://")) &&
             !lower.contains(".m3u8") &&
             !lower.startsWith("blob:")
+    }
+
+    /**
+     * WebView resource capture also sees protocol endpoints such as YouTube SABR/UMP.
+     * A GoogleVideo request is a selectable raw-media candidate only when the URL
+     * carries a recognized media MIME hint or a known direct-media itag. Unknown
+     * /videoplayback URLs must not inherit Video from the collector's default pool.
+     */
+    private fun hasDirectMediaMetadata(url: String): Boolean {
+        if (mediaKindFromUrl(url) != null) return true
+        if (KNOWN_YOUTUBE_FORMATS.containsKey(extractItag(url))) return true
+        if (isYouTubeMediaHost(url)) return false
+
+        val extension = runCatching { URI(url).path.orEmpty().substringAfterLast('.', "").lowercase() }
+            .getOrDefault("")
+        return extension in setOf(
+            "mp4", "m4v", "webm", "mkv", "mov", "3gp",
+            "m4a", "mp3", "aac", "ogg", "opus", "flac", "wav",
+        )
     }
 
     private fun containerFor(url: String, kind: MediaKind): MediaContainer {
