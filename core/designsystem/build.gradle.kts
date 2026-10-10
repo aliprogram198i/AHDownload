@@ -21,6 +21,7 @@ android {
 }
 
 dependencies {
+    implementation(project(":core:common"))
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
     implementation("androidx.compose.animation:animation")

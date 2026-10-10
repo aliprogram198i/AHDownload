@@ -238,6 +238,8 @@ private fun WelcomeScreen(
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 AHGradientPrimaryButton(
+            trackingScreen = "WELCOME",
+            trackingId = "WELCOME.gradient_primary.01",
                     text = "ابدأ الآن",
                     enabled = ready,
                     onClick = { uiTraceLogger.interaction("WELCOME", "start_button", "continue"); onContinue() },

@@ -21,7 +21,6 @@ import androidx.compose.runtime.mutableStateListOf
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
-import com.ahdownload.app.diagnostics.UiDiagnosticsRoute
 import com.ahdownload.app.download.DownloadLauncher
 import com.ahdownload.app.download.MediaAudioExtractor
 import com.ahdownload.app.favorites.FavoritesStore
@@ -31,6 +30,8 @@ import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.app.settings.ThemePreferenceStore
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
+import com.ahdownload.core.designsystem.LocalDiagnosticUiTraceLogger
+import androidx.compose.runtime.CompositionLocalProvider
 import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadRecord
@@ -410,6 +411,7 @@ private fun AHRoot(
         backStack.removeLast()
     }
 
+    CompositionLocalProvider(LocalDiagnosticUiTraceLogger provides uiTraceLogger) {
     when (backStack.last()) {
         RootDestination.Welcome -> WelcomeRoute(
             onContinue = { root(RootDestination.Home) },
@@ -472,7 +474,6 @@ private fun AHRoot(
             onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
-            onOpenUiDiagnostics = { push(RootDestination.UiDiagnostics) },
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
             onNavigateDownloads = { root(RootDestination.Downloads) },
@@ -484,9 +485,11 @@ private fun AHRoot(
             uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
         )
-        RootDestination.UiDiagnostics -> UiDiagnosticsRoute(
-            logger = uiTraceLogger,
+        RootDestination.UiDiagnostics -> DiagnosticsRoute(
+            logger = logger,
+            uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
         )
+        }
     }
 }
