@@ -11,7 +11,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CloudStartupSmokeTest {
 
-    @Test
+    @Test(timeout = 90_000)
     fun mainActivityLaunchesAndCreatesContentView() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
