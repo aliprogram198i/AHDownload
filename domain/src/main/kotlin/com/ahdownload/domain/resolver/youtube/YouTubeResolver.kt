@@ -137,13 +137,17 @@ class YouTubeResolver(
             // The embedded client is an independent fallback. It must not depend on
             // the primary Player API returning a response; otherwise a network/policy
             // failure on the primary call prevents the only PO-token-light fallback.
-            val embeddedResponse = runCatching {
-                playerClient.fetchEmbeddedPlayerResponse(
-                    html = html,
-                    videoUrl = request.link.normalizedUrl,
-                    operationId = request.operationId,
-                )
-            }.getOrNull()
+            val embeddedResponse = if (lastFailure?.code == FailureCode.AuthenticationRequired) {
+                null
+            } else {
+                runCatching {
+                    playerClient.fetchEmbeddedPlayerResponse(
+                        html = html,
+                        videoUrl = request.link.normalizedUrl,
+                        operationId = request.operationId,
+                    )
+                }.getOrNull()
+            }
             if (embeddedResponse != null) {
                 val embeddedResult = parser.parsePlayerResponse(embeddedResponse)
                 if (embeddedResult is ResolverResult.Success) {
