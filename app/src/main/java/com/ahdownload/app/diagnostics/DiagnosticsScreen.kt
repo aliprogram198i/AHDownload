@@ -133,9 +133,45 @@ private fun DiagnosticsScreen(
     val stage = remember(report) { reportValue(report, "stage") }
     val action = remember(report) { reportValue(report, "action") }
     val whatHappened = remember(report) { reportValue(report, "what_happened") }
-    val unifiedReport = remember(report, uiEvents) {
+    val controlAttempts = remember(uiEvents) {
+        uiEvents
+            .filter { event ->
+                event.event in setOf(
+                    "CONTROL_TAP_RECEIVED", "ACTION_DISPATCHED",
+                    "ACTION_HANDLER_RETURNED", "ACTION_HANDLER_THROWN",
+                ) && !event.context["attempt_id"].isNullOrBlank()
+            }
+            .groupBy { it.context["attempt_id"].orEmpty() }
+            .map { (attemptId, attempts) ->
+                val latest = attempts.maxBy { it.timestampEpochMs }
+                val outcome = when {
+                    attempts.any { it.event == "ACTION_HANDLER_THROWN" } -> "HANDLER_THROWN"
+                    attempts.any { it.event == "ACTION_HANDLER_RETURNED" } -> "HANDLER_RETURNED_OUTCOME_UNVERIFIED"
+                    else -> "INCOMPLETE"
+                }
+                ControlAttemptSummary(
+                    attemptId = attemptId,
+                    timestampEpochMs = latest.timestampEpochMs,
+                    screen = latest.screen,
+                    controlId = latest.context["control_id"].orEmpty(),
+                    label = latest.context["control_label"].orEmpty(),
+                    outcome = outcome,
+                )
+            }
+            .sortedByDescending { it.timestampEpochMs }
+            .take(50)
+    }
+    val unifiedReport = remember(report, uiEvents, controlAttempts) {
         buildString {
             appendLine(report)
+            appendLine()
+            appendLine("CONTROL_ATTEMPT_SUMMARY")
+            controlAttempts.forEach { attempt ->
+                appendLine(
+                    "${attempt.timestampEpochMs} | ${attempt.screen} | ${attempt.controlId} | " +
+                        "${attempt.label} | outcome=${attempt.outcome} | attempt_id=${attempt.attemptId}",
+                )
+            }
             appendLine()
             appendLine("UNIFIED_UI_INTERACTION_TRACE")
             uiEvents.sortedBy { it.timestampEpochMs }.takeLast(400).forEach { event ->
@@ -282,10 +318,29 @@ private fun DiagnosticsScreen(
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "الأحداث المسجلة: ${uiEvents.size}. يشمل الظهور والحالة والضغط وإرسال الإجراء وعودة معالج الحدث أو الاستثناء المتزامن.",
+                            "أحداث الواجهة: ${uiEvents.size} · محاولات الضغط: ${controlAttempts.size}. عودة المعالج لا تعني وحدها نجاح التنزيل أو الأثر النهائي.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        controlAttempts.take(15).forEach { attempt ->
+                            val outcomeLabel = when (attempt.outcome) {
+                                "HANDLER_THROWN" -> "فشل معالج الحدث"
+                                "HANDLER_RETURNED_OUTCOME_UNVERIFIED" -> "استُدعي المعالج؛ النتيجة النهائية غير مؤكدة"
+                                else -> "سُجّل الضغط لكن لم يكتمل المعالج"
+                            }
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    attempt.label.ifBlank { attempt.controlId },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    attempt.screen + " · " + attempt.controlId + " · " + outcomeLabel,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                         DiagnosticOutlinedButton(
                             trackingScreen = "DIAGNOSTICS",
                             trackingId = "DIAGNOSTICS.interaction_timeline.toggle",
@@ -539,6 +594,15 @@ private fun pipelineStateLabel(value: String): String =
         "STARTED" -> "قيد التنفيذ"
         else -> value.ifBlank { "غير معروف" }
     }
+
+private data class ControlAttemptSummary(
+    val attemptId: String,
+    val timestampEpochMs: Long,
+    val screen: String,
+    val controlId: String,
+    val label: String,
+    val outcome: String,
+)
 
 private val UI_ENVIRONMENT_KEYS = setOf(
     "app_package", "app_version_name", "app_version_code", "app_build_type",
