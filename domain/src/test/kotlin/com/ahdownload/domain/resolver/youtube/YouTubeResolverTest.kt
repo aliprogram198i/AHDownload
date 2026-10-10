@@ -619,4 +619,50 @@ class YouTubeResolverTest {
         assertEquals("2.20260708.00.00", candidate.requestHeaders["X-YouTube-Client-Version"])
     }
 
+
+    @Test
+    fun doesNotExposeUnclassifiedGoogleVideoProtocolRequestsAsMediaCandidates() = runBlocking {
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                {"INNERTUBE_API_KEY":"test-key","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2"}}}
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String): String = """
+                {"playabilityStatus":{"status":"UNPLAYABLE","reason":"Video unavailable"}}
+            """.trimIndent()
+        }
+        val protocolUrls = listOf(
+            "https://rr2.googlevideo.com/videoplayback?source=youtube&rn=1",
+            "https://rr2.googlevideo.com/videoplayback?source=youtube&rn=2",
+            "https://rr2.googlevideo.com/videoplayback?source=youtube&rn=3",
+        )
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = protocolUrls,
+                audioUrls = emptyList(),
+                playerResponse = null,
+                authenticated = false,
+                browserMediaObservedCount = protocolUrls.size,
+            )
+        }
+
+        val result = YouTubeResolver(client, sessionProvider = session).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    normalizedUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(
+            com.ahdownload.domain.resolver.FailureCode.ResolverUnavailable,
+            (result as ResolverResult.Failure).code,
+        )
+    }
+
 }
