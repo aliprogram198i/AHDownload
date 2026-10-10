@@ -352,7 +352,7 @@ private fun DownloadsScreen(
     }
 
     val normalizedQuery = query.trim().lowercase(Locale.ROOT)
-    val filtered = remember(records, filter, normalizedQuery) {
+    val filtered = remember(records, filter, normalizedQuery, favorites) {
         records
             .filter { record ->
                 val matchesFilter = when (filter) {
@@ -596,9 +596,9 @@ private fun DownloadsScreen(
                             item {
                                 DiagnosticFilterChip(
                                     trackingScreen = "DOWNLOADS",
-                                    trackingId = "DOWNLOADS.filterchip.01",
-                                    trackingLabel = " ",
-                                    disabledReason = "callsite_precondition_not_explicit",
+                                    trackingId = "DOWNLOADS.filterchip.${item.name.lowercase(Locale.ROOT)}",
+                                    trackingLabel = item.label,
+                                    disabledReason = "none",
                                     selected = item == filter,
                                     onClick = { filter = item },
                                     label = { Text(item.label + " " + count) },
