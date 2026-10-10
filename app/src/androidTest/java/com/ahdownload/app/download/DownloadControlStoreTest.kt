@@ -1,0 +1,58 @@
+package com.ahdownload.app.download
+
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+class DownloadControlStoreTest {
+    private lateinit var context: Context
+    private lateinit var store: DownloadControlStore
+
+    @Before
+    fun setUp() {
+        context = ApplicationProvider.getApplicationContext()
+        context.getSharedPreferences("ahdownload_download_controls", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        store = DownloadControlStore(context)
+    }
+
+    @Test
+    fun explicitPauseAndCancelIntentsAreDistinguishable() {
+        store.markPaused("task-a")
+        assertTrue(store.isPaused("task-a"))
+        assertEquals("PAUSED", store.intent("task-a"))
+
+        store.markCancelled("task-a")
+        assertFalse(store.isPaused("task-a"))
+        assertEquals("CANCELLED", store.intent("task-a"))
+    }
+
+    @Test
+    fun resumeSupersedesOlderPauseOrCancelIntent() {
+        store.markPaused("task-b")
+        store.markActive("task-b")
+        assertFalse(store.isPaused("task-b"))
+        assertEquals("ACTIVE", store.intent("task-b"))
+
+        store.markCancelled("task-b")
+        store.markActive("task-b")
+        assertEquals("ACTIVE", store.intent("task-b"))
+    }
+
+    @Test
+    fun legacyPausedFlagRemainsReadableWithoutExplicitIntent() {
+        context.getSharedPreferences("ahdownload_download_controls", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("paused_legacy-task", true)
+            .commit()
+
+        assertTrue(store.isPaused("legacy-task"))
+        assertEquals(null, store.intent("legacy-task"))
+    }
+}
