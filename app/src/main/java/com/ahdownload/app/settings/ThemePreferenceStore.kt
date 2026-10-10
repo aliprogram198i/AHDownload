@@ -11,7 +11,7 @@ class ThemePreferenceStore(context: Context) {
 
     fun read(): AHThemeMode =
         AHThemeMode.entries.firstOrNull { mode ->
-            mode.storageValue == preferences.getString(KEY_THEME, AHThemeMode.SYSTEM.storageValue)
+            mode.storageValue == preferences.getString(KEY_THEME, AHThemeMode.DARK_TECH.storageValue)
         } ?: AHThemeMode.SYSTEM
 
     fun set(mode: AHThemeMode) {
