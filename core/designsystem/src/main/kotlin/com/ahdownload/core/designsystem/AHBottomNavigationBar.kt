@@ -30,7 +30,9 @@ fun AHBottomNavigationBar(
     selected: AHBottomNavDestination,
     onDestinationSelected: (AHBottomNavDestination) -> Unit,
     activeDownloads: Int = 0,
+    trackingScreen: String = "BOTTOM_NAVIGATION",
 ) {
+    val diagnosticLogger = LocalDiagnosticUiTraceLogger.current
     NavigationBar(
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 7.dp)
@@ -40,14 +42,16 @@ fun AHBottomNavigationBar(
     ) {
         NavigationBarItem(
             selected = selected == AHBottomNavDestination.HOME,
-            onClick = { onDestinationSelected(AHBottomNavDestination.HOME) },
+            onClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, "nav.home", "الرئيسية") { onDestinationSelected(AHBottomNavDestination.HOME) } },
+            modifier = diagnosticControlModifier(Modifier, trackingScreen, "nav.home", "الرئيسية", true),
             icon = { Icon(Icons.Rounded.Home, contentDescription = "الرئيسية") },
             label = { Text("الرئيسية") },
             colors = AHBottomNavigationDefaults.ItemColors,
         )
         NavigationBarItem(
             selected = selected == AHBottomNavDestination.DOWNLOADS,
-            onClick = { onDestinationSelected(AHBottomNavDestination.DOWNLOADS) },
+            onClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, "nav.downloads", "التنزيلات") { onDestinationSelected(AHBottomNavDestination.DOWNLOADS) } },
+            modifier = diagnosticControlModifier(Modifier, trackingScreen, "nav.downloads", "التنزيلات", true),
             icon = {
                 if (activeDownloads > 0) {
                     BadgedBox(badge = {
@@ -64,7 +68,8 @@ fun AHBottomNavigationBar(
         )
         NavigationBarItem(
             selected = selected == AHBottomNavDestination.SETTINGS,
-            onClick = { onDestinationSelected(AHBottomNavDestination.SETTINGS) },
+            onClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, "nav.settings", "الإعدادات") { onDestinationSelected(AHBottomNavDestination.SETTINGS) } },
+            modifier = diagnosticControlModifier(Modifier, trackingScreen, "nav.settings", "الإعدادات", true),
             icon = { Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات") },
             label = { Text("الإعدادات") },
             colors = AHBottomNavigationDefaults.ItemColors,

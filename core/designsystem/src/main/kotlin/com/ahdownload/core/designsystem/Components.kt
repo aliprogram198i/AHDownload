@@ -1,5 +1,7 @@
 package com.ahdownload.core.designsystem
 
+import com.ahdownload.core.common.UiTraceLogger
+
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -44,7 +46,15 @@ fun AHGradientPrimaryButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    trackingScreen: String = "GLOBAL_COMPONENT",
+    trackingId: String = "global.gradient_primary_button",
 ) {
+    val diagnosticLogger = LocalDiagnosticUiTraceLogger.current
+    val tracedModifier = diagnosticControlModifier(
+        modifier, trackingScreen, trackingId, text, enabled,
+        if (enabled) "none" else "callsite_precondition_not_explicit",
+    )
+    val tracedClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, trackingId, text, onClick) }
     val targetStart = if (enabled) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -64,9 +74,9 @@ fun AHGradientPrimaryButton(
     )
 
     Surface(
-        onClick = onClick,
+        onClick = tracedClick,
         enabled = enabled,
-        modifier = modifier,
+        modifier = tracedModifier,
         shape = MaterialTheme.shapes.medium,
         color = Color.Transparent,
         shadowElevation = if (enabled) 4.dp else 0.dp,
@@ -108,11 +118,18 @@ fun AHSecondaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     icon: ImageVector? = null,
+    trackingScreen: String = "GLOBAL_COMPONENT",
+    trackingId: String = "global.secondary_button",
 ) {
+    val diagnosticLogger = LocalDiagnosticUiTraceLogger.current
+    val tracedModifier = diagnosticControlModifier(
+        modifier, trackingScreen, trackingId, text, enabled,
+        if (enabled) "none" else "callsite_precondition_not_explicit",
+    )
     Surface(
-        onClick = onClick,
+        onClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, trackingId, text, onClick) },
         enabled = enabled,
-        modifier = modifier,
+        modifier = tracedModifier,
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(
