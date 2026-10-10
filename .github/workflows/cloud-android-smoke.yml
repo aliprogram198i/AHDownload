@@ -54,6 +54,7 @@ jobs:
           exit "$test_exit_code"
 
       - name: Boot Android emulator and run instrumentation tests
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -62,7 +63,8 @@ jobs:
           profile: pixel_2
           emulator-options: "-no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none"
           disable-animations: true
-          script: gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest
+          emulator-boot-timeout: 600000
+          script: timeout 300s gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest
 
       - name: Collect emulator logs and test reports
         if: always()
