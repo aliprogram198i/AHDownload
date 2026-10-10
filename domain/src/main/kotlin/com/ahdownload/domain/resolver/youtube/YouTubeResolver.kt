@@ -853,6 +853,7 @@ class YouTubeResolver(
     }
 
     private fun diagnosticContext(videoId: String, operationId: String?): Map<String, String> = buildMap {
+        put("platform", "YouTube")
         put("video_id", videoId)
         operationId?.takeIf { it.isNotBlank() }?.let { put("operation_id", it) }
     }
