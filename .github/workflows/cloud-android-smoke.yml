@@ -1,0 +1,150 @@
+name: Cloud Android Smoke Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-smoke:
+    name: Build, install, and run Android instrumentation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools emulator"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install project SDK components
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "platforms;android-37.1" "build-tools;36.1.0" "system-images;android-35;google_apis;x86_64"
+
+      - name: Run JVM tests and compile APKs
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p cloud-test-results
+          set +e
+          gradle --no-daemon --no-parallel --max-workers=2 --stacktrace testDebugUnitTest assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee cloud-test-results/build-and-unit-tests.log
+          test_exit_code=$?
+          printf '%s\n' "$test_exit_code" > cloud-test-results/build-exit-code.txt
+          exit "$test_exit_code"
+
+      - name: Enable KVM access for Android emulator
+        run: |
+          set -euo pipefail
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device /dev/kvm is not available on this runner." >&2
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 0666 /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+          ls -l /dev/kvm
+
+      - name: Boot Android emulator and run instrumentation tests
+        timeout-minutes: 20
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: "-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none"
+          disable-animations: true
+          emulator-boot-timeout: 600
+          disable-linux-hw-accel: false
+          script: |
+            set +e
+            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest
+            test_exit_code=$?
+            mkdir -p cloud-test-results
+            adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat capture failed" >> cloud-test-results/emulator-logcat.txt
+            printf '%s\n' "$test_exit_code" > cloud-test-results/instrumentation-exit-code.txt
+            exit "$test_exit_code"
+
+      - name: Collect emulator logs and test reports
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p cloud-test-results
+          if [ ! -s cloud-test-results/emulator-logcat.txt ]; then
+            if command -v adb >/dev/null 2>&1 && adb devices 2>/dev/null | grep -qE '^emulator-[0-9]+[[:space:]]+device$'; then
+              adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat collection failed" >> cloud-test-results/emulator-logcat.txt
+            else
+              printf '%s\n' "Emulator logcat was not captured before emulator teardown." > cloud-test-results/emulator-logcat.txt
+            fi
+          fi
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk cloud-test-results/
+          fi
+          if [ -f app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ]; then
+            cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk cloud-test-results/
+          fi
+          if [ -d app/build/outputs/androidTest-results/connected ]; then
+            cp -R app/build/outputs/androidTest-results/connected cloud-test-results/instrumentation-results
+          fi
+          if [ -d app/build/reports/androidTests/connected ]; then
+            cp -R app/build/reports/androidTests/connected cloud-test-results/instrumentation-report
+          fi
+          if [ -d app/build/reports/tests/testDebugUnitTest ]; then
+            cp -R app/build/reports/tests/testDebugUnitTest cloud-test-results/unit-test-report
+          fi
+          ls -lhR cloud-test-results || true
+
+      - name: Validate Android instrumentation results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(find cloud-test-results/instrumentation-results -name test-result.textproto -print -quit)"
+          if [ -z "$report" ] || [ ! -s "$report" ]; then
+            echo "Android instrumentation report is missing; emulator/test execution is not verified." >&2
+            exit 1
+          fi
+          grep -q '^test_status: PASSED$' "$report"
+          test_count="$(grep -c '^  test_case {' "$report" || true)"
+          passed_count="$(grep -c '^  test_status: PASSED$' "$report" || true)"
+          failed_count="$(grep -c '^  test_status: FAILED$' "$report" || true)"
+          echo "Instrumented test cases: $test_count; passed: $passed_count; failed: $failed_count"
+          if [ "$test_count" -ne 8 ] || [ "$passed_count" -ne 8 ] || [ "$failed_count" -ne 0 ]; then
+            echo "Expected exactly 8 passing Android instrumentation tests." >&2
+            exit 1
+          fi
+
+      - name: Upload APK, logs, and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahdownload-cloud-android-results-${{ github.run_id }}
+          path: cloud-test-results/
+          if-no-files-found: warn
+          retention-days: 7
