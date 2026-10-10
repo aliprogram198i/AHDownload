@@ -89,7 +89,7 @@ object DiagnosticReportFormatter {
         }
         val classification = classify(status, rootCause, anchor)
         val action = recommendedAction(status, classification, rootCause, scopedEvents)
-        val pipeline = pipelineStates(scopedEvents)
+        val pipeline = pipelineStates(scopedEvents, latestError)
         val failure = when {
             latestError == null -> "NONE"
             validationRejected > 0 && validationAccepted == 0 -> "NO_VALID_MEDIA_SOURCE"
@@ -243,14 +243,18 @@ object DiagnosticReportFormatter {
         }
     }
 
-    private fun pipelineStates(events: List<DiagnosticLog>): LinkedHashMap<String, String> {
+    private fun pipelineStates(
+        events: List<DiagnosticLog>,
+        latestError: DiagnosticLog?,
+    ): LinkedHashMap<String, String> {
         fun has(type: String) = events.any { it.type == type }
+        val latestErrorStage = latestError?.let(::stageOf)
         return linkedMapOf(
             "input" to (events.firstNotNullOfOrNull { it.context["input_type"] } ?: "RECEIVED"),
             "resolution" to when {
-                has("AUTH_REQUIRED") ||
-                    has("youtube.authentication_required") ||
-                    events.any { it.context["failure_code"] == "AuthenticationRequired" } -> "FAILED"
+                // The latest error determines the failed phase. Earlier authentication or
+                // resolver warnings must not mask a later successful resolution.
+                latestErrorStage == "RESOLUTION" -> "FAILED"
                 has("SMART_CENTER_RESULT_READY") ||
                     has("MEDIA_RESOLUTION_COMPLETED") ||
                     has("RESOLUTION_COMPLETED") ||
@@ -260,7 +264,11 @@ object DiagnosticReportFormatter {
                     } ||
                     events.any { it.type == "YOUTUBE_CANDIDATE_REFRESH_RESULT" } ||
                     events.any { it.type == "youtube.webview_source_selected" } -> "COMPLETED"
-                events.any { it.type.contains("RESOLVER", ignoreCase = true) } -> "STARTED"
+                events.any {
+                    it.type.contains("RESOLVER", ignoreCase = true) ||
+                        it.operation.contains("resolve", ignoreCase = true) ||
+                        it.type.startsWith("youtube.", ignoreCase = true)
+                } -> "STARTED"
                 else -> "NOT_STARTED"
             },
             "ordering" to if (has("SMART_CENTER_ORDERING")) "COMPLETED" else "NOT_STARTED",
@@ -349,8 +357,41 @@ object DiagnosticReportFormatter {
         }
 
         val parts = mutableListOf<String>()
-        if (events.any { it.type.contains("RESOLVER", ignoreCase = true) || it.context["platform"] == "YouTube" }) parts += "resolver"
-        if (events.any { it.type.contains("CANDIDATE", ignoreCase = true) }) parts += "candidate"
+        val hasResolverEvidence = events.any {
+            it.type.contains("RESOLVER", ignoreCase = true) ||
+                it.operation.contains("resolve", ignoreCase = true) ||
+                it.type.startsWith("youtube.", ignoreCase = true) ||
+                it.context["platform"] == "YouTube"
+        }
+        if (hasResolverEvidence) parts += "resolver"
+
+        // Event names such as "youtube_player_no_candidates" describe an attempted
+        // extraction, not a media candidate that actually exists.
+        val hasCandidateEvidence = candidateCount(events) > 0 || events.any { event ->
+            when (event.type) {
+                "youtube.webview_candidates",
+                "youtube.webview_source_selected" ->
+                    (event.context["candidates"]?.toIntOrNull() ?: 0) > 0 ||
+                        (event.context["browser_candidates"]?.toIntOrNull() ?: 0) > 0 ||
+                        (event.context["aligned_candidates"]?.toIntOrNull() ?: 0) > 0
+                else -> false
+            }
+        }
+        if (hasCandidateEvidence) {
+            parts += "candidate"
+        } else if (
+            latestError.context["failure_code"] == "NoCandidates" ||
+            events.any {
+                it.type == "youtube_player_no_candidates" ||
+                    it.context["failure_code"] == "NoCandidates"
+            }
+        ) {
+            parts += "no_candidates_extracted"
+        } else if (hasResolverEvidence && candidateCount(events) == 0 &&
+            latestError.context["failure_code"] in setOf("ResolverUnavailable", "ResolverTimeout")) {
+            parts += "resolution_failed_without_candidates"
+        }
+
         if (events.any { it.type.contains("VALIDATION", ignoreCase = true) }) parts += "validation"
         if (rejected > 0) parts += "candidate_rejected"
         if (accepted == 0 && rejected > 0) parts += "no_valid_source"
