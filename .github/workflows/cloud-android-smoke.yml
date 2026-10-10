@@ -70,6 +70,7 @@ jobs:
 
       - name: Boot Android emulator and run instrumentation tests
         timeout-minutes: 20
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -118,6 +119,47 @@ jobs:
             cp -R app/build/reports/tests/testDebugUnitTest cloud-test-results/unit-test-report
           fi
           ls -lhR cloud-test-results || true
+
+      - name: Validate Android instrumentation results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(find cloud-test-results/instrumentation-results -name test-result.textproto -print -quit)"
+          if [ -z "$report" ] || [ ! -s "$report" ]; then
+            echo "Android instrumentation report is missing; emulator/test execution is not verified." >&2
+            exit 1
+          fi
+          grep -q '^test_status: PASSED        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahdownload-cloud-android-results-${{ github.run_id }}
+          path: cloud-test-results/
+          if-no-files-found: warn
+          retention-days: 7
+ "$report"
+          test_count="$(grep -c '^  test_case {' "$report" || true)"
+          passed_count="$(grep -c '^  test_status: PASSED        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahdownload-cloud-android-results-${{ github.run_id }}
+          path: cloud-test-results/
+          if-no-files-found: warn
+          retention-days: 7
+ "$report" || true)"
+          failed_count="$(grep -c '^  test_status: FAILED        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahdownload-cloud-android-results-${{ github.run_id }}
+          path: cloud-test-results/
+          if-no-files-found: warn
+          retention-days: 7
+ "$report" || true)"
+          echo "Instrumented test cases: $test_count; passed: $passed_count; failed: $failed_count"
+          if [ "$test_count" -ne 8 ] || [ "$passed_count" -ne 8 ] || [ "$failed_count" -ne 0 ]; then
+            echo "Expected exactly 8 passing Android instrumentation tests." >&2
+            exit 1
+          fi
 
       - name: Upload APK, logs, and test reports
         if: always()
