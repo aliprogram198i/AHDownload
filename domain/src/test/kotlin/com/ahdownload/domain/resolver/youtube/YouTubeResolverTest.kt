@@ -719,4 +719,116 @@ class YouTubeResolverTest {
         assertEquals(0, playerApiRequests)
     }
 
+
+    @Test
+    fun stopsEmbeddedAndAndroidFallbackWhenPlayerApiRequiresSignIn() = runBlocking {
+        val ageGateResponse = """
+            {
+              "playabilityStatus":{
+                "status":"LOGIN_REQUIRED",
+                "reason":"Please sign in to continue"
+              }
+            }
+        """.trimIndent()
+        var playerApiRequests = 0
+        var embeddedRequests = 0
+        var androidRequests = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                <html><script>
+                var ytcfg = {"INNERTUBE_API_KEY":"test-key",
+                  "INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2"}}};
+                </script></html>
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String, headers: Map<String, String>): String {
+                when (headers["X-YouTube-Client-Name"]) {
+                    null -> playerApiRequests++
+                    "56" -> embeddedRequests++
+                    "3" -> androidRequests++
+                }
+                return ageGateResponse
+            }
+        }
+
+        val result = YouTubeResolver(client).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    normalizedUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+                operationId = "player-api-age-gate-test",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(
+            com.ahdownload.domain.resolver.FailureCode.AuthenticationRequired,
+            (result as ResolverResult.Failure).code,
+        )
+        assertEquals(1, playerApiRequests)
+        assertEquals(0, embeddedRequests)
+        assertEquals(0, androidRequests)
+    }
+
+    @Test
+    fun recoversWithAndroidPlayerAfterWebClientsReportUnavailable() = runBlocking {
+        val unavailable = """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"Video unavailable"}}"""
+        val androidResponse = """
+            {
+              "playabilityStatus":{"status":"OK"},
+              "videoDetails":{"title":"Android Fallback Test","lengthSeconds":"8"},
+              "streamingData":{"formats":[
+                {"itag":"18","mimeType":"video/mp4","width":640,"height":360,
+                 "url":"https://rr1.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4"}
+              ]}
+            }
+        """.trimIndent()
+        var androidRequests = 0
+        var embeddedRequests = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                <html><script>
+                var ytInitialPlayerResponse = $unavailable;
+                var ytcfg = {"INNERTUBE_API_KEY":"test-key",
+                  "INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2"}}};
+                </script></html>
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String, headers: Map<String, String>): String =
+                when (headers["X-YouTube-Client-Name"]) {
+                    "56" -> {
+                        embeddedRequests++
+                        unavailable
+                    }
+                    "3" -> {
+                        androidRequests++
+                        androidResponse
+                    }
+                    else -> unavailable
+                }
+        }
+
+        val result = YouTubeResolver(client).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    normalizedUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+                operationId = "android-fallback-test",
+            ),
+        )
+
+        assertTrue("Android player should recover a direct media candidate", result is ResolverResult.Success)
+        result as ResolverResult.Success
+        assertEquals("Android Fallback Test", result.title)
+        assertTrue(result.candidates.isNotEmpty())
+        assertEquals(1, embeddedRequests)
+        assertEquals(1, androidRequests)
+    }
+
 }

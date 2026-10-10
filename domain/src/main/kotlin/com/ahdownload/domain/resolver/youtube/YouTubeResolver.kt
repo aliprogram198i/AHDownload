@@ -137,13 +137,17 @@ class YouTubeResolver(
             // The embedded client is an independent fallback. It must not depend on
             // the primary Player API returning a response; otherwise a network/policy
             // failure on the primary call prevents the only PO-token-light fallback.
-            val embeddedResponse = runCatching {
-                playerClient.fetchEmbeddedPlayerResponse(
-                    html = html,
-                    videoUrl = request.link.normalizedUrl,
-                    operationId = request.operationId,
-                )
-            }.getOrNull()
+            val embeddedResponse = if (lastFailure?.code == FailureCode.AuthenticationRequired) {
+                null
+            } else {
+                runCatching {
+                    playerClient.fetchEmbeddedPlayerResponse(
+                        html = html,
+                        videoUrl = request.link.normalizedUrl,
+                        operationId = request.operationId,
+                    )
+                }.getOrNull()
+            }
             if (embeddedResponse != null) {
                 val embeddedResult = parser.parsePlayerResponse(embeddedResponse)
                 if (embeddedResult is ResolverResult.Success) {
@@ -161,6 +165,38 @@ class YouTubeResolver(
                 }
                 lastFailure = preferFailure(lastFailure, embeddedResult as? ResolverResult.Failure)
                 logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
+            }
+
+            // Last independent client fallback: some videos fail through WEB and
+            // embedded clients while the Android player still returns direct formats.
+            // Preserve explicit sign-in/age-gate failures; never use another client to
+            // bypass a YouTube access requirement.
+            if (lastFailure?.code != FailureCode.AuthenticationRequired) {
+                val androidResponse = runCatching {
+                    playerClient.fetchAndroidPlayerResponse(
+                        html = html,
+                        videoUrl = request.link.normalizedUrl,
+                        operationId = request.operationId,
+                    )
+                }.getOrNull()
+                if (androidResponse != null) {
+                    val androidResult = parser.parsePlayerResponse(androidResponse)
+                    if (androidResult is ResolverResult.Success) {
+                        logger.log(
+                            DiagnosticLevel.INFO,
+                            type = "youtube.android_fallback_selected",
+                            reason = "android_player_recovered_after_web_clients_failed",
+                            operation = "youtube.resolve",
+                            context = diagnosticContext(videoId, request.operationId) + mapOf(
+                                "candidate_count" to androidResult.candidates.size.toString(),
+                            ),
+                            throwable = null,
+                        )
+                        return filterKind(enrichWithSessionIfNeeded(androidResult, request), request)
+                    }
+                    lastFailure = preferFailure(lastFailure, androidResult as? ResolverResult.Failure)
+                    logPlayerFailure(videoId, androidResult, "android_player_after_web_failure", request.operationId)
+                }
             }
             }
         } catch (error: Exception) {

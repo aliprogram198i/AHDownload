@@ -50,6 +50,7 @@ class LiveSocialMediaDownloadE2ETest {
         val targets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
+            Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
         )
 
         for (target in targets) {
@@ -232,6 +233,13 @@ class LiveSocialMediaDownloadE2ETest {
             "content_length_bytes",
             "validation_result",
             "failure_code",
+            "browser_media_observed",
+            "browser_request_headers_captured",
+            "browser_po_token_observed",
+            "cookies_obtained",
+            "authenticated",
+            "video_candidates",
+            "audio_candidates",
             "exception_type",
             "host",
             "stage",

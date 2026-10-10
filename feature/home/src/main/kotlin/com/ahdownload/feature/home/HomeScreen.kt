@@ -380,7 +380,7 @@ private fun HomeScreen(
     }
 
     LaunchedEffect(state.resolution, resultKind, state.error) {
-        if (state.resolution != null || state.error != null) {
+        if (shouldEmitSmartCenterResultPresented(state.resolution != null)) {
             logger.log(
                 DiagnosticLevel.INFO,
                 "SMART_CENTER_RESULT_PRESENTED",
@@ -438,7 +438,18 @@ private fun HomeScreen(
         }
     }
 
-
+    LaunchedEffect(state.error, state.resolution, state.result?.platform) {
+        if (state.error != null && state.resolution == null) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                "HOME_ERROR_PRESENTED",
+                "تعذر تجهيز خيارات التنزيل وعُرضت رسالة الخطأ للمستخدم",
+                "ui.home.error",
+                mapOf("platform" to (state.result?.platform?.name ?: "unknown")),
+                null,
+            )
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -2451,3 +2462,7 @@ private fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
     return (totalSeconds / 60L).toString() + ":" + (totalSeconds % 60L).toString().padStart(2, '0')
 }
+
+
+/** Avoid reporting a result card for an error-only UI state. */
+internal fun shouldEmitSmartCenterResultPresented(hasResolution: Boolean): Boolean = hasResolution

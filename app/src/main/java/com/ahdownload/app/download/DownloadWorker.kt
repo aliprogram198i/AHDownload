@@ -18,6 +18,9 @@ import androidx.work.workDataOf
 import com.ahdownload.app.R
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.settings.DownloadLocationStore
+import com.ahdownload.app.settings.DownloadStoragePolicy
+import com.ahdownload.app.settings.DownloadStorageReadiness
+import com.ahdownload.app.settings.StorageInfoReader
 import com.ahdownload.app.settings.SelectedDirectoryStorage
 import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.domain.download.DownloadEngine
@@ -51,6 +54,7 @@ class DownloadWorker(
     private var lastNotificationProgressBytes = -1L
     private var lastNotificationProgressAt = 0L
     private var notificationBytesPerSecond = 0L
+    private var lowStorageWarningForTask = false
 
     override suspend fun doWork(): Result {
         val inputTask = readTask() ?: return Result.failure()
@@ -111,6 +115,85 @@ class DownloadWorker(
         val repository = application.downloadRepository
         val diagnostics = diagnosticsLogger()
         var refreshAttempted = false
+
+        // Only probe the app-controlled default directory. A persisted SAF tree may
+        // live on a different volume, so estimating its capacity from the default path is unsafe.
+        val selectedCustomDirectory = DownloadLocationStore(applicationContext).persistedUri() != null
+        if (selectedCustomDirectory) {
+            diagnostics.log(
+                DiagnosticLevel.INFO,
+                "DOWNLOAD_STORAGE_PREFLIGHT_SKIPPED",
+                "تم تخطي تقدير المساحة لأن مجلد التنزيل مخصص وقد يكون على وحدة تخزين مختلفة.",
+                "download.storage.preflight",
+                mapOf("destination_mode" to "CUSTOM_DIRECTORY"),
+                null,
+            )
+        } else {
+            val storageInfo = runCatching { StorageInfoReader.read(applicationContext) }.getOrNull()
+            if (storageInfo == null) {
+                diagnostics.log(
+                    DiagnosticLevel.WARNING,
+                    "DOWNLOAD_STORAGE_PREFLIGHT_UNAVAILABLE",
+                    "تعذر قياس المساحة الحرة؛ سيستمر التنزيل دون تخمين سعة التخزين.",
+                    "download.storage.preflight",
+                    mapOf("destination_mode" to "APP_DEFAULT"),
+                    null,
+                )
+            } else {
+                when (DownloadStoragePolicy.assess(storageInfo.freeBytes)) {
+                    DownloadStorageReadiness.READY -> Unit
+                    DownloadStorageReadiness.LOW_SPACE_WARNING -> {
+                        lowStorageWarningForTask = true
+                        diagnostics.log(
+                            DiagnosticLevel.WARNING,
+                            "DOWNLOAD_LOW_STORAGE_WARNING",
+                            "المساحة الحرة أقل من 1 GiB؛ قد تفشل الملفات الكبيرة.",
+                            "download.storage.preflight",
+                            mapOf(
+                                "destination_mode" to "APP_DEFAULT",
+                                "free_bytes" to storageInfo.freeBytes.toString(),
+                                "minimum_free_bytes" to DownloadStoragePolicy.MINIMUM_FREE_BYTES.toString(),
+                            ),
+                            null,
+                        )
+                        setForeground(createForegroundInfo(DownloadState.Preparing))
+                    }
+                    DownloadStorageReadiness.INSUFFICIENT_SPACE -> {
+                        val detail = "المساحة الحرة أقل من 100 MiB. وفر مساحة ثم أعد التنزيل."
+                        diagnostics.log(
+                            DiagnosticLevel.ERROR,
+                            "DOWNLOAD_LOW_STORAGE_BLOCKED",
+                            "أُوقف التنزيل قبل نقل البيانات لأن المساحة الحرة أقل من الحد الأدنى الآمن.",
+                            "download.storage.preflight",
+                            mapOf(
+                                "destination_mode" to "APP_DEFAULT",
+                                "free_bytes" to storageInfo.freeBytes.toString(),
+                                "minimum_free_bytes" to DownloadStoragePolicy.MINIMUM_FREE_BYTES.toString(),
+                                "task_id" to task.id,
+                            ),
+                            null,
+                        )
+                        val existing = repository.get(task.id)
+                            ?: com.ahdownload.domain.download.DownloadRecordMapper.queued(inputTask, System.currentTimeMillis())
+                        repository.upsert(
+                            existing.copy(
+                                status = DownloadStatus.FAILED,
+                                failureCode = "storage_space_low",
+                                failureDetail = detail,
+                                updatedAtEpochMs = System.currentTimeMillis(),
+                            ),
+                        )
+                        setForeground(createForegroundInfo(DownloadState.Failed(DownloadFailure.StorageError)))
+                        return Result.failure(
+                            workDataOf(
+                                KEY_FAILURE_CODE to "storage_space_low",
+                                KEY_FAILURE_DETAIL to detail,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
 
         if (shouldRefreshYouTubeTask(sourceTask, repository)) {
             refreshAttempted = true
@@ -1036,7 +1119,11 @@ class DownloadWorker(
 
     private fun DownloadState.toNotificationText(): String = when (this) {
         DownloadState.Queued -> "في قائمة الانتظار"
-        DownloadState.Preparing -> "جاري تجهيز التنزيل"
+        DownloadState.Preparing -> if (lowStorageWarningForTask) {
+            "المساحة منخفضة — راقب التنزيل"
+        } else {
+            "جاري تجهيز التنزيل"
+        }
         is DownloadState.Downloading -> {
             totalBytes?.let { total ->
                 val percent = if (total > 0) {
@@ -1048,6 +1135,7 @@ class DownloadWorker(
                     append("جاري التنزيل — ")
                     append(percent)
                     append("%")
+                    if (lowStorageWarningForTask) append(" · مساحة منخفضة")
                     if (notificationBytesPerSecond > 0L) {
                         append(" · ")
                         append(formatBytes(notificationBytesPerSecond))

@@ -68,12 +68,22 @@ object DiagnosticReportFormatter {
         val youtubeEvidence = scopedEvents.lastOrNull {
             it.context.containsKey("browser_media_observed")
         }
+        val youtubeBotChallengeObserved = scopedEvents.any {
+            it.type == "youtube.bot_challenge_detected"
+        }
+        val isYouTubeOperation = scopedEvents.any {
+            it.context["platform"] == "YouTube" || it.type.startsWith("youtube.", ignoreCase = true)
+        }
 
         val status = if (latestError == null) "OK" else "FAILED"
         val rootCause = if (latestError == null) {
             "NONE"
         } else {
             when {
+                (anchor.type == "AUTH_REQUIRED" ||
+                    anchor.context["failure_code"] == "AuthenticationRequired") &&
+                    isYouTubeOperation && youtubeBotChallengeObserved ->
+                    "YOUTUBE_BOT_CHALLENGE"
                 anchor.type == "AUTH_REQUIRED" ||
                     anchor.context["failure_code"] == "AuthenticationRequired" ->
                     "AUTHENTICATION_REQUIRED"
@@ -201,6 +211,7 @@ object DiagnosticReportFormatter {
             if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
         } else when {
             rootCause.startsWith("HTTP_") -> "NETWORK"
+            rootCause == "YOUTUBE_BOT_CHALLENGE" -> "UPSTREAM_CHALLENGE"
             rootCause == "AUTHENTICATION_REQUIRED" -> "AUTHENTICATION"
             rootCause == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_PROCESSING"
             rootCause == "STORAGE_ERROR" -> "STORAGE"
@@ -222,9 +233,18 @@ object DiagnosticReportFormatter {
         }
         val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
         val gvsEvidence = events.lastOrNull { it.type == "youtube.gvs_strategy" }
+        val explicitUnavailablePlayback = events.any { event ->
+            val reason = event.reason.lowercase()
+            event.type == "youtube_player_no_candidates" &&
+                ("video unavailable" in reason || "video is unavailable" in reason)
+        }
         return when {
+            rootCause == "YOUTUBE_BOT_CHALLENGE" && isYouTube ->
+                "REFRESH_YOUTUBE_SESSION_AFTER_BOT_CHECK"
             classification == "AUTHENTICATION" && isYouTube ->
                 "COMPLETE_YOUTUBE_AGE_VERIFICATION"
+            isYouTube && explicitUnavailablePlayback ->
+                "INSPECT_YOUTUBE_PLAYABILITY_OR_VIDEO_ACCESS"
             isYouTube &&
                 gvsEvidence?.context?.get("po_token_observed") == "false" &&
                 gvsEvidence.context["browser_media_observed"]?.toIntOrNull()?.let { it > 0 } == true ->

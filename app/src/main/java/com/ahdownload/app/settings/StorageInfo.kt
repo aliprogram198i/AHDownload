@@ -15,6 +15,24 @@ data class StorageInfo(
     val isLow: Boolean get() = freeBytes < 1L * 1024L * 1024L * 1024L
 }
 
+enum class DownloadStorageReadiness {
+    READY,
+    LOW_SPACE_WARNING,
+    INSUFFICIENT_SPACE,
+}
+
+/** Conservative preflight thresholds; a warning never blocks a potentially small download. */
+object DownloadStoragePolicy {
+    const val LOW_SPACE_WARNING_BYTES = 1L * 1024L * 1024L * 1024L
+    const val MINIMUM_FREE_BYTES = 100L * 1024L * 1024L
+
+    fun assess(freeBytes: Long): DownloadStorageReadiness = when {
+        freeBytes < MINIMUM_FREE_BYTES -> DownloadStorageReadiness.INSUFFICIENT_SPACE
+        freeBytes < LOW_SPACE_WARNING_BYTES -> DownloadStorageReadiness.LOW_SPACE_WARNING
+        else -> DownloadStorageReadiness.READY
+    }
+}
+
 object StorageInfoReader {
     fun read(context: Context): StorageInfo {
         val path = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.absolutePath
