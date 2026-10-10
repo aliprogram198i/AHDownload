@@ -177,4 +177,27 @@ class YouTubePlayerResponseParserTest {
         assertTrue(result is ResolverResult.Success)
         assertEquals("Quoted", (result as ResolverResult.Success).title)
     }
+
+    @Test
+    fun classifiesAgeVerificationGateAsAuthenticationRequired() {
+        val response = """
+            {
+              "playabilityStatus": {
+                "status": "LOGIN_REQUIRED",
+                "reason": "Sign in to confirm your age"
+              }
+            }
+        """.trimIndent()
+
+        val result = parser.parsePlayerResponse(response)
+
+        assertTrue(result is ResolverResult.Failure)
+        result as ResolverResult.Failure
+        assertEquals(FailureCode.AuthenticationRequired, result.code)
+        assertTrue(result.message.orEmpty().contains("تأكيد الأهلية العمرية"))
+        assertTrue(!result.message.orEmpty().contains("Sign in to confirm your age"))
+        assertTrue(parser.requiresAuthentication(response))
+        assertTrue(!parser.requiresAuthentication("""{"playabilityStatus":{"status":"OK"}}"""))
+    }
+
 }

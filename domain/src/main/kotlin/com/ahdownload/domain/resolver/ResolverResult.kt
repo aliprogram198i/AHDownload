@@ -19,6 +19,7 @@ enum class FailureCode {
     UnsupportedMediaKind,
     NoCandidates,
     InvalidRequest,
+    AuthenticationRequired,
     ResolverUnavailable,
     ResolverTimeout,
 }
