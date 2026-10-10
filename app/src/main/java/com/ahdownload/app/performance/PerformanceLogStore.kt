@@ -102,7 +102,7 @@ class PerformanceLogStore(context: Context) {
                 session.lastSampleElapsedMs = nowElapsed
             }
             session.bytesDownloaded = maxOf(session.bytesDownloaded, currentBytes)
-            if (state.totalBytes != null && state.totalBytes >= 0L) session.totalBytes = state.totalBytes
+            state.totalBytes?.takeIf { it >= 0L }?.let { session.totalBytes = it }
         }
     }
 
