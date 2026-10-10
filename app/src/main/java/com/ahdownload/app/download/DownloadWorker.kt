@@ -44,6 +44,9 @@ import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.feature.home.AndroidYouTubeSessionProvider
 import com.ahdownload.feature.home.HomeResolver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 class DownloadWorker(
     appContext: Context,
@@ -322,12 +325,40 @@ class DownloadWorker(
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            val requestedStatus = if (controlStore.isPaused(task.id)) {
+                DownloadStatus.PAUSED
+            } else {
+                DownloadStatus.CANCELLED
+            }
+            // WorkManager cancellation stops the worker coroutine. Persist the terminal/control
+            // state in a non-cancellable context so Room history cannot remain stuck on DOWNLOADING.
+            withContext(NonCancellable + Dispatchers.IO) {
+                try {
+                    val latest = repository.get(task.id)
+                    if (
+                        latest != null &&
+                        latest.status != DownloadStatus.COMPLETED &&
+                        latest.status != DownloadStatus.FAILED
+                    ) {
+                        repository.upsert(
+                            latest.copy(
+                                status = requestedStatus,
+                                failureCode = null,
+                                failureDetail = null,
+                                updatedAtEpochMs = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                } catch (_: Exception) {
+                    // Keep cancellation semantics even if persistence itself fails.
+                }
+            }
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "DOWNLOAD_WORK_CANCELLED",
-                if (controlStore.isPaused(task.id)) "تم إيقاف التنزيل مؤقتًا" else "تم إلغاء مهمة التنزيل",
+                if (requestedStatus == DownloadStatus.PAUSED) "تم إيقاف التنزيل مؤقتًا" else "تم إلغاء مهمة التنزيل",
                 "download.worker",
-                mapOf("task_id" to task.id, "paused_request" to controlStore.isPaused(task.id).toString()),
+                mapOf("task_id" to task.id, "paused_request" to (requestedStatus == DownloadStatus.PAUSED).toString()),
                 cancelled,
             )
             throw cancelled
