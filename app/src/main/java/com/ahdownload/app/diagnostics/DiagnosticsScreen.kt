@@ -76,7 +76,6 @@ fun DiagnosticsRoute(
     LaunchedEffect(Unit) {
         while (true) {
             kotlinx.coroutines.delay(1000L)
-            logs = logger.list()
             uiEvents = uiTraceLogger.list()
         }
     }
