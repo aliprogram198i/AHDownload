@@ -32,7 +32,7 @@ class DownloadFailureSummaryTest {
     @Test
     fun httpErrorsAreExplainedWithoutEchoingRawDetails() {
         assertTrue(failureSummary(record("http_error", "403")).contains("403"))
-        assertTrue(failureSummary(record("http_error", "404")).contains("لم يعد المصدر متاحًا"))
+        assertTrue(failureSummary(record("http_error", "404")).contains("المصدر لم يعد متاحًا"))
         assertTrue(failureSummary(record("http_error", "429")).contains("الانتظار"))
         assertFalse(failureSummary(record("http_error", "403")).contains("https://"))
     }
