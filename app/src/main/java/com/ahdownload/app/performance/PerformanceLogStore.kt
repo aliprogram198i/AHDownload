@@ -108,10 +108,19 @@ class PerformanceLogStore(context: Context) {
         }
     }
 
-    fun finishDownload(session: TransferSession, outcome: String) {
+    fun finishDownload(
+        session: TransferSession,
+        outcome: String,
+        bytesDownloadedOverride: Long? = null,
+        totalBytesOverride: Long? = null,
+    ) {
         val entry = synchronized(session) {
             if (session.finished) return
             session.finished = true
+            bytesDownloadedOverride?.takeIf { it >= 0L }?.let {
+                session.bytesDownloaded = maxOf(session.bytesDownloaded, it)
+            }
+            totalBytesOverride?.takeIf { it >= 0L }?.let { session.totalBytes = it }
             val duration = (SystemClock.elapsedRealtime() - session.startedElapsedMs).coerceAtLeast(0L)
             PerformanceLogEntry(
                 kind = KIND_DOWNLOAD,
