@@ -721,6 +721,59 @@ class YouTubeResolverTest {
 
 
     @Test
+    fun stopsEmbeddedAndAndroidFallbackWhenPlayerApiRequiresSignIn() = runBlocking {
+        val ageGateResponse = """
+            {
+              "playabilityStatus":{
+                "status":"LOGIN_REQUIRED",
+                "reason":"Please sign in to continue"
+              }
+            }
+        """.trimIndent()
+        var playerApiRequests = 0
+        var embeddedRequests = 0
+        var androidRequests = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                <html><script>
+                var ytcfg = {"INNERTUBE_API_KEY":"test-key",
+                  "INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2"}}};
+                </script></html>
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String, headers: Map<String, String>): String {
+                when (headers["X-YouTube-Client-Name"]) {
+                    null -> playerApiRequests++
+                    "56" -> embeddedRequests++
+                    "3" -> androidRequests++
+                }
+                return ageGateResponse
+            }
+        }
+
+        val result = YouTubeResolver(client).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    normalizedUrl = "https://www.youtube.com/watch?v=abcdefghijk",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+                operationId = "player-api-age-gate-test",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(
+            com.ahdownload.domain.resolver.FailureCode.AuthenticationRequired,
+            (result as ResolverResult.Failure).code,
+        )
+        assertEquals(1, playerApiRequests)
+        assertEquals(0, embeddedRequests)
+        assertEquals(0, androidRequests)
+    }
+
+    @Test
     fun recoversWithAndroidPlayerAfterWebClientsReportUnavailable() = runBlocking {
         val unavailable = """{"playabilityStatus":{"status":"UNPLAYABLE","reason":"Video unavailable"}}"""
         val androidResponse = """
