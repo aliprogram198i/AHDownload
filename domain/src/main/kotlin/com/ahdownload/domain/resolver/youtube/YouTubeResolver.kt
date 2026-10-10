@@ -162,6 +162,38 @@ class YouTubeResolver(
                 lastFailure = preferFailure(lastFailure, embeddedResult as? ResolverResult.Failure)
                 logPlayerFailure(videoId, embeddedResult, "web_embedded_player", request.operationId)
             }
+
+            // Last independent client fallback: some videos fail through WEB and
+            // embedded clients while the Android player still returns direct formats.
+            // Preserve explicit sign-in/age-gate failures; never use another client to
+            // bypass a YouTube access requirement.
+            if (lastFailure?.code != FailureCode.AuthenticationRequired) {
+                val androidResponse = runCatching {
+                    playerClient.fetchAndroidPlayerResponse(
+                        html = html,
+                        videoUrl = request.link.normalizedUrl,
+                        operationId = request.operationId,
+                    )
+                }.getOrNull()
+                if (androidResponse != null) {
+                    val androidResult = parser.parsePlayerResponse(androidResponse)
+                    if (androidResult is ResolverResult.Success) {
+                        logger.log(
+                            DiagnosticLevel.INFO,
+                            type = "youtube.android_fallback_selected",
+                            reason = "android_player_recovered_after_web_clients_failed",
+                            operation = "youtube.resolve",
+                            context = diagnosticContext(videoId, request.operationId) + mapOf(
+                                "candidate_count" to androidResult.candidates.size.toString(),
+                            ),
+                            throwable = null,
+                        )
+                        return filterKind(enrichWithSessionIfNeeded(androidResult, request), request)
+                    }
+                    lastFailure = preferFailure(lastFailure, androidResult as? ResolverResult.Failure)
+                    logPlayerFailure(videoId, androidResult, "android_player_after_web_failure", request.operationId)
+                }
+            }
             }
         } catch (error: Exception) {
             val challenge = error.message?.takeIf(::isBotChallenge)
