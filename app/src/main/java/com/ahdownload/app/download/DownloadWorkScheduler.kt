@@ -11,7 +11,14 @@ import androidx.work.WorkManager
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
+import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadRepository
+import com.ahdownload.app.AHDownloadApplication
 import com.ahdownload.app.settings.DownloadPreferencesStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 class DownloadWorkScheduler(
@@ -21,6 +28,8 @@ class DownloadWorkScheduler(
     private val workManager = WorkManager.getInstance(appContext)
     private val controlStore = DownloadControlStore(appContext)
     private val preferencesStore = DownloadPreferencesStore(appContext)
+    private val repository: DownloadRepository? = (appContext as? AHDownloadApplication)?.downloadRepository
+    private val controlStateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun enqueue(task: DownloadTask) {
         enqueueInternal(task, forceRefresh = false)
@@ -61,6 +70,7 @@ class DownloadWorkScheduler(
         require(taskId.isNotBlank())
         controlStore.markPaused(taskId)
         workManager.cancelUniqueWork(uniqueWorkName(taskId))
+        persistControlStatus(taskId, DownloadStatus.PAUSED)
     }
 
     fun resume(record: DownloadRecord) {
@@ -72,6 +82,33 @@ class DownloadWorkScheduler(
         require(taskId.isNotBlank())
         controlStore.clearPaused(taskId)
         workManager.cancelUniqueWork(uniqueWorkName(taskId))
+        persistControlStatus(taskId, DownloadStatus.CANCELLED)
+    }
+
+    /**
+     * WorkManager cancellation alone does not update the app's Room history.
+     * Persist the user-requested state so the UI immediately exposes the right
+     * controls, including cancellation of a task that was already paused.
+     */
+    private fun persistControlStatus(taskId: String, target: DownloadStatus) {
+        val store = repository ?: return
+        controlStateScope.launch {
+            val current = runCatching { store.get(taskId) }.getOrNull() ?: return@launch
+            val pauseRequestStillCurrent = controlStore.isPaused(taskId) == (target == DownloadStatus.PAUSED)
+            if (!pauseRequestStillCurrent) return@launch
+            if (current.status == DownloadStatus.COMPLETED || current.status == DownloadStatus.FAILED) return@launch
+            if (current.status == DownloadStatus.CANCELLED && target == DownloadStatus.PAUSED) return@launch
+            runCatching {
+                store.upsert(
+                    current.copy(
+                        status = target,
+                        failureCode = null,
+                        failureDetail = null,
+                        updatedAtEpochMs = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
     }
 
     fun clearControl(taskId: String) = controlStore.clearPaused(taskId)
