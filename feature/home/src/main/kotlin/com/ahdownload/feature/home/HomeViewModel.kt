@@ -930,31 +930,58 @@ class HomeViewModel(
                             !enqueueCandidate.format.hasAudio
                         ) {
                             var audioCandidatesChecked = 0
-                            val validatedAudio = validateCompanionAudioCandidates(
-                                candidates = companionAudioCandidatesToTry,
-                            ) { audioOption ->
-                                audioCandidatesChecked++
-                                resolver.validate(audioOption, validationOperationId).also { audioResult ->
-                                    if (audioResult is CandidateValidationResult.Invalid) {
-                                        logger.log(
-                                            DiagnosticLevel.WARNING,
-                                            "MUX_AUDIO_CANDIDATE_REJECTED",
-                                            "رُفض مصدر صوت مرافق؛ ستتم تجربة المصدر التالي إن وُجد",
-                                            "download.validate.audio",
-                                            mapOf(
-                                                "video_candidate_id" to enqueueCandidate.id,
-                                                "audio_candidate_id" to audioOption.id,
-                                                "audio_candidates_checked" to audioCandidatesChecked.toString(),
-                                                "operation_id" to validationOperationId,
-                                                "validation_result" to "invalid",
-                                            ),
-                                            null,
-                                        )
+                            val validatedAudio = if (enqueueCandidate.companionAudioSourceUrl.isNullOrBlank()) {
+                                validateCompanionAudioCandidates(
+                                    candidates = companionAudioCandidatesToTry,
+                                ) { audioOption ->
+                                    audioCandidatesChecked++
+                                    resolver.validate(audioOption, validationOperationId).also { audioResult ->
+                                        if (audioResult is CandidateValidationResult.Invalid) {
+                                            logger.log(
+                                                DiagnosticLevel.WARNING,
+                                                "MUX_AUDIO_CANDIDATE_REJECTED",
+                                                "رُفض مصدر صوت مرافق؛ ستتم تجربة المصدر التالي إن وُجد",
+                                                "download.validate.audio",
+                                                mapOf(
+                                                    "video_candidate_id" to enqueueCandidate.id,
+                                                    "audio_candidate_id" to audioOption.id,
+                                                    "audio_candidates_checked" to audioCandidatesChecked.toString(),
+                                                    "operation_id" to validationOperationId,
+                                                    "validation_result" to "invalid",
+                                                ),
+                                                null,
+                                            )
+                                        }
                                     }
                                 }
+                            } else {
+                                null
                             }
 
-                            if (validatedAudio == null) {
+                            if (validatedAudio == null && canUseVideoOnlyFallback(
+                                    enqueueCandidate,
+                                    companionAudioCandidatesToTry,
+                                )
+                            ) {
+                                // The card explicitly labeled this as a video-only fallback.
+                                // Do not block it merely because no audio companion was discovered.
+                                logger.log(
+                                    DiagnosticLevel.INFO,
+                                    "VIDEO_ONLY_FALLBACK_ALLOWED",
+                                    "لا يوجد مسار صوت مرافق؛ سيُنزّل الفيديو كما هو دون دمج الصوت.",
+                                    "download.prepare",
+                                    mapOf(
+                                        "video_candidate_id" to enqueueCandidate.id,
+                                        "audio_candidate_count" to "0",
+                                        "output_mode" to "VIDEO_ONLY",
+                                        "operation_id" to validationOperationId,
+                                    ),
+                                    null,
+                                )
+                            } else if (
+                                validatedAudio == null &&
+                                enqueueCandidate.companionAudioSourceUrl.isNullOrBlank()
+                            ) {
                                 val audioCandidateCount = companionAudioCandidatesToTry.size
                                 _uiState.value = _uiState.value.copy(
                                     validatingCandidateId = null,
@@ -975,15 +1002,15 @@ class HomeViewModel(
                                     null,
                                 )
                                 return@launch
+                            } else if (validatedAudio != null) {
+                                val audioValidation = validatedAudio.validation
+                                enqueueCandidate = enqueueCandidate.copy(
+                                    companionAudioSourceUrl = audioValidation.finalUrl,
+                                    companionAudioRequestHeaders = audioValidation.candidate.requestHeaders,
+                                    companionAudioSessionCookieHost = audioValidation.candidate.sessionCookieHost,
+                                    companionAudioStreamingManifest = audioValidation.candidate.streamingManifest,
+                                )
                             }
-
-                            val audioValidation = validatedAudio.validation
-                            enqueueCandidate = enqueueCandidate.copy(
-                                companionAudioSourceUrl = audioValidation.finalUrl,
-                                companionAudioRequestHeaders = audioValidation.candidate.requestHeaders,
-                                companionAudioSessionCookieHost = audioValidation.candidate.sessionCookieHost,
-                                companionAudioStreamingManifest = audioValidation.candidate.streamingManifest,
-                            )
                         }
                         val queued = if (extractAudio) {
                             val format = audioOutputFormat ?: run {
