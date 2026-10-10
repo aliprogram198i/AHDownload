@@ -27,6 +27,7 @@ android {
 
 dependencies {
     implementation(platform(libs.compose.bom))
+    implementation("androidx.compose.animation:animation")
     implementation(project(":core:designsystem"))
     implementation(project(":core:common"))
     implementation(project(":domain"))
