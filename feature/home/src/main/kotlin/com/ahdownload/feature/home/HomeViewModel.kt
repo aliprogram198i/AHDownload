@@ -1113,7 +1113,7 @@ class HomeViewModel(
             .filter {
                 it.format.kind == MediaKind.Video &&
                     it.format.hasVideo &&
-                    it.format.hasAudio
+                    (it.format.hasAudio || it.id == "direct")
             }
             .maxWithOrNull(
                 compareBy<MediaCandidate> { it.format.height ?: 0 }
@@ -1166,7 +1166,7 @@ class HomeViewModel(
                     audioOutputFormat = resolvedOutputFormat,
                 )
             }
-            format.kind == MediaKind.Video && format.hasVideo && format.hasAudio -> {
+            format.kind == MediaKind.Video && format.hasVideo && (format.hasAudio || candidate.id == "direct") -> {
                 logger.log(
                     DiagnosticLevel.INFO,
                     "AUDIO_ONLY_SOURCE_SELECTED",
@@ -1177,6 +1177,7 @@ class HomeViewModel(
                         "source_mode" to "EXTRACT_FROM_VIDEO",
                         "source_quality" to (format.height?.let { it.toString() + "p" } ?: "video"),
                         "source_audio_codec" to (format.audioCodec ?: "unknown"),
+                        "source_audio_track_confirmed" to format.hasAudio.toString(),
                         "output_format" to resolvedOutputFormat.name,
                     ),
                     null,
