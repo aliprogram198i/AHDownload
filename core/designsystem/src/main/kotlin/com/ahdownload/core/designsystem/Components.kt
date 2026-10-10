@@ -260,16 +260,28 @@ fun AHStatusPill(
 
 @Composable
 fun AHProgressBar(
-    progress: Float,
+    progress: Float?,
     modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+    trackColor: Color = MaterialTheme.colorScheme.surfaceVariant,
 ) {
-    LinearProgressIndicator(
-        progress = { progress.coerceIn(0f, 1f) },
-        modifier = modifier
-            .fillMaxWidth()
-            .height(7.dp)
-            .clip(RoundedCornerShape(50)),
-        trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        color = MaterialTheme.colorScheme.primary,
-    )
+    val progressModifier = modifier
+        .fillMaxWidth()
+        .height(7.dp)
+        .clip(RoundedCornerShape(50))
+
+    if (progress == null) {
+        LinearProgressIndicator(
+            modifier = progressModifier,
+            color = color,
+            trackColor = trackColor,
+        )
+    } else {
+        LinearProgressIndicator(
+            progress = { progress.coerceIn(0f, 1f) },
+            modifier = progressModifier,
+            trackColor = trackColor,
+            color = color,
+        )
+    }
 }
