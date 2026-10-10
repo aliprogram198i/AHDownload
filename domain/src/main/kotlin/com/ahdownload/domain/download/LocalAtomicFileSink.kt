@@ -1,60 +1,110 @@
 package com.ahdownload.domain.download
 
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
 import java.io.OutputStream
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import kotlin.io.path.absolute
-import kotlin.io.path.createDirectories
 
+/**
+ * File-backed atomic download sink compatible with Android API 24+.
+ *
+ * The temporary file is created beside the destination so a rename stays on the
+ * same filesystem. The copy/backup path is only used when the platform refuses
+ * that rename (for example, when replacing an existing destination).
+ */
 class LocalAtomicFileSink : AtomicFileSink {
 
     override suspend fun openTemporary(destinationPath: String, append: Boolean): OutputStream {
-        val destination = Path.of(destinationPath).absolute()
-        destination.parent?.createDirectories()
-
-        val temporary = temporaryPath(destination)
-        if (!append) {
-            Files.deleteIfExists(temporary)
-        } else if (!Files.exists(temporary)) {
-            throw IllegalStateException("Temporary download file does not exist")
+        val destination = File(destinationPath).absoluteFile
+        val parent = destination.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
+            throw IOException("Unable to create download directory")
         }
 
-        return if (append) {
-            Files.newOutputStream(temporary, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND)
-        } else {
-            Files.newOutputStream(temporary)
+        val temporary = temporaryFile(destination)
+        if (!append && temporary.exists() && !temporary.delete()) {
+            throw IOException("Unable to reset temporary download file")
         }
+        if (append && !temporary.isFile) {
+            throw IOException("Temporary download file does not exist")
+        }
+        return FileOutputStream(temporary, append)
     }
 
     override suspend fun temporarySize(destinationPath: String): Long {
-        val temporary = temporaryPath(Path.of(destinationPath).absolute())
-        return if (Files.exists(temporary)) Files.size(temporary) else 0L
+        val temporary = temporaryFile(File(destinationPath).absoluteFile)
+        return if (temporary.isFile) temporary.length() else 0L
     }
 
     override suspend fun commit(destinationPath: String) {
-        val destination = Path.of(destinationPath).absolute()
-        val temporary = temporaryPath(destination)
+        val destination = File(destinationPath).absoluteFile
+        val temporary = temporaryFile(destination)
+        if (!temporary.isFile) {
+            throw IOException("Temporary download file is missing")
+        }
+
+        // Make completed bytes durable before publishing the new filename.
+        FileOutputStream(temporary, true).use { it.fd.sync() }
+
+        if (temporary.renameTo(destination)) return
+
+        val parent = destination.parentFile
+        if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory) {
+            throw IOException("Unable to create download directory")
+        }
+        val staging = File(parent, ".${destination.name}.commit")
+        val backup = File(parent, ".${destination.name}.backup")
+        if (staging.exists() && !staging.delete()) {
+            throw IOException("Unable to clear staged download output")
+        }
+
+        FileInputStream(temporary).use { input ->
+            FileOutputStream(staging, false).use { output ->
+                input.copyTo(output, COPY_BUFFER_SIZE)
+                output.flush()
+                output.fd.sync()
+            }
+        }
+
+        var destinationBackedUp = false
         try {
-            Files.move(
-                temporary,
-                destination,
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-            Files.move(
-                temporary,
-                destination,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
+            if (destination.exists()) {
+                if (backup.exists() && !backup.delete()) {
+                    throw IOException("Unable to clear previous destination backup")
+                }
+                if (!destination.renameTo(backup)) {
+                    throw IOException("Unable to preserve the previous destination")
+                }
+                destinationBackedUp = true
+            }
+
+            if (!staging.renameTo(destination)) {
+                throw IOException("Unable to publish completed download")
+            }
+            if (destinationBackedUp) backup.delete()
+            temporary.delete()
+        } catch (error: Throwable) {
+            if (destinationBackedUp && !destination.exists()) {
+                backup.renameTo(destination)
+            }
+            throw error
+        } finally {
+            if (staging.exists()) staging.delete()
         }
     }
 
     override suspend fun discard(destinationPath: String) {
-        Files.deleteIfExists(temporaryPath(Path.of(destinationPath).absolute()))
+        val temporary = temporaryFile(File(destinationPath).absoluteFile)
+        if (temporary.exists() && !temporary.delete()) {
+            throw IOException("Unable to discard temporary download file")
+        }
     }
 
-    private fun temporaryPath(destination: Path): Path =
-        destination.resolveSibling(destination.fileName.toString() + ".part")
+    private fun temporaryFile(destination: File): File =
+        File(destination.parentFile, destination.name + ".part")
+
+    private companion object {
+        const val COPY_BUFFER_SIZE = 64 * 1024
+    }
 }
