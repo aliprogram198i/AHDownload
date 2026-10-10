@@ -345,7 +345,7 @@ fun SettingsRoute(
                                 fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                "المساحة المتاحة على وحدة التخزين المستخدمة من AHDownload.",
+                                "المساحة الحرة على وحدة التخزين الافتراضية. قد تختلف سعة المجلد المخصص.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -383,13 +383,16 @@ fun SettingsRoute(
                         )
                     }
                     Text(
-                        if (storageInfo.isLow) {
-                            "المساحة منخفضة. قد تفشل الملفات الكبيرة."
-                        } else {
-                            "التخزين ضمن النطاق الطبيعي."
+                        when {
+                            location.isCustom ->
+                                "المجلد المخصص قد يستخدم وحدة تخزين أخرى؛ الأرقام أعلاه لا تؤكد سعته."
+                            storageInfo.isLow ->
+                                "المساحة منخفضة. سيُحذّر التطبيق أو يوقف التنزيل قبل النقل عند الحاجة."
+                            else ->
+                                "التخزين الافتراضي ضمن النطاق الطبيعي."
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (storageInfo.isLow) {
+                        color = if (!location.isCustom && storageInfo.isLow) {
                             MaterialTheme.colorScheme.error
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
