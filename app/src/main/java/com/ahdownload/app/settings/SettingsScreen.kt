@@ -273,7 +273,7 @@ fun SettingsRoute(
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (location.isAccessible) {
-                                    MaterialTheme.colorScheme.primary
+                                    MaterialTheme.colorScheme.tertiary
                                 } else {
                                     MaterialTheme.colorScheme.error
                                 },
@@ -476,7 +476,7 @@ fun SettingsRoute(
                                             "الهوية مفعّلة",
                                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFF21D9FF),
+                                            color = Color(0xFFFF791A),
                                         )
                                     }
                                 }
@@ -555,7 +555,7 @@ fun SettingsRoute(
                             },
                             contentDescription = null,
                             tint = if (latestError == null) {
-                                MaterialTheme.colorScheme.primary
+                                MaterialTheme.colorScheme.tertiary
                             } else {
                                 MaterialTheme.colorScheme.error
                             },
