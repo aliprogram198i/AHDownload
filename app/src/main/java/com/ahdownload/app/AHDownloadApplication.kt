@@ -7,6 +7,7 @@ import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.app.download.DownloadWorkScheduler
 import com.ahdownload.app.download.FileDownloadRepository
+import com.ahdownload.app.performance.PerformanceLogStore
 
 class AHDownloadApplication : Application() {
     val diagnosticEventStore: DiagnosticEventStore by lazy {
@@ -23,6 +24,10 @@ class AHDownloadApplication : Application() {
 
     val downloadRepository: FileDownloadRepository by lazy {
         FileDownloadRepository(this)
+    }
+
+    val performanceLogStore: PerformanceLogStore by lazy {
+        PerformanceLogStore(this)
     }
 
     val downloadWorkScheduler: DownloadWorkScheduler by lazy {
