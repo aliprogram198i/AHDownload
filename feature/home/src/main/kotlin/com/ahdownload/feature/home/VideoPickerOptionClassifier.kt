@@ -64,6 +64,23 @@ internal fun rankedCompanionAudioCandidates(
     )
     .toList()
 
+/**
+ * Allows a selected video-only fallback to be downloaded without audio only when
+ * no embedded, pre-paired, or resolvable companion-audio source is available.
+ * A candidate with a possible companion must still pass audio validation.
+ */
+internal fun canUseVideoOnlyFallback(
+    candidate: MediaCandidate,
+    companionAudioCandidates: List<MediaCandidate>,
+): Boolean {
+    val format = candidate.format
+    return format.kind == MediaKind.Video &&
+        format.hasVideo &&
+        !format.hasAudio &&
+        candidate.companionAudioSourceUrl.isNullOrBlank() &&
+        rankedCompanionAudioCandidates(companionAudioCandidates).isEmpty()
+}
+
 internal data class ValidatedCompanionAudioSource(
     val candidate: MediaCandidate,
     val validation: CandidateValidationResult.Valid,
