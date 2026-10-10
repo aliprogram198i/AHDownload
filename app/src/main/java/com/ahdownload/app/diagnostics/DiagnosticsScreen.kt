@@ -165,7 +165,7 @@ private fun DiagnosticsScreen(
                     DiagnosticIconButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.iconbutton.01",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "DIAGNOSTICS.iconbutton.01",
             disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("DIAGNOSTICS", "back_button", "back")
                         onBack()
@@ -177,7 +177,7 @@ private fun DiagnosticsScreen(
                     DiagnosticIconButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.iconbutton.02",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "DIAGNOSTICS.iconbutton.02",
             disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_latest_incident")
@@ -190,14 +190,14 @@ private fun DiagnosticsScreen(
                     DiagnosticIconButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.iconbutton.03",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "DIAGNOSTICS.iconbutton.03",
             disabledReason = "callsite_precondition_not_explicit",onClick = onRefresh) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                     }
                     DiagnosticIconButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.iconbutton.04",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "DIAGNOSTICS.iconbutton.04",
             disabledReason = "callsite_precondition_not_explicit",
                         onClick = { showClearConfirmation = true },
                         enabled = logs.isNotEmpty(),
@@ -392,7 +392,7 @@ private fun DiagnosticsScreen(
                     DiagnosticOutlinedButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.outlinedbutton.01",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "إخفاء التفاصيل التقنية",
             disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             showTechnical = !showTechnical
@@ -455,7 +455,7 @@ private fun DiagnosticsScreen(
                 DiagnosticButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.button.01",
-            trackingLabel = "button_control",
+            trackingLabel = "مسح",
             disabledReason = "callsite_precondition_not_explicit",
                     onClick = {
                         showClearConfirmation = false
@@ -469,7 +469,7 @@ private fun DiagnosticsScreen(
                 DiagnosticOutlinedButton(
             trackingScreen = "DIAGNOSTICS",
             trackingId = "DIAGNOSTICS.outlinedbutton.02",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "إلغاء",
             disabledReason = "callsite_precondition_not_explicit",onClick = { showClearConfirmation = false }) {
                     Text("إلغاء")
                 }

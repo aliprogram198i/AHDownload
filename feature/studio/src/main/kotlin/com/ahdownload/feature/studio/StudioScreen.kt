@@ -117,7 +117,7 @@ fun StudioRoute(
                     DiagnosticIconButton(
             trackingScreen = "STUDIO",
             trackingId = "STUDIO.iconbutton.01",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "STUDIO.iconbutton.01",
             disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("STUDIO", "back_button", "back")
                         onBack()
@@ -190,7 +190,7 @@ fun StudioRoute(
                         DiagnosticButton(
             trackingScreen = "STUDIO",
             trackingId = "STUDIO.button.01",
-            trackingLabel = "button_control",
+            trackingLabel = "فتح الملف",
             disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("STUDIO", "open_button", "open")
@@ -205,7 +205,7 @@ fun StudioRoute(
                         DiagnosticOutlinedButton(
             trackingScreen = "STUDIO",
             trackingId = "STUDIO.outlinedbutton.01",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "مشاركة",
             disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("STUDIO", "share_button", "share")
@@ -255,7 +255,7 @@ fun StudioRoute(
                         DiagnosticButton(
             trackingScreen = "STUDIO",
             trackingId = "STUDIO.button.02",
-            trackingLabel = "button_control",
+            trackingLabel = "جارٍ استخراج الصوت...",
             disabledReason = "callsite_precondition_not_explicit",
                             enabled = !extracting,
                             onClick = {

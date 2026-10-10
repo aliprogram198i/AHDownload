@@ -137,7 +137,7 @@ fun SettingsRoute(
                     DiagnosticIconButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.iconbutton.01",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "SETTINGS.iconbutton.01",
             disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("SETTINGS", "back_button", "back")
                         onBack()
@@ -209,7 +209,7 @@ fun SettingsRoute(
                             DiagnosticFilterChip(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.filterchip.01",
-            trackingLabel = "filterchip_control",
+            trackingLabel = "SETTINGS.filterchip.01",
             disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.videoQuality == quality,
                                 onClick = {
@@ -226,7 +226,7 @@ fun SettingsRoute(
                             DiagnosticFilterChip(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.filterchip.02",
-            trackingLabel = "filterchip_control",
+            trackingLabel = "SETTINGS.filterchip.02",
             disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.audioBitrate == bitrate,
                                 onClick = {
@@ -279,7 +279,7 @@ fun SettingsRoute(
                     DiagnosticButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.button.01",
-            trackingLabel = "button_control",
+            trackingLabel = "تغيير مجلد التنزيل",
             disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "change_folder_button", "pick_folder")
@@ -294,7 +294,7 @@ fun SettingsRoute(
                         DiagnosticOutlinedButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.outlinedbutton.01",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "العودة للمجلد الافتراضي",
             disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "reset_default_button", "reset")
@@ -307,7 +307,7 @@ fun SettingsRoute(
                         DiagnosticOutlinedButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.outlinedbutton.02",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "إنشاء مجلد داخل المسار",
             disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "create_folder_button", "open_dialog")
@@ -348,7 +348,7 @@ fun SettingsRoute(
                         DiagnosticIconButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.iconbutton.02",
-            trackingLabel = "iconbutton_control",
+            trackingLabel = "SETTINGS.iconbutton.02",
             disabledReason = "callsite_precondition_not_explicit",
                             onClick = {
                                 uiTraceLogger.interaction("SETTINGS", "storage_refresh", "refresh")
@@ -424,7 +424,7 @@ fun SettingsRoute(
                             DiagnosticFilterChip(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.filterchip.03",
-            trackingLabel = "filterchip_control",
+            trackingLabel = "SETTINGS.filterchip.03",
             disabledReason = "callsite_precondition_not_explicit",
                                 selected = themeMode == mode,
                                 onClick = {
@@ -541,7 +541,7 @@ fun SettingsRoute(
                     DiagnosticOutlinedButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.outlinedbutton.03",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "فتح مركز التشخيص",
             disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "diagnostics_button", "open_diagnostics")
@@ -609,7 +609,7 @@ fun SettingsRoute(
                 DiagnosticButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.button.02",
-            trackingLabel = "button_control",
+            trackingLabel = "إنشاء",
             disabledReason = "callsite_precondition_not_explicit",
                     enabled = folderName.trim().isNotBlank(),
                     onClick = {
@@ -636,7 +636,7 @@ fun SettingsRoute(
                 DiagnosticOutlinedButton(
             trackingScreen = "SETTINGS",
             trackingId = "SETTINGS.outlinedbutton.05",
-            trackingLabel = "outlinedbutton_control",
+            trackingLabel = "إلغاء",
             disabledReason = "callsite_precondition_not_explicit",onClick = { showFolderDialog = false }) {
                     Text("إلغاء")
                 }
