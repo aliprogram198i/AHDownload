@@ -3,7 +3,6 @@ package com.ahdownload.app.performance
 import android.content.Context
 import android.os.SystemClock
 import com.ahdownload.domain.analyzer.LinkAnalyzer
-import com.ahdownload.domain.download.DownloadFailure
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadTask
 import com.google.gson.Gson
@@ -94,7 +93,6 @@ class PerformanceLogStore(context: Context) {
                 val delta = currentBytes - previousBytes
                 if (elapsed >= MIN_SPEED_SAMPLE_MS && delta >= 0L) {
                     val speed = PerformanceMetrics.bytesPerSecond(delta, elapsed)
-                    session.currentBytesPerSecond = speed
                     session.peakBytesPerSecond = maxOf(session.peakBytesPerSecond, speed)
                     session.lastSampleBytes = currentBytes
                     session.lastSampleElapsedMs = nowElapsed
@@ -208,7 +206,6 @@ class PerformanceLogStore(context: Context) {
         internal var responseMs: Long? = null
         internal var lastSampleBytes: Long? = null
         internal var lastSampleElapsedMs: Long? = null
-        internal var currentBytesPerSecond: Long = 0L
         internal var peakBytesPerSecond: Long = 0L
     }
 
