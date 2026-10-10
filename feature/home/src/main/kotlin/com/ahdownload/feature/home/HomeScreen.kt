@@ -1338,7 +1338,12 @@ private fun FavoriteLinksCard(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelect(item) },
+                        .tracedClickable(
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.clickable.05",
+                            trackingLabel = "favorite_link_item",
+                            onClick = { onSelect(item) },
+                        ),
                     shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
