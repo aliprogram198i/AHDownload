@@ -28,6 +28,8 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.app.settings.ThemePreferenceStore
+import com.ahdownload.app.performance.PerformanceLogRoute
+import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.designsystem.AHTheme
 import com.ahdownload.core.designsystem.LocalDiagnosticUiTraceLogger
@@ -53,6 +55,7 @@ private enum class RootDestination {
     Settings,
     Studio,
     UiDiagnostics,
+    Performance,
 }
 
 class MainActivity : ComponentActivity() {
@@ -92,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     },
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
+                    performanceLogStore = applicationServices.performanceLogStore,
                     onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
                         requestNotificationPermissionIfNeeded()
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
@@ -343,6 +347,7 @@ class MainActivity : ComponentActivity() {
 private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
+    performanceLogStore: PerformanceLogStore,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
@@ -431,6 +436,16 @@ private fun AHRoot(
             activeDownloads = activeDownloads,
             preferencesProvider = downloadPreferencesProvider,
             favoriteRepository = favoriteRepository,
+            onAnalysisPerformance = { sample ->
+                performanceLogStore.recordAnalysis(
+                    operationId = sample.operationId,
+                    platform = sample.platform,
+                    startedAtEpochMs = sample.startedAtEpochMs,
+                    durationMs = sample.durationMs,
+                    outcome = sample.outcome,
+                    candidateCount = sample.candidateCount,
+                )
+            },
         )
         RootDestination.Downloads -> DownloadsRoute(
             repository = downloadRepository,
@@ -470,6 +485,8 @@ private fun AHRoot(
         RootDestination.Settings -> SettingsRoute(
             store = downloadLocationStore,
             diagnosticLogger = logger,
+            performanceLogStore = performanceLogStore,
+            onOpenPerformanceLog = { push(RootDestination.Performance) },
             themeMode = themeMode,
             onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
@@ -479,6 +496,10 @@ private fun AHRoot(
             onNavigateDownloads = { root(RootDestination.Downloads) },
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
+        )
+        RootDestination.Performance -> PerformanceLogRoute(
+            store = performanceLogStore,
+            onBack = ::popOrHome,
         )
         RootDestination.Diagnostics -> DiagnosticsRoute(
             logger = logger,
