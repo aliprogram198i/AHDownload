@@ -452,7 +452,7 @@ fun SettingsRoute(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFF0B0F19),
+                            color = Color(0xFF09090B),
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -463,17 +463,17 @@ fun SettingsRoute(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        "Dark Tech",
+                                        "Orange Forge",
                                         style = MaterialTheme.typography.titleSmall,
                                         color = Color(0xFFF2F7FF),
                                         modifier = Modifier.weight(1f),
                                     )
                                     Surface(
                                         shape = RoundedCornerShape(50),
-                                        color = Color(0xFF21D9FF).copy(alpha = 0.14f),
+                                        color = Color(0xFFFF791A).copy(alpha = 0.14f),
                                     ) {
                                         Text(
-                                            "Engine Ready",
+                                            "الهوية مفعّلة",
                                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = Color(0xFF21D9FF),
@@ -481,9 +481,9 @@ fun SettingsRoute(
                                     }
                                 }
                                 Text(
-                                    "Obsidian عميق مع Cyan وIndigo وإضاءات خفيفة بدون تشتيت.",
+                                    "أسود فحمي مع لمسات برتقالية واضحة وتباين مريح دون تشتيت.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFA9B6C7),
+                                    color = Color(0xFFA1A1AA),
                                 )
                             }
                         }
