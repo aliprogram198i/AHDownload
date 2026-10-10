@@ -253,6 +253,60 @@ class DiagnosticReportFormatterTest {
     }
 
     @Test
+    fun unavailableYouTubePlaybackDoesNotGetMisdiagnosedAsPoTokenOnly() {
+        val session = "session-unavailable"
+        val operation = "op-unavailable"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "youtube.gvs_strategy",
+                level = DiagnosticLevel.WARNING,
+                reason = "browser_gvs_media_observed_without_po_token",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "browser_media_observed" to "3",
+                    "po_token_observed" to "false",
+                ),
+            ).copy(operation = "youtube.resolve"),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "youtube_player_no_candidates",
+                level = DiagnosticLevel.WARNING,
+                reason = "YouTube rejected playback: Video unavailable",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "failure_code" to "ResolverUnavailable",
+                ),
+            ).copy(operation = "youtube.resolve"),
+            event(
+                time = 3_000L,
+                sequence = "3",
+                type = "RESOLVER",
+                level = DiagnosticLevel.ERROR,
+                reason = "ResolverUnavailable",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "failure_code" to "ResolverUnavailable",
+                ),
+            ).copy(operation = "home.resolve"),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("classification=MEDIA_RESOLUTION"))
+        assertTrue(report.contains("action=INSPECT_YOUTUBE_PLAYABILITY_OR_VIDEO_ACCESS"))
+        assertTrue(!report.contains("action=INSPECT_YOUTUBE_PO_TOKEN_OR_CLIENT_POLICY"))
+    }
+
+    @Test
     fun successfulSmartCenterUiFlowHasNoFalseRootCause() {
         val session = "session-ok"
         val operation = "op-ok"
