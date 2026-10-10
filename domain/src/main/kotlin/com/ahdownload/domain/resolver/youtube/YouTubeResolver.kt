@@ -235,9 +235,12 @@ class YouTubeResolver(
             throwable = null,
         )
 
-        val listedBrowserUrls = (snapshot.videoUrls + snapshot.audioUrls).distinct().size
+        val observedCandidateUrls = (snapshot.videoUrls + snapshot.audioUrls).distinct()
+        val eligibleBrowserUrls = observedCandidateUrls.count { url ->
+            isDirectHttpMedia(url) && hasDirectMediaMetadata(url)
+        }
         val unclassifiedBrowserRequestCount =
-            (snapshot.browserMediaObservedCount - listedBrowserUrls).coerceAtLeast(0)
+            (snapshot.browserMediaObservedCount - eligibleBrowserUrls).coerceAtLeast(0)
         if (unclassifiedBrowserRequestCount > 0) {
             logger.log(
                 DiagnosticLevel.WARNING,
@@ -246,7 +249,7 @@ class YouTubeResolver(
                 operation = "youtube.resolve",
                 context = diagnosticContext(videoId, request.operationId) + mapOf(
                     "observed_request_count" to snapshot.browserMediaObservedCount.toString(),
-                    "candidate_like_url_count" to listedBrowserUrls.toString(),
+                    "eligible_direct_media_url_count" to eligibleBrowserUrls.toString(),
                     "excluded_unclassified_request_count" to unclassifiedBrowserRequestCount.toString(),
                 ),
                 throwable = null,
