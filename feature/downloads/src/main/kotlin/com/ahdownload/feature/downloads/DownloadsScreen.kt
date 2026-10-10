@@ -680,58 +680,58 @@ private fun DownloadsScreen(
                         }
                         items(section.records, key = { it.task.id }) { record ->
                             DownloadRecordCard(
-                            record = record,
-                            fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
-                            transferStats = transferStats[record.task.id],
-                            performanceSummary = performanceSummaries[record.task.id],
-                            onPause = {
-                                uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
-                                onPause(record)
-                            },
-                            onResume = {
-                                uiTraceLogger.interaction("DOWNLOADS", "resume_control", "resume")
-                                onResume(record)
-                            },
-                            onCancel = {
-                                uiTraceLogger.interaction("DOWNLOADS", "cancel_control", "cancel")
-                                onCancel(record)
-                            },
-                            onRetry = {
-                                uiTraceLogger.interaction("DOWNLOADS", "retry_control", "retry")
-                                onRetry(record)
-                            },
-                            onDeleteHistory = {
-                                pendingDelete = record
-                            },
-                            onRenameDownload = {
-                                renameValue = record.task.displayName.orEmpty().substringBeforeLast('.', record.task.displayName.orEmpty())
-                                pendingRename = record
-                            },
-                            onOpenDownload = {
-                                uiTraceLogger.interaction("DOWNLOADS", "open_control", "open")
-                                onOpenDownload(record)
-                            },
-                            onShareDownload = {
-                                uiTraceLogger.interaction("DOWNLOADS", "share_control", "share")
-                                onShareDownload(record)
-                            },
-                            onDeleteDownloadFile = {
-                                val deleted = onDeleteDownloadFile(record)
-                                feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
-                            },
-                            onOpenDownloadFolder = {
-                                onOpenDownloadFolder(record)
-                            },
-                            onOpenStudio = {
-                                uiTraceLogger.interaction("DOWNLOADS", "studio_control", "open_studio")
-                                onOpenStudio(record)
-                            },
-                            favorite = FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites,
-                            onToggleFavorite = {
-                                uiTraceLogger.interaction("DOWNLOADS", "favorite_control", "toggle")
-                                onToggleFavorite(record)
-                            },
-                        )
+                                record = record,
+                                fileAvailable = record.status != DownloadStatus.COMPLETED || record.task.id !in missingFileIds,
+                                transferStats = transferStats[record.task.id],
+                                performanceSummary = performanceSummaries[record.task.id],
+                                onPause = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "pause_control", "pause")
+                                    onPause(record)
+                                },
+                                onResume = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "resume_control", "resume")
+                                    onResume(record)
+                                },
+                                onCancel = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "cancel_control", "cancel")
+                                    onCancel(record)
+                                },
+                                onRetry = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "retry_control", "retry")
+                                    onRetry(record)
+                                },
+                                onDeleteHistory = {
+                                    pendingDelete = record
+                                },
+                                onRenameDownload = {
+                                    renameValue = record.task.displayName.orEmpty().substringBeforeLast('.', record.task.displayName.orEmpty())
+                                    pendingRename = record
+                                },
+                                onOpenDownload = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "open_control", "open")
+                                    onOpenDownload(record)
+                                },
+                                onShareDownload = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "share_control", "share")
+                                    onShareDownload(record)
+                                },
+                                onDeleteDownloadFile = {
+                                    val deleted = onDeleteDownloadFile(record)
+                                    feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
+                                },
+                                onOpenDownloadFolder = {
+                                    onOpenDownloadFolder(record)
+                                },
+                                onOpenStudio = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "studio_control", "open_studio")
+                                    onOpenStudio(record)
+                                },
+                                favorite = FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites,
+                                onToggleFavorite = {
+                                    uiTraceLogger.interaction("DOWNLOADS", "favorite_control", "toggle")
+                                    onToggleFavorite(record)
+                                },
+                            )
                         }
                     }
                 }
