@@ -1546,8 +1546,8 @@ private fun UnifiedDownloadResultCard(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1558,7 +1558,7 @@ private fun UnifiedDownloadResultCard(
                     url = thumbnailUrl,
                     contentDescription = "الصورة المصغرة: " + title,
                     modifier = Modifier
-                        .size(width = 116.dp, height = 84.dp)
+                        .size(width = 104.dp, height = 74.dp)
                         .clip(RoundedCornerShape(16.dp)),
                 )
 
@@ -1568,12 +1568,12 @@ private fun UnifiedDownloadResultCard(
                 ) {
                     Text(
                         title,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 3,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        platform?.let { AHStatusPill(platformLabel(it), success = true) }
+                        platform?.let { AHStatusPill(platformLabel(it)) }
                         durationMs?.let { AHStatusPill(formatDuration(it)) }
                     }
                 }
@@ -1618,52 +1618,39 @@ private fun UnifiedDownloadResultCard(
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Icon(
-                        Icons.Rounded.CheckCircle,
+                        imageVector = when {
+                            allVideoOptions.isNotEmpty() || directAudioAvailable -> Icons.Rounded.CheckCircle
+                            videoOnlyFallbackOptions.isNotEmpty() -> Icons.Rounded.VideoFile
+                            else -> Icons.Rounded.ErrorOutline
+                        },
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (allVideoOptions.isNotEmpty() || directAudioAvailable || videoOnlyFallbackOptions.isNotEmpty()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
                         modifier = Modifier.size(18.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             when {
-                                allVideoOptions.isNotEmpty() || audioAvailable -> "النتيجة جاهزة"
-                                videoOnlyFallbackOptions.isNotEmpty() -> "يتوفر فيديو فقط"
-                                else -> "بيانات المصدر غير مكتملة"
+                                allVideoOptions.isNotEmpty() || directAudioAvailable -> "خيارات التنزيل جاهزة"
+                                videoOnlyFallbackOptions.isNotEmpty() -> "الفيديو متاح فقط"
+                                audioAvailable -> "مصدر الصوت يحتاج تحققًا"
+                                else -> "تعذر تأكيد خيارات التنزيل"
                             },
                             style = MaterialTheme.typography.labelLarge,
                         )
                         Text(
                             buildList {
-                                val knownVideoQualities = allVideoOptions.count {
-                                    (it.candidate.format.height ?: 0) > 0
+                                if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
+                                else if (videoOnlyFallbackOptions.isNotEmpty()) add("${videoOnlyFallbackOptions.size} خيار فيديو فقط")
+                                when {
+                                    directAudioAvailable || muxedVideoAvailable -> add("${AudioOutputFormat.entries.size} صيغة صوت")
+                                    directVideoSourceAvailable -> add("استخراج الصوت يحتاج تحققًا")
+                                    showAudioSection -> add("لا يوجد مصدر صوت موثوق")
                                 }
-                                val unknownVideoQualities = allVideoOptions.size - knownVideoQualities
-                                val unresolvedVideoSources = (
-                                    primaryOptions.count {
-                                        it.candidate.format.kind == MediaKind.Video &&
-                                            it.candidate.format.hasVideo
-                                    } - allVideoOptions.size - videoOnlyFallbackOptions.size
-                                ).coerceAtLeast(0)
-                                if (knownVideoQualities > 0) add("$knownVideoQualities خيار فيديو + صوت")
-                                if (unknownVideoQualities > 0) add("$unknownVideoQualities خيار فيديو غير محدد الجودة")
-                                if (videoOnlyFallbackOptions.isNotEmpty()) {
-                                    add("${videoOnlyFallbackOptions.size} خيار فيديو فقط · الصوت غير مؤكد")
-                                }
-                                if (unresolvedVideoSources > 0) add("$unresolvedVideoSources مصدر فيديو ببيانات غير مكتملة")
-                                if (audioAvailable) {
-                                    if (audioOptions.isNotEmpty()) {
-                                        add("${audioOptions.size} مصدر صوت")
-                                    } else if (muxedVideoAvailable) {
-                                        add("الصوت متاح ضمن الفيديو")
-                                    }
-                                    add("${AudioOutputFormat.entries.size} صيغة إخراج صوتي")
-                                } else if (showAudioSection) {
-                                    add("لم يُرصد مصدر صوت موثوق")
-                                }
-                                if (allVideoOptions.isEmpty() && videoOnlyFallbackOptions.isEmpty() && !audioAvailable) {
-                                    add("لا يوجد خيار تنزيل مؤكد")
-                                }
-                            }.joinToString(" · ").ifBlank { "لم تكتمل بيانات خيارات التنزيل" },
+                            }.joinToString(" · ").ifBlank { "لا توجد خيارات مؤكدة حاليًا" },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1681,12 +1668,12 @@ private fun UnifiedDownloadResultCard(
                     },
                     subtitle = when {
                         allVideoOptions.isNotEmpty() && directAudioAvailable ->
-                            "اختر جودة الفيديو؛ سيُدمج مسار الصوت المنفصل عند التنزيل."
+                            "اختر الجودة؛ يُدمج الصوت المنفصل عند توفره."
                         allVideoOptions.isNotEmpty() ->
-                            "اختر جودة تحتوي على صوت مدمج أو مصدر فيديو مباشر؛ سيُوضح التطبيق حالة الصوت لكل خيار."
+                            "اختر جودة الفيديو؛ راجع حالة الصوت لكل خيار."
                         videoOnlyFallbackOptions.isNotEmpty() ->
-                            "لم يُرصد مسار صوت موثوق؛ الخيارات التالية تحفظ الفيديو فقط."
-                        else -> "اختر جودة الفيديو. إذا كان الصوت في مسار منفصل، سيُدمجه التطبيق عند التنزيل."
+                            "هذه الخيارات تحفظ الفيديو فقط دون صوت."
+                        else -> "اختر جودة الفيديو المناسبة."
                     },
                 )
 
@@ -1786,9 +1773,9 @@ private fun UnifiedDownloadResultCard(
                     icon = Icons.Rounded.AudioFile,
                     title = "استخراج الصوت",
                     subtitle = when {
-                        directAudioAvailable -> "صوت فقط · اختر صيغة الإخراج التي تريدها."
-                        directVideoSourceAvailable -> "سيحاول التطبيق استخراج الصوت من الملف المباشر؛ قد يفشل إذا لم يحتوِ مسارًا صوتيًا."
-                        else -> "صوت فقط · سيُستخدم أفضل مصدر صوتي متاح في الخلفية."
+                        directAudioAvailable -> "صوت فقط · اختر الصيغة المطلوبة."
+                        directVideoSourceAvailable -> "استخراج الصوت يحتاج إلى التحقق من المصدر."
+                        else -> "اختر مصدر الصوت وصيغة الإخراج."
                     },
                 )
 

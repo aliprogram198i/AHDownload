@@ -1099,7 +1099,8 @@ class DownloadWorker(
         )
 
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_ahdownload)
+            .setSmallIcon(R.drawable.ic_ahdownload_notification)
+            .setColor(0xFFFF791A.toInt())
             .setContentTitle("AHDownload")
             .setContentText(state.toNotificationText())
             .setOngoing(

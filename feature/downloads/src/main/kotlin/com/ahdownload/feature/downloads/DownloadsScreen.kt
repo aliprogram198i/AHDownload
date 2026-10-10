@@ -859,21 +859,20 @@ private fun DownloadRecordCard(
                         )
                     }
                     val kindText = record.task.mediaKind?.let(::kindLabel)
-                    if (kindText != null) {
-                        Text(
-                            kindText + " · " + extensionLabel(title),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    val relativeTime = DateUtils.getRelativeTimeSpanString(
+                        record.updatedAtEpochMs,
+                        System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS,
+                    ).toString()
                     Text(
-                        DateUtils.getRelativeTimeSpanString(
-                            record.updatedAtEpochMs,
-                            System.currentTimeMillis(),
-                            DateUtils.MINUTE_IN_MILLIS,
-                        ).toString(),
+                        listOfNotNull(
+                            kindText?.let { "$it · ${extensionLabel(title)}" },
+                            relativeTime,
+                        ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
 
                     AnimatedVisibility(
@@ -1063,15 +1062,12 @@ private fun DownloadRecordCard(
                                 append(" · ")
                                 append(formatBytes(it))
                                 append("/s")
-                                val total = record.totalBytes
-                                if (total != null && total > 0L && it > 0L && total > record.bytesDownloaded) {
-                                    val etaSeconds = (total - record.bytesDownloaded) / it
-                                    append(" · ")
-                                    append(formatDurationSeconds(etaSeconds))
-                                }
+
                             }
                         },
                         style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 } else {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

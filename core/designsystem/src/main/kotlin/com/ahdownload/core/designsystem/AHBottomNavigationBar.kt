@@ -13,6 +13,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
@@ -36,9 +37,10 @@ fun AHBottomNavigationBar(
     NavigationBar(
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 7.dp)
-            .clip(RoundedCornerShape(22.dp)),
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = AHBottomNavigationDefaults.Elevation,
+            .clip(RoundedCornerShape(22.dp))
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(22.dp)),
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 0.dp,
     ) {
         NavigationBarItem(
             selected = selected == AHBottomNavDestination.HOME,
@@ -78,7 +80,6 @@ fun AHBottomNavigationBar(
 }
 
 private object AHBottomNavigationDefaults {
-    val Elevation = 3.dp
     val ItemColors: androidx.compose.material3.NavigationBarItemColors
         @Composable get() = NavigationBarItemDefaults.colors(
             selectedIconColor = MaterialTheme.colorScheme.onPrimary,
