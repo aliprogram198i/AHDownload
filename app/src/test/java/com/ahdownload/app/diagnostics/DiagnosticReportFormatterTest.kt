@@ -475,4 +475,62 @@ class DiagnosticReportFormatterTest {
         assertTrue(!report.contains("action=INSPECT_RESOLVER"))
     }
 
+    @Test
+    fun resolverFailureMarksResolutionFailedWithoutInventingCandidateStage() {
+        val session = "session-no-candidates"
+        val operation = "op-no-candidates"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "ANALYSIS_STARTED",
+                level = DiagnosticLevel.INFO,
+                reason = "started",
+                session = session,
+                operation = operation,
+                context = mapOf("platform" to "YouTube"),
+            ).copy(operation = "home.analyze"),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "youtube_player_no_candidates",
+                level = DiagnosticLevel.WARNING,
+                reason = "NoCandidates",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "failure_code" to "NoCandidates",
+                    "candidate_count" to "0",
+                ),
+            ).copy(operation = "youtube.resolve"),
+            event(
+                time = 3_000L,
+                sequence = "3",
+                type = "RESOLVER",
+                level = DiagnosticLevel.ERROR,
+                reason = "ResolverUnavailable",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "platform" to "YouTube",
+                    "failure_code" to "ResolverUnavailable",
+                ),
+            ).copy(operation = "home.resolve"),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("stage=RESOLUTION"))
+        assertTrue(report.contains("root_cause=ResolverUnavailable"))
+        assertTrue(report.contains("classification=MEDIA_RESOLUTION"))
+        assertTrue(report.contains("action=INSPECT_RESOLVER"))
+        assertTrue(report.contains("resolution=FAILED"))
+        assertTrue(report.contains("candidates=0"))
+        assertTrue(report.contains("FAILURE_CHAIN\nresolver -> no_candidates_extracted"))
+        assertTrue(!report.contains("FAILURE_CHAIN\nresolver -> candidate"))
+    }
+
+
 }
