@@ -132,17 +132,19 @@ fun HomeRoute(
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
+    onAnalysisPerformance: (LinkAnalysisPerformance) -> Unit = {},
 ) {
     val context = LocalContext.current
     val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
     val favoriteScope = rememberCoroutineScope()
-    val factory = remember(onDownloadRequested, onAudioOnlyRequested, logger, context, preferencesProvider) {
+    val factory = remember(onDownloadRequested, onAudioOnlyRequested, logger, context, preferencesProvider, onAnalysisPerformance) {
         HomeViewModel.Factory(
             onDownloadRequested = onDownloadRequested,
             onAudioOnlyRequested = onAudioOnlyRequested,
             logger = logger,
             context = context,
             preferencesProvider = preferencesProvider,
+            onAnalysisPerformance = onAnalysisPerformance,
         )
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
