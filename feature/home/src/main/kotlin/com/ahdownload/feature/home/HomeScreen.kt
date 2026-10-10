@@ -1618,9 +1618,17 @@ private fun UnifiedDownloadResultCard(
                     horizontalArrangement = Arrangement.spacedBy(9.dp),
                 ) {
                     Icon(
-                        Icons.Rounded.CheckCircle,
+                        imageVector = when {
+                            allVideoOptions.isNotEmpty() || directAudioAvailable -> Icons.Rounded.CheckCircle
+                            videoOnlyFallbackOptions.isNotEmpty() -> Icons.Rounded.VideoFile
+                            else -> Icons.Rounded.ErrorOutline
+                        },
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = if (allVideoOptions.isNotEmpty() || directAudioAvailable || videoOnlyFallbackOptions.isNotEmpty()) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
                         modifier = Modifier.size(18.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
