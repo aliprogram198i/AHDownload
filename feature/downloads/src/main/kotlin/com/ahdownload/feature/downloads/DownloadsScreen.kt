@@ -142,6 +142,7 @@ fun DownloadsRoute(
     onNavigateHome: () -> Unit,
     onNavigateSettings: () -> Unit,
     activeDownloads: Int = 0,
+    performanceSummaries: Map<String, DownloadPerformanceSummary> = emptyMap(),
 ) {
     val controls = remember(repository, onPauseDownload, onResumeDownload, onCancelDownload) {
         object : DownloadControls {
@@ -231,6 +232,7 @@ fun DownloadsRoute(
         onNavigateSettings = onNavigateSettings,
         activeDownloads = activeDownloads,
         transferStats = transferStats,
+        performanceSummaries = performanceSummaries,
         missingFileIds = missingFiles,
         onPause = vm::pause,
         onResume = vm::resume,
@@ -275,6 +277,7 @@ private fun DownloadsScreen(
     onNavigateSettings: () -> Unit,
     activeDownloads: Int,
     transferStats: Map<String, TransferStats>,
+    performanceSummaries: Map<String, DownloadPerformanceSummary>,
     missingFileIds: Set<String>,
     onPause: (DownloadRecord) -> Unit,
     onResume: (DownloadRecord) -> Unit,
@@ -733,6 +736,7 @@ private fun DownloadRecordCard(
     record: DownloadRecord,
     fileAvailable: Boolean = true,
     transferStats: TransferStats? = null,
+    performanceSummary: DownloadPerformanceSummary? = null,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onCancel: () -> Unit,
@@ -999,6 +1003,22 @@ private fun DownloadRecordCard(
                 Text(
                     formatBytes(record.bytesDownloaded) +
                         (record.totalBytes?.let { " / " + formatBytes(it) } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (record.status !in ACTIVE_STATUSES && performanceSummary != null &&
+                (performanceSummary.transferredBytes > 0L || performanceSummary.durationMs > 0L)
+            ) {
+                Text(
+                    "متوسط السرعة: " + formatBytes(performanceSummary.averageBytesPerSecond) +
+                        "/s · الذروة: " + formatBytes(performanceSummary.peakBytesPerSecond) + "/s",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "زمن النقل المقاس: " + formatPerformanceDuration(performanceSummary.durationMs),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1294,6 +1314,12 @@ private data class TransferStats(
     val bytesPerSecond: Long,
     val totalBytes: Long?,
 )
+
+private fun formatPerformanceDuration(durationMs: Long): String = when {
+    durationMs < 1_000L -> "${durationMs} ms"
+    durationMs < 60_000L -> String.format(Locale.US, "%.2f s", durationMs / 1_000.0)
+    else -> formatDurationSeconds(durationMs / 1_000L)
+}
 
 private fun formatDurationSeconds(totalSeconds: Long): String {
     val seconds = totalSeconds.coerceAtLeast(0L)
