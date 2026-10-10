@@ -101,6 +101,27 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                         .any { it == "pot" || it == "potc" || it.contains("po_token") }
                 }.getOrDefault(false)
 
+            fun hasDirectMediaHint(resourceUrl: String): Boolean =
+                runCatching {
+                    val parameters = java.net.URI(resourceUrl).rawQuery.orEmpty()
+                        .split('&')
+                        .mapNotNull { part ->
+                            val pieces = part.split('=', limit = 2)
+                            if (pieces.size == 2) pieces[0] to pieces[1] else null
+                        }
+                    val hasItag = parameters.any { (name, value) ->
+                        name.equals("itag", ignoreCase = true) &&
+                            java.net.URLDecoder.decode(value, "UTF-8").toIntOrNull() != null
+                    }
+                    val mime = parameters.firstOrNull { (name, _) ->
+                        name.equals("mime", ignoreCase = true) ||
+                            name.equals("type", ignoreCase = true)
+                    }?.second?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+                        ?.lowercase()
+                        .orEmpty()
+                    hasItag || mime.startsWith("video/") || mime.startsWith("audio/")
+                }.getOrDefault(false)
+
             fun safeBrowserHeaders(headers: Map<String, String>): Map<String, String> = buildMap {
                 headers.forEach { (name, value) ->
                     when (name.lowercase()) {
@@ -133,7 +154,11 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                 ) return
                 if (!lower.contains("/videoplayback")) return
 
+                // Keep the observation count for diagnostics, but only retain URLs
+                // that expose a direct media hint. Generic /videoplayback requests may
+                // be SABR/UMP protocol exchanges rather than downloadable media files.
                 observedGoogleVideoUrls.add(resourceUrl)
+                if (!hasDirectMediaHint(resourceUrl)) return
                 extractPoToken(resourceUrl)?.let {
                     browserPoToken = it
                     browserPoTokenObserved.set(true)
@@ -226,10 +251,13 @@ class AndroidYouTubeSessionProvider(private val context: Context) : YouTubeSessi
                     const isHttp=x=>/^https?:\/\//i.test(x);
                     const isM3u8=x=>/.m3u8(?:[?#]|$)/i.test(x);
                     const isGoogleVideo=x=>{try{return new URL(x).hostname.toLowerCase().endsWith(".googlevideo.com")}catch(_){return false}};
+                    const hasDirectMediaHint=x=>{try{const u=new URL(x),itag=u.searchParams.get('itag')||'',mime=(u.searchParams.get('mime')||u.searchParams.get('type')||'').toLowerCase();return /^\d+$/.test(itag)||/^video\//.test(mime)||/^audio\//.test(mime)}catch(_){return false}};
                     const classify=x=>{try{const q=new URL(x).search.toLowerCase();if(q.includes("mime=audio%2f")||q.includes("mime=audio/")||q.includes("type=audio%2f")||q.includes("type=audio/"))return a;if(q.includes("mime=video%2f")||q.includes("mime=video/")||q.includes("type=video%2f")||q.includes("type=video/"))return v}catch(_){}return null};
-                    const addResource=x=>{if(!isHttp(x)||isM3u8(x))return;const target=classify(x);if(target)target.add(x);else if(isGoogleVideo(x)&&/\/videoplayback(?:[/?]|$)/i.test(x))v.add(x)};
+                    const addResource=x=>{if(!isHttp(x)||isM3u8(x))return;const target=classify(x);if(target&&hasDirectMediaHint(x))target.add(x);else if(!target&&isGoogleVideo(x)&&/\/videoplayback(?:[/?]|$)/i.test(x)&&hasDirectMediaHint(x))v.add(x)};
                     const add=(s,x)=>{if(!x)return;try{x=new URL(x,location.href).href}catch(_){} 
-                      if(/^https?:\/\//i.test(x)&&!/.m3u8(?:[?#]|$)/i.test(x))s.add(x)};
+                      if(!/^https?:\/\//i.test(x)||/.m3u8(?:[?#]|$)/i.test(x))return;
+                      if(isGoogleVideo(x)&&!hasDirectMediaHint(x))return;
+                      s.add(x)};
                     document.querySelectorAll('video').forEach(e=>{
                       add(v,e.currentSrc);add(v,e.src);
                       e.querySelectorAll('source').forEach(s=>add(v,s.src));
