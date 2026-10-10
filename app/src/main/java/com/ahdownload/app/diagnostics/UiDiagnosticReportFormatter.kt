@@ -2,9 +2,9 @@ package com.ahdownload.app.diagnostics
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.UiTraceEvent
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object UiDiagnosticReportFormatter {
     private const val SCHEMA = 1
@@ -75,7 +75,8 @@ object UiDiagnosticReportFormatter {
         appendLine(if (context.isBlank()) base else "$base | $context")
     }
 
-    private fun formatTime(epochMs: Long): String = DateTimeFormatter.ISO_LOCAL_DATE_TIME.format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
+    private fun formatTime(epochMs: Long): String =
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date(epochMs))
 
     private val ENVIRONMENT_KEYS = setOf(
         "app_package", "app_version_name", "app_version_code", "app_build_type",

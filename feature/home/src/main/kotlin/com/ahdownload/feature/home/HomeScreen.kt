@@ -252,18 +252,21 @@ private fun HomeScreen(
         MediaKind.Unknown -> resultSet.all
     }
     val directAudioAvailable = resultSet.directAudioSourceAvailable
+    val directVideoSourceAvailable = candidates.any {
+        it.id == "direct" && it.format.kind == MediaKind.Video && it.format.hasVideo
+    }
     val availableVideoOptions = primaryOptions.filter {
         val format = it.candidate.format
         format.kind == MediaKind.Video &&
             format.hasVideo &&
-            (format.hasAudio || directAudioAvailable)
+            (format.hasAudio || directAudioAvailable || it.candidate.id == "direct")
     }
     val rawVideoSourceCount = primaryOptions.count {
         it.candidate.format.kind == MediaKind.Video && it.candidate.format.hasVideo
     }
     val unresolvedVideoSourceCount =
         (rawVideoSourceCount - availableVideoOptions.size).coerceAtLeast(0)
-    val audioExtractionAvailable = directAudioAvailable || availableVideoOptions.any {
+    val audioExtractionAvailable = directAudioAvailable || directVideoSourceAvailable || availableVideoOptions.any {
         it.candidate.format.kind == MediaKind.Video &&
             it.candidate.format.hasVideo &&
             it.candidate.format.hasAudio
@@ -1360,11 +1363,14 @@ private fun UnifiedDownloadResultCard(
     }
     // A video-only representation is a valid "video + audio" choice only when
     // the resolver also supplied a direct audio track that can be merged at download time.
+    val directVideoSourceAvailable = sourceCandidates.any {
+        it.id == "direct" && it.format.kind == MediaKind.Video && it.format.hasVideo
+    }
     val allVideoOptions = primaryOptions
         .filter {
             it.candidate.format.kind == MediaKind.Video &&
                 it.candidate.format.hasVideo &&
-                (it.candidate.format.hasAudio || directAudioAvailable)
+                (it.candidate.format.hasAudio || directAudioAvailable || it.candidate.id == "direct")
         }
         .distinctBy { it.candidate.id }
 
@@ -1373,7 +1379,7 @@ private fun UnifiedDownloadResultCard(
 
     val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
     val muxedVideoAvailable = allVideoOptions.any { it.candidate.format.hasAudio }
-    val audioAvailable = directAudioAvailable || muxedVideoAvailable
+    val audioAvailable = directAudioAvailable || muxedVideoAvailable || directVideoSourceAvailable
     val selectedVideo = allVideoOptions.firstOrNull { it.candidate.id == selectedCandidateId }
     val selectedAudioSource = audioOptions.firstOrNull { it.candidate.id == selectedAudioCandidateId }
 
@@ -1635,10 +1641,10 @@ private fun UnifiedDownloadResultCard(
                 AHSectionHeader(
                     icon = Icons.Rounded.AudioFile,
                     title = "استخراج الصوت",
-                    subtitle = if (directAudioAvailable) {
-                        "صوت فقط · اختر صيغة الإخراج التي تريدها."
-                    } else {
-                        "صوت فقط · سيُستخدم أفضل مصدر صوتي متاح في الخلفية."
+                    subtitle = when {
+                        directAudioAvailable -> "صوت فقط · اختر صيغة الإخراج التي تريدها."
+                        directVideoSourceAvailable -> "سيحاول التطبيق استخراج الصوت من الملف المباشر؛ قد يفشل إذا لم يحتوِ مسارًا صوتيًا."
+                        else -> "صوت فقط · سيُستخدم أفضل مصدر صوتي متاح في الخلفية."
                     },
                 )
 
@@ -1709,6 +1715,7 @@ private fun UnifiedDownloadResultCard(
                         "تنزيل " + buildQualityLine(selectedVideo) + when {
                             selectedVideo.candidate.format.hasAudio -> ""
                             directAudioAvailable -> " · دمج الصوت"
+                            selectedVideo.candidate.id == "direct" -> " · ملف مباشر؛ الصوت غير مؤكد"
                             else -> " · فيديو فقط"
                         }
                     selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null ->
@@ -1745,6 +1752,8 @@ private fun UnifiedDownloadResultCard(
                                     "تنزيل الفيديو مع الصوت"
                                 selectedVideo != null && directAudioAvailable ->
                                     "تنزيل الفيديو مع دمج مسار صوت منفصل"
+                                selectedVideo?.candidate?.id == "direct" ->
+                                    "تنزيل ملف فيديو مباشر؛ وجود مسار صوتي غير مؤكد"
                                 selectedVideo != null ->
                                     "تنزيل الفيديو فقط؛ لم يتأكد توفر صوت للدمج"
                                 else -> "اختر جودة الفيديو أولًا"
@@ -2160,7 +2169,13 @@ private fun formatOptionMetaLabel(
             model.fpsLabel?.let(::add)
             model.sizeLabel?.let(::add)
             if (format.kind == MediaKind.Video) {
-                add(if (format.hasAudio) "صوت مدمج" else "سيُدمج الصوت عند التنزيل")
+                add(
+                    when {
+                        format.hasAudio -> "صوت مدمج"
+                        model.candidate.id == "direct" -> "ملف مباشر؛ وجود الصوت غير مؤكد"
+                        else -> "سيُدمج الصوت عند التنزيل"
+                    },
+                )
             }
         }.joinToString(" · ").ifBlank {
             when (format.kind) {
