@@ -69,6 +69,13 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun recognizesUnknownExtensionWebDownloadLinks() {
+        val result = analyzer.analyze("https://files.example.com/download?id=842")
+        assertEquals(MediaPlatform.Web, result?.platform)
+        assertEquals(MediaKind.Unknown, result?.kind)
+    }
+
+    @Test
     fun recognizesDirectMediaByType() {
         assertEquals(
             MediaPlatform.DirectMedia,
@@ -97,13 +104,13 @@ class LinkAnalyzerTest {
     }
 
     @Test
-    fun doesNotMisclassifyLookalikeHosts() {
+    fun routesLookalikeHostsToWebWithoutMisclassifyingThemAsSocialPlatforms() {
         assertEquals(
-            MediaPlatform.Unknown,
+            MediaPlatform.Web,
             analyzer.analyze("https://evil-youtube.com/video")?.platform,
         )
         assertEquals(
-            MediaPlatform.Unknown,
+            MediaPlatform.Web,
             analyzer.analyze("https://instagram.com.evil.example/reel/123")?.platform,
         )
     }
@@ -128,7 +135,7 @@ class LinkAnalyzerTest {
     @Test
     fun keepsUnknownMediaKindForNonMediaPaths() {
         val result = analyzer.analyze("https://cdn.example.com/resource?id=123")
-        assertEquals(MediaPlatform.Unknown, result?.platform)
+        assertEquals(MediaPlatform.Web, result?.platform)
         assertEquals(MediaKind.Unknown, result?.kind)
     }
 
