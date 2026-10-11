@@ -34,15 +34,17 @@ class DownloadControlStoreTest {
     }
 
     @Test
-    fun resumeSupersedesOlderPauseOrCancelIntent() {
-        store.markPaused("task-b")
+    fun resumeClearsOlderPauseOrCancelIntent() {
+        val pause = store.markPaused("task-b")
         store.markActive("task-b")
         assertFalse(store.isPaused("task-b"))
-        assertEquals("ACTIVE", store.intent("task-b"))
+        assertEquals(null, store.intent("task-b"))
+        assertFalse(store.isCurrent("task-b", pause))
 
-        store.markCancelled("task-b")
+        val cancellation = store.markCancelled("task-b")
         store.markActive("task-b")
-        assertEquals("ACTIVE", store.intent("task-b"))
+        assertEquals(null, store.intent("task-b"))
+        assertFalse(store.isCurrent("task-b", cancellation))
     }
 
     @Test
