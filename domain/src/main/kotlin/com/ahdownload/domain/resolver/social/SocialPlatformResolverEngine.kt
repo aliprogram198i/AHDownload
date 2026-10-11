@@ -635,24 +635,8 @@ class SocialPlatformResolverEngine(
                     )
                 }
             }
-        } catch (error: TimeoutCancellationException) {
-            logger.log(
-                DiagnosticLevel.ERROR,
-                "SOCIAL_RESOLUTION_TIMEOUT",
-                "انتهت مهلة تحليل المنصة الاجتماعية دون إكمال المسار",
-                "social.resolve",
-                mapOf(
-                    "platform" to platform.name,
-                    "timeout_ms" to effectiveTimeoutMs.toString(),
-                    "operation_id" to (request.operationId ?: "none"),
-                ),
-                error,
-            )
-            ResolverResult.Failure(
-                FailureCode.ResolverTimeout,
-                "استغرق تحليل الصفحة وقتًا أطول من المتوقع. أعد المحاولة.",
-            )
         } catch (error: CancellationException) {
+            // Caller/lifecycle cancellation must not be converted into a media-resolution failure.
             throw error
         } catch (error: Throwable) {
             logger.log(
@@ -663,14 +647,35 @@ class SocialPlatformResolverEngine(
                 mapOf(
                     "platform" to platform.name,
                     "operation_id" to (request.operationId ?: "none"),
+                    "exception_type" to error::class.java.simpleName,
                 ),
                 error,
             )
-            ResolverResult.Failure(
+            return ResolverResult.Failure(
                 FailureCode.ResolverUnavailable,
                 "تعذر تحليل الصفحة حاليًا. أعد المحاولة أو افتح التشخيص لمعرفة السبب.",
             )
         }
+
+        if (resolution != null) return resolution
+
+        logger.log(
+            DiagnosticLevel.ERROR,
+            "SOCIAL_RESOLUTION_TIMEOUT",
+            "انتهت مهلة تحليل المنصة الاجتماعية دون إكمال المسار",
+            "social.resolve",
+            mapOf(
+                "platform" to platform.name,
+                "timeout_ms" to effectiveTimeoutMs.toString(),
+                "operation_id" to (request.operationId ?: "none"),
+                "timeout_scope" to "resolver",
+            ),
+            null,
+        )
+        return ResolverResult.Failure(
+            FailureCode.ResolverTimeout,
+            "استغرق تحليل الصفحة وقتًا أطول من المتوقع. أعد المحاولة.",
+        )
     }
 
     private fun inferCandidate(
