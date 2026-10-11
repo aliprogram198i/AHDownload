@@ -596,133 +596,129 @@ private fun HomeScreen(
                 }
             }
 
-            if (
-                state.mode == HomeMode.Link &&
-                state.url.isBlank() &&
-                state.resolution == null &&
-                favoriteItems.isNotEmpty()
-            ) {
-                item {
-                    FavoriteLinksCard(
-                        items = favoriteItems.take(4),
-                        onSelect = onFavoriteSelected,
-                    )
-                }
-            }
-
             if (state.mode == HomeMode.Link) {
-            item {
-                AHCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(
-                            "رابط المحتوى",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        OutlinedTextField(
-                            value = state.url,
-                            onValueChange = {
-                                                                onUrlChanged(it)
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .semantics { contentDescription = "حقل رابط المحتوى" },
-                            singleLine = true,
-                            leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
-                            trailingIcon = {
-                                Row {
-                                    DiagnosticIconButton(
-                                        trackingScreen = "HOME",
-                                        trackingId = "HOME.iconbutton.03",
-                                        trackingLabel = "لصق الرابط",
-                                        disabledReason = "التحليل أو استخراج المصدر جارٍ",
-                                        enabled = !state.analyzing && !state.resolving,
-                                        onClick = {
-                                            uiTraceLogger.interaction("HOME", "paste_button", "paste_clipboard")
-                                            val clipboard =
-                                                androidContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                            val pasted = clipboard?.primaryClip
-                                                ?.takeIf { it.itemCount > 0 }
-                                                ?.getItemAt(0)
-                                                ?.coerceToText(androidContext)
-                                                ?.toString()
-                                                ?.trim()
-                                                .orEmpty()
-                                            uiTraceLogger.interaction(
-                                                "HOME",
-                                                "paste_button",
-                                                "clipboard_read",
-                                                mapOf(
-                                                    "text_present" to pasted.isNotBlank().toString(),
-                                                    "text_length" to pasted.length.toString(),
-                                                ),
-                                            )
-                                            if (pasted.isNotBlank()) {
-                                                onPasteLink(pasted)
-                                            }
-                                        },
-                                    ) {
-                                        Icon(Icons.Rounded.ContentPaste, contentDescription = "لصق الرابط")
-                                    }
-                                    if (state.url.isNotBlank()) {
-                                        DiagnosticIconButton(
-                                            trackingScreen = "HOME",
-                                            trackingId = "HOME.iconbutton.04",
-                                            trackingLabel = "مسح الرابط",
-                                            disabledReason = "التحليل أو استخراج المصدر جارٍ",
-                                            enabled = !state.analyzing && !state.resolving,
-                                            onClick = {
-                                                uiTraceLogger.interaction(
-                                                    "HOME",
-                                                    "clear_input_button",
-                                                    "clear_url",
-                                                    mapOf("previous_length" to state.url.length.toString()),
-                                                )
-                                                onUrlChanged("")
-                                            },
-                                        ) {
-                                            Icon(Icons.Rounded.Clear, contentDescription = "مسح الرابط")
-                                        }
-                                    }
+                item {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Text(
+                                "رابط المحتوى",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            OutlinedTextField(
+                                value = state.url,
+                                onValueChange = onUrlChanged,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics { contentDescription = "حقل رابط المحتوى" },
+                                singleLine = true,
+                                leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
+                                label = { Text("رابط الفيديو أو المحتوى") },
+                                placeholder = { Text("الصق الرابط هنا أو استخدم زر اللصق") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                DiagnosticOutlinedButton(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.outlinedbutton.paste_link",
+                                    trackingLabel = "لصق الرابط",
+                                    disabledReason = "التحليل أو استخراج المصدر جارٍ",
+                                    enabled = !state.analyzing && !state.resolving,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "paste_button", "paste_clipboard")
+                                        val clipboardManager =
+                                            androidContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val pasted = clipboardManager?.primaryClip
+                                            ?.takeIf { it.itemCount > 0 }
+                                            ?.getItemAt(0)
+                                            ?.coerceToText(androidContext)
+                                            ?.toString()
+                                            ?.trim()
+                                            .orEmpty()
+                                        uiTraceLogger.interaction(
+                                            "HOME",
+                                            "paste_button",
+                                            "clipboard_read",
+                                            mapOf(
+                                                "text_present" to pasted.isNotBlank().toString(),
+                                                "text_length" to pasted.length.toString(),
+                                            ),
+                                        )
+                                        if (pasted.isNotBlank()) onPasteLink(pasted)
+                                    },
+                                ) {
+                                    Icon(Icons.Rounded.ContentPaste, contentDescription = null)
+                                    Spacer(Modifier.size(6.dp))
+                                    Text("لصق الرابط")
                                 }
-                            },
-                            label = { Text("رابط الفيديو أو المحتوى") },
-                            placeholder = { Text("https://...") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        )
-                        Text(
-                            "يدعم الروابط المباشرة والمنصات المدعومة تلقائيًا.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                DiagnosticOutlinedButton(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.outlinedbutton.clear_link",
+                                    trackingLabel = "مسح الرابط",
+                                    disabledReason = "الرابط فارغ أو التحليل جارٍ",
+                                    enabled = state.url.isNotBlank() && !state.analyzing && !state.resolving,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        uiTraceLogger.interaction(
+                                            "HOME",
+                                            "clear_input_button",
+                                            "clear_url",
+                                            mapOf("previous_length" to state.url.length.toString()),
+                                        )
+                                        onUrlChanged("")
+                                    },
+                                ) {
+                                    Icon(Icons.Rounded.Clear, contentDescription = null)
+                                    Spacer(Modifier.size(6.dp))
+                                    Text("مسح")
+                                }
+                            }
+                            Text(
+                                "يمكنك لصق الرابط لبدء التحليل مباشرة، أو كتابته ثم الضغط على «تحليل الرابط».",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            AHGradientPrimaryButton(
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.gradient_primary.02",
+                                text = when {
+                                    state.analyzing || state.resolving -> "جارٍ تجهيز الخيارات..."
+                                    else -> "تحليل الرابط"
+                                },
+                                enabled = state.url.isNotBlank() && !state.analyzing && !state.resolving,
+                                onClick = {
+                                    uiTraceLogger.interaction("HOME", "analyze_button", "analyze")
+                                    onAnalyze()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .semantics { contentDescription = "تحليل الرابط" },
+                            )
+                        }
+                    }
+                }
+
+                if (
+                    state.mode == HomeMode.Link &&
+                    state.url.isBlank() &&
+                    state.resolution == null &&
+                    favoriteItems.isNotEmpty()
+                ) {
+                    item {
+                        FavoriteLinksCard(
+                            items = favoriteItems.take(4),
+                            onSelect = onFavoriteSelected,
                         )
                     }
                 }
-            }
-
-            item {
-                AHGradientPrimaryButton(
-                    trackingScreen = "HOME",
-                    trackingId = "HOME.gradient_primary.02",
-                    text = when {
-                        state.analyzing -> "جارٍ تجهيز الخيارات..."
-                        state.resolving -> "جارٍ تجهيز الخيارات..."
-                        else -> "تحليل الرابط"
-                    },
-                    enabled = state.url.isNotBlank() && !state.analyzing && !state.resolving,
-                    onClick = {
-                        uiTraceLogger.interaction("HOME", "analyze_button", "analyze")
-                        onAnalyze()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "تحليل الرابط" },
-                )
-            }
-
-
             } else {
                 item {
                     AHCard(modifier = Modifier.fillMaxWidth()) {
@@ -977,17 +973,6 @@ private fun HomeScreen(
                             onClearRecentLinks()
                         },
                     )
-                }
-            }
-
-            if (state.mode == HomeMode.Link) state.result?.let { link ->
-                item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AHStatusPill(platformLabel(link.platform.name))
-                        if (link.kind != MediaKind.Unknown) {
-                            AHStatusPill(kindLabel(link.kind))
-                        }
-                    }
                 }
             }
 
@@ -1477,6 +1462,7 @@ private fun UnifiedDownloadResultCard(
     val allSelectableVideoOptions = videoOptionGroups.selectableOptions
 
     var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
+    var showAudioSourceOptions by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf(false) }
     var selectionMode by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf<OutputSelectionMode?>(null) }
 
     val videoOptions = if (showAllVideoOptions) allVideoOptions else allVideoOptions.take(4)
@@ -1620,56 +1606,65 @@ private fun UnifiedDownloadResultCard(
                 }
             }
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.07f),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                Icon(
+                    imageVector = when {
+                        allVideoOptions.isNotEmpty() || directAudioAvailable -> Icons.Rounded.CheckCircle
+                        videoOnlyFallbackOptions.isNotEmpty() -> Icons.Rounded.VideoFile
+                        else -> Icons.Rounded.ErrorOutline
+                    },
+                    contentDescription = null,
+                    tint = if (
+                        allVideoOptions.isNotEmpty() ||
+                        directAudioAvailable ||
+                        videoOnlyFallbackOptions.isNotEmpty()
+                    ) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    modifier = Modifier.size(20.dp),
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Icon(
-                        imageVector = when {
-                            allVideoOptions.isNotEmpty() || directAudioAvailable -> Icons.Rounded.CheckCircle
-                            videoOnlyFallbackOptions.isNotEmpty() -> Icons.Rounded.VideoFile
-                            else -> Icons.Rounded.ErrorOutline
+                    Text(
+                        when {
+                            allVideoOptions.isNotEmpty() || directAudioAvailable -> "خيارات التنزيل جاهزة"
+                            videoOnlyFallbackOptions.isNotEmpty() -> "الفيديو متاح فقط"
+                            audioAvailable -> "مصدر الصوت يحتاج تحققًا"
+                            else -> "تعذر تأكيد خيارات التنزيل"
                         },
-                        contentDescription = null,
-                        tint = if (allVideoOptions.isNotEmpty() || directAudioAvailable || videoOnlyFallbackOptions.isNotEmpty()) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                        modifier = Modifier.size(18.dp),
+                        style = MaterialTheme.typography.labelLarge,
                     )
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
+                    Text(
+                        buildList {
+                            if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
+                            else if (videoOnlyFallbackOptions.isNotEmpty()) add("${videoOnlyFallbackOptions.size} خيار فيديو فقط")
                             when {
-                                allVideoOptions.isNotEmpty() || directAudioAvailable -> "خيارات التنزيل جاهزة"
-                                videoOnlyFallbackOptions.isNotEmpty() -> "الفيديو متاح فقط"
-                                audioAvailable -> "مصدر الصوت يحتاج تحققًا"
-                                else -> "تعذر تأكيد خيارات التنزيل"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        Text(
-                            buildList {
-                                if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
-                                else if (videoOnlyFallbackOptions.isNotEmpty()) add("${videoOnlyFallbackOptions.size} خيار فيديو فقط")
-                                when {
-                                    directAudioAvailable || muxedVideoAvailable -> add("صيغ إخراج صوتية متاحة")
-                                    directVideoSourceAvailable -> add("استخراج الصوت يحتاج تحققًا")
-                                    showAudioSection -> add("لا يوجد مصدر صوت موثوق")
-                                }
-                            }.joinToString(" · ").ifBlank { "لا توجد خيارات مؤكدة حاليًا" },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                                directAudioAvailable || muxedVideoAvailable -> add("صيغ إخراج صوتية متاحة")
+                                directVideoSourceAvailable -> add("استخراج الصوت يحتاج تحققًا")
+                                showAudioSection -> add("لا يوجد مصدر صوت موثوق")
+                            }
+                        }.joinToString(" · ").ifBlank { "لا توجد خيارات مؤكدة حاليًا" },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
+
+            Text(
+                "اختر جودة الفيديو أو صيغة الصوت، ثم اضغط زر التنزيل. لن يبدأ التنزيل قبل اختيارك.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             if (showVideoSection) {
                 AHSectionHeader(
@@ -1788,41 +1783,13 @@ private fun UnifiedDownloadResultCard(
                     subtitle = when {
                         directAudioAvailable -> "صوت فقط · اختر الصيغة المطلوبة."
                         directVideoSourceAvailable -> "استخراج الصوت يحتاج إلى التحقق من المصدر."
-                        else -> "اختر مصدر الصوت وصيغة الإخراج."
+                        else -> "اختر صيغة الصوت؛ يمكن تحديد المصدر يدويًا عند الحاجة."
                     },
                 )
 
                 if (directAudioAvailable || muxedVideoAvailable) {
-                    if (audioOptions.isNotEmpty()) {
-                        Text(
-                            "جودة وصيغة مصدر الصوت",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        MediaFormatGrid(
-                            options = audioOptions,
-                            selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioSource else null,
-                            validatingCandidateId = validatingCandidateId,
-                            onSelect = {
-                                resultCardTrace.recordAction(
-                                    action = "select_audio_source",
-                                    component = "audio_source_option",
-                                    context = mapOf(
-                                        "candidate_id" to it.candidate.id,
-                                        "quality" to it.qualityLabel,
-                                        "bitrate_kbps" to (it.candidate.format.bitrateKbps?.toString() ?: "unknown"),
-                                        "container" to it.candidate.format.container.name,
-                                    ),
-                                )
-                                selectionMode = OutputSelectionMode.AUDIO
-                                onSelectAudioCandidate(it)
-                            },
-                            audioOnly = true,
-                        )
-                    }
-
                     Text(
-                        "صيغة الملف الناتج",
+                        "صيغة الملف الصوتي",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1839,9 +1806,62 @@ private fun UnifiedDownloadResultCard(
                             onSelectAudioOutputFormat(it)
                         },
                     )
-
                     Text(
-                        "MP3 وM4A وAAC وOPUS وغيرها هنا تعني ملفًا صوتيًا فقط، وليست جودة فيديو.",
+                        "سيُختار مصدر الصوت تلقائيًا ما لم تحدده يدويًا.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    if (audioOptions.isNotEmpty()) {
+                        DiagnosticTextButton(
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.textbutton.audio_source_toggle",
+                            trackingLabel = "تحديد مصدر الصوت يدويًا",
+                            disabledReason = "التحقق من المصدر جارٍ",
+                            enabled = validatingCandidateId == null,
+                            onClick = {
+                                showAudioSourceOptions = !showAudioSourceOptions
+                                resultCardTrace.recordAction(
+                                    action = if (showAudioSourceOptions) "show_audio_source_options" else "hide_audio_source_options",
+                                    component = "audio_source_options_toggle",
+                                    context = mapOf("available_count" to audioOptions.size.toString()),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Rounded.AudioFile, contentDescription = null)
+                            Spacer(Modifier.size(6.dp))
+                            Text(
+                                if (showAudioSourceOptions) "إخفاء خيارات مصدر الصوت" else "تحديد مصدر الصوت يدويًا (اختياري)"
+                            )
+                            Spacer(Modifier.size(4.dp))
+                            Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                        }
+                        if (showAudioSourceOptions) {
+                            MediaFormatGrid(
+                                options = audioOptions,
+                                selected = if (selectionMode == OutputSelectionMode.AUDIO) selectedAudioSource else null,
+                                validatingCandidateId = validatingCandidateId,
+                                onSelect = {
+                                    resultCardTrace.recordAction(
+                                        action = "select_audio_source",
+                                        component = "audio_source_option",
+                                        context = mapOf(
+                                            "candidate_id" to it.candidate.id,
+                                            "quality" to it.qualityLabel,
+                                            "bitrate_kbps" to (it.candidate.format.bitrateKbps?.toString() ?: "unknown"),
+                                            "container" to it.candidate.format.container.name,
+                                        ),
+                                    )
+                                    selectionMode = OutputSelectionMode.AUDIO
+                                    onSelectAudioCandidate(it)
+                                },
+                                audioOnly = true,
+                            )
+                        }
+                    }
+                    Text(
+                        "هذه الصيغ تنتج ملفًا صوتيًا فقط، ولا تغيّر جودة الفيديو.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
