@@ -46,11 +46,25 @@ class LiveSocialMediaDownloadE2ETest {
         val analyzer = LinkAnalyzer()
         val report = mutableListOf<String>()
 
-        // This focused live acceptance run targets the two platforms under active repair.
+        // Every target is a real public post/clip. Multiple independent URLs reduce the risk
+        // of treating one deleted/private item as a platform-wide resolver failure.
         val targets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
+            Target("Facebook-1", MediaPlatform.Facebook, "https://www.facebook.com/reel/1195289147628387"),
+            Target("Facebook-2", MediaPlatform.Facebook, "https://www.facebook.com/reel/390369400459687/"),
+            Target("X-1", MediaPlatform.X, "https://x.com/TopHeroes_/status/2001950365332455490"),
+            Target("X-2", MediaPlatform.X, "https://x.com/EAHelp/status/1913644764894843004"),
+            Target("Snapchat-1", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"),
+            Target("Snapchat-2", MediaPlatform.Snapchat, "https://www.snapchat.com/@snapchat/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYaGd5YmVrcnliAZ8rLppUAZ8rLn83AAAAAQ"),
+            Target("Pinterest-1", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/664281013778109217/"),
+            Target("Pinterest-2", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/550213279492193633/"),
+            Target("Reddit-1", MediaPlatform.Reddit, "https://www.reddit.com/r/Unexpected/comments/1cl9h0u/the_insurance_claim_will_be_interesting/"),
+            Target("Reddit-2", MediaPlatform.Reddit, "https://www.reddit.com/r/interesting/comments/1t5410z/just-how-does-this-species-survive-in-the-wild/"),
+            Target("Twitch", MediaPlatform.Twitch, "https://www.twitch.tv/xqc/clip/CulturedAmazingKuduDatSheffy-TiZ_-ixAGYR3y2Uy"),
+            Target("Vimeo-1", MediaPlatform.Vimeo, "https://vimeo.com/76979871"),
+            Target("Vimeo-2", MediaPlatform.Vimeo, "https://vimeo.com/1147525044"),
         )
 
         for (target in targets) {
