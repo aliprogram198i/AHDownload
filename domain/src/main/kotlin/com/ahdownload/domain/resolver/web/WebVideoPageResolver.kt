@@ -10,6 +10,9 @@ import com.ahdownload.domain.resolver.MediaFormat
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.network.PublicInternetDns
+import com.ahdownload.domain.resolver.browser.BrowserMediaSession
+import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +38,7 @@ import java.util.concurrent.TimeUnit
 class WebVideoPageResolver(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val client: OkHttpClient = defaultClient(),
+    private val browserMediaSessionProvider: BrowserMediaSessionProvider? = null,
 ) {
     suspend fun resolve(request: ResolverRequest): ResolverResult = withContext(Dispatchers.IO) {
         val initial = request.link.normalizedUrl.toHttpUrlOrNull()
@@ -50,87 +54,84 @@ class WebVideoPageResolver(
                 FailureCode.NoCandidates,
                 "لم يتمكن التطبيق من قراءة صفحة HTML عامة من هذا الرابط.",
             )
-            val hints = extractHints(page.html, page.finalUrl)
-            if (hints.isEmpty()) {
-                log(
-                    DiagnosticLevel.INFO,
-                    "WEB_VIDEO_PAGE_NO_SOURCE",
-                    "لم يُعثر على مصدر فيديو قياسي داخل صفحة الويب",
-                    request,
-                    mapOf("host" to hostOf(page.finalUrl), "discovered_count" to "0"),
-                )
-                return@withContext ResolverResult.Failure(
-                    FailureCode.NoCandidates,
-                    "لم يُعثر على رابط فيديو قابل للتنزيل في الصفحة. قد يعتمد الموقع على JavaScript أو تسجيل الدخول أو DRM.",
+            val parsedPage = WebPageMediaParser.parse(page.html, page.finalUrl)
+            val parsedHints = parsedPage.mediaUrls.mapNotNull { raw ->
+                val parsedUrl = raw.toHttpUrlOrNull() ?: return@mapNotNull null
+                val extension = extensionFromUrl(raw)
+                val videoQuery = Regex("""[?&](?:mime|content-type|type|format)=[^&]*video""", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(raw)
+                if (
+                    extension !in VIDEO_EXTENSIONS && extension !in MANIFEST_EXTENSIONS &&
+                    !videoQuery
+                ) return@mapNotNull null
+                Hint(
+                    url = parsedUrl.toString(),
+                    label = null,
+                    height = inferHeight(null, raw),
+                    explicitVideo = true,
                 )
             }
+            val staticHints = (extractHints(page.html, page.finalUrl) + parsedHints)
+                .distinctBy { it.url }
+                .take(MAX_CANDIDATES * 3)
+            var candidates = buildCandidates(page.finalUrl, staticHints)
+            var browserSession: BrowserMediaSession? = null
 
-            val candidates = hints.take(MAX_CANDIDATES).mapNotNull { hint ->
-                val mediaUrl = page.finalUrl.toHttpUrlOrNull()?.resolve(hint.url)
-                    ?: return@mapNotNull null
-                if (!isAllowedDestination(mediaUrl)) return@mapNotNull null
-
-                val probe = runCatching {
-                    val head = probe(mediaUrl, Method.HEAD)
-                    if (head.status in 200..299 && !head.contentType.isNullOrBlank()) head
-                    else probe(mediaUrl, Method.RANGE)
-                }.getOrNull() ?: return@mapNotNull null
-                if (probe.status !in 200..299) return@mapNotNull null
-
-                val mime = probe.contentType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
-                if (mime == "text/html" || mime == "application/xhtml+xml") return@mapNotNull null
-                val extension = extensionFromUrl(probe.finalUrl)
-                    ?: extensionFromMime(mime)
-                    ?: when {
-                        isHlsMime(mime) -> "m3u8"
-                        isDashMime(mime) -> "mpd"
-                        else -> null
-                    }
-                    ?: return@mapNotNull null
-                val manifest = extension in MANIFEST_EXTENSIONS ||
-                    isHlsMime(mime) || isDashMime(mime)
-                val videoMime = mime?.startsWith("video/") == true
-                val explicitVideoSource = hint.explicitVideo ||
-                    extension in VIDEO_EXTENSIONS || extension in MANIFEST_EXTENSIONS
-                if (!videoMime && !manifest && !explicitVideoSource) return@mapNotNull null
-
-                val height = hint.height ?: inferHeight(hint.label, probe.finalUrl)
-                val size = probe.contentRangeTotal ?: probe.contentLength?.takeIf { probe.status != 206 }
-                MediaCandidate(
-                    id = "web-video-" + extension + "-" + probe.finalUrl.hashCode().toUInt().toString(16),
-                    sourceUrl = probe.finalUrl,
-                    requestHeaders = mapOf("Referer" to page.finalUrl),
-                    format = MediaFormat(
-                        id = "web-video:" + extension + ":" + (height ?: 0) + ":" + (size ?: 0),
-                        kind = MediaKind.Video,
-                        container = containerFor(extension, manifest),
-                        height = height,
-                        fileSizeBytes = size,
-                        hasVideo = true,
-                        // For HLS/DASH, the manifest may contain both audio and video streams.
-                        hasAudio = true,
-                        webFile = false,
-                        fileExtension = extension,
-                        mimeType = mime ?: mimeFromExtension(extension),
-                    ),
-                    streamingManifest = manifest,
-                )
-            }.distinctBy { it.sourceUrl }.take(MAX_CANDIDATES)
+            // Only open the WebView when server-delivered HTML did not yield a valid
+            // source. This lets JavaScript-driven players expose their real media requests
+            // without adding browser startup latency to ordinary HTML5 pages.
+            if (candidates.isEmpty() && browserMediaSessionProvider != null) {
+                browserSession = runCatching {
+                    browserMediaSessionProvider.snapshot(page.finalUrl, MediaPlatform.Web)
+                }.getOrNull()
+                val observedHints = browserSession?.mediaUrls.orEmpty().mapNotNull { raw ->
+                    val parsedUrl = page.finalUrl.toHttpUrlOrNull()?.resolve(raw) ?: return@mapNotNull null
+                    if (!isAllowedDestination(parsedUrl)) return@mapNotNull null
+                    val extension = extensionFromUrl(parsedUrl.toString())
+                    val videoQuery = Regex("""[?&](?:mime|content-type|type|format)=[^&]*video""", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(parsedUrl.toString())
+                    if (
+                        extension in AUDIO_EXTENSIONS || extension in IMAGE_EXTENSIONS ||
+                        (extension !in VIDEO_EXTENSIONS && extension !in MANIFEST_EXTENSIONS && !videoQuery)
+                    ) return@mapNotNull null
+                    Hint(
+                        url = parsedUrl.toString(),
+                        label = null,
+                        height = inferHeight(null, parsedUrl.toString()),
+                        explicitVideo = true,
+                        requestHeaders = browserSession?.requestHeadersByUrl?.get(raw).orEmpty(),
+                    )
+                }.distinctBy { it.url }
+                candidates = buildCandidates(page.finalUrl, observedHints)
+            }
 
             if (candidates.isEmpty()) {
                 log(
-                    DiagnosticLevel.WARNING,
-                    "WEB_VIDEO_PAGE_SOURCES_REJECTED",
-                    "تم رفض مصادر الصفحة التي لم تجتز فحص المصدر",
+                    DiagnosticLevel.INFO,
+                    "WEB_VIDEO_PAGE_NO_SOURCE",
+                    "لم يتم العثور على مصدر فيديو قابل للتحقق من HTML أو جلسة المتصفح",
                     request,
-                    mapOf("host" to hostOf(page.finalUrl), "discovered_count" to hints.size.toString()),
+                    mapOf(
+                        "host" to hostOf(page.finalUrl),
+                        "html_source_count" to staticHints.size.toString(),
+                        "browser_observation" to (browserSession != null).toString(),
+                        "browser_source_count" to (browserSession?.mediaUrls?.size ?: 0).toString(),
+                    ),
                 )
                 return@withContext ResolverResult.Failure(
                     FailureCode.NoCandidates,
-                    "تم العثور على إشارات لمصادر فيديو، لكن لم يتمكن التطبيق من التحقق من مصدر صالح للتنزيل.",
+                    "لم يُعثر على مصدر فيديو قابل للتنزيل. قد يستخدم الموقع DRM أو يتطلب تسجيل الدخول أو آلية غير مدعومة.",
                 )
             }
 
+            val title = browserSession?.title?.takeIf { it.isNotBlank() }
+                ?: parsedPage.title
+                ?: page.title
+                ?: "Web video"
+            val thumbnail = safeHttpUrl(browserSession?.thumbnailUrl, page.finalUrl)
+                ?: safeHttpUrl(parsedPage.thumbnailUrl, page.finalUrl)
+                ?: safeHttpUrl(page.thumbnailUrl, page.finalUrl)
+            val duration = browserSession?.durationMs ?: parsedPage.durationMs ?: page.durationMs
             log(
                 DiagnosticLevel.INFO,
                 "WEB_VIDEO_PAGE_RESOLVED",
@@ -138,15 +139,16 @@ class WebVideoPageResolver(
                 request,
                 mapOf(
                     "host" to hostOf(page.finalUrl),
-                    "discovered_count" to hints.size.toString(),
+                    "discovered_count" to (staticHints.size + (browserSession?.mediaUrls?.size ?: 0)).toString(),
                     "accepted_count" to candidates.size.toString(),
                     "manifest_count" to candidates.count { it.streamingManifest }.toString(),
+                    "browser_fallback" to (browserSession != null).toString(),
                 ),
             )
             ResolverResult.Success(
-                title = page.title ?: "Web video",
-                thumbnailUrl = page.thumbnailUrl,
-                durationMs = null,
+                title = title,
+                thumbnailUrl = thumbnail,
+                durationMs = duration,
                 candidates = candidates,
             )
         } catch (cancelled: CancellationException) {
@@ -222,7 +224,7 @@ class WebVideoPageResolver(
         }
     }
 
-    private fun probe(initial: HttpUrl, method: Method): Probe {
+    private fun probe(initial: HttpUrl, method: Method, headers: Map<String, String> = emptyMap()): Probe {
         var current = initial
         var redirects = 0
         while (true) {
@@ -232,6 +234,9 @@ class WebVideoPageResolver(
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "*/*")
                 .header("Accept-Encoding", "identity")
+            safeMediaHeaders(headers).forEach { (name, value) ->
+                builder.header(name, value)
+            }
             if (method == Method.HEAD) builder.head()
             else builder.get().header("Range", "bytes=0-0")
 
@@ -259,6 +264,78 @@ class WebVideoPageResolver(
             response.close()
             return snapshot
         }
+    }
+
+    private fun buildCandidates(pageUrl: String, hints: List<Hint>): List<MediaCandidate> =
+        hints.take(MAX_CANDIDATES).mapNotNull { hint ->
+            val mediaUrl = pageUrl.toHttpUrlOrNull()?.resolve(hint.url) ?: return@mapNotNull null
+            if (!isAllowedDestination(mediaUrl)) return@mapNotNull null
+            val requestHeaders = safeMediaHeaders(hint.requestHeaders + ("Referer" to pageUrl))
+            val response = runCatching {
+                val head = probe(mediaUrl, Method.HEAD, requestHeaders)
+                if (head.status in 200..299 && !head.contentType.isNullOrBlank()) head
+                else probe(mediaUrl, Method.RANGE, requestHeaders)
+            }.getOrNull() ?: return@mapNotNull null
+            if (response.status !in 200..299) return@mapNotNull null
+
+            val mime = response.contentType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
+            if (mime == "text/html" || mime == "application/xhtml+xml") return@mapNotNull null
+            val extension = extensionFromUrl(response.finalUrl)
+                ?: extensionFromMime(mime)
+                ?: when {
+                    isHlsMime(mime) -> "m3u8"
+                    isDashMime(mime) -> "mpd"
+                    else -> null
+                }
+                ?: return@mapNotNull null
+            val manifest = extension in MANIFEST_EXTENSIONS || isHlsMime(mime) || isDashMime(mime)
+            val videoMime = mime?.startsWith("video/") == true
+            val explicitVideoSource = hint.explicitVideo ||
+                extension in VIDEO_EXTENSIONS || extension in MANIFEST_EXTENSIONS
+            if (!videoMime && !manifest && !explicitVideoSource) return@mapNotNull null
+
+            val height = hint.height ?: inferHeight(hint.label, response.finalUrl)
+            val size = response.contentRangeTotal ?: response.contentLength?.takeIf { response.status != 206 }
+            MediaCandidate(
+                id = "web-video-" + extension + "-" + response.finalUrl.hashCode().toUInt().toString(16),
+                sourceUrl = response.finalUrl,
+                requestHeaders = requestHeaders,
+                format = MediaFormat(
+                    id = "web-video:" + extension + ":" + (height ?: 0) + ":" + (size ?: 0),
+                    kind = MediaKind.Video,
+                    container = containerFor(extension, manifest),
+                    height = height,
+                    fileSizeBytes = size,
+                    hasVideo = true,
+                    // HLS/DASH manifests may describe a muxed stream or separate tracks.
+                    hasAudio = true,
+                    webFile = false,
+                    fileExtension = extension,
+                    mimeType = mime ?: mimeFromExtension(extension),
+                ),
+                streamingManifest = manifest,
+            )
+        }.distinctBy { it.sourceUrl }.take(MAX_CANDIDATES)
+
+    private fun safeMediaHeaders(source: Map<String, String>): Map<String, String> = buildMap {
+        source.forEach { (name, value) ->
+            when (name.lowercase(Locale.ROOT)) {
+                "user-agent" -> put("User-Agent", value)
+                "referer" -> put("Referer", value)
+                "origin" -> put("Origin", value)
+                "accept" -> put("Accept", value)
+                "accept-language" -> put("Accept-Language", value)
+                "sec-fetch-dest" -> put("Sec-Fetch-Dest", value)
+                "sec-fetch-mode" -> put("Sec-Fetch-Mode", value)
+                "sec-fetch-site" -> put("Sec-Fetch-Site", value)
+            }
+        }
+    }
+
+    private fun safeHttpUrl(value: String?, baseUrl: String): String? {
+        if (value.isNullOrBlank()) return null
+        val parsed = runCatching { baseUrl.toHttpUrlOrNull()?.resolve(value) }.getOrNull() ?: return null
+        return parsed.toString().takeIf { isAllowedDestination(parsed) }
     }
 
     private fun extractHints(html: String, baseUrl: String): List<Hint> {
@@ -437,8 +514,20 @@ class WebVideoPageResolver(
         )
     }
 
-    private data class Page(val finalUrl: String, val html: String, val title: String?, val thumbnailUrl: String?)
-    private data class Hint(val url: String, val label: String?, val height: Int?, val explicitVideo: Boolean)
+    private data class Page(
+        val finalUrl: String,
+        val html: String,
+        val title: String?,
+        val thumbnailUrl: String?,
+        val durationMs: Long? = null,
+    )
+    private data class Hint(
+        val url: String,
+        val label: String?,
+        val height: Int?,
+        val explicitVideo: Boolean,
+        val requestHeaders: Map<String, String> = emptyMap(),
+    )
     private data class Probe(
         val status: Int,
         val finalUrl: String,
@@ -457,6 +546,8 @@ class WebVideoPageResolver(
         val HTML_MIME_TYPES = setOf("text/html", "application/xhtml+xml")
         val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi")
         val MANIFEST_EXTENSIONS = setOf("m3u8", "mpd")
+        val AUDIO_EXTENSIONS = setOf("m4a", "mp3", "aac", "ogg", "flac", "wav", "opus")
+        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "tiff", "heic", "heif")
         val VIDEO_META_KEYS = setOf(
             "og:video", "og:video:url", "og:video:secure_url",
             "twitter:player:stream", "twitter:player:stream:content_type",
