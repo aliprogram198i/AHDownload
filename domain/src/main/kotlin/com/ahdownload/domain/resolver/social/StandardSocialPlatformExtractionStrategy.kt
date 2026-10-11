@@ -22,6 +22,13 @@ internal open class StandardSocialPlatformExtractionStrategy(
     final override val platform: MediaPlatform,
 ) : SocialPlatformExtractionStrategy {
 
+    override fun effectiveTimeoutMillis(configuredTimeoutMs: Long): Long =
+        if (configuredTimeoutMs == SOCIAL_RESOLVE_TIMEOUT_MS && platform == MediaPlatform.Pinterest) {
+            PINTEREST_SOCIAL_RESOLVE_TIMEOUT_MS
+        } else {
+            configuredTimeoutMs
+        }
+
     override suspend fun extractAdditionalMedia(
         pageUrl: String?,
         browserMediaCount: Int,
@@ -30,7 +37,12 @@ internal open class StandardSocialPlatformExtractionStrategy(
         operationId: String?,
         logger: DiagnosticLogger,
     ): ParsedPageMedia? {
-        if (browserMediaCount > 0 || pageFallbackMediaCount > 0 || pageUrl.isNullOrBlank()) return null
+        val shouldProbeDirectFallback = platform == MediaPlatform.X || platform == MediaPlatform.Vimeo
+        if (
+            pageUrl.isNullOrBlank() ||
+            (!shouldProbeDirectFallback && browserMediaCount > 0) ||
+            (!shouldProbeDirectFallback && pageFallbackMediaCount > 0)
+        ) return null
         val request = publicFallbackRequest(platform, pageUrl) ?: return null
 
         var body: String? = null
@@ -269,6 +281,7 @@ internal open class StandardSocialPlatformExtractionStrategy(
 
     private companion object {
         const val PUBLIC_FALLBACK_TIMEOUT_MS = 5_000L
+        const val PINTEREST_SOCIAL_RESOLVE_TIMEOUT_MS = 40_000L
         const val PUBLIC_FALLBACK_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"

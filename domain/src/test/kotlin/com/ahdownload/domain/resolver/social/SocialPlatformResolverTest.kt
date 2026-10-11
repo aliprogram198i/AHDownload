@@ -548,6 +548,8 @@ class SocialPlatformResolverTest {
             val expectedEndpoint: String,
             val response: String,
             val expectedMediaUrl: String,
+            val existingBrowserMediaCount: Int = 0,
+            val existingPageFallbackMediaCount: Int = 0,
         )
 
         val cases = listOf(
@@ -564,6 +566,8 @@ class SocialPlatformResolverTest {
                 "https://cdn.syndication.twimg.com/tweet-result?id=123456789&lang=en",
                 """{"url":"https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/clip.mp4?tag=12"}""",
                 "https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/clip.mp4?tag=12",
+                existingBrowserMediaCount = 1,
+                existingPageFallbackMediaCount = 1,
             ),
             FallbackCase(
                 MediaPlatform.Reddit,
@@ -585,6 +589,8 @@ class SocialPlatformResolverTest {
                 "https://player.vimeo.com/video/76979871/config",
                 """{"video":{"title":"Public clip","files":{"progressive":[{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque","quality":"720p"}]}},"request":{"files":{"dash":{"cdns":{"default":{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/master.mpd?token=opaque"}}}}}}""",
                 "https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque",
+                existingBrowserMediaCount = 1,
+                existingPageFallbackMediaCount = 1,
             ),
         )
 
@@ -611,8 +617,8 @@ class SocialPlatformResolverTest {
             val strategy = socialPlatformExtractionStrategy(testCase.platform)
             val parsed = strategy.extractAdditionalMedia(
                 pageUrl = testCase.pageUrl,
-                browserMediaCount = 0,
-                pageFallbackMediaCount = 0,
+                browserMediaCount = testCase.existingBrowserMediaCount,
+                pageFallbackMediaCount = testCase.existingPageFallbackMediaCount,
                 pageClient = client,
                 operationId = "public-fallback-test",
                 logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
