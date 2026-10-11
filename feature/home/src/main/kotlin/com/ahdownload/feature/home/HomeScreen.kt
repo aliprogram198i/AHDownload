@@ -923,6 +923,7 @@ private fun HomeScreen(
                             },
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
+                                onNavigateHome()
                                 onModeChanged(HomeMode.Link)
                                 onSearchResultSelected(item)
                             },
