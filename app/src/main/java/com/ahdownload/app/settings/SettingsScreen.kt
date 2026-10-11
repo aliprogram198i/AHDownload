@@ -88,6 +88,7 @@ fun SettingsRoute(
     onOpenDiagnostics: () -> Unit,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
+    onNavigateYouTubeSearch: () -> Unit,
     onNavigateDownloads: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
@@ -155,7 +156,7 @@ fun SettingsRoute(
         bottomBar = {
             AHBottomNavigationBar(
                 trackingScreen = "SETTINGS",
-                selected = AHBottomNavDestination.SETTINGS,
+                selected = null,
                 activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
                     when (destination) {
@@ -163,11 +164,14 @@ fun SettingsRoute(
                             uiTraceLogger.interaction("SETTINGS", "bottom_nav_home", "open_home")
                             onNavigateHome()
                         }
+                        AHBottomNavDestination.YOUTUBE_SEARCH -> {
+                            uiTraceLogger.interaction("SETTINGS", "bottom_nav_youtube_search", "open_youtube_search")
+                            onNavigateYouTubeSearch()
+                        }
                         AHBottomNavDestination.DOWNLOADS -> {
                             uiTraceLogger.interaction("SETTINGS", "bottom_nav_downloads", "open_downloads")
                             onNavigateDownloads()
                         }
-                        AHBottomNavDestination.SETTINGS -> Unit
                     }
                 },
             )
