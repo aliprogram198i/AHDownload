@@ -409,7 +409,7 @@ private fun DownloadsScreen(
                     Column {
                         Text("التنزيلات")
                         Text(
-                            "$activeCount نشطة · $pausedCount متوقفة · $completedCount مكتملة",
+                            "تنظيم ومتابعة ملفاتك",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -537,8 +537,93 @@ private fun DownloadsScreen(
                     .widthIn(max = 760.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                item(key = "download_summary") {
+                    Column {
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        activeCount.toString(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                    Text(
+                                        "نشطة",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    )
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        pausedCount.toString(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        "متوقفة",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        completedCount.toString(),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                    Text(
+                                        "مكتملة",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 item {
-                    Spacer(Modifier.height(4.dp))
                     OutlinedTextField(
                         value = query,
                         onValueChange = { query = it },
@@ -1100,30 +1185,6 @@ private fun DownloadRecordCard(
                         if (record.status == DownloadStatus.COMPLETED && fileAvailable && record.destinationUri != null) {
                             DiagnosticDropdownMenuItem(
                                 trackingScreen = "DOWNLOADS",
-                                trackingId = "DOWNLOADS.dropdownmenuitem.05",
-                                trackingLabel = "فتح",
-                                disabledReason = "callsite_precondition_not_explicit",
-                                text = { Text("فتح") },
-                                leadingIcon = { Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onOpenDownload()
-                                },
-                            )
-                            DiagnosticDropdownMenuItem(
-                                trackingScreen = "DOWNLOADS",
-                                trackingId = "DOWNLOADS.dropdownmenuitem.06",
-                                trackingLabel = "مشاركة",
-                                disabledReason = "callsite_precondition_not_explicit",
-                                text = { Text("مشاركة") },
-                                leadingIcon = { Icon(Icons.Rounded.Share, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onShareDownload()
-                                },
-                            )
-                            DiagnosticDropdownMenuItem(
-                                trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.dropdownmenuitem.07",
                                 trackingLabel = "فتح مجلد الحفظ",
                                 disabledReason = "callsite_precondition_not_explicit",
@@ -1383,14 +1444,12 @@ private fun DownloadRecordCard(
             ) {
                 Text(
                     "متوسط السرعة: " + formatBytes(performanceSummary.averageBytesPerSecond) +
-                        "/s · الذروة: " + formatBytes(performanceSummary.peakBytesPerSecond) + "/s",
+                        "/s · الذروة: " + formatBytes(performanceSummary.peakBytesPerSecond) +
+                        "/s · زمن النقل: " + formatPerformanceDuration(performanceSummary.durationMs),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "زمن النقل المقاس: " + formatPerformanceDuration(performanceSummary.durationMs),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
