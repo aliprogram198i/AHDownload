@@ -118,9 +118,10 @@ class LiveSocialMediaDownloadE2ETest {
                         continue
                     }
 
+                    val candidateTitle = title + "-C" + (index + 1)
                     val enqueue = launcher.enqueue(
                         candidate = validation.candidate.copy(sourceUrl = validation.finalUrl),
-                        title = title,
+                        title = candidateTitle,
                         sourcePageUrl = target.url,
                         thumbnailUrl = null,
                     )
@@ -132,7 +133,7 @@ class LiveSocialMediaDownloadE2ETest {
                     val record = awaitTerminalRecord(
                         app = app,
                         sourcePageUrl = target.url,
-                        displayName = title,
+                        displayName = candidateTitle,
                         timeoutMs = 90_000L,
                     )
                     if (record == null) {
