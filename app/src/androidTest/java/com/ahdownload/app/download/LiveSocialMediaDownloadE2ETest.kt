@@ -51,6 +51,11 @@ class LiveSocialMediaDownloadE2ETest {
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
+            // Regression coverage for public adaptive streams: these candidates are HLS/DASH
+            // sources that must be downloadable through the bundled FFmpeg HTTPS protocol.
+            Target("X-HLS", MediaPlatform.X, "https://x.com/TopHeroes_/status/2001950365332455490"),
+            Target("Pinterest-HLS", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/550213279492193633/"),
+            Target("Vimeo-HLS", MediaPlatform.Vimeo, "https://vimeo.com/1147525044"),
         )
 
         for (target in targets) {
