@@ -90,29 +90,34 @@ class XSocialPlatformExtractionStrategyTest {
     }
 
     @Test
-    fun skipsSyndicationWhenAnotherExtractorAlreadyFoundMedia() = runTest {
-        val client = FakeHttpTextClient("{}")
-
+    fun prefersBrowserObservedMediaButUsesSyndicationAlongsideHtmlCandidates() = runTest {
+        val browserClient = FakeHttpTextClient("{}")
         val browserResult = strategy.extractAdditionalMedia(
             pageUrl = "https://x.com/sample/status/123456789",
             browserMediaCount = 1,
             pageFallbackMediaCount = 0,
-            pageClient = client,
+            pageClient = browserClient,
             operationId = "op-x-3",
             logger = logger,
         )
-        val pageResult = strategy.extractAdditionalMedia(
+
+        val htmlFallbackClient = FakeHttpTextClient(
+            """{"text":"syndication alternative","mediaDetails":[{"video_info":{"variants":[{"content_type":"video/mp4","url":"https://video.twimg.com/video/fallback.mp4"}]}}]}""",
+        )
+        val htmlResult = strategy.extractAdditionalMedia(
             pageUrl = "https://x.com/sample/status/123456789",
             browserMediaCount = 0,
             pageFallbackMediaCount = 1,
-            pageClient = client,
+            pageClient = htmlFallbackClient,
             operationId = "op-x-4",
             logger = logger,
         )
 
         assertNull(browserResult)
-        assertNull(pageResult)
-        assertEquals(0, client.calls)
+        assertEquals(0, browserClient.calls)
+        assertNotNull(htmlResult)
+        assertEquals(listOf("https://video.twimg.com/video/fallback.mp4"), htmlResult.mediaUrls)
+        assertEquals(1, htmlFallbackClient.calls)
     }
 
     @Test
