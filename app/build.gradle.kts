@@ -88,6 +88,7 @@ dependencies {
     implementation(project(":feature:downloads"))
     implementation(project(":feature:studio"))
     implementation(project(":domain"))
+    implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
