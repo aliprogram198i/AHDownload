@@ -13,6 +13,7 @@ import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.network.PublicInternetDns
 import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -51,11 +52,17 @@ class WebVideoPageResolver(
         }
 
         try {
-            val page = fetchPage(initial) ?: return@withContext ResolverResult.Failure(
-                FailureCode.NoCandidates,
-                "لم يتمكن التطبيق من قراءة صفحة HTML عامة من هذا الرابط.",
-            )
-            val parsedPage = WebPageMediaParser.parse(page.html, page.finalUrl)
+            val page = try {
+                fetchPage(initial)
+            } catch (unsafe: UnsafeDestinationException) {
+                throw unsafe
+            } catch (error: Exception) {
+                // Some sites block metadata clients but still serve a playable page in WebView.
+                null
+            }
+            val pageUrl = page?.finalUrl ?: initial.toString()
+            val parsedPage = page?.let { WebPageMediaParser.parse(it.html, it.finalUrl) }
+                ?: ParsedPageMedia(title = null, thumbnailUrl = null, durationMs = null, mediaUrls = emptyList())
             val parsedHints = parsedPage.mediaUrls.mapNotNull { raw ->
                 val parsedUrl = raw.toHttpUrlOrNull() ?: return@mapNotNull null
                 val extension = extensionFromUrl(raw)
@@ -72,10 +79,15 @@ class WebVideoPageResolver(
                     explicitVideo = true,
                 )
             }
-            val staticHints = (extractHints(page.html, page.finalUrl) + parsedHints)
+            val staticHints = ((page?.let { extractHints(it.html, it.finalUrl) } ?: emptyList()) + parsedHints.mediaUrls.mapNotNull { raw ->
+                val parsedUrl = raw.toHttpUrlOrNull() ?: return@mapNotNull null
+                val ext = extensionFromUrl(raw)
+                if (ext !in VIDEO_EXTENSIONS && ext !in MANIFEST_EXTENSIONS) return@mapNotNull null
+                Hint(url = parsedUrl.toString(), label = null, height = inferHeight(null, raw), explicitVideo = true)
+            })
                 .distinctBy { it.url }
                 .take(MAX_CANDIDATES * 3)
-            var candidates = buildCandidates(page.finalUrl, staticHints)
+            var candidates = buildCandidates(pageUrl, staticHints)
             var browserSession: BrowserMediaSession? = null
 
             // Only open the WebView when server-delivered HTML did not yield a valid
@@ -83,10 +95,11 @@ class WebVideoPageResolver(
             // without adding browser startup latency to ordinary HTML5 pages.
             if (candidates.isEmpty() && browserMediaSessionProvider != null) {
                 browserSession = runCatching {
-                    browserMediaSessionProvider.snapshot(page.finalUrl, MediaPlatform.Web)
+                    browserMediaSessionProvider.snapshot(pageUrl, MediaPlatform.Web)
                 }.getOrNull()
+                val observedPageUrl = safeHttpUrl(browserSession?.finalUrl, pageUrl) ?: pageUrl
                 val observedHints = browserSession?.mediaUrls.orEmpty().mapNotNull { raw ->
-                    val parsedUrl = page.finalUrl.toHttpUrlOrNull()?.resolve(raw) ?: return@mapNotNull null
+                    val parsedUrl = observedPageUrl.toHttpUrlOrNull()?.resolve(raw) ?: return@mapNotNull null
                     if (!isAllowedDestination(parsedUrl)) return@mapNotNull null
                     val extension = extensionFromUrl(parsedUrl.toString())
                     val videoQuery = Regex("""[?&](?:mime|content-type|type|format)=[^&]*video""", RegexOption.IGNORE_CASE)
@@ -103,7 +116,7 @@ class WebVideoPageResolver(
                         requestHeaders = browserSession?.requestHeadersByUrl?.get(raw).orEmpty(),
                     )
                 }.distinctBy { it.url }
-                candidates = buildCandidates(page.finalUrl, observedHints)
+                candidates = buildCandidates(observedPageUrl, observedHints)
             }
 
             if (candidates.isEmpty()) {
@@ -113,7 +126,7 @@ class WebVideoPageResolver(
                     "لم يتم العثور على مصدر فيديو قابل للتحقق من HTML أو جلسة المتصفح",
                     request,
                     mapOf(
-                        "host" to hostOf(page.finalUrl),
+                        "host" to hostOf(browserSession?.finalUrl ?: pageUrl),
                         "html_source_count" to staticHints.size.toString(),
                         "browser_observation" to (browserSession != null).toString(),
                         "browser_source_count" to (browserSession?.mediaUrls?.size ?: 0).toString(),
@@ -125,21 +138,22 @@ class WebVideoPageResolver(
                 )
             }
 
+            val effectivePageUrl = safeHttpUrl(browserSession?.finalUrl, pageUrl) ?: pageUrl
             val title = browserSession?.title?.takeIf { it.isNotBlank() }
                 ?: parsedPage.title
-                ?: page.title
+                ?: page?.title
                 ?: "Web video"
-            val thumbnail = safeHttpUrl(browserSession?.thumbnailUrl, page.finalUrl)
-                ?: safeHttpUrl(parsedPage.thumbnailUrl, page.finalUrl)
-                ?: safeHttpUrl(page.thumbnailUrl, page.finalUrl)
-            val duration = browserSession?.durationMs ?: parsedPage.durationMs ?: page.durationMs
+            val thumbnail = safeHttpUrl(browserSession?.thumbnailUrl, effectivePageUrl)
+                ?: safeHttpUrl(parsedPage.thumbnailUrl, effectivePageUrl)
+                ?: safeHttpUrl(page?.thumbnailUrl, effectivePageUrl)
+            val duration = browserSession?.durationMs ?: parsedPage.durationMs ?: page?.durationMs
             log(
                 DiagnosticLevel.INFO,
                 "WEB_VIDEO_PAGE_RESOLVED",
                 "تم اكتشاف مصادر فيديو من صفحة ويب",
                 request,
                 mapOf(
-                    "host" to hostOf(page.finalUrl),
+                    "host" to hostOf(effectivePageUrl),
                     "discovered_count" to (staticHints.size + (browserSession?.mediaUrls?.size ?: 0)).toString(),
                     "accepted_count" to candidates.size.toString(),
                     "manifest_count" to candidates.count { it.streamingManifest }.toString(),
