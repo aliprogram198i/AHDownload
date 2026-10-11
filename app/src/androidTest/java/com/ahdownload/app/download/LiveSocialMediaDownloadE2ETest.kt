@@ -165,9 +165,23 @@ class LiveSocialMediaDownloadE2ETest {
                         candidateFailure = "Candidate " + (index + 1) + ": output is HTML, not a media file"
                         continue
                     }
+                    if (target.platform == MediaPlatform.Snapchat) {
+                        val bytes = prefix.toByteArray(Charsets.ISO_8859_1)
+                        val mp4BoxType = if (bytes.size >= 8) {
+                            String(bytes, 4, 4, Charsets.ISO_8859_1)
+                        } else {
+                            ""
+                        }
+                        if (mp4BoxType != "ftyp") {
+                            candidateFailure = "Candidate " + (index + 1) +
+                                ": output does not have an MP4 ftyp signature"
+                            continue
+                        }
+                    }
 
                     downloaded = true
-                    val headerHex = prefix.take(12).toByteArray().joinToString("") { "%02x".format(it) }
+                    val headerHex = prefix.toByteArray(Charsets.ISO_8859_1)
+                        .take(12).joinToString("") { "%02x".format(it) }
                     candidateFailure = "downloaded " + byteCount + " bytes; header=" + headerHex
                     runCatching { context.contentResolver.delete(uri, null, null) }
                     break
