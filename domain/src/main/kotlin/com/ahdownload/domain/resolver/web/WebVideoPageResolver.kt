@@ -81,7 +81,11 @@ class WebVideoPageResolver(
                 if (mime == "text/html" || mime == "application/xhtml+xml") return@mapNotNull null
                 val extension = extensionFromUrl(probe.finalUrl)
                     ?: extensionFromMime(mime)
-                    ?: if (isHlsMime(mime)) "m3u8" else if (isDashMime(mime)) "mpd" else null
+                    ?: when {
+                        isHlsMime(mime) -> "m3u8"
+                        isDashMime(mime) -> "mpd"
+                        else -> null
+                    }
                     ?: return@mapNotNull null
                 val manifest = extension in MANIFEST_EXTENSIONS ||
                     isHlsMime(mime) || isDashMime(mime)
@@ -91,7 +95,7 @@ class WebVideoPageResolver(
                 if (!videoMime && !manifest && !explicitVideoSource) return@mapNotNull null
 
                 val height = hint.height ?: inferHeight(hint.label, probe.finalUrl)
-                val size = probe.contentLength?.takeIf { probe.status != 206 }
+                val size = probe.contentRangeTotal ?: probe.contentLength?.takeIf { probe.status != 206 }
                 MediaCandidate(
                     id = "web-video-" + extension + "-" + probe.finalUrl.hashCode().toUInt().toString(16),
                     sourceUrl = probe.finalUrl,
@@ -247,6 +251,10 @@ class WebVideoPageResolver(
                 finalUrl = response.request.url.toString(),
                 contentType = response.header("Content-Type"),
                 contentLength = response.header("Content-Length")?.toLongOrNull()?.takeIf { it >= 0L },
+                contentRangeTotal = response.header("Content-Range")
+                    ?.substringAfterLast('/', "")
+                    ?.toLongOrNull()
+                    ?.takeIf { it >= 0L },
             )
             response.close()
             return snapshot
@@ -283,13 +291,13 @@ class WebVideoPageResolver(
             )
         }
 
-        val tagPattern = Regex("(?is)<(?:video|source)\\b([^>]*)>")
+        val tagPattern = Regex("(?is)<(video|source)\\b([^>]*)>")
         val attributePattern = Regex("(?is)\\b([a-z_:][-a-z0-9_:.]*)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))")
         tagPattern.findAll(source).forEach { match ->
-            val attributes = parseAttributes(match.groupValues[1], attributePattern)
+            val attributes = parseAttributes(match.groupValues[2], attributePattern)
             val type = attributes["type"].orEmpty()
-            val isVideo = type.startsWith("video/", true) ||
-                type.contains("mpegurl", true) || type.contains("dash+xml", true)
+            val isVideo = match.groupValues[1].equals("video", ignoreCase = true) ||
+                type.startsWith("video/", true) || type.contains("mpegurl", true) || type.contains("dash+xml", true)
             add(
                 attributes["src"] ?: attributes["data-src"] ?: attributes["data-url"],
                 attributes["label"] ?: attributes["data-quality"] ?: attributes["res"] ?: type,
@@ -431,7 +439,13 @@ class WebVideoPageResolver(
 
     private data class Page(val finalUrl: String, val html: String, val title: String?, val thumbnailUrl: String?)
     private data class Hint(val url: String, val label: String?, val height: Int?, val explicitVideo: Boolean)
-    private data class Probe(val status: Int, val finalUrl: String, val contentType: String?, val contentLength: Long?)
+    private data class Probe(
+        val status: Int,
+        val finalUrl: String,
+        val contentType: String?,
+        val contentLength: Long?,
+        val contentRangeTotal: Long?,
+    )
     private enum class Method { HEAD, RANGE }
     private class UnsafeDestinationException : IOException()
 
