@@ -18,6 +18,7 @@ import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.CandidateValidator
 import com.ahdownload.domain.validation.OkHttpMediaProbe
 import com.ahdownload.domain.resolver.web.WebDownloadResolver
+import com.ahdownload.domain.resolver.web.WebVideoPageResolver
 
 class HomeResolver(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
@@ -34,6 +35,7 @@ class HomeResolver(
     private val candidateRanker: CandidateRanker = CandidateRanker(),
     private val browserMediaSessionProvider: BrowserMediaSessionProvider? = null,
     private val webDownloadResolver: WebDownloadResolver = WebDownloadResolver(logger = logger),
+    private val webVideoPageResolver: WebVideoPageResolver = WebVideoPageResolver(logger = logger),
 ) {
     suspend fun resolve(
         link: MediaLink,
@@ -62,7 +64,17 @@ class HomeResolver(
         }
 
         val result = when (link.platform) {
-            MediaPlatform.Web -> webDownloadResolver.resolve(ResolverRequest(link, operationId = operationId))
+            MediaPlatform.Web -> {
+                val request = ResolverRequest(link, operationId = operationId)
+                when (val direct = webDownloadResolver.resolve(request)) {
+                    is ResolverResult.Success -> direct
+                    is ResolverResult.Failure -> if (direct.code == com.ahdownload.domain.resolver.FailureCode.NoCandidates) {
+                        webVideoPageResolver.resolve(request)
+                    } else {
+                        direct
+                    }
+                }
+            }
             MediaPlatform.YouTube -> {
                 val request = ResolverRequest(link, operationId = operationId)
                 if (forceYouTubeFallbacks) {
