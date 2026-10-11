@@ -16,7 +16,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.ahdownload.app.R
-import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
+import com.ahdownload.app.diagnostics.DownloadScopedDiagnosticLogger
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.DownloadStoragePolicy
 import com.ahdownload.app.settings.DownloadStorageReadiness
@@ -25,6 +25,7 @@ import com.ahdownload.app.settings.SelectedDirectoryStorage
 import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.domain.download.DownloadEngine
 import com.ahdownload.core.common.DiagnosticLevel
+import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadCoordinator
 import com.ahdownload.domain.download.DownloadFailure
@@ -116,7 +117,7 @@ class DownloadWorker(
 
         val application = applicationContext as com.ahdownload.app.AHDownloadApplication
         val repository = application.downloadRepository
-        val diagnostics = diagnosticsLogger()
+        val diagnostics = DownloadScopedDiagnosticLogger(diagnosticsLogger(), task.id)
         var refreshAttempted = false
 
         // Only probe the app-controlled default directory. A persisted SAF tree may
@@ -257,7 +258,7 @@ class DownloadWorker(
         val engine = PerformanceTrackingDownloadEngine(
             delegate = StreamingDownloadEngine(
                 source = OkHttpDownloadByteStream(
-                    logger = diagnosticsLogger(),
+                    logger = diagnostics,
                     dynamicHeaders = { url, headers ->
                         dynamicHeadersFor(url, task.sessionCookieHost, headers)
                     },
@@ -759,7 +760,7 @@ class DownloadWorker(
         sourceTask: DownloadTask,
         repository: com.ahdownload.domain.download.DownloadRepository,
         controlStore: DownloadControlStore,
-        diagnostics: PersistentDiagnosticLogger,
+        diagnostics: DiagnosticLogger,
     ): com.ahdownload.domain.download.DownloadRecord? {
         val queue = PersistentDownloadQueue(repository)
         queue.enqueue(task, System.currentTimeMillis())
@@ -859,7 +860,7 @@ class DownloadWorker(
         engine: DownloadEngine,
         repository: com.ahdownload.domain.download.DownloadRepository,
         controlStore: DownloadControlStore,
-        diagnostics: PersistentDiagnosticLogger,
+        diagnostics: DiagnosticLogger,
     ): com.ahdownload.domain.download.DownloadRecord? {
         val queue = PersistentDownloadQueue(repository)
         queue.enqueue(task, System.currentTimeMillis())
@@ -969,7 +970,7 @@ class DownloadWorker(
                     var directAudioFinal: DownloadState = DownloadState.Preparing
                     val audioEngine = StreamingDownloadEngine(
                         source = OkHttpDownloadByteStream(
-                            logger = diagnosticsLogger(),
+                            logger = diagnostics,
                             dynamicHeaders = { url, headers ->
                                 dynamicHeadersFor(url, task.companionAudioSessionCookieHost, headers)
                             },
@@ -1245,7 +1246,7 @@ class DownloadWorker(
 
     private suspend fun refreshYouTubeTask(
         task: DownloadTask,
-        diagnostics: PersistentDiagnosticLogger,
+        diagnostics: DiagnosticLogger,
     ): DownloadTask? {
         val pageUrl = task.sourcePageUrl
             ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
