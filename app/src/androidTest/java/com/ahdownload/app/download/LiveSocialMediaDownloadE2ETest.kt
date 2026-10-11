@@ -51,6 +51,7 @@ class LiveSocialMediaDownloadE2ETest {
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
+            Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"),
         )
 
         for (target in targets) {
@@ -221,6 +222,7 @@ class LiveSocialMediaDownloadE2ETest {
             "marker_response_error",
             "timeout_ms",
             "platform_fallback_media_count",
+            "snapchat_spotlight_media_count",
             "source_url_count",
             "candidate_count",
             "video_candidate_count",
