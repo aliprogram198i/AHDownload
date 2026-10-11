@@ -564,21 +564,13 @@ private data class ControlAttemptSummary(
     val outcome: String,
 )
 
-private val UI_ENVIRONMENT_KEYS = setOf(
-    "app_package", "app_version_name", "app_version_code", "app_build_type",
-    "app_target_sdk", "app_first_install_ms", "app_last_update_ms",
-    "android_sdk", "android_release", "device_manufacturer", "device_model",
-    "device_brand", "device_product", "locale", "timezone", "is_24_hour_format",
-    "process_id", "available_memory_bytes", "low_memory", "app_uptime_ms",
-    "process_uptime_ms", "thread", "thread_id", "diagnostic_session_id", "event_sequence",
-)
-
 private fun userFriendlyTitle(rootCause: String, fallbackType: String): String =
     when {
         rootCause == "AUTHENTICATION_REQUIRED" -> "يتطلب الفيديو تسجيل الدخول وتأكيد العمر"
         rootCause == "AUDIO_EXTRACTION_FAILED" -> "فشل استخراج الصوت"
         rootCause == "STORAGE_ERROR" -> "تعذر حفظ الملف"
         rootCause.startsWith("HTTP_403") -> "المصدر رفض الطلب"
+        rootCause in setOf("TIMEOUT", "DNS_FAILURE", "TLS_FAILURE", "CONNECTION_FAILURE", "CONNECTION_RESET", "SOCKET_FAILURE", "IO_FAILURE") -> "تعذر الاتصال بمصدر الفيديو"
         rootCause.startsWith("HTTP_") -> "خطأ في الاتصال بالمصدر"
         rootCause == "MEDIA_VALIDATION_FAILED" -> "لم يتم العثور على مصدر وسائط صالح"
         else -> fallbackType.ifBlank { "تعذر إكمال العملية" }
@@ -602,6 +594,12 @@ private fun userFriendlyRootCause(value: String): String =
         value == "STORAGE_ERROR" -> "التخزين"
         value == "MEDIA_VALIDATION_FAILED" -> "التحقق من الوسائط"
         value == "HTTP_403" -> "الخادم رفض الطلب (403)"
+        value == "TIMEOUT" -> "انتهت مهلة الاتصال"
+        value == "DNS_FAILURE" -> "تعذر العثور على عنوان الخادم (DNS)"
+        value == "TLS_FAILURE" -> "فشل الاتصال الآمن (TLS)"
+        value == "CONNECTION_FAILURE" -> "تعذر فتح الاتصال بالخادم"
+        value == "CONNECTION_RESET" -> "انقطع الاتصال أثناء الطلب"
+        value == "SOCKET_FAILURE" || value == "IO_FAILURE" -> "حدث خطأ أثناء نقل البيانات"
         value.startsWith("HTTP_") -> "خطأ HTTP أثناء الوصول للمصدر"
         value == "NONE" -> "لا يوجد"
         else -> value
@@ -625,6 +623,7 @@ private fun userFriendlyAction(value: String): String =
         "INSPECT_AUDIO_PROCESSOR" -> "تحقق من معالج الصوت أو جرّب صيغة صوت أخرى."
         "INSPECT_STORAGE" -> "تحقق من مجلد التنزيل والمساحة والصلاحيات."
         "INSPECT_BROWSER_MEDIA_CAPTURE" -> "أعد التحقق من جلسة المصدر أو أعد المحاولة."
+        "INSPECT_REQUEST_CONTEXT" -> "تحقق من الاتصال أو قيود الشبكة ثم أعد المحاولة."
         "INSPECT_MEDIA_VALIDATION" -> "أعد التحليل وتحقق من المصدر المتاح."
         "NONE" -> "لا يوجد إجراء مطلوب."
         else -> value.ifBlank { "أعد المحاولة بعد التحقق من المصدر." }
