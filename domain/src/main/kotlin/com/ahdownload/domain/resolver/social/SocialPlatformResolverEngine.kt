@@ -162,6 +162,56 @@ class SocialPlatformResolverEngine(
                     }
                 }
 
+                // Some platforms expose public media through their own page payload rather than
+                // OpenGraph HTML. Try one bounded, first-party public fallback only after the normal
+                // browser and page paths returned no media. Restricted posts are not bypassed.
+                var platformFallback: ParsedPageMedia? = null
+                if (
+                    platform != MediaPlatform.Instagram &&
+                    session.mediaUrls.isEmpty() &&
+                    fallback?.mediaUrls.isNullOrEmpty() &&
+                    !pageUrl.isNullOrBlank()
+                ) {
+                    val publicFallback = platformFallbackRequest(platform, pageUrl)
+                    if (publicFallback != null) {
+                        var responseChars = 0
+                        var failureType: String? = null
+                        try {
+                            val body = withTimeoutOrNull(PLATFORM_FALLBACK_FETCH_TIMEOUT_MS) {
+                                pageClient.get(publicFallback.second, publicFallback.third)
+                            }
+                            responseChars = body?.length ?: 0
+                            platformFallback = body?.let { WebPageMediaParser.parse(it, pageUrl) }
+                        } catch (error: CancellationException) {
+                            throw error
+                        } catch (error: Throwable) {
+                            failureType = error.javaClass.simpleName
+                        }
+                        val mediaCount = platformFallback?.mediaUrls?.size ?: 0
+                        logger.log(
+                            if (mediaCount > 0) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                            "SOCIAL_PLATFORM_PUBLIC_FALLBACK_RESULT",
+                            "اكتمل فحص المسار العام البديل للمنصة",
+                            "social.resolve.platform_fallback",
+                            mapOf(
+                                "platform" to platform.name,
+                                "operation_id" to (request.operationId ?: "none"),
+                                "fallback_kind" to publicFallback.first,
+                                "response_chars" to responseChars.toString(),
+                                "media_count" to mediaCount.toString(),
+                                "fallback_status" to when {
+                                    failureType != null -> "request_failed"
+                                    responseChars == 0 -> "empty_or_timeout"
+                                    mediaCount > 0 -> "media_found"
+                                    else -> "no_media"
+                                },
+                                "exception_type" to (failureType ?: "none"),
+                            ),
+                            null,
+                        )
+                    }
+                }
+
                 // Instagram may expose media through either public embed variant. Try the
                 // captioned variant first, then the plain public embed only if no media was found.
                 // Requests are first-party and bounded; no login or access-control bypass is attempted.
@@ -231,14 +281,16 @@ class SocialPlatformResolverEngine(
                         }
                     }
                 }
-                val title = session.title ?: fallback?.title ?: instagramEmbedFallback?.title
-                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: instagramEmbedFallback?.thumbnailUrl
-                val duration = session.durationMs ?: fallback?.durationMs ?: instagramEmbedFallback?.durationMs
+                val title = session.title ?: fallback?.title ?: platformFallback?.title ?: instagramEmbedFallback?.title
+                val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: platformFallback?.thumbnailUrl ?: instagramEmbedFallback?.thumbnailUrl
+                val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs ?: instagramEmbedFallback?.durationMs
                 val fallbackMediaCount = fallback?.mediaUrls?.size ?: 0
+                val platformFallbackMediaCount = platformFallback?.mediaUrls?.size ?: 0
                 val instagramEmbedMediaCount = instagramEmbedFallback?.mediaUrls?.size ?: 0
                 val urls = (
                     session.mediaUrls +
                         fallback?.mediaUrls.orEmpty() +
+                        platformFallback?.mediaUrls.orEmpty() +
                         instagramEmbedFallback?.mediaUrls.orEmpty()
                     )
                     .distinct()
@@ -254,6 +306,7 @@ class SocialPlatformResolverEngine(
                         "operation_id" to (request.operationId ?: "none"),
                         "browser_media_count" to session.mediaUrls.size.toString(),
                         "fallback_media_count" to fallbackMediaCount.toString(),
+                        "platform_fallback_media_count" to platformFallbackMediaCount.toString(),
                         "instagram_embed_media_count" to instagramEmbedMediaCount.toString(),
                         "source_url_count" to urls.size.toString(),
                         "page_url_source" to pageUrlSource,
@@ -477,6 +530,61 @@ class SocialPlatformResolverEngine(
         )
     }
 
+    /**
+     * Returns public, first-party alternate representations for selected platforms.
+     * No user credentials are sent and inaccessible/restricted posts remain unavailable.
+     */
+    private fun platformFallbackRequest(
+        platform: MediaPlatform,
+        pageUrl: String,
+    ): Triple<String, String, Map<String, String>>? {
+        val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return null
+        val host = uri.host?.lowercase().orEmpty()
+        val headers = mapOf(
+            "Accept" to "application/json,text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "Accept-Language" to "en-US,en;q=0.8",
+            "Referer" to pageUrl,
+        )
+        return when (platform) {
+            MediaPlatform.Reddit -> {
+                if (host != "reddit.com" && !host.endsWith(".reddit.com")) return null
+                val path = uri.rawPath.orEmpty().ifBlank { "/" }.trimEnd('/')
+                val jsonPath = if (path.endsWith(".json", ignoreCase = true)) path else path + ".json"
+                Triple(
+                    "reddit_public_json",
+                    (uri.scheme ?: "https") + "://" + uri.rawAuthority + jsonPath + "?raw_json=1",
+                    headers,
+                )
+            }
+            MediaPlatform.X -> {
+                if (host != "x.com" && !host.endsWith(".x.com") &&
+                    host != "twitter.com" && !host.endsWith(".twitter.com")
+                ) return null
+                val statusId = Regex("""/(?:status|statuses)/(\d+)""")
+                    .find(uri.path.orEmpty())?.groupValues?.getOrNull(1) ?: return null
+                Triple(
+                    "x_public_syndication",
+                    "https://cdn.syndication.twimg.com/tweet-result?id=" + statusId + "&lang=en",
+                    headers,
+                )
+            }
+            MediaPlatform.Vimeo -> {
+                if (host != "vimeo.com" && !host.endsWith(".vimeo.com")) return null
+                val videoId = uri.path.orEmpty().split('/').lastOrNull()
+                    ?.takeIf { it.matches(Regex("""\d{4,}""")) } ?: return null
+                Triple("vimeo_public_player_config", "https://player.vimeo.com/video/" + videoId + "/config", headers)
+            }
+            MediaPlatform.Facebook -> {
+                if (host != "facebook.com" && !host.endsWith(".facebook.com")) return null
+                if (host == "m.facebook.com") return null
+                val path = uri.rawPath.orEmpty().ifBlank { "/" }
+                val query = uri.rawQuery?.let { "?" + it }.orEmpty()
+                Triple("facebook_mobile_web", "https://m.facebook.com" + path + query, headers)
+            }
+            else -> null
+        }
+    }
+
     private fun instagramEmbedEndpoints(pageUrl: String): List<Pair<String, String>> {
         val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return emptyList()
         val host = uri.host?.lowercase().orEmpty()
@@ -555,6 +663,7 @@ internal const val SOCIAL_RESOLVE_TIMEOUT_MS = 20_000L
 private const val INSTAGRAM_SOCIAL_RESOLVE_TIMEOUT_MS = 32_000L
 private const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
 private const val INSTAGRAM_EMBED_FETCH_TIMEOUT_MS = 3_500L
+private const val PLATFORM_FALLBACK_FETCH_TIMEOUT_MS = 6_000L
 
 internal fun defaultSocialDiagnosticLogger(): DiagnosticLogger =
     DiagnosticLogger { _, _, _, _, _, _ -> }

@@ -6,6 +6,49 @@ import org.junit.Test
 
 class WebPageMediaParserTest {
     @Test
+    fun extractsCommonSocialPlatformPlayableUrlFields() {
+        val html = """
+            <script>
+              {
+                "playable_url": "https:\/\/video.xx.fbcdn.net\/clips\/public-video.mp4?token=fb",
+                "playbackUrl": "https:\/\/cf-st.sc-cdn.net\/video\/snap.mp4?token=snap",
+                "url": "https:\/\/video.twimg.com\/ext_tw_video\/123\/pu\/vid\/avc1\/720x1280\/clip.mp4?tag=1"
+              }
+            </script>
+        """.trimIndent()
+
+        val result = WebPageMediaParser.parse(html, "https://example.com/post")
+
+        assertEquals(3, result.mediaUrls.size)
+        assertTrue(result.mediaUrls.any { it.contains("fbcdn.net/clips/public-video.mp4") })
+        assertTrue(result.mediaUrls.any { it.contains("sc-cdn.net/video/snap.mp4") })
+        assertTrue(result.mediaUrls.any { it.contains("video.twimg.com/ext_tw_video/123") })
+    }
+
+    @Test
+    fun extractsDirectVideoFromRedditJsonPayload() {
+        val json = """
+            {
+              "data": {
+                "children": [{
+                  "data": {
+                    "secure_media": {
+                      "reddit_video": {
+                        "fallback_url": "https://v.redd.it/example/DASH_720.mp4?source=fallback"
+                      }
+                    }
+                  }
+                }]
+              }
+            }
+        """.trimIndent()
+
+        val result = WebPageMediaParser.parse(json, "https://www.reddit.com/r/videos/comments/example/post")
+
+        assertTrue(result.mediaUrls.any { it.startsWith("https://v.redd.it/example/DASH_720.mp4") })
+    }
+
+    @Test
     fun preservesLiteralPlusCharactersInMediaUrls() {
         val html = """
             <meta property="og:video" content="https://cdn.example.com/video+mix.mp4?token=a+b&amp;part=1">
