@@ -361,6 +361,11 @@ class WebDownloadResolver(
         "image/webp" -> "webp"
         "image/gif" -> "gif"
         "image/avif" -> "avif"
+        "image/bmp" -> "bmp"
+        "image/tiff" -> "tiff"
+        "image/svg+xml" -> "svg"
+        "image/heic" -> "heic"
+        "image/heif" -> "heif"
         "application/octet-stream" -> "bin"
         else -> null
     }
