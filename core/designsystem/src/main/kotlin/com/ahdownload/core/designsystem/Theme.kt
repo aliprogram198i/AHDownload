@@ -47,14 +47,14 @@ private val AhDarkColors = darkColorScheme(
 )
 
 private val AhDarkTechColors = darkColorScheme(
-    primary = Color(0xFFFF791A),
-    onPrimary = Color(0xFF211006),
-    primaryContainer = Color(0xFF4A2815),
-    onPrimaryContainer = Color(0xFFFFDCC5),
+    primary = Color(0xFFFF6A00),
+    onPrimary = Color(0xFF1A0D04),
+    primaryContainer = Color(0xFF482513),
+    onPrimaryContainer = Color(0xFFFFE1CF),
     secondary = Color(0xFFFF9A45),
     onSecondary = Color(0xFF211006),
     secondaryContainer = Color(0xFF382318),
-    onSecondaryContainer = Color(0xFFFFDCC5),
+    onSecondaryContainer = Color(0xFFFFE2CF),
     tertiary = Color(0xFF4ADE80),
     onTertiary = Color(0xFF052E16),
     background = Color(0xFF0A0A0C),
