@@ -2,6 +2,7 @@ package com.ahdownload.domain.download
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.domain.network.PublicInternetDns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -13,6 +14,7 @@ class OkHttpDownloadByteStream(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
+        .dns(PublicInternetDns)
         .build(),
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val dynamicHeaders: (String, Map<String, String>) -> Map<String, String> = { _, _ -> emptyMap() },
