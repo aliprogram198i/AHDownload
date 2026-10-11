@@ -470,8 +470,14 @@ object DiagnosticDataSanitizer {
         RegexOption.IGNORE_CASE,
     )
     private val urlPattern = Regex("(?i)https?://[^\\s<>\\\"']+")
+    private val cookieHeaderPattern = Regex(
+        "(?i)\\b(set-cookie|cookie)\\b(\\s*[:=]\\s*)[^\\r\\n]*",
+    )
+    private val authorizationPattern = Regex(
+        "(?i)\\b(proxy-authorization|authorization)\\b(\\s*[:=]\\s*)(?:bearer\\s+)?[^\\s&,;]+",
+    )
     private val secretValuePattern = Regex(
-        "(?i)(cookie|set-cookie|authorization|token|password|passwd|secret|signature|sig|api[_-]?key|po[_-]?token)(\\s*[:=]\\s*)[^\\s&;,]+",
+        "(?i)(cookie|set-cookie|authorization|proxy-authorization|token|password|passwd|secret|signature|sig|api[_-]?key|po[_-]?token)(\\s*[:=]\\s*)[^\\s&;,]+",
     )
 
     private val safeMetadataKeys = setOf(
@@ -496,7 +502,13 @@ object DiagnosticDataSanitizer {
 
     fun sanitizeText(value: String): String {
         val withoutUrls = urlPattern.replace(value, "[URL_REDACTED]")
-        return secretValuePattern.replace(withoutUrls, "$1$2[REDACTED]")
+        val withoutCookies = cookieHeaderPattern.replace(withoutUrls) {
+            it.groupValues[1] + it.groupValues[2] + "[REDACTED]"
+        }
+        val withoutAuthorization = authorizationPattern.replace(withoutCookies) {
+            it.groupValues[1] + it.groupValues[2] + "[REDACTED]"
+        }
+        return secretValuePattern.replace(withoutAuthorization, "$1$2[REDACTED]")
             .replace(Regex("[\\r\\n\\t]+"), " ")
             .take(12_000)
     }
