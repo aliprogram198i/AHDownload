@@ -368,8 +368,8 @@ private fun HomeScreen(
                     HomeMode.Recent -> add("recent_links_page")
                 }
             }
-            if (state.error != null) add("error_card")
-            if (state.downloadQueued) add("download_success")
+            if (state.error != null && !(showResultsScreen && state.mode == HomeMode.Link)) add("error_card")
+            if (state.downloadQueued && !(showResultsScreen && state.mode == HomeMode.Link)) add("download_success")
             if (state.searching && state.mode != HomeMode.Search) add("background_search")
             if (state.batchDownloading) add("batch_download_progress")
         }.joinToString(",")
@@ -578,12 +578,20 @@ private fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text(
-                        "حمّل ما تحب",
+                        when (state.mode) {
+                            HomeMode.Link -> "حمّل ما تحب"
+                            HomeMode.Search -> "بحث YouTube"
+                            HomeMode.Recent -> "الروابط الأخيرة"
+                        },
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "الصق الرابط، اختر ما يناسبك، وابدأ التنزيل.",
+                        when (state.mode) {
+                            HomeMode.Link -> "الصق الرابط، اختر ما يناسبك، وابدأ التنزيل."
+                            HomeMode.Search -> "ابحث في YouTube واختر الفيديو الذي تريد تنزيله."
+                            HomeMode.Recent -> "روابطك السابقة جاهزة للعودة السريعة وإعادة التحليل."
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -966,20 +974,6 @@ private fun HomeScreen(
             }
 
             if (state.mode == HomeMode.Recent) {
-                item {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            "الروابط الأخيرة",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            "افتح رابطًا سابقًا لإعادة تحليله وتجهيز خيارات التنزيل.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
                 if (state.recentLinks.isNotEmpty()) {
                     item {
                         RecentLinksCard(
@@ -1679,6 +1673,27 @@ private fun UnifiedDownloadResultCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            DiagnosticOutlinedButton(
+                trackingScreen = "HOME",
+                trackingId = "HOME.outlinedbutton.back_to_link",
+                trackingLabel = "العودة إلى الرابط",
+                disabledReason = "callsite_precondition_not_explicit",
+                enabled = true,
+                onClick = {
+                    resultCardTrace.recordAction(
+                        action = "return_to_link",
+                        component = "result_card_back_button",
+                        context = mapOf("result_generation" to resultGeneration),
+                    )
+                    onBackToLink()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.Link, contentDescription = null)
+                Spacer(Modifier.size(6.dp))
+                Text("العودة إلى الرابط")
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -2066,27 +2081,6 @@ private fun UnifiedDownloadResultCard(
                         }
                     },
             )
-
-            DiagnosticOutlinedButton(
-                trackingScreen = "HOME",
-                trackingId = "HOME.outlinedbutton.back_to_link",
-                trackingLabel = "العودة إلى الرابط",
-                disabledReason = "callsite_precondition_not_explicit",
-                enabled = true,
-                onClick = {
-                    resultCardTrace.recordAction(
-                        action = "return_to_link",
-                        component = "result_card_back_button",
-                        context = mapOf("result_generation" to resultGeneration),
-                    )
-                    onBackToLink()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Rounded.Link, contentDescription = null)
-                Spacer(Modifier.size(6.dp))
-                Text("العودة إلى الرابط")
-            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
