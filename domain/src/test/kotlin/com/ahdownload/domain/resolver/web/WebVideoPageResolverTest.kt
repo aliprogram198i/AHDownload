@@ -1,5 +1,6 @@
 package com.ahdownload.domain.resolver.web
 
+import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
@@ -19,6 +20,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.net.UnknownHostException
 
 class WebVideoPageResolverTest {
     @Test
@@ -192,6 +194,42 @@ class WebVideoPageResolverTest {
         assertTrue(result is ResolverResult.Failure)
         assertEquals(FailureCode.InvalidRequest, (result as ResolverResult.Failure).code)
         assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun recordsNetworkFailureCategoryWithoutPersistingTheRequestedUrl() = runBlocking {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val logger = DiagnosticLogger { _, type, _, _, context, _ ->
+            events += type to context
+        }
+        val requests = mutableListOf<Request>()
+        val failingClient = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                requests += chain.request()
+                throw UnknownHostException("DNS lookup failed")
+            }
+            .build()
+        val inputUrl = "https://private.example/watch?token=never-log"
+        val resolver = WebVideoPageResolver(logger = logger, client = failingClient)
+
+        val result = resolver.resolve(request(inputUrl))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(FailureCode.ResolverUnavailable, (result as ResolverResult.Failure).code)
+        assertEquals(1, requests.size)
+        val requestEvent = events.lastOrNull { it.first == "HTTP_REQUEST" }
+        assertTrue(requestEvent != null)
+        assertEquals("FAILED", requestEvent!!.second["network_outcome"])
+        assertEquals("DNS_FAILURE", requestEvent.second["failure_category"])
+        assertEquals("PAGE_FETCH", requestEvent.second["request_stage"])
+        assertTrue(events.any { (type, context) ->
+            type == "WEB_VIDEO_PAGE_FAILED" &&
+                context["failure_stage"] == "PAGE_FETCH" &&
+                context["failure_category"] == "DNS_FAILURE"
+        })
+        val serializedEvents = events.joinToString(" ") { (type, context) -> "$type $context" }
+        assertFalse(serializedEvents.contains("private.example"))
+        assertFalse(serializedEvents.contains("never-log"))
     }
 
     private fun request(url: String) = ResolverRequest(
