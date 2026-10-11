@@ -653,7 +653,7 @@ class HomeViewModel(
     fun selectCandidate(id: String) {
         val candidate = _uiState.value.resolution?.candidates?.firstOrNull { it.id == id } ?: return
         val format = candidate.format
-        if (format.kind != MediaKind.Video || !format.hasVideo) return
+        if (!format.webFile && (format.kind != MediaKind.Video || !format.hasVideo)) return
         _uiState.value = _uiState.value.copy(
             selectedCandidateId = id,
             selectedAudioCandidateId = null,
