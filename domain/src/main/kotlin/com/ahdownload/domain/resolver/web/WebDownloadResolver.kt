@@ -134,7 +134,7 @@ class WebDownloadResolver(
                 sourceUrl = result.finalUrl,
                 format = MediaFormat(
                     id = "web-file:$mimeType:$extension",
-                    kind = MediaKind.Unknown,
+                    kind = request.link.kind,
                     container = MediaContainer.Unknown,
                     fileSizeBytes = size,
                     hasVideo = false,
