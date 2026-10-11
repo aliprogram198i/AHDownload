@@ -90,6 +90,27 @@ class WebDownloadResolverTest {
     }
 
     @Test
+    fun preservesImageKindForDirectImageLinks() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val resolver = WebDownloadResolver(client = client(requests, listOf(
+            response(200, mapOf(
+                "Content-Type" to "image/webp",
+                "Content-Length" to "512",
+            )),
+        )))
+        val sourceUrl = "https://cdn.example.com/image.webp"
+        val result = resolver.resolve(request(sourceUrl).copy(
+            link = request(sourceUrl).link.copy(kind = MediaKind.Image),
+        ))
+
+        assertTrue(result is ResolverResult.Success)
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertEquals(MediaKind.Image, candidate.format.kind)
+        assertTrue(candidate.format.webFile)
+        assertEquals("webp", candidate.format.fileExtension)
+    }
+
+    @Test
     fun rejectsHtmlPagesInsteadOfSavingThemAsFiles() = runBlocking {
         val requests = mutableListOf<Request>()
         val resolver = WebDownloadResolver(client = client(requests, listOf(
