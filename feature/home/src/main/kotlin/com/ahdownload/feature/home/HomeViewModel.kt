@@ -242,6 +242,7 @@ class HomeViewModel(
                 "/videos/" in lower || "/clip/" in lower
             MediaPlatform.Vimeo ->
                 Regex("""/\d+(?:[/?#]|$)""").containsMatchIn(lower)
+            MediaPlatform.Web -> true
             else -> link.kind != MediaKind.Unknown
         }
     }
