@@ -1193,6 +1193,7 @@ private fun DownloadRecordCard(
                     ) {
                         Text(
                             byteSummary,
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -1276,6 +1277,7 @@ private fun DownloadRecordCard(
                             record.totalBytes?.takeIf { it > 0L }?.let {
                                 "${formatBytes(record.bytesDownloaded)} / ${formatBytes(it)}"
                             } ?: "${formatBytes(record.bytesDownloaded)} · الحجم الإجمالي غير معروف",
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1317,6 +1319,7 @@ private fun DownloadRecordCard(
                             record.totalBytes?.takeIf { it > 0L }?.let {
                                 "${formatBytes(record.bytesDownloaded)} / ${formatBytes(it)}"
                             } ?: formatBytes(record.bytesDownloaded),
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
