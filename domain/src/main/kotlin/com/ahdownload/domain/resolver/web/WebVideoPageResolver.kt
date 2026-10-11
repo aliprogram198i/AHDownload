@@ -85,9 +85,13 @@ class WebVideoPageResolver(
             // source. This lets JavaScript-driven players expose their real media requests
             // without adding browser startup latency to ordinary HTML5 pages.
             if (candidates.isEmpty() && browserMediaSessionProvider != null) {
-                browserSession = runCatching {
+                browserSession = try {
                     browserMediaSessionProvider.snapshot(pageUrl, MediaPlatform.Web)
-                }.getOrNull()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    null
+                }
                 val observedPageUrl = safeHttpUrl(browserSession?.finalUrl, pageUrl) ?: pageUrl
                 val observedHints = browserSession?.mediaUrls.orEmpty().mapNotNull { raw ->
                     val parsedUrl = observedPageUrl.toHttpUrlOrNull()?.resolve(raw) ?: return@mapNotNull null
@@ -290,11 +294,15 @@ class WebVideoPageResolver(
             val mediaUrl = pageUrl.toHttpUrlOrNull()?.resolve(hint.url) ?: return@mapNotNull null
             if (!isAllowedDestination(mediaUrl)) return@mapNotNull null
             val requestHeaders = safeMediaHeaders(hint.requestHeaders + ("Referer" to pageUrl))
-            val response = runCatching {
+            val response = try {
                 val head = probe(mediaUrl, Method.HEAD, requestHeaders)
                 if (head.status in 200..299 && !head.contentType.isNullOrBlank()) head
                 else probe(mediaUrl, Method.RANGE, requestHeaders)
-            }.getOrNull() ?: return@mapNotNull null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                return@mapNotNull null
+            }
             if (response.status !in 200..299) return@mapNotNull null
 
             val mime = response.contentType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
