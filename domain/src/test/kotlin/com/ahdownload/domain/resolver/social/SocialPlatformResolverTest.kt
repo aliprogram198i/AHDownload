@@ -634,6 +634,42 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun vimeoFallbackReturnsHlsAndDashManifestsWhenProgressiveFilesAreUnavailable() = runTest {
+        val pageUrl = "https://vimeo.com/76979871"
+        val hlsUrl = "https://player.vimeo.com/play/c/76979871/hls.m3u8?token=opaque"
+        val dashUrl = "https://player.vimeo.com/play/c/76979871/dash.mpd?token=opaque"
+        var requestedUrl = ""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = error("Fallback must pass explicit safe headers")
+
+            override suspend fun get(url: String, headers: Map<String, String>): String {
+                requestedUrl = url
+                return """{"request":{"files":{"hls":{"link":"$hlsUrl"},"dash":{"link":"$dashUrl"}}}}"""
+            }
+
+            override suspend fun postJson(url: String, body: String): String = error("Unexpected POST")
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+            ): String = error("Unexpected POST")
+        }
+
+        val parsed = socialPlatformExtractionStrategy(MediaPlatform.Vimeo).extractAdditionalMedia(
+            pageUrl = pageUrl,
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "vimeo-adaptive-manifest-test",
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
+        )
+
+        assertEquals("https://player.vimeo.com/video/76979871/config", requestedUrl)
+        assertEquals(listOf(hlsUrl, dashUrl), parsed?.mediaUrls)
+    }
+
+    @Test
     fun publicFallbackDoesNotFetchUrlsOutsideTheRecognizedPlatformDomain() = runTest {
         var requestCount = 0
         val client = object : HttpTextClient {
