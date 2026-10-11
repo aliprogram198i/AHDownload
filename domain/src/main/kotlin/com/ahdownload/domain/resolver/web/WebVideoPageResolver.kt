@@ -52,14 +52,10 @@ class WebVideoPageResolver(
         }
 
         try {
-            val page = try {
-                fetchPage(initial)
-            } catch (unsafe: UnsafeDestinationException) {
-                throw unsafe
-            } catch (error: Exception) {
-                // Some sites block metadata clients but still serve a playable page in WebView.
-                null
-            }
+            // Only HTTP responses that do not yield HTML can use the WebView fallback.
+            // Transport, DNS, unsafe-redirect, and cancellation errors must not be converted
+            // into a second navigation path.
+            val page = fetchPage(initial)
             val pageUrl = page?.finalUrl ?: initial.toString()
             val parsedPage = page?.let { WebPageMediaParser.parse(it.html, it.finalUrl) }
                 ?: ParsedPageMedia(title = null, thumbnailUrl = null, durationMs = null, mediaUrls = emptyList())
