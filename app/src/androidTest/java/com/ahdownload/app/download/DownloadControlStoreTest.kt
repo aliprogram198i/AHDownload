@@ -54,5 +54,26 @@ class DownloadControlStoreTest {
 
         assertTrue(store.isPaused("legacy-task"))
         assertEquals(null, store.intent("legacy-task"))
+        assertEquals("PAUSED", store.snapshot("legacy-task")?.intent)
+    }
+
+    @Test
+    fun newerPauseInvalidatesOlderPauseGenerationEvenWhenValueRepeats() {
+        val firstPause = store.markPaused("task-c")
+        store.markActive("task-c")
+        val secondPause = store.markPaused("task-c")
+
+        assertEquals("PAUSED", secondPause.intent)
+        assertFalse(store.isCurrent("task-c", firstPause))
+        assertTrue(store.isCurrent("task-c", secondPause))
+    }
+
+    @Test
+    fun clearControlRemovesExplicitAndLegacyState() {
+        store.markPaused("task-d")
+        store.clearPaused("task-d")
+
+        assertFalse(store.isPaused("task-d"))
+        assertEquals(null, store.snapshot("task-d"))
     }
 }
