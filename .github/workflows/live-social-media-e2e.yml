@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/platform-specific-resolvers
+      - test/live-social-downloads-main-20261011
   workflow_dispatch:
 
 permissions:
