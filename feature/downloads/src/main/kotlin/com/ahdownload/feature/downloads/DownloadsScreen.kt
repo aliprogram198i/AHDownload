@@ -66,6 +66,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -106,7 +107,6 @@ import com.ahdownload.core.common.interaction
 import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
 import com.ahdownload.core.designsystem.AHBottomNavigationBar
-import com.ahdownload.core.designsystem.AHProgressBar
 import com.ahdownload.core.designsystem.AHCard
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.DownloadProcessingMode
@@ -894,12 +894,18 @@ private fun DownloadRecordCard(
     onToggleFavorite: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val progress = record.totalBytes
-        ?.takeIf { it > 0 }
-        ?.let { (record.bytesDownloaded.toFloat() / it.toFloat()).coerceIn(0f, 1f) }
+    val rawProgress = record.totalBytes
+        ?.takeIf { it > 0L }
+        ?.let { (record.bytesDownloaded.toDouble() / it.toDouble()).toFloat().coerceIn(0f, 1f) }
+    // Reserve 100% for a completed record whose output file was actually verified.
+    val progress = if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
+        1f
+    } else {
+        rawProgress?.coerceAtMost(0.99f)
+    }
     val animatedProgress by animateFloatAsState(
         targetValue = progress ?: 0f,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = tween(durationMillis = 220),
         label = "downloadProgress",
     )
     var previousStatus by remember(record.task.id) { mutableStateOf(record.status) }
@@ -1169,61 +1175,183 @@ private fun DownloadRecordCard(
             }
 
             if (record.status == DownloadStatus.DOWNLOADING) {
-                if (progress != null) {
-                    AHProgressBar(
-                        progress = animatedProgress,
+                val speed = transferStats?.bytesPerSecond?.takeIf { it > 0L }
+                val remainingSeconds = estimatedDownloadRemainingSeconds(
+                    totalBytes = record.totalBytes,
+                    downloadedBytes = record.bytesDownloaded,
+                    bytesPerSecond = speed,
+                )
+                val byteSummary = record.totalBytes?.takeIf { it > 0L }?.let {
+                    "${formatBytes(record.bytesDownloaded)} / ${formatBytes(it)}"
+                } ?: "${formatBytes(record.bytesDownloaded)} · الحجم الإجمالي غير معروف"
+
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            byteSummary,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            when {
+                                rawProgress != null && rawProgress >= 1f -> "جارٍ إنهاء الملف"
+                                progress != null -> "${(progress * 100).toInt()}%"
+                                else -> "جارٍ التنزيل"
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    DownloadProgressTrack(
+                        progress = animatedProgress.takeIf { progress != null },
+                        color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    val stats = transferStats
-                    Text(
-                        buildString {
-                            append((progress * 100).toInt())
-                            append("% · ")
-                            append(formatBytes(record.bytesDownloaded))
-                            append(" / ")
-                            append(formatBytes(record.totalBytes ?: record.bytesDownloaded))
-                            stats?.bytesPerSecond?.takeIf { it > 0L }?.let {
-                                append(" · ")
-                                append(formatBytes(it))
-                                append("/s")
-
+                    if (speed != null || remainingSeconds != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            speed?.let {
+                                Text(
+                                    "السرعة ${formatBytes(it)}/ث",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                } else {
-                    AHProgressBar(progress = null, modifier = Modifier.fillMaxWidth())
+                            remainingSeconds?.let {
+                                Text(
+                                    "متبقٍ تقريبًا ${formatDurationSeconds(it)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (record.status == DownloadStatus.QUEUED ||
+                record.status == DownloadStatus.PREPARING
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    if (record.status == DownloadStatus.QUEUED) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {}
+                    } else {
+                        DownloadProgressTrack(
+                            progress = null,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     Text(
-                        "جاري التنزيل · الحجم الإجمالي غير متاح بعد",
+                        if (record.status == DownloadStatus.QUEUED) {
+                            "بانتظار بدء التنزيل"
+                        } else {
+                            "جارٍ تجهيز مصدر التنزيل"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else if (record.status == DownloadStatus.PAUSED && progress != null) {
-                AHProgressBar(
-                    progress = progress,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    "${(progress * 100).toInt()}% · متوقف مؤقتًا",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            } else if (record.status == DownloadStatus.PAUSED) {
+                val pausedProgress = progress
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            record.totalBytes?.takeIf { it > 0L }?.let {
+                                "${formatBytes(record.bytesDownloaded)} / ${formatBytes(it)}"
+                            } ?: "${formatBytes(record.bytesDownloaded)} · الحجم الإجمالي غير معروف",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            pausedProgress?.let { "${(it * 100).toInt()}%" } ?: "متوقف مؤقتًا",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (pausedProgress != null) {
+                        DownloadProgressTrack(
+                            progress = pausedProgress,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        // A paused item with unknown total size must not show a moving indeterminate bar.
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {}
+                    }
+                    Text(
+                        "متوقف مؤقتًا · اضغط «استئناف» للمتابعة",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             } else if (record.status == DownloadStatus.COMPLETED && fileAvailable) {
-                AHProgressBar(
-                    progress = 1f,
-                    color = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(
-                    formatBytes(record.bytesDownloaded) +
-                        (record.totalBytes?.let { " / " + formatBytes(it) } ?: ""),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            record.totalBytes?.takeIf { it > 0L }?.let {
+                                "${formatBytes(record.bytesDownloaded)} / ${formatBytes(it)}"
+                            } ?: formatBytes(record.bytesDownloaded),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            "100% · اكتمل",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                    DownloadProgressTrack(
+                        progress = 1f,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else if (record.status == DownloadStatus.FAILED && record.bytesDownloaded > 0L) {
+                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(
+                        "توقف عند ${formatBytes(record.bytesDownloaded)}" +
+                            (record.totalBytes?.takeIf { it > 0L }?.let { " / ${formatBytes(it)}" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    if (progress != null) {
+                        DownloadProgressTrack(
+                            progress = progress,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             } else if (record.bytesDownloaded > 0L) {
                 Text(
                     formatBytes(record.bytesDownloaded) +
@@ -1507,6 +1635,31 @@ private fun kindLabel(kind: MediaKind): String = when (kind) {
     MediaKind.Audio -> "صوت"
     MediaKind.Image -> "صورة"
     MediaKind.Unknown -> "ملف"
+}
+
+@Composable
+private fun DownloadProgressTrack(
+    progress: Float?,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier,
+) {
+    val trackModifier = modifier
+        .height(8.dp)
+        .clip(RoundedCornerShape(50))
+    if (progress == null) {
+        LinearProgressIndicator(
+            modifier = trackModifier,
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+    } else {
+        LinearProgressIndicator(
+            progress = { progress.coerceIn(0f, 1f) },
+            modifier = trackModifier,
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+    }
 }
 
 private data class TransferSample(
