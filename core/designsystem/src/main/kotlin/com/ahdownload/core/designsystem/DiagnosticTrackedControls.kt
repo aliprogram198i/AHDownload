@@ -215,18 +215,22 @@ fun diagnosticControlModifier(
     val latestLogger by rememberUpdatedState(logger)
 
     LaunchedEffect(trackingScreen, trackingId, enabled, disabledReason, logger) {
-        recordDiagnosticControlEvent(
-            logger = latestLogger,
-            screen = trackingScreen,
-            controlId = trackingId,
-            label = trackingLabel,
-            event = "CONTROL_STATE_CHANGED",
-            state = if (enabled) "ENABLED" else "DISABLED",
-            context = mapOf(
-                "control_enabled" to enabled.toString(),
-                "disabled_reason" to if (enabled) "none" else disabledReason,
-            ),
-        )
+        // Do not let the diagnostic screen's own control-state changes repopulate a
+        // just-cleared trace or recursively add noise to the report being inspected.
+        if (trackingScreen != "DIAGNOSTICS") {
+            recordDiagnosticControlEvent(
+                logger = latestLogger,
+                screen = trackingScreen,
+                controlId = trackingId,
+                label = trackingLabel,
+                event = "CONTROL_STATE_CHANGED",
+                state = if (enabled) "ENABLED" else "DISABLED",
+                context = mapOf(
+                    "control_enabled" to enabled.toString(),
+                    "disabled_reason" to if (enabled) "none" else disabledReason,
+                ),
+            )
+        }
     }
 
     return modifier
