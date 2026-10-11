@@ -3,6 +3,8 @@ package com.ahdownload.domain.resolver.web
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
+import com.ahdownload.domain.resolver.browser.BrowserMediaSession
+import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
 import com.ahdownload.domain.resolver.FailureCode
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
@@ -79,6 +81,50 @@ class WebVideoPageResolverTest {
         assertTrue(result is ResolverResult.Failure)
         assertEquals(FailureCode.NoCandidates, (result as ResolverResult.Failure).code)
         assertEquals(1, requests.size)
+    }
+
+    @Test
+    fun fallsBackToBrowserObservedMediaWhenPageHtmlHasNoSource() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val pageUrl = "https://site.example/watch/dynamic"
+        val mediaUrl = "https://cdn.example.com/media/actual-video.mp4"
+        var providerCalled = false
+        val browser = object : BrowserMediaSessionProvider {
+            override suspend fun snapshot(url: String, platform: MediaPlatform): BrowserMediaSession {
+                providerCalled = true
+                assertEquals(pageUrl, url)
+                assertEquals(MediaPlatform.Web, platform)
+                return BrowserMediaSession(
+                    platform = platform,
+                    pageUrl = url,
+                    finalUrl = url,
+                    title = "Dynamic Player",
+                    mediaUrls = listOf(mediaUrl),
+                    requestHeadersByUrl = mapOf(
+                        mediaUrl to mapOf("Origin" to "https://site.example"),
+                    ),
+                )
+            }
+        }
+        val resolver = WebVideoPageResolver(
+            client = client(requests, listOf(
+                response(200, mapOf("Content-Type" to "text/html"), "<html><title>Dynamic</title><video id='player'></video></html>"),
+                response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "9999")),
+            )),
+            browserMediaSessionProvider = browser,
+        )
+
+        val result = resolver.resolve(request(pageUrl))
+
+        assertTrue(result is ResolverResult.Success)
+        assertTrue(providerCalled)
+        val success = result as ResolverResult.Success
+        assertEquals("Dynamic Player", success.title)
+        val candidate = success.candidates.single()
+        assertEquals(mediaUrl, candidate.sourceUrl)
+        assertEquals("https://site.example", candidate.requestHeaders["Origin"])
+        assertEquals(pageUrl, candidate.requestHeaders["Referer"])
+        assertEquals("video/mp4", candidate.format.mimeType)
     }
 
     @Test
