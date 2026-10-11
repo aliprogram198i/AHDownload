@@ -42,7 +42,7 @@ class LinkAnalyzer {
             host == "vimeo.com" || host.endsWith(".vimeo.com") ->
                 MediaPlatform.Vimeo
             kind != MediaKind.Unknown -> MediaPlatform.DirectMedia
-            else -> MediaPlatform.Unknown
+            else -> MediaPlatform.Web
         }
 
         return MediaLink(
