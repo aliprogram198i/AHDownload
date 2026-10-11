@@ -56,7 +56,7 @@ fun UiDiagnosticsRoute(
     val uiContext = rememberUiTraceContext()
     val report = remember(events) { logger.exportText() }
     val homeReport = remember(events) { logger.exportHomeText() }
-    LaunchedEffect(events) {
+    LaunchedEffect(Unit) {
         logger.snapshot(
             screen = "UI_DIAGNOSTICS",
             component = "UiDiagnosticsScreen",
@@ -87,11 +87,12 @@ fun UiDiagnosticsRoute(
                         disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "refresh_button", "refresh"); events = logger.list() }) {
                         Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                     }
-                    DiagnosticIconButton(
-                        trackingScreen = "UI_DIAGNOSTICS",
-                        trackingId = "UI_DIAGNOSTICS.iconbutton.03",
-                        trackingLabel = "UI_DIAGNOSTICS.iconbutton.03",
-                        disabledReason = "callsite_precondition_not_explicit",onClick = { logger.interaction("UI_DIAGNOSTICS", "clear_button", "clear"); logger.clear(); events = emptyList() }) {
+                    IconButton(
+                        onClick = {
+                            logger.clear()
+                            events = emptyList()
+                        },
+                    ) {
                         Icon(Icons.Rounded.DeleteSweep, contentDescription = "مسح سجل الواجهة")
                     }
                 },
@@ -110,7 +111,7 @@ fun UiDiagnosticsRoute(
                             Text("UI Evidence", style = MaterialTheme.typography.titleLarge)
                         }
                         Text(
-                            "يسجل ما ظهر على الشاشة، حالة المكونات، التفاعلات، الأخطاء، مقاسات العرض، الثيم، وألوان التصميم الرئيسية. لا يسجل كلمات المرور أو الكوكيز أو التوكنات أو استعلامات الروابط.",
+                            "يسجل ملخص الشاشة، تغيّرات حالة تفعيل عناصر التحكم، التفاعلات، الأخطاء، مقاسات العرض والثيم. تُستبعد أحداث إنشاء العناصر واختفائها وتغير ظهورها لتقليل الضجيج، ولا تُسجل كلمات المرور أو الكوكيز أو التوكنات أو عناوين الروابط.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
