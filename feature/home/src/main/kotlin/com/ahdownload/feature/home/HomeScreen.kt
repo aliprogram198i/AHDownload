@@ -982,7 +982,7 @@ private fun HomeScreen(
                         primaryOptions = primaryOptions,
                         sourceCandidates = candidates,
                         audioOptions = audioOptions,
-                                    onBackToLink = {
+                        onBackToLink = {
                             uiTraceLogger.interaction("HOME", "results_screen", "return_to_link")
                             showResultsScreen = false
                         },
