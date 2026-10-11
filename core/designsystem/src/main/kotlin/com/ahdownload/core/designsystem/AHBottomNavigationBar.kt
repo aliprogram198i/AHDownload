@@ -3,6 +3,7 @@ package com.ahdownload.core.designsystem
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -22,13 +23,13 @@ import androidx.compose.ui.unit.dp
 
 enum class AHBottomNavDestination {
     HOME,
+    YOUTUBE_SEARCH,
     DOWNLOADS,
-    SETTINGS,
 }
 
 @Composable
 fun AHBottomNavigationBar(
-    selected: AHBottomNavDestination,
+    selected: AHBottomNavDestination?,
     onDestinationSelected: (AHBottomNavDestination) -> Unit,
     activeDownloads: Int = 0,
     trackingScreen: String = "BOTTOM_NAVIGATION",
@@ -51,6 +52,27 @@ fun AHBottomNavigationBar(
             colors = AHBottomNavigationDefaults.ItemColors,
         )
         NavigationBarItem(
+            selected = selected == AHBottomNavDestination.YOUTUBE_SEARCH,
+            onClick = {
+                dispatchDiagnosticAction(
+                    diagnosticLogger,
+                    trackingScreen,
+                    "nav.youtube_search",
+                    "بحث YouTube",
+                ) { onDestinationSelected(AHBottomNavDestination.YOUTUBE_SEARCH) }
+            },
+            modifier = diagnosticControlModifier(
+                Modifier,
+                trackingScreen,
+                "nav.youtube_search",
+                "بحث YouTube",
+                true,
+            ),
+            icon = { Icon(Icons.Rounded.Search, contentDescription = "بحث YouTube") },
+            label = { Text("بحث YouTube") },
+            colors = AHBottomNavigationDefaults.ItemColors,
+        )
+        NavigationBarItem(
             selected = selected == AHBottomNavDestination.DOWNLOADS,
             onClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, "nav.downloads", "التنزيلات") { onDestinationSelected(AHBottomNavDestination.DOWNLOADS) } },
             modifier = diagnosticControlModifier(Modifier, trackingScreen, "nav.downloads", "التنزيلات", true),
@@ -68,14 +90,7 @@ fun AHBottomNavigationBar(
             label = { Text("التنزيلات") },
             colors = AHBottomNavigationDefaults.ItemColors,
         )
-        NavigationBarItem(
-            selected = selected == AHBottomNavDestination.SETTINGS,
-            onClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, "nav.settings", "الإعدادات") { onDestinationSelected(AHBottomNavDestination.SETTINGS) } },
-            modifier = diagnosticControlModifier(Modifier, trackingScreen, "nav.settings", "الإعدادات", true),
-            icon = { Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات") },
-            label = { Text("الإعدادات") },
-            colors = AHBottomNavigationDefaults.ItemColors,
-        )
+
     }
 }
 
