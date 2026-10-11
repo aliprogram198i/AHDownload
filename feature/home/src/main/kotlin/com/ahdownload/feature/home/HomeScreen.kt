@@ -465,7 +465,20 @@ private fun HomeScreen(
                     }
                 },
                 navigationIcon = {
-                    Icon(Icons.Rounded.Download, contentDescription = "AHDownload")
+                    Surface(
+                        modifier = Modifier.padding(start = 12.dp).size(38.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = "AHDownload",
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
                 },
                 actions = {
                     DiagnosticIconButton(
@@ -536,12 +549,12 @@ private fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text(
-                        "حمّل أي رابط بسهولة",
-                        style = MaterialTheme.typography.headlineMedium,
+                        "حمّل ما تحب",
+                        style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "ألصق الرابط واحصل على خيارات التنزيل المناسبة بأسرع طريقة.",
+                        "الصق الرابط، اختر ما يناسبك، وابدأ التنزيل.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -605,7 +618,7 @@ private fun HomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         Text(
-                            "الرابط",
+                            "رابط المحتوى",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -696,7 +709,7 @@ private fun HomeScreen(
                     text = when {
                         state.analyzing -> "جارٍ تجهيز الخيارات..."
                         state.resolving -> "جارٍ تجهيز الخيارات..."
-                        else -> "الحصول على الخيارات"
+                        else -> "تحليل الرابط"
                     },
                     enabled = state.url.isNotBlank() && !state.analyzing && !state.resolving,
                     onClick = {
@@ -705,7 +718,7 @@ private fun HomeScreen(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .semantics { contentDescription = "الحصول على خيارات التنزيل" },
+                        .semantics { contentDescription = "تحليل الرابط" },
                 )
             }
 
