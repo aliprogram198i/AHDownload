@@ -18,6 +18,40 @@ import org.junit.Test
 
 class SocialPlatformResolverTest {
     @Test
+    fun nestedTimeoutIsNotMisreportedAsTheResolversOwnDeadline() = runTest {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = InstagramResolverAdapter(
+            provider = object : BrowserMediaSessionProvider {
+                override suspend fun snapshot(
+                    url: String,
+                    platform: MediaPlatform,
+                ): BrowserMediaSession = withTimeout(1L) {
+                    delay(10L)
+                    error("unreachable")
+                }
+            },
+            resolveTimeoutMs = 5_000L,
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram),
+                operationId = "instagram-subtask-timeout",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals("ResolverUnavailable", (result as ResolverResult.Failure).code.name)
+        val timeoutEvent = events.single { it.first == "SOCIAL_RESOLVER_SUBTASK_TIMEOUT" }
+        assertEquals("subtask", timeoutEvent.second["timeout_scope"])
+        assertEquals("SUBTASK_TIMEOUT", timeoutEvent.second["failure_code"])
+        assertTrue(events.none { it.first == "SOCIAL_RESOLUTION_TIMEOUT" })
+    }
+
+    @Test
     fun instagramEmbedRequestTimeoutRemainsLocalToFallbackAttempt() = runTest {
         val pageUrl = "https://www.instagram.com/reel/ABC123/"
         val events = mutableListOf<Pair<String, Map<String, String>>>()
