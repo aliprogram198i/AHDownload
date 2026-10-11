@@ -124,7 +124,7 @@ internal class FfmpegLocalHttpBridge(
                 }
                 fetched.response.use { response ->
                     val body = response.body
-                    if (body == null || method == "HEAD" || response.code !in 200..299) {
+                    if (body == null || method == "HEAD") {
                         writeResponseHeaders(
                             output = output,
                             status = response.code,
@@ -140,11 +140,14 @@ internal class FfmpegLocalHttpBridge(
 
                     val bodyPath = runCatching { URI(fetched.finalUrl).path.orEmpty().lowercase() }.getOrDefault("")
                     val contentType = response.header("Content-Type").orEmpty().lowercase()
-                    val isHlsCandidate = bodyPath.endsWith(".m3u8") ||
-                        contentType.contains("mpegurl") ||
-                        contentType.contains("vnd.apple.mpegurl")
-                    val isDashCandidate = bodyPath.endsWith(".mpd") ||
-                        contentType.contains("dash+xml")
+                    val isHlsCandidate = response.code in 200..299 && (
+                        bodyPath.endsWith(".m3u8") ||
+                            contentType.contains("mpegurl") ||
+                            contentType.contains("vnd.apple.mpegurl")
+                    )
+                    val isDashCandidate = response.code in 200..299 && (
+                        bodyPath.endsWith(".mpd") || contentType.contains("dash+xml")
+                    )
                     if (isHlsCandidate || isDashCandidate) {
                         val text = runCatching { body.string() }.getOrElse {
                             writeSimpleResponse(output, 502, "Bad Gateway")
@@ -326,6 +329,23 @@ internal class FfmpegLocalHttpBridge(
             }
         }
         output.write("Connection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
+    }
+
+    private fun safeReason(status: Int, message: String): String {
+        val clean = message.replace(Regex("[\\r\\n]+"), " ").trim().take(80)
+        if (clean.isNotBlank()) return clean
+        return when (status) {
+            200 -> "OK"
+            206 -> "Partial Content"
+            400 -> "Bad Request"
+            403 -> "Forbidden"
+            404 -> "Not Found"
+            416 -> "Range Not Satisfiable"
+            429 -> "Too Many Requests"
+            500 -> "Internal Server Error"
+            502 -> "Bad Gateway"
+            else -> "Upstream Response"
+        }
     }
 
     private fun writeSimpleResponse(output: BufferedOutputStream, status: Int, reason: String) {
