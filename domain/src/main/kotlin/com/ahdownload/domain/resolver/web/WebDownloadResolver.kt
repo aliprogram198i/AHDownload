@@ -84,7 +84,7 @@ class WebDownloadResolver(
                     if (authRequired) {
                         "يتطلب هذا الملف صلاحية وصول أو جلسة تسجيل دخول."
                     } else {
-                        "تعذّر الوصول إلى الملف من الموقع (HTTP ${result.statusCode}).",
+                        "تعذّر الوصول إلى الملف من الموقع (HTTP ${result.statusCode})."
                     },
                 )
             }
