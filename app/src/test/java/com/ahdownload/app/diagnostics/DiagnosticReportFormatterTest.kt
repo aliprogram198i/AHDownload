@@ -42,7 +42,7 @@ class DiagnosticReportFormatterTest {
         val report = DiagnosticReportFormatter.format(logs)
 
         assertTrue(report.contains("diagnostic_schema=4"))
-        assertTrue(report.contains("operation=download:latest-task"))
+        assertTrue(report.contains("operation_id=download:latest-task"))
         assertTrue(report.contains("download_task_id=latest-task"))
         assertTrue(report.contains("status=FAILED"))
         assertTrue(report.contains("stage=MEDIA_VALIDATION"))
@@ -51,7 +51,6 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("timestamp="))
         assertTrue(!report.contains("older_failure"))
     }
-
 
 
     @Test
