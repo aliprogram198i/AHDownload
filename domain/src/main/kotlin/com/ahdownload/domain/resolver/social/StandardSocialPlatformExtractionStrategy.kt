@@ -110,7 +110,7 @@ internal open class StandardSocialPlatformExtractionStrategy(
             host == "video.twimg.com" -> "https://x.com/"
             host.endsWith(".fbcdn.net") || host.endsWith(".fbsbx.com") -> "https://www.facebook.com/"
             host == "pinimg.com" || host.endsWith(".pinimg.com") -> "https://www.pinterest.com/"
-            host.endsWith(".vimeocdn.com") -> "https://vimeo.com/"
+            host.endsWith(".vimeocdn.com") || host == "player.vimeo.com" -> "https://vimeo.com/"
             else -> null
         } ?: return safeHeaders
         return safeHeaders + ("Referer" to referer)
@@ -228,13 +228,53 @@ internal open class StandardSocialPlatformExtractionStrategy(
             .distinct()
             .take(16)
 
-        // Prefer only direct progressive files. HLS/DASH manifest URLs are valid HTTP
-        // responses, but this app's current download pipeline must not label them as ordinary
-        // downloadable MP4 files.
-        val urls = if (progressiveUrls.isNotEmpty()) {
-            progressiveUrls
-        } else {
-            generic.mediaUrls.filter(::isDirectVimeoMediaUrl)
+        fun manifestUrls(files: JsonObject?): List<String> = buildList {
+            for (formatName in listOf("hls", "dash")) {
+                val format = files?.get(formatName)
+                    ?.takeIf { it.isJsonObject }
+                    ?.asJsonObject ?: continue
+
+                val directLink = format.get("link")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                    ?.asString
+                if (directLink != null && isAllowedVimeoManifestUrl(directLink, formatName)) {
+                    add(directLink)
+                }
+
+                val cdns = format.get("cdns")
+                    ?.takeIf { it.isJsonObject }
+                    ?.asJsonObject ?: continue
+                val defaultCdn = format.get("default_cdn")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                    ?.asString
+                val entries = cdns.entrySet().sortedBy { (name, _) -> if (name == defaultCdn) 0 else 1 }
+                for ((_, value) in entries) {
+                    val cdn = value.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                    for (field in listOf("url", "avc_url", "av1_url")) {
+                        val link = cdn.get(field)
+                            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                            ?.asString
+                            ?: continue
+                        if (isAllowedVimeoManifestUrl(link, formatName)) add(link)
+                    }
+                }
+            }
+        }
+
+        val manifestUrls = (manifestUrls(videoFiles) + manifestUrls(requestFiles))
+            .distinct()
+            .take(8)
+
+        // Prefer direct progressive files where Vimeo provides them. If a clip exposes only
+        // adaptive manifests, return their real HLS/DASH URLs as streaming candidates; the app's
+        // manifest downloader must handle HTTPS and publishes a Matroska container for them.
+        val urls = when {
+            progressiveUrls.isNotEmpty() -> progressiveUrls
+            manifestUrls.isNotEmpty() -> manifestUrls
+            else -> generic.mediaUrls.filter {
+                isDirectVimeoMediaUrl(it) || isAllowedVimeoManifestUrl(it, "hls") ||
+                    isAllowedVimeoManifestUrl(it, "dash")
+            }
         }
         val title = video?.get("title")
             ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
@@ -259,14 +299,35 @@ internal open class StandardSocialPlatformExtractionStrategy(
             host.endsWith(".vimeo.com")
     }
 
+    private fun isAllowedVimeoManifestUrl(raw: String, formatName: String): Boolean {
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return false
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null) return false
+        val host = uri.host?.lowercase().orEmpty()
+        val trustedHost = host == "player.vimeo.com" ||
+            host == "vimeo.com" ||
+            host.endsWith(".vimeo.com") ||
+            host == "vimeocdn.com" ||
+            host.endsWith(".vimeocdn.com") ||
+            host == "akamaized.net" ||
+            host.endsWith(".akamaized.net")
+        if (!trustedHost) return false
+        val extension = uri.path.orEmpty().substringAfterLast('.', "").lowercase()
+        return when (formatName) {
+            "hls" -> extension == "m3u8"
+            "dash" -> extension == "mpd"
+            else -> false
+        }
+    }
+
     private fun isDirectVimeoMediaUrl(raw: String): Boolean {
         val uri = runCatching { URI(raw) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null) return false
         val host = uri.host?.lowercase().orEmpty()
         if (!(host == "vimeocdn.com" ||
                 host.endsWith(".vimeocdn.com") ||
                 host == "akamaized.net" ||
                 host.endsWith(".akamaized.net") ||
+                host == "player.vimeo.com" ||
                 host == "vimeo.com" ||
                 host.endsWith(".vimeo.com"))
         ) return false
