@@ -9,6 +9,52 @@ import org.junit.Test
 class DiagnosticReportFormatterTest {
 
     @Test
+    fun latestErrorUsesEventSequenceWhenTimestampsMatchAndShowsStageReasonAndTime() {
+        val session = "session-same-millisecond"
+        val logs = listOf(
+            event(
+                time = 5_000L,
+                sequence = "41",
+                type = "OLDER_DOWNLOAD_ERROR",
+                level = DiagnosticLevel.ERROR,
+                reason = "older_failure",
+                session = session,
+                operation = "download:older-task",
+                context = mapOf("stage" to "DOWNLOAD", "failure_code" to "old_failure"),
+            ),
+            event(
+                time = 5_000L,
+                sequence = "42",
+                type = "MEDIA_VALIDATION_REJECTED",
+                level = DiagnosticLevel.ERROR,
+                reason = "HTTP_403",
+                session = session,
+                operation = "download:latest-task",
+                context = mapOf(
+                    "stage" to "MEDIA_VALIDATION",
+                    "failure_code" to "HTTP_403",
+                    "http_status" to "403",
+                    "download_task_id" to "latest-task",
+                ),
+            ),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("diagnostic_schema=4"))
+        assertTrue(report.contains("operation=download:latest-task"))
+        assertTrue(report.contains("download_task_id=latest-task"))
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("stage=MEDIA_VALIDATION"))
+        assertTrue(report.contains("error_type=MEDIA_VALIDATION_REJECTED"))
+        assertTrue(report.contains("reason=HTTP_403"))
+        assertTrue(report.contains("timestamp="))
+        assertTrue(!report.contains("older_failure"))
+    }
+
+
+
+    @Test
     fun producesConciseFailureSummaryAndAggregatesSmartCenterOptions() {
         val session = "session-1"
         val operation = "op-1"
@@ -99,7 +145,7 @@ class DiagnosticReportFormatterTest {
 
         val report = DiagnosticReportFormatter.format(logs)
 
-        assertTrue(report.contains("diagnostic_schema=3"))
+        assertTrue(report.contains("diagnostic_schema=4"))
         assertTrue(report.contains("version=0.1.1"))
         assertTrue(report.contains("build=debug"))
         assertTrue(report.contains("status=FAILED"))
