@@ -938,8 +938,6 @@ private fun HomeScreen(
                 }
             }
 
-
-
             }
 
             if (showResultsScreen && state.mode == HomeMode.Link) {
@@ -1858,7 +1856,6 @@ private fun UnifiedDownloadResultCard(
                     },
             )
 
-
         }
     }
 }
@@ -2385,7 +2382,6 @@ private fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
     return (totalSeconds / 60L).toString() + ":" + (totalSeconds % 60L).toString().padStart(2, '0')
 }
-
 
 /** Avoid reporting a result card for an error-only UI state. */
 internal fun shouldEmitSmartCenterResultPresented(hasResolution: Boolean): Boolean = hasResolution
