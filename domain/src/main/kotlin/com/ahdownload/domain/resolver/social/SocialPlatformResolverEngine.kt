@@ -175,9 +175,13 @@ class SocialPlatformResolverEngine(
                 val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs
                 val fallbackMediaCount = fallback?.mediaUrls?.size ?: 0
                 val platformFallbackMediaCount = platformFallback?.mediaUrls?.size ?: 0
+                val hasScopedSnapchatFallback =
+                    platform == MediaPlatform.Snapchat &&
+                        session.mediaUrls.isEmpty() &&
+                        platformFallbackMediaUrls.isNotEmpty()
                 val urls = (
                     session.mediaUrls +
-                        fallback?.mediaUrls.orEmpty() +
+                        (if (hasScopedSnapchatFallback) emptyList() else fallback?.mediaUrls.orEmpty()) +
                         platformFallback?.mediaUrls.orEmpty()
                     )
                     .distinct()
