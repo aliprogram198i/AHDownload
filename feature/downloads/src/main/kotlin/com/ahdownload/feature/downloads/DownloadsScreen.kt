@@ -1475,7 +1475,10 @@ private fun DownloadRecordCard(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.button.05",
                             trackingLabel = "إعادة التنزيل",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onResume) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onResume,
+                        ) {
                             Icon(Icons.Rounded.Refresh, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("إعادة التنزيل")
@@ -1486,7 +1489,10 @@ private fun DownloadRecordCard(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.button.06",
                             trackingLabel = "إعادة المحاولة",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onRetry) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onRetry,
+                        ) {
                             Icon(Icons.Rounded.Refresh, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("إعادة المحاولة")
@@ -1498,7 +1504,10 @@ private fun DownloadRecordCard(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.button.07",
                                 trackingLabel = "إعادة التنزيل",
-                                disabledReason = "callsite_precondition_not_explicit",onClick = onRetry) {
+                                disabledReason = "callsite_precondition_not_explicit",
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onRetry,
+                            ) {
                                 Icon(Icons.Rounded.Refresh, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
                                 Text("إعادة التنزيل")
@@ -1508,7 +1517,10 @@ private fun DownloadRecordCard(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.button.08",
                                 trackingLabel = "فتح",
-                                disabledReason = "callsite_precondition_not_explicit",onClick = onOpenDownload) {
+                                disabledReason = "callsite_precondition_not_explicit",
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenDownload,
+                            ) {
                                 Icon(Icons.Rounded.OpenInNew, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
                                 Text("فتح")
@@ -1517,7 +1529,10 @@ private fun DownloadRecordCard(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.outlinedbutton.03",
                                 trackingLabel = "مشاركة",
-                                disabledReason = "callsite_precondition_not_explicit",onClick = onShareDownload) {
+                                disabledReason = "callsite_precondition_not_explicit",
+                                modifier = Modifier.weight(1f),
+                                onClick = onShareDownload,
+                            ) {
                                 Icon(Icons.Rounded.Share, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
                                 Text("مشاركة")
