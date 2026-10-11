@@ -119,7 +119,7 @@ internal class XSocialPlatformExtractionStrategy : StandardSocialPlatformExtract
         if (statusIndex < 0) return null
 
         return segments.getOrNull(statusIndex + 1)
-            ?.takeIf { it.length in 1..40 && it.all(Char::isDigit) }
+            ?.takeIf { it.length in 1..40 && it.all { char -> char.isDigit() } }
     }
 
     private fun parseSyndicationResponse(body: String): ParsedPageMedia? {
@@ -132,7 +132,7 @@ internal class XSocialPlatformExtractionStrategy : StandardSocialPlatformExtract
         var thumbnailUrl: String? = null
         var durationMs: Long? = null
 
-        val legacy = root.getAsJsonObject("legacy")
+        val legacy = root.get("legacy")?.takeIf { it.isJsonObject }?.asJsonObject
         val title = firstString(root, "text", "full_text")
             ?: legacy?.let { firstString(it, "full_text", "text") }
 
