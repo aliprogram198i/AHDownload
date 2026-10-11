@@ -133,12 +133,16 @@ jobs:
             exit 1
           fi
           grep -q '^test_status: PASSED$' "$report"
+          scheduled_count="$(sed -n 's/^  scheduled_test_case_count: \([0-9][0-9]*\)$/\1/p' "$report" | head -n 1)"
           test_count="$(grep -c '^  test_case {' "$report" || true)"
           passed_count="$(grep -c '^  test_status: PASSED$' "$report" || true)"
           failed_count="$(grep -c '^  test_status: FAILED$' "$report" || true)"
-          echo "Instrumented test cases: $test_count; passed: $passed_count; failed: $failed_count"
-          if [ "$test_count" -ne 7 ] || [ "$passed_count" -ne 7 ] || [ "$failed_count" -ne 0 ]; then
-            echo "Expected exactly 7 passing deterministic Android smoke tests; live media downloads run separately." >&2
+          echo "Instrumented test cases: scheduled=$scheduled_count; executed=$test_count; passed=$passed_count; failed=$failed_count"
+          if [ -z "$scheduled_count" ] || [ "$scheduled_count" -le 0 ] ||
+             [ "$test_count" -ne "$scheduled_count" ] ||
+             [ "$passed_count" -ne "$test_count" ] ||
+             [ "$failed_count" -ne 0 ]; then
+            echo "Every scheduled deterministic Android smoke test must execute and pass; live media downloads run separately." >&2
             exit 1
           fi
 

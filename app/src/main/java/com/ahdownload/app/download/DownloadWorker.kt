@@ -318,6 +318,11 @@ class DownloadWorker(
                     engine = engine,
                     queue = queue,
                     isPauseRequested = { controlStore.isPaused(task.id) },
+                    requestedCancellationState = {
+                        downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
+                    },
+                    // The outer worker catch owns the generation-checked history update.
+                    persistCancellationState = false,
                 )
                 coordinator.execute(sourceTask) { state ->
                     updateNotificationSpeed(state)
@@ -325,29 +330,34 @@ class DownloadWorker(
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val requestedStatus = if (controlStore.isPaused(task.id)) {
-                DownloadStatus.PAUSED
-            } else {
-                DownloadStatus.CANCELLED
-            }
-            // WorkManager cancellation stops the worker coroutine. Persist the terminal/control
-            // state in a non-cancellable context so Room history cannot remain stuck on DOWNLOADING.
+            // Snapshot the explicit user intent and its generation. A later action may reuse
+            // the same intent value (pause -> resume -> pause), so value-only checks are unsafe.
+            val intentAtCancellation = controlStore.snapshot(task.id)
+            val requestedStatus = downloadStatusForControlIntent(intentAtCancellation?.intent)
             withContext(NonCancellable + Dispatchers.IO) {
                 try {
-                    val latest = repository.get(task.id)
+                    // Reject this worker's stale callback if any newer user action superseded it.
                     if (
-                        latest != null &&
-                        latest.status != DownloadStatus.COMPLETED &&
-                        latest.status != DownloadStatus.FAILED
+                        requestedStatus != null &&
+                        intentAtCancellation != null &&
+                        controlStore.isCurrent(task.id, intentAtCancellation)
                     ) {
-                        repository.upsert(
-                            latest.copy(
-                                status = requestedStatus,
-                                failureCode = null,
-                                failureDetail = null,
-                                updatedAtEpochMs = System.currentTimeMillis(),
-                            ),
-                        )
+                        val latest = repository.get(task.id)
+                        if (
+                            latest != null &&
+                            latest.status != DownloadStatus.COMPLETED &&
+                            latest.status != DownloadStatus.FAILED &&
+                            controlStore.isCurrent(task.id, intentAtCancellation)
+                        ) {
+                            repository.upsert(
+                                latest.copy(
+                                    status = requestedStatus,
+                                    failureCode = null,
+                                    failureDetail = null,
+                                    updatedAtEpochMs = System.currentTimeMillis(),
+                                ),
+                            )
+                        }
                     }
                 } catch (_: Exception) {
                     // Keep cancellation semantics even if persistence itself fails.
@@ -356,9 +366,17 @@ class DownloadWorker(
             diagnostics.log(
                 DiagnosticLevel.INFO,
                 "DOWNLOAD_WORK_CANCELLED",
-                if (requestedStatus == DownloadStatus.PAUSED) "تم إيقاف التنزيل مؤقتًا" else "تم إلغاء مهمة التنزيل",
+                when (requestedStatus) {
+                    DownloadStatus.PAUSED -> "تم إيقاف التنزيل مؤقتًا"
+                    DownloadStatus.CANCELLED -> "تم إلغاء مهمة التنزيل"
+                    else -> "توقف العامل دون طلب إيقاف مؤقت أو إلغاء مؤكد"
+                },
                 "download.worker",
-                mapOf("task_id" to task.id, "paused_request" to (requestedStatus == DownloadStatus.PAUSED).toString()),
+                mapOf(
+                    "task_id" to task.id,
+                    "control_intent" to (intentAtCancellation?.intent ?: "UNSPECIFIED"),
+                    "persisted_status" to (requestedStatus?.name ?: "UNCHANGED"),
+                ),
                 cancelled,
             )
             throw cancelled
@@ -815,12 +833,7 @@ class DownloadWorker(
             )
             queue.applyState(task.id, DownloadState.Completed, System.currentTimeMillis())
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val state = if (controlStore.isPaused(task.id)) {
-                DownloadState.Paused
-            } else {
-                DownloadState.Cancelled
-            }
-            updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
+            // The enclosing worker handler alone persists explicit, current user intent.
             throw cancelled
         } catch (error: Throwable) {
             diagnostics.log(
@@ -1020,12 +1033,7 @@ class DownloadWorker(
             )
             return queue.applyState(task.id, DownloadState.Completed, now)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val state = if (controlStore.isPaused(task.id)) {
-                DownloadState.Paused
-            } else {
-                DownloadState.Cancelled
-            }
-            updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
+            // The enclosing worker handler alone persists explicit, current user intent.
             throw cancelled
         } catch (error: Throwable) {
             diagnostics.log(

@@ -39,7 +39,7 @@ class DownloadWorkScheduler(
         require(task.id.isNotBlank()) { "task.id must not be blank" }
         require(task.sourceUrl.isNotBlank()) { "task.sourceUrl must not be blank" }
         require(task.destinationPath.isNotBlank()) { "task.destinationPath must not be blank" }
-        controlStore.clearPaused(task.id)
+        controlStore.markActive(task.id)
 
         val input = buildInputData(task, forceRefresh)
         val request = OneTimeWorkRequestBuilder<DownloadWorker>()
@@ -61,44 +61,58 @@ class DownloadWorkScheduler(
 
         workManager.enqueueUniqueWork(
             uniqueWorkName(task.id),
-            ExistingWorkPolicy.KEEP,
+            if (forceRefresh) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request,
         )
     }
 
     fun pause(taskId: String) {
         require(taskId.isNotBlank())
-        controlStore.markPaused(taskId)
+        val intent = controlStore.markPaused(taskId)
         workManager.cancelUniqueWork(uniqueWorkName(taskId))
-        persistControlStatus(taskId, DownloadStatus.PAUSED)
+        persistControlStatus(taskId, DownloadStatus.PAUSED, intent)
     }
 
     fun resume(record: DownloadRecord) {
-        controlStore.clearPaused(record.task.id)
+        // enqueueInternal marks the newest intent ACTIVE before replacing cancelled/paused work.
         enqueueInternal(record.task, forceRefresh = true)
     }
 
     fun cancel(taskId: String) {
         require(taskId.isNotBlank())
-        controlStore.clearPaused(taskId)
+        val intent = controlStore.markCancelled(taskId)
         workManager.cancelUniqueWork(uniqueWorkName(taskId))
-        persistControlStatus(taskId, DownloadStatus.CANCELLED)
+        persistControlStatus(taskId, DownloadStatus.CANCELLED, intent)
     }
 
     /**
      * WorkManager cancellation alone does not update the app's Room history.
-     * Persist the user-requested state so the UI immediately exposes the right
-     * controls, including cancellation of a task that was already paused.
+     * Persist the user-requested state only while the exact control generation
+     * that requested it is still current.
      */
-    private fun persistControlStatus(taskId: String, target: DownloadStatus) {
+    private fun persistControlStatus(
+        taskId: String,
+        target: DownloadStatus,
+        expectedIntent: DownloadControlIntentSnapshot,
+    ) {
         val store = repository ?: return
+        val expectedValue = when (target) {
+            DownloadStatus.PAUSED -> "PAUSED"
+            DownloadStatus.CANCELLED -> "CANCELLED"
+            else -> return
+        }
+        if (expectedIntent.intent != expectedValue) return
+
         controlStateScope.launch {
+            if (!controlStore.isCurrent(taskId, expectedIntent)) return@launch
             val current = runCatching { store.get(taskId) }.getOrNull() ?: return@launch
-            val pauseRequestStillCurrent = controlStore.isPaused(taskId) == (target == DownloadStatus.PAUSED)
-            if (!pauseRequestStillCurrent) return@launch
+            if (!controlStore.isCurrent(taskId, expectedIntent)) return@launch
             if (current.status == DownloadStatus.COMPLETED || current.status == DownloadStatus.FAILED) return@launch
             if (current.status == DownloadStatus.CANCELLED && target == DownloadStatus.PAUSED) return@launch
             runCatching {
+                // Re-check immediately before the suspendable persistence operation so an older
+                // action cannot clobber a newer resume/cancel/pause action in normal UI races.
+                if (!controlStore.isCurrent(taskId, expectedIntent)) return@runCatching
                 store.upsert(
                     current.copy(
                         status = target,

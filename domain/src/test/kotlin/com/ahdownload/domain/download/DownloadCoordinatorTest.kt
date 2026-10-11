@@ -93,6 +93,63 @@ class DownloadCoordinatorTest {
     }
 
     @Test
+    fun replacementCancellationDoesNotOverwritePersistedStatus() = runTest {
+        val repository = FakeRepository()
+        val queue = PersistentDownloadQueue(repository)
+        val coordinator = DownloadCoordinator(
+            engine = object : DownloadEngine {
+                override suspend fun download(
+                    task: DownloadTask,
+                    onState: suspend (DownloadState) -> Unit,
+                ) {
+                    onState(DownloadState.Preparing)
+                    throw CancellationException("worker replaced by resume")
+                }
+            },
+            queue = queue,
+            clock = FixedClock(),
+            requestedCancellationState = { null },
+        )
+
+        assertFailsWith<CancellationException> {
+            coordinator.execute(task())
+        }
+
+        assertEquals(
+            DownloadStatus.PREPARING,
+            repository.records[task().id]?.status,
+            "A replacement/system cancellation must not be persisted as a user cancellation.",
+        )
+    }
+
+    @Test
+    fun workerCanOwnGenerationCheckedCancellationPersistence() = runTest {
+        val repository = FakeRepository()
+        val queue = PersistentDownloadQueue(repository)
+        val coordinator = DownloadCoordinator(
+            engine = object : DownloadEngine {
+                override suspend fun download(
+                    task: DownloadTask,
+                    onState: suspend (DownloadState) -> Unit,
+                ) {
+                    onState(DownloadState.Preparing)
+                    throw CancellationException("pause/resume race")
+                }
+            },
+            queue = queue,
+            clock = FixedClock(),
+            requestedCancellationState = { DownloadState.Paused },
+            persistCancellationState = false,
+        )
+
+        assertFailsWith<CancellationException> {
+            coordinator.execute(task())
+        }
+
+        assertEquals(DownloadStatus.PREPARING, repository.records[task().id]?.status)
+    }
+
+    @Test
     fun progressCheckpointDoesNotWriteEveryChunk() = runTest {
         val repository = FakeRepository()
         val queue = PersistentDownloadQueue(repository)
