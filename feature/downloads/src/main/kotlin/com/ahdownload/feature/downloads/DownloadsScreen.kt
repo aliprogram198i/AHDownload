@@ -1241,11 +1241,19 @@ private fun DownloadRecordCard(
                 record.status == DownloadStatus.PREPARING
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    DownloadProgressTrack(
-                        progress = null,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    if (record.status == DownloadStatus.QUEUED) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {}
+                    } else {
+                        DownloadProgressTrack(
+                            progress = null,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     Text(
                         if (record.status == DownloadStatus.QUEUED) {
                             "بانتظار بدء التنزيل"
