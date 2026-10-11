@@ -66,13 +66,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-linux-hw-accel: false
           script: |
-            set +e
-            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest -Pandroid.testInstrumentationRunnerArguments.targetPlatform=Snapchat > snapchat-live-e2e.log 2>&1
-            test_exit_code=$?
-            cat snapchat-live-e2e.log
-            adb logcat -d -v threadtime > snapchat-emulator-logcat.txt 2>&1 || true
-            printf '%s\\n' "$test_exit_code" > snapchat-live-exit-code.txt
-            exit "$test_exit_code"
+            set +e; gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest -Pandroid.testInstrumentationRunnerArguments.targetPlatform=Snapchat > snapchat-live-e2e.log 2>&1; test_exit_code=$?; cat snapchat-live-e2e.log; adb logcat -d -v threadtime > snapchat-emulator-logcat.txt 2>&1 || true; printf '%s\n' "$test_exit_code" > snapchat-live-exit-code.txt; exit "$test_exit_code"
       - name: Upload Snapchat live test logs and reports
         if: always()
         uses: actions/upload-artifact@v4
