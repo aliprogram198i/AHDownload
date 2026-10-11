@@ -87,6 +87,7 @@ internal open class StandardSocialPlatformExtractionStrategy(
             host == "v.redd.it" || host.endsWith(".redditmedia.com") -> "https://www.reddit.com/"
             host == "video.twimg.com" -> "https://x.com/"
             host.endsWith(".fbcdn.net") || host.endsWith(".fbsbx.com") -> "https://www.facebook.com/"
+            host == "pinimg.com" || host.endsWith(".pinimg.com") -> "https://www.pinterest.com/"
             host.endsWith(".vimeocdn.com") -> "https://vimeo.com/"
             else -> null
         } ?: return safeHeaders
@@ -130,6 +131,16 @@ internal open class StandardSocialPlatformExtractionStrategy(
                     kind = "reddit_public_json",
                     url = "https://${uri.rawAuthority}$jsonPath$query${separator}raw_json=1",
                     referer = "https://www.reddit.com/",
+                )
+            }
+            MediaPlatform.Pinterest -> {
+                if (!isHostOrSubdomain(host, "pinterest.com")) return null
+                val pinId = Regex("""/pin/(\d+)""")
+                    .find(uri.path.orEmpty())?.groupValues?.getOrNull(1) ?: return null
+                PublicFallbackRequest(
+                    kind = "pinterest_public_widget_payload",
+                    url = "https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=$pinId&sub=www&base_scheme=https",
+                    referer = "https://www.pinterest.com/",
                 )
             }
             MediaPlatform.Vimeo -> {
