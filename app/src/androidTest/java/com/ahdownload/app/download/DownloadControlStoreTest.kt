@@ -75,5 +75,15 @@ class DownloadControlStoreTest {
 
         assertFalse(store.isPaused("task-d"))
         assertEquals(null, store.snapshot("task-d"))
+
+        context.getSharedPreferences("ahdownload_download_controls", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("paused_legacy-cleanup", true)
+            .commit()
+        assertTrue(store.isPaused("legacy-cleanup"))
+
+        store.clearPaused("legacy-cleanup")
+        assertFalse(store.isPaused("legacy-cleanup"))
+        assertEquals(null, store.snapshot("legacy-cleanup"))
     }
 }
