@@ -173,8 +173,8 @@ class SnapchatSocialPlatformExtractionStrategyTest {
     }
 
     private companion object {
-        const val SPOTLIGHT_ID = "W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"
-        const val SPOTLIGHT_URL = "https://www.snapchat.com/spotlight/$SPOTLIGHT_ID"
+        const val SPOTLIGHT_ID = "W7_EDlXWTBiXAEEniNoMPwAAYYmZiZ2J2a3VhAZgD5F41AZgD5FXFAAAAAQ"
+        const val SPOTLIGHT_URL = "https://www.snapchat.com/@anjulaeditz/spotlight/$SPOTLIGHT_ID"
         const val VIDEO_URL = "https://cf-st.sc-cdn.net/d/spotlight-video-token?token=signed"
         const val THUMBNAIL_URL = "https://cf-st.sc-cdn.net/i/spotlight-thumbnail.256.IRZXSOY"
     }
