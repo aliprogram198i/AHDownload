@@ -306,6 +306,28 @@ class SocialPlatformResolverEngine(
                     )
                 }
             }
+        } catch (error: TimeoutCancellationException) {
+            // A timeout thrown by a nested resolver/browser request is not the resolver's
+            // own deadline. Preserve genuine caller cancellation and classify child timeouts.
+            currentCoroutineContext().ensureActive()
+            logger.log(
+                DiagnosticLevel.WARNING,
+                "SOCIAL_RESOLVER_SUBTASK_TIMEOUT",
+                "انتهت مهلة أحد المسارات الفرعية لتحليل الوسائط",
+                "social.resolve",
+                mapOf(
+                    "platform" to platform.name,
+                    "operation_id" to (request.operationId ?: "none"),
+                    "failure_code" to "SUBTASK_TIMEOUT",
+                    "timeout_scope" to "subtask",
+                    "exception_type" to error::class.java.simpleName,
+                ),
+                null,
+            )
+            return ResolverResult.Failure(
+                FailureCode.ResolverUnavailable,
+                "انتهت مهلة أحد مسارات استخراج الوسائط. أعد المحاولة.",
+            )
         } catch (error: CancellationException) {
             // Caller/lifecycle cancellation must not be converted into a media-resolution failure.
             throw error
