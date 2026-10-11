@@ -10,6 +10,9 @@ import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import java.net.URI
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Instagram-specific public-embed fallback, timeout, diagnostics and request-context policy. */
@@ -52,6 +55,11 @@ internal class InstagramSocialPlatformExtractionStrategy : SocialPlatformExtract
                     loginWall = looksLikeInstagramLoginWall(body)
                     parsed = WebPageMediaParser.parse(body, pageUrl)
                 }
+            } catch (error: TimeoutCancellationException) {
+                // Treat a timed-out child request as a failed embed attempt, unless
+                // the surrounding resolve operation was itself cancelled.
+                currentCoroutineContext().ensureActive()
+                exceptionType = error::class.java.simpleName
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
