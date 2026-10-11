@@ -568,7 +568,7 @@ class SocialPlatformResolverTest {
             FallbackCase(
                 MediaPlatform.Reddit,
                 "https://www.reddit.com/r/example/comments/abc123/post/",
-                "https://www.reddit.com/r/example/comments/abc123/post/.json?raw_json=1",
+                "https://www.reddit.com/r/example/comments/abc123/post.json?raw_json=1",
                 """{"fallback_url":"https://v.redd.it/abc123/DASH_720.mp4?source=fallback"}""",
                 "https://v.redd.it/abc123/DASH_720.mp4?source=fallback",
             ),
