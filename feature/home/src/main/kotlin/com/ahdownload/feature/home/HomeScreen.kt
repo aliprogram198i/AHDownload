@@ -1390,9 +1390,7 @@ private fun UnifiedDownloadResultCard(
     val allVideoOptions = videoOptionGroups.mainOptions
     val videoOnlyFallbackOptions = videoOptionGroups.videoOnlyFallback
     val allSelectableVideoOptions = videoOptionGroups.selectableOptions
-    val webFileOptions = primaryOptions.filter {
-        it.candidate.format.webFile && it.candidate.format.kind == MediaKind.Unknown
-    }
+    val webFileOptions = primaryOptions.filter { it.candidate.format.webFile }
     val selectedWebFile = webFileOptions.firstOrNull { it.candidate.id == selectedCandidateId }
 
     var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
