@@ -37,8 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -94,8 +92,8 @@ private fun WelcomeScreen(
         label = "orbScale",
     )
     val orbAlpha by transition.animateFloat(
-        initialValue = 0.18f,
-        targetValue = 0.34f,
+        initialValue = 0.07f,
+        targetValue = 0.13f,
         animationSpec = infiniteRepeatable(
             animation = tween(2200, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse,
@@ -106,20 +104,12 @@ private fun WelcomeScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        MaterialTheme.colorScheme.background,
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.background,
-                    ),
-                ),
-            ),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
-                .alpha(0.18f),
+                .alpha(0.08f),
         ) {
             val path = Path().apply {
                 moveTo(0f, size.height * 0.22f)
@@ -190,12 +180,7 @@ private fun WelcomeScreen(
                         modifier = Modifier
                             .size(122.dp)
                             .background(
-                                brush = Brush.linearGradient(
-                                    listOf(
-                                        MaterialTheme.colorScheme.primary,
-                                        MaterialTheme.colorScheme.secondary,
-                                    ),
-                                ),
+                                color = MaterialTheme.colorScheme.primary,
                                 shape = MaterialTheme.shapes.large,
                             ),
                         contentAlignment = Alignment.Center,
@@ -204,7 +189,7 @@ private fun WelcomeScreen(
                             imageVector = Icons.Rounded.CloudDownload,
                             contentDescription = null,
                             modifier = Modifier.size(58.dp),
-                            tint = Color.White,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                         )
                     }
                 }
