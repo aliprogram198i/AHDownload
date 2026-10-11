@@ -37,6 +37,15 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun recognizesCreatorPrefixedSnapchatSpotlightAsVideo() {
+        val result = analyzer.analyze(
+            "https://www.snapchat.com/@anjulaeditz/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYmZiZ2J2a3VhAZgD5F41AZgD5FXFAAAAAQ",
+        )
+        assertEquals(MediaPlatform.Snapchat, result?.platform)
+        assertEquals(MediaKind.Video, result?.kind)
+    }
+
+    @Test
     fun extractsUrlFromSharedTextAndNormalizesMobileYouTube() {
         val result = analyzer.analyze("شاهد هذا: https://m.youtube.com/watch?v=abc123 !!!")
         assertEquals(MediaPlatform.YouTube, result?.platform)
