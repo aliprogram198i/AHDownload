@@ -106,7 +106,8 @@ class CandidateValidator(
         if (
             !candidate.streamingManifest &&
             !probeResult.contentType.matchesKind(candidate.format.kind) &&
-            !snapchatOpaqueVideoResponse
+            !snapchatOpaqueVideoResponse &&
+            !(candidate.format.webFile && !probeResult.contentType.isHtml())
         ) {
             return reject(ValidationFailure.ContentTypeMismatch)
         }
