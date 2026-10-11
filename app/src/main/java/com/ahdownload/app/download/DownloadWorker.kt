@@ -328,11 +328,7 @@ class DownloadWorker(
             // Snapshot the explicit user intent and its generation. A later action may reuse
             // the same intent value (pause -> resume -> pause), so value-only checks are unsafe.
             val intentAtCancellation = controlStore.snapshot(task.id)
-            val requestedStatus = when (intentAtCancellation?.intent) {
-                "PAUSED" -> DownloadStatus.PAUSED
-                "CANCELLED" -> DownloadStatus.CANCELLED
-                else -> null
-            }
+            val requestedStatus = downloadStatusForControlIntent(intentAtCancellation?.intent)
             withContext(NonCancellable + Dispatchers.IO) {
                 try {
                     // Reject this worker's stale callback if any newer user action superseded it.
@@ -832,12 +828,12 @@ class DownloadWorker(
             )
             queue.applyState(task.id, DownloadState.Completed, System.currentTimeMillis())
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val state = if (controlStore.isPaused(task.id)) {
-                DownloadState.Paused
-            } else {
-                DownloadState.Cancelled
+            val state = downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
+            if (state != null) {
+                // Do not mark the task cancelled when WorkManager replaced this worker
+                // for a newer resume request or stopped it for a non-user lifecycle reason.
+                updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
             }
-            updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
             throw cancelled
         } catch (error: Throwable) {
             diagnostics.log(
@@ -1037,12 +1033,12 @@ class DownloadWorker(
             )
             return queue.applyState(task.id, DownloadState.Completed, now)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val state = if (controlStore.isPaused(task.id)) {
-                DownloadState.Paused
-            } else {
-                DownloadState.Cancelled
+            val state = downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
+            if (state != null) {
+                // Do not mark the task cancelled when WorkManager replaced this worker
+                // for a newer resume request or stopped it for a non-user lifecycle reason.
+                updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
             }
-            updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
             throw cancelled
         } catch (error: Throwable) {
             diagnostics.log(
