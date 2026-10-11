@@ -38,6 +38,7 @@ import java.util.UUID
 enum class HomeMode {
     Link,
     Search,
+    Recent,
 }
 
 enum class ResultFilter(val label: String) {
@@ -300,19 +301,33 @@ class HomeViewModel(
     }
 
     fun setMode(mode: HomeMode) {
-        if (mode == HomeMode.Search) {
-            enterSearchMode()
-        } else {
-            analysisJob?.cancel()
-            searchJob?.cancel()
-            _uiState.value = _uiState.value.copy(
-                mode = HomeMode.Link,
-                searching = false,
-                searchResults = emptyList(),
-                searchError = null,
-                showAll = false,
-                resultFilter = ResultFilter.All,
-            )
+        when (mode) {
+            HomeMode.Search -> enterSearchMode()
+            HomeMode.Recent -> {
+                searchJob?.cancel()
+                searchJob = null
+                _uiState.value = _uiState.value.copy(
+                    mode = HomeMode.Recent,
+                    searching = false,
+                    searchResults = emptyList(),
+                    searchError = null,
+                    selectedSearchIds = emptySet(),
+                    batchDownloading = false,
+                    batchError = null,
+                )
+            }
+            HomeMode.Link -> {
+                analysisJob?.cancel()
+                searchJob?.cancel()
+                _uiState.value = _uiState.value.copy(
+                    mode = HomeMode.Link,
+                    searching = false,
+                    searchResults = emptyList(),
+                    searchError = null,
+                    showAll = false,
+                    resultFilter = ResultFilter.All,
+                )
+            }
         }
     }
 

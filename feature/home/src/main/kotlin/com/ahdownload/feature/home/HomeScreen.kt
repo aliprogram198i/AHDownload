@@ -8,6 +8,7 @@ import com.ahdownload.core.designsystem.DiagnosticTextButton
 import com.ahdownload.core.designsystem.DiagnosticIconButton
 import com.ahdownload.core.designsystem.DiagnosticFilterChip
 
+import androidx.activity.compose.BackHandler
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.background
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
@@ -250,6 +252,7 @@ private fun HomeScreen(
     onFavoriteSelected: (FavoriteItem) -> Unit = {},
 ) {
     val mode = state.mode
+    var showResultsScreen by remember { mutableStateOf(false) }
     val androidContext = LocalContext.current
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
@@ -289,6 +292,18 @@ private fun HomeScreen(
     val uiContext = rememberUiTraceContext()
     val clipboard = LocalClipboardManager.current
 
+    LaunchedEffect(state.resolution) {
+        showResultsScreen = state.mode == HomeMode.Link && state.resolution != null
+    }
+    LaunchedEffect(state.mode) {
+        if (state.mode != HomeMode.Link) showResultsScreen = false
+    }
+
+    BackHandler(enabled = showResultsScreen && state.mode == HomeMode.Link) {
+        uiTraceLogger.interaction("HOME", "results_screen", "system_back_to_link")
+        showResultsScreen = false
+    }
+
     DisposableEffect(Unit) {
         uiTraceLogger.interaction("HOME", "screen", "entered")
         onDispose {
@@ -298,6 +313,7 @@ private fun HomeScreen(
 
     LaunchedEffect(
         state.mode,
+        showResultsScreen,
         state.url,
         state.analyzing,
         state.resolving,
@@ -329,20 +345,32 @@ private fun HomeScreen(
         val components = buildList {
             add("topbar")
             add("bottom_navigation")
-            add("url_input")
-            add("analyze_button")
-            if (state.url.isNotBlank()) add("clear_input_button")
-            add("paste_input_button")
-            if (state.analyzing || state.resolving) add("loading_state")
-            if (state.resolution != null) {
+            if (showResultsScreen && state.mode == HomeMode.Link && state.resolution != null) {
+                add("results_screen_back")
                 add("unified_download_result")
-            } else if (state.url.isBlank() && state.recentLinks.isNotEmpty()) {
-                add("recent_links")
+            } else {
+                when (state.mode) {
+                    HomeMode.Link -> {
+                        add("url_input")
+                        add("analyze_button")
+                        if (state.url.isNotBlank()) add("clear_input_button")
+                        add("paste_input_button")
+                        if (state.analyzing || state.resolving) add("loading_state")
+                        if (state.url.isBlank() && state.resolution == null && state.recentLinks.isNotEmpty()) {
+                            add("recent_links_preview")
+                        }
+                    }
+                    HomeMode.Search -> {
+                        add("youtube_search")
+                        if (state.searching) add("search_loading")
+                        if (state.searchResults.isNotEmpty()) add("search_results")
+                    }
+                    HomeMode.Recent -> add("recent_links_page")
+                }
             }
             if (state.error != null) add("error_card")
             if (state.downloadQueued) add("download_success")
-            if (state.searching) add("search_loading")
-            if (state.searchResults.isNotEmpty()) add("search_results")
+            if (state.searching && state.mode != HomeMode.Search) add("background_search")
             if (state.batchDownloading) add("batch_download_progress")
         }.joinToString(",")
 
@@ -542,6 +570,7 @@ private fun HomeScreen(
                 .widthIn(max = 760.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            if (!(showResultsScreen && state.mode == HomeMode.Link)) {
             item {
                 Spacer(Modifier.height(4.dp))
                 Column(
@@ -591,6 +620,21 @@ private fun HomeScreen(
                             },
                             label = { Text("بحث YouTube") },
                             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        )
+                    }
+                    item {
+                        DiagnosticFilterChip(
+                            trackingScreen = "HOME",
+                            trackingId = "HOME.filterchip.recent",
+                            trackingLabel = "الروابط الأخيرة",
+                            disabledReason = "لا توجد إجراءات متاحة أثناء التنقل",
+                            selected = state.mode == HomeMode.Recent,
+                            onClick = {
+                                uiTraceLogger.interaction("HOME", "mode_recent", "open_recent_links")
+                                onModeChanged(HomeMode.Recent)
+                            },
+                            label = { Text("الروابط الأخيرة") },
+                            leadingIcon = { Icon(Icons.Rounded.History, contentDescription = null) },
                         )
                     }
                 }
@@ -719,7 +763,7 @@ private fun HomeScreen(
                         )
                     }
                 }
-            } else {
+            } else if (state.mode == HomeMode.Search) {
                 item {
                     AHCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
@@ -921,6 +965,69 @@ private fun HomeScreen(
                 }
             }
 
+            if (state.mode == HomeMode.Recent) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "الروابط الأخيرة",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "افتح رابطًا سابقًا لإعادة تحليله وتجهيز خيارات التنزيل.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (state.recentLinks.isNotEmpty()) {
+                    item {
+                        RecentLinksCard(
+                            links = state.recentLinks,
+                            onSelect = {
+                                uiTraceLogger.interaction("HOME", "recent_link", "select_recent_from_page")
+                                onRecentLinkSelected(it)
+                            },
+                            onClear = {
+                                uiTraceLogger.interaction("HOME", "recent_links", "clear_recent_from_page")
+                                onClearRecentLinks()
+                            },
+                        )
+                    }
+                } else {
+                    item {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Icon(
+                                    Icons.Rounded.History,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(36.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text("لا توجد روابط سابقة", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "ستظهر هنا الروابط التي تحللها في التطبيق.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                DiagnosticButton(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.button.recent_empty",
+                                    trackingLabel = "إضافة رابط",
+                                    disabledReason = "callsite_precondition_not_explicit",
+                                    onClick = { onModeChanged(HomeMode.Link) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) { Text("إضافة رابط") }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (state.analyzing || state.resolving) {
                 item {
                     Card(
@@ -976,7 +1083,26 @@ private fun HomeScreen(
                 }
             }
 
-            if (mode == HomeMode.Link) state.resolution?.let { resolution ->
+            }
+
+            if (showResultsScreen && state.mode == HomeMode.Link) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "نتائج التنزيل",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "اختر جودة الفيديو أو صيغة الصوت قبل بدء التنزيل.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            if (showResultsScreen && mode == HomeMode.Link) state.resolution?.let { resolution ->
                 item {
                     val audioOptions = resultSet.audio
                     UnifiedDownloadResultCard(
@@ -1000,6 +1126,10 @@ private fun HomeScreen(
                         sourceCandidates = candidates,
                         audioOptions = audioOptions,
                         onCopyResultCardTrace = onCopyResultCardTrace,
+                        onBackToLink = {
+                            uiTraceLogger.interaction("HOME", "results_screen", "return_to_link")
+                            showResultsScreen = false
+                        },
                         selectedCandidateId = state.selectedCandidateId,
                         selectedAudioCandidateId = state.selectedAudioCandidateId,
                         validatingCandidateId = state.validatingCandidateId,
@@ -1166,7 +1296,7 @@ private fun HomeScreen(
                 }
             }
 
-            item {
+            if (!(showResultsScreen && state.mode == HomeMode.Link)) item {
                 Text(
                     "يتم التحقق من المصدر عند بدء التنزيل.",
                     style = MaterialTheme.typography.bodySmall,
@@ -1443,6 +1573,7 @@ private fun UnifiedDownloadResultCard(
     onSelectAudioOutputFormat: (AudioOutputFormat) -> Unit,
     onDownload: (String) -> Unit,
     onDownloadAudio: (String?) -> Unit,
+    onBackToLink: () -> Unit,
     sourceCandidates: List<MediaCandidate>,
     onCopyResultCardTrace: () -> String,
     downloadQueued: Boolean,
@@ -1935,6 +2066,27 @@ private fun UnifiedDownloadResultCard(
                         }
                     },
             )
+
+            DiagnosticOutlinedButton(
+                trackingScreen = "HOME",
+                trackingId = "HOME.outlinedbutton.back_to_link",
+                trackingLabel = "العودة إلى الرابط",
+                disabledReason = "callsite_precondition_not_explicit",
+                enabled = true,
+                onClick = {
+                    resultCardTrace.recordAction(
+                        action = "return_to_link",
+                        component = "result_card_back_button",
+                        context = mapOf("result_generation" to resultGeneration),
+                    )
+                    onBackToLink()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.Link, contentDescription = null)
+                Spacer(Modifier.size(6.dp))
+                Text("العودة إلى الرابط")
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
