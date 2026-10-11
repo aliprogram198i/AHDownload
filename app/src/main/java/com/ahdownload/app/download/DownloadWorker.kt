@@ -325,23 +325,28 @@ class DownloadWorker(
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            // Snapshot the explicit user intent. A rapid resume may supersede this worker's
-            // cancellation before the non-cancellable persistence block runs.
-            val intentAtCancellation = controlStore.intent(task.id)
-            val requestedStatus = when (intentAtCancellation) {
+            // Snapshot the explicit user intent and its generation. A later action may reuse
+            // the same intent value (pause -> resume -> pause), so value-only checks are unsafe.
+            val intentAtCancellation = controlStore.snapshot(task.id)
+            val requestedStatus = when (intentAtCancellation?.intent) {
                 "PAUSED" -> DownloadStatus.PAUSED
                 "CANCELLED" -> DownloadStatus.CANCELLED
                 else -> null
             }
             withContext(NonCancellable + Dispatchers.IO) {
                 try {
-                    // Never let a stale worker overwrite the state created by a newer resume.
-                    if (requestedStatus != null && controlStore.intent(task.id) == intentAtCancellation) {
+                    // Reject this worker's stale callback if any newer user action superseded it.
+                    if (
+                        requestedStatus != null &&
+                        intentAtCancellation != null &&
+                        controlStore.isCurrent(task.id, intentAtCancellation)
+                    ) {
                         val latest = repository.get(task.id)
                         if (
                             latest != null &&
                             latest.status != DownloadStatus.COMPLETED &&
-                            latest.status != DownloadStatus.FAILED
+                            latest.status != DownloadStatus.FAILED &&
+                            controlStore.isCurrent(task.id, intentAtCancellation)
                         ) {
                             repository.upsert(
                                 latest.copy(
@@ -368,7 +373,7 @@ class DownloadWorker(
                 "download.worker",
                 mapOf(
                     "task_id" to task.id,
-                    "control_intent" to (intentAtCancellation ?: "UNSPECIFIED"),
+                    "control_intent" to (intentAtCancellation?.intent ?: "UNSPECIFIED"),
                     "persisted_status" to (requestedStatus?.name ?: "UNCHANGED"),
                 ),
                 cancelled,
