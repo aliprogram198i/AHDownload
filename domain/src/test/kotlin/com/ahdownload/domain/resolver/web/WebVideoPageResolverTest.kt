@@ -3,6 +3,7 @@ package com.ahdownload.domain.resolver.web
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.model.MediaPlatform
+import com.ahdownload.domain.resolver.MediaContainer
 import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
 import com.ahdownload.domain.resolver.FailureCode
@@ -42,8 +43,7 @@ class WebVideoPageResolverTest {
         assertEquals("https://site.example/media/movie.mp4", candidate.sourceUrl)
         assertEquals(MediaKind.Video, candidate.format.kind)
         assertEquals(720, candidate.format.height)
-        assertEquals("mp4", candidate.format.fileExtension)
-        assertFalse(candidate.format.webFile)
+        assertEquals(MediaContainer.Mp4, candidate.format.container)
         assertFalse(candidate.streamingManifest)
         assertEquals("https://site.example/watch/episode-1", candidate.requestHeaders["Referer"])
         assertEquals("GET", requests[0].method)
@@ -63,10 +63,10 @@ class WebVideoPageResolverTest {
 
         assertTrue(result is ResolverResult.Success)
         val candidate = (result as ResolverResult.Success).candidates.single()
-        assertEquals("m3u8", candidate.format.fileExtension)
+        assertTrue(candidate.sourceUrl.endsWith(".m3u8"))
         assertTrue(candidate.streamingManifest)
         assertEquals(MediaKind.Video, candidate.format.kind)
-        assertEquals("application/vnd.apple.mpegurl", candidate.format.mimeType)
+        assertEquals(MediaContainer.Mkv, candidate.format.container)
     }
 
     @Test
@@ -124,7 +124,7 @@ class WebVideoPageResolverTest {
         assertEquals(mediaUrl, candidate.sourceUrl)
         assertEquals("https://site.example", candidate.requestHeaders["Origin"])
         assertEquals(pageUrl, candidate.requestHeaders["Referer"])
-        assertEquals("video/mp4", candidate.format.mimeType)
+        assertEquals(MediaContainer.Mp4, candidate.format.container)
     }
 
     @Test
