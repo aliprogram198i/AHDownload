@@ -108,6 +108,7 @@ internal open class StandardSocialPlatformExtractionStrategy(
         val referer = when {
             host == "v.redd.it" || host.endsWith(".redditmedia.com") -> "https://www.reddit.com/"
             host == "video.twimg.com" -> "https://x.com/"
+            host == "sc-cdn.net" || host.endsWith(".sc-cdn.net") -> "https://www.snapchat.com/"
             host.endsWith(".fbcdn.net") || host.endsWith(".fbsbx.com") -> "https://www.facebook.com/"
             host == "pinimg.com" || host.endsWith(".pinimg.com") -> "https://www.pinterest.com/"
             host.endsWith(".vimeocdn.com") || host == "player.vimeo.com" -> "https://vimeo.com/"

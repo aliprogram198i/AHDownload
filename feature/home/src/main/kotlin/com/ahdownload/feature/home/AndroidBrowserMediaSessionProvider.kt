@@ -109,6 +109,10 @@ class AndroidBrowserMediaSessionProvider(
                     return true
                 }
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
+                val snapchatOpaqueVideo = (
+                    host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")
+                ) && path.startsWith("/d/")
+                if (snapchatOpaqueVideo) return true
                 return (
                     host.endsWith(".fbcdn.net") ||
                         host.endsWith(".cdninstagram.com") ||
@@ -128,8 +132,12 @@ class AndroidBrowserMediaSessionProvider(
                 if (ext in IMAGE_EXTENSIONS) return false
                 if (ext in MEDIA_EXTENSIONS || ext == "m3u8" || ext == "mpd" || "/videoplayback" in lower) return true
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
-                return host.endsWith(".fbcdn.net") || host.endsWith(".cdninstagram.com")
-                    || host == "cdninstagram.com"
+                val path = lower.substringBefore('?').substringBefore('#')
+                val snapchatOpaqueVideo = (
+                    host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")
+                ) && path.startsWith("/d/")
+                return snapchatOpaqueVideo || host.endsWith(".fbcdn.net") ||
+                    host.endsWith(".cdninstagram.com") || host == "cdninstagram.com"
             }
 
             fun safeHeaders(input: Map<String, String>): Map<String, String> = buildMap {
