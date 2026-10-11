@@ -33,7 +33,10 @@ class HomeResolver(
     ),
     private val candidateRanker: CandidateRanker = CandidateRanker(),
     private val browserMediaSessionProvider: BrowserMediaSessionProvider? = null,
-    private val webVideoPageResolver: WebVideoPageResolver = WebVideoPageResolver(logger = logger),
+    private val webVideoPageResolver: WebVideoPageResolver = WebVideoPageResolver(
+        logger = logger,
+        browserMediaSessionProvider = browserMediaSessionProvider,
+    ),
 ) {
     suspend fun resolve(
         link: MediaLink,
