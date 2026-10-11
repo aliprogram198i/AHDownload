@@ -74,13 +74,6 @@ fun DiagnosticsRoute(
     }
 
     LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(1000L)
-            uiEvents = uiTraceLogger.list()
-        }
-    }
-
-    LaunchedEffect(logs) {
         val latestError = logs.firstOrNull { it.level == DiagnosticLevel.ERROR }
         uiTraceLogger.snapshot(
             screen = "DIAGNOSTICS",
@@ -103,7 +96,6 @@ fun DiagnosticsRoute(
             uiEvents = uiTraceLogger.list()
         },
         onClear = {
-            uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear")
             logger.clear()
             logs = emptyList()
             uiEvents = emptyList()
@@ -161,38 +153,6 @@ private fun DiagnosticsScreen(
             .sortedByDescending { it.timestampEpochMs }
             .take(50)
     }
-    val unifiedReport = remember(report, uiEvents, controlAttempts) {
-        buildString {
-            appendLine(report)
-            appendLine()
-            appendLine("CONTROL_ATTEMPT_SUMMARY")
-            controlAttempts.forEach { attempt ->
-                appendLine(
-                    "${attempt.timestampEpochMs} | ${attempt.screen} | ${attempt.controlId} | " +
-                        "${attempt.label} | outcome=${attempt.outcome} | attempt_id=${attempt.attemptId}",
-                )
-            }
-            appendLine()
-            appendLine("UNIFIED_UI_INTERACTION_TRACE")
-            uiEvents.sortedBy { it.timestampEpochMs }.takeLast(400).forEach { event ->
-                val safeContext = DiagnosticDataSanitizer.sanitizeContext(event.context)
-                    .filterKeys { it !in UI_ENVIRONMENT_KEYS }
-                    .toSortedMap()
-                    .entries
-                    .joinToString(" ") { (key, value) -> "$key=$value" }
-                append(event.sequence).append(" | ")
-                    .append(formatDiagnosticTime(event.timestampEpochMs)).append(" | ")
-                    .append(event.level.name).append(" | ")
-                    .append(event.screen).append(" | ")
-                    .append(event.component).append(" | ")
-                    .append(event.event)
-                event.state?.let { append(" state=").append(it) }
-                if (safeContext.isNotBlank()) append(" | ").append(safeContext)
-                appendLine()
-            }
-        }.trimEnd()
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -217,7 +177,7 @@ private fun DiagnosticsScreen(
                         disabledReason = "لا يوجد تقرير خطأ لنسخه",
                         onClick = {
                             uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_latest_incident")
-                            clipboard.setText(AnnotatedString(unifiedReport))
+                            clipboard.setText(AnnotatedString(report))
                         },
                         enabled = latestError != null,
                     ) {
