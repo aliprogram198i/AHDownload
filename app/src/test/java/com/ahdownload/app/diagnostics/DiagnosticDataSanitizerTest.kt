@@ -54,7 +54,7 @@ class DiagnosticDataSanitizerTest {
     @Test
     fun sanitizesBearerAuthorizationAndCompleteCookieHeaders() {
         val text = DiagnosticDataSanitizer.sanitizeText(
-            "Authorization: Bearer bearer-secret-123\\nCookie: sessionid=cookie-secret; sid=second-cookie-secret",
+            "Authorization: Bearer bearer-secret-123\nCookie: sessionid=cookie-secret; sid=second-cookie-secret",
         )
 
         assertTrue(text.contains("[REDACTED]"))
