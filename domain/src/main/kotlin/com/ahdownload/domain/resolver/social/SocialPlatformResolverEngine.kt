@@ -169,6 +169,7 @@ class SocialPlatformResolverEngine(
                     operationId = request.operationId,
                     logger = logger,
                 )
+                val platformFallbackMediaUrls = platformFallback?.mediaUrls.orEmpty().toSet()
                 val title = session.title ?: fallback?.title ?: platformFallback?.title
                 val thumbnail = session.thumbnailUrl ?: fallback?.thumbnailUrl ?: platformFallback?.thumbnailUrl
                 val duration = session.durationMs ?: fallback?.durationMs ?: platformFallback?.durationMs
@@ -210,6 +211,7 @@ class SocialPlatformResolverEngine(
                         index = index,
                         requestHeaders = session.requestHeadersByUrl[url],
                         audioPresence = audioPresence,
+                        platformFallbackVideoSource = platform == MediaPlatform.Snapchat && url in platformFallbackMediaUrls,
                         sourceContext = if (url in sessionObservedUrls) {
                             MediaSourceContext.BROWSER_OBSERVED
                         } else {
@@ -330,6 +332,7 @@ class SocialPlatformResolverEngine(
         index: Int,
         requestHeaders: Map<String, String>?,
         audioPresence: Boolean?,
+        platformFallbackVideoSource: Boolean,
         sourceContext: MediaSourceContext,
     ): MediaCandidate? {
         val mime = runCatching { URI(sourceUrl).rawQuery.orEmpty() }
@@ -353,6 +356,7 @@ class SocialPlatformResolverEngine(
             mime.contains("dash+xml")
 
         val kind = when {
+            platformFallbackVideoSource -> MediaKind.Video
             streamingManifest || mime.startsWith("video") || extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
             mime.startsWith("audio") || extension in setOf("mp3", "m4a", "aac", "ogg", "flac", "wav") -> MediaKind.Audio
             mime.startsWith("image") || extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
@@ -363,6 +367,7 @@ class SocialPlatformResolverEngine(
             .find(sourceUrl)?.groupValues?.getOrNull(1)?.toIntOrNull()
 
         val container = when {
+            platformFallbackVideoSource -> MediaContainer.Mp4
             streamingManifest -> MediaContainer.Mkv
             extension == "mp4" || mime.contains("mp4") -> MediaContainer.Mp4
             extension == "webm" -> MediaContainer.Webm
