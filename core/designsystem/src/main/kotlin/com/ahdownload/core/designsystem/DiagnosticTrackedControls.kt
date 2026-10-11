@@ -10,20 +10,11 @@ import androidx.compose.material3.OutlinedButton as MaterialOutlinedButton
 import androidx.compose.material3.Switch as MaterialSwitch
 import androidx.compose.material3.TextButton as MaterialTextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.UiTraceLogger
 import java.util.UUID
@@ -205,6 +196,12 @@ fun DiagnosticSwitch(
  * callback dispatch/return and synchronous exceptions. Async business outcomes
  * must still be emitted by the operation pipeline.
  */
+/**
+ * Persists only meaningful control-state changes. Composition, disposal, and viewport
+ * visibility are intentionally excluded from the normal production trace because lazy
+ * lists and recomposition generate high-volume noise; screen snapshots and action events
+ * remain available for diagnosis.
+ */
 @Composable
 fun diagnosticControlModifier(
     modifier: Modifier,
@@ -216,11 +213,6 @@ fun diagnosticControlModifier(
 ): Modifier {
     val logger = LocalDiagnosticUiTraceLogger.current
     val latestLogger by rememberUpdatedState(logger)
-    var lastVisibility by remember(trackingScreen, trackingId) { mutableStateOf<Boolean?>(null) }
-    val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
-    val screenWidthPx = with(density) { configuration.screenWidthDp.coerceAtLeast(1).dp.toPx() }
-    val screenHeightPx = with(density) { configuration.screenHeightDp.coerceAtLeast(1).dp.toPx() }
 
     LaunchedEffect(trackingScreen, trackingId, enabled, disabledReason, logger) {
         recordDiagnosticControlEvent(
@@ -237,38 +229,7 @@ fun diagnosticControlModifier(
         )
     }
 
-    DisposableEffect(trackingScreen, trackingId, logger) {
-        recordDiagnosticControlEvent(
-            logger, trackingScreen, trackingId, trackingLabel,
-            event = "CONTROL_COMPOSED", state = "COMPOSED",
-        )
-        onDispose {
-            recordDiagnosticControlEvent(
-                latestLogger, trackingScreen, trackingId, trackingLabel,
-                event = "CONTROL_DISPOSED", state = "DISPOSED",
-            )
-        }
-    }
-
-    return modifier.onGloballyPositioned { coordinates ->
-        val bounds = coordinates.boundsInWindow()
-        val visible = coordinates.isAttached &&
-            coordinates.size.width > 0 && coordinates.size.height > 0 &&
-            bounds.right > 0f && bounds.bottom > 0f &&
-            bounds.left < screenWidthPx && bounds.top < screenHeightPx
-        if (lastVisibility != visible) {
-            lastVisibility = visible
-            recordDiagnosticControlEvent(
-                logger = latestLogger,
-                screen = trackingScreen,
-                controlId = trackingId,
-                label = trackingLabel,
-                event = if (visible) "CONTROL_VISIBLE_ON_SCREEN" else "CONTROL_OUT_OF_VIEW",
-                state = if (visible) "VISIBLE" else "OUT_OF_VIEW",
-                context = mapOf("control_enabled" to enabled.toString()),
-            )
-        }
-    }
+    return modifier
 }
 
 @Composable
