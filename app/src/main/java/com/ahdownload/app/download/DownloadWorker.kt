@@ -318,6 +318,9 @@ class DownloadWorker(
                     engine = engine,
                     queue = queue,
                     isPauseRequested = { controlStore.isPaused(task.id) },
+                    requestedCancellationState = {
+                        downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
+                    },
                 )
                 coordinator.execute(sourceTask) { state ->
                     updateNotificationSpeed(state)
