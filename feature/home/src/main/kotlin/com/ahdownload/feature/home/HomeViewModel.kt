@@ -30,8 +30,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -104,15 +102,16 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     private var analysisJob: Job? = null
-    private var autoAnalyzeJob: Job? = null
     private var searchJob: Job? = null
     private var downloadJob: Job? = null
 
+    /**
+     * Manual typing only updates the editor state. It must not start network analysis.
+     * Paste/share/favorite/search selection use setUrlAndAnalyze() as explicit actions.
+     */
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
         analysisJob = null
-        autoAnalyzeJob?.cancel()
-        autoAnalyzeJob = null
         searchJob?.cancel()
         searchJob = null
 
@@ -125,41 +124,11 @@ class HomeViewModel(
             resultFilter = ResultFilter.All,
         )
 
-        val normalized = value.trim()
-        val link = analyzer.analyze(normalized)
-        if (_uiState.value.mode == HomeMode.Link && link != null && isLikelyCompleteLink(link, normalized)) {
-            logger.log(
-                DiagnosticLevel.INFO,
-                "LINK_INPUT_RECEIVED",
-                "تم استلام رابط صالح من حقل الرابط",
-                "home.input",
-                mapOf("platform" to link.platform.name),
-                null,
-            )
-            autoAnalyzeJob = viewModelScope.launch {
-                delay(AUTO_ANALYZE_DEBOUNCE_MS)
-                if (isActive && _uiState.value.url.trim() == normalized &&
-                    !_uiState.value.analyzing && !_uiState.value.resolving
-                ) {
-                    logger.log(
-                        DiagnosticLevel.INFO,
-                        "AUTO_ANALYSIS_TRIGGERED",
-                        "تم بدء تحليل الرابط تلقائيًا بعد إدخال رابط مكتمل",
-                        "home.auto_analyze",
-                        mapOf("platform" to link.platform.name),
-                        null,
-                    )
-                    analyzeUrl(normalized, fromAutoTrigger = true)
-                }
-            }
-        }
     }
 
     fun setUrlAndAnalyze(value: String) {
         analysisJob?.cancel()
         analysisJob = null
-        autoAnalyzeJob?.cancel()
-        autoAnalyzeJob = null
         searchJob?.cancel()
         searchJob = null
 
@@ -211,39 +180,7 @@ class HomeViewModel(
             mapOf("platform" to link.platform.name),
             null,
         )
-        analyzeUrl(normalized, fromAutoTrigger = true)
-    }
-
-    private fun isLikelyCompleteLink(
-        link: MediaLink,
-        normalized: String,
-    ): Boolean {
-        if (normalized.length < 24) return false
-        val lower = normalized.lowercase()
-        return when (link.platform) {
-            MediaPlatform.YouTube ->
-                "watch?v=" in lower || "youtu.be/" in lower || "/shorts/" in lower
-            MediaPlatform.Instagram ->
-                "/reel/" in lower || "/reels/" in lower || "/p/" in lower ||
-                    "/tv/" in lower || "/stories/" in lower
-            MediaPlatform.Facebook ->
-                "/reel" in lower || "/watch" in lower || "/videos/" in lower || "fb.watch/" in lower
-            MediaPlatform.TikTok ->
-                "/video/" in lower
-            MediaPlatform.X ->
-                "/status/" in lower
-            MediaPlatform.Snapchat ->
-                "/spotlight/" in lower || "/story/" in lower
-            MediaPlatform.Pinterest ->
-                "/pin/" in lower
-            MediaPlatform.Reddit ->
-                "/comments/" in lower || "redd.it/" in lower
-            MediaPlatform.Twitch ->
-                "/videos/" in lower || "/clip/" in lower
-            MediaPlatform.Vimeo ->
-                Regex("""/\d+(?:[/?#]|$)""").containsMatchIn(lower)
-            else -> link.kind != MediaKind.Unknown
-        }
+        analyzeUrl(normalized)
     }
 
     fun searchContent(query: String = _uiState.value.searchQuery) {
@@ -454,7 +391,7 @@ class HomeViewModel(
     fun openSearchResult(item: ContentSearchItem) {
         searchJob?.cancel()
         _uiState.value = _uiState.value.copy(searchQuery = item.title, mode = HomeMode.Link)
-        onUrlChanged(item.url)
+        setUrlAndAnalyze(item.url)
     }
 
     fun selectRecentLink(link: RecentLink) {
@@ -473,16 +410,12 @@ class HomeViewModel(
         _uiState.value = _uiState.value.copy(recentLinks = emptyList())
     }
 
-    fun analyze(fromAutoTrigger: Boolean = false) {
+    fun analyze() {
         val current = _uiState.value.url.trim()
-        analyzeUrl(current, fromAutoTrigger)
+        analyzeUrl(current)
     }
 
-    private fun analyzeUrl(current: String, fromAutoTrigger: Boolean = false) {
-        if (!fromAutoTrigger) {
-            autoAnalyzeJob?.cancel()
-            autoAnalyzeJob = null
-        }
+    private fun analyzeUrl(current: String) {
 
         val startedAtEpochMs = System.currentTimeMillis()
         val startedAtElapsedMs = SystemClock.elapsedRealtime()
@@ -1129,7 +1062,6 @@ class HomeViewModel(
     }
 
     override fun onCleared() {
-        autoAnalyzeJob?.cancel()
         analysisJob?.cancel()
         searchJob?.cancel()
         downloadJob?.cancel()
@@ -1326,10 +1258,6 @@ class HomeViewModel(
             extractAudio = extractAudio,
             audioOutputFormat = audioOutputFormat,
         )
-    }
-
-    private companion object {
-        const val AUTO_ANALYZE_DEBOUNCE_MS = 300L
     }
 
     class Factory(

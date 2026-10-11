@@ -34,7 +34,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Clear
-import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -78,11 +77,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,8 +125,6 @@ fun HomeRoute(
     onOpenDownloads: () -> Unit,
     onInitialUrlConsumed: () -> Unit,
     uiTraceLogger: UiTraceLogger,
-    onCopyHomeTrace: () -> String = { "" },
-    onCopyResultCardTrace: () -> String = { "" },
     activeDownloads: Int = 0,
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
@@ -166,7 +161,7 @@ fun HomeRoute(
                 "received_initial_url",
                 mapOf("source" to "external_intent"),
             )
-            viewModel.onUrlChanged(it)
+            viewModel.setUrlAndAnalyze(it)
             onInitialUrlConsumed()
         }
     }
@@ -194,8 +189,6 @@ fun HomeRoute(
         onNavigateHome = onNavigateHome,
         onOpenYouTubeSearch = onOpenYouTubeSearch,
         uiTraceLogger = uiTraceLogger,
-        onCopyHomeTrace = onCopyHomeTrace,
-        onCopyResultCardTrace = onCopyResultCardTrace,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
         currentFavorite = state.result?.normalizedUrl?.let { favoriteRepository.isFavorite(it) } == true,
@@ -219,7 +212,7 @@ fun HomeRoute(
             }
         },
         onFavoriteSelected = { item ->
-            viewModel.onUrlChanged(item.url)
+            viewModel.setUrlAndAnalyze(item.url)
         },
     )
 }
@@ -249,8 +242,6 @@ private fun HomeScreen(
     onNavigateHome: () -> Unit,
     onOpenYouTubeSearch: () -> Unit,
     uiTraceLogger: UiTraceLogger,
-    onCopyHomeTrace: () -> String,
-    onCopyResultCardTrace: () -> String,
     activeDownloads: Int = 0,
     favoriteItems: List<FavoriteItem> = emptyList(),
     currentFavorite: Boolean = false,
@@ -296,7 +287,6 @@ private fun HomeScreen(
         .filter { (it.candidate.format.fileSizeBytes ?: 0L) > 0L }
         .minByOrNull { it.candidate.format.fileSizeBytes ?: Long.MAX_VALUE }
     val uiContext = rememberUiTraceContext()
-    val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(state.resolution) {
         showResultsScreen = state.mode == HomeMode.Link && state.resolution != null
@@ -510,22 +500,6 @@ private fun HomeScreen(
                     }
                 },
                 actions = {
-                    DiagnosticIconButton(
-                        trackingScreen = "HOME",
-                        trackingId = "HOME.iconbutton.01",
-                        trackingLabel = "HOME.iconbutton.01",
-                        disabledReason = "callsite_precondition_not_explicit",
-                        onClick = {
-                            uiTraceLogger.interaction("HOME", "copy_trace_button", "copy_home_trace")
-                            clipboard.setText(
-                                AnnotatedString(
-                                    onCopyHomeTrace(),
-                                ),
-                            )
-                        },
-                    ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ سجل الشاشة الرئيسية")
-                    }
                     DiagnosticIconButton(
                         trackingScreen = "HOME",
                         trackingId = "HOME.iconbutton.02",
@@ -964,8 +938,6 @@ private fun HomeScreen(
                 }
             }
 
-
-
             }
 
             if (showResultsScreen && state.mode == HomeMode.Link) {
@@ -1008,7 +980,6 @@ private fun HomeScreen(
                         primaryOptions = primaryOptions,
                         sourceCandidates = candidates,
                         audioOptions = audioOptions,
-                        onCopyResultCardTrace = onCopyResultCardTrace,
                         onBackToLink = {
                             uiTraceLogger.interaction("HOME", "results_screen", "return_to_link")
                             showResultsScreen = false
@@ -1374,7 +1345,6 @@ private fun UnifiedDownloadResultCard(
     onDownloadAudio: (String?) -> Unit,
     onBackToLink: () -> Unit,
     sourceCandidates: List<MediaCandidate>,
-    onCopyResultCardTrace: () -> String,
     downloadQueued: Boolean,
     errorMessage: String?,
 ) {
@@ -1426,7 +1396,6 @@ private fun UnifiedDownloadResultCard(
     val resultCardTrace = remember(resultGeneration) {
         ResultCardTraceRecorder(uiTraceLogger, resultGeneration)
     }
-    val clipboard = LocalClipboardManager.current
 
     LaunchedEffect(resultGeneration) {
         resultCardTrace.recordSnapshot(
@@ -1887,31 +1856,6 @@ private fun UnifiedDownloadResultCard(
                     },
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                DiagnosticTextButton(
-                    trackingScreen = "HOME",
-                    trackingId = "HOME.textbutton.05",
-                    trackingLabel = "نسخ سجل بطاقة النتائج",
-                    disabledReason = "callsite_precondition_not_explicit",
-                    onClick = {
-                        uiTraceLogger.interaction(
-                            "RESULT_CARD",
-                            "result_card_log_button",
-                            "copy_result_card_trace",
-                            mapOf("result_generation" to resultGeneration, "platform" to (platform ?: "unknown")),
-                        )
-                        clipboard.setText(AnnotatedString(onCopyResultCardTrace()))
-                    },
-                ) {
-                    Icon(Icons.Rounded.ContentCopy, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text("نسخ سجل بطاقة النتائج")
-                }
-            }
         }
     }
 }
@@ -2438,7 +2382,6 @@ private fun formatDuration(durationMs: Long): String {
     val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
     return (totalSeconds / 60L).toString() + ":" + (totalSeconds % 60L).toString().padStart(2, '0')
 }
-
 
 /** Avoid reporting a result card for an error-only UI state. */
 internal fun shouldEmitSmartCenterResultPresented(hasResolution: Boolean): Boolean = hasResolution
