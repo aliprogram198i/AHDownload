@@ -1278,11 +1278,20 @@ private fun DownloadRecordCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    DownloadProgressTrack(
-                        progress = pausedProgress,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    if (pausedProgress != null) {
+                        DownloadProgressTrack(
+                            progress = pausedProgress,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        // A paused item with unknown total size must not show a moving indeterminate bar.
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {}
+                    }
                     Text(
                         "متوقف مؤقتًا · اضغط «استئناف» للمتابعة",
                         style = MaterialTheme.typography.bodySmall,
