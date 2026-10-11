@@ -2423,6 +2423,7 @@ private fun platformLabel(platform: String): String = when (platform) {
     "Twitch" -> "Twitch"
     "Vimeo" -> "Vimeo"
     "DirectMedia" -> "رابط مباشر"
+    "Web" -> "موقع ويب"
     else -> platform
 }
 
