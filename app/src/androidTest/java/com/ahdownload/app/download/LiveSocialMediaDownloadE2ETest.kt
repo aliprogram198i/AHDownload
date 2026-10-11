@@ -46,10 +46,15 @@ class LiveSocialMediaDownloadE2ETest {
         val analyzer = LinkAnalyzer()
         val report = mutableListOf<String>()
 
-        // This focused live acceptance run targets the two platforms under active repair.
+        // Expand live acceptance coverage to the remaining supported social platforms.
         val targets = listOf(
-            Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
-            Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
+            Target("Facebook", MediaPlatform.Facebook, "https://www.facebook.com/reel/1195289147628387"),
+            Target("X", MediaPlatform.X, "https://x.com/TopHeroes_/status/2001950365332455490"),
+            Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"),
+            Target("Pinterest", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/664281013778109217/"),
+            Target("Reddit", MediaPlatform.Reddit, "https://www.reddit.com/r/Unexpected/comments/1cl9h0u/the_insurance_claim_will_be_interesting/"),
+            Target("Twitch", MediaPlatform.Twitch, "https://www.twitch.tv/xqc/clip/CulturedAmazingKuduDatSheffy-TiZ_-ixAGYR3y2Uy"),
+            Target("Vimeo", MediaPlatform.Vimeo, "https://vimeo.com/76979871"),
         )
 
         for (target in targets) {
