@@ -148,6 +148,57 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun snapchatOpaqueCdnUrlIsClassifiedAsVideoOnlyForTrustedScCdnPath() = runTest {
+        val mediaUrl = "https://cf-st.sc-cdn.net/d/AbCdEf/opaque-video?token=redacted"
+        val resolver = SnapchatResolverAdapter(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Snapchat,
+                    pageUrl = "https://www.snapchat.com/spotlight/AbCdEf",
+                    mediaUrls = listOf(mediaUrl),
+                    requestHeadersByUrl = mapOf(mediaUrl to mapOf("Referer" to "https://www.snapchat.com/")),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(link = link(MediaPlatform.Snapchat)),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertEquals(mediaUrl, candidate.sourceUrl)
+        assertEquals(com.ahdownload.domain.model.MediaKind.Video, candidate.format.kind)
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Unknown, candidate.format.container)
+    }
+
+    @Test
+    fun snapchatOpaqueCdnClassificationRejectsUntrustedHostAndPath() = runTest {
+        val urls = listOf(
+            "https://sc-cdn.net.attacker.example/d/AbCdEf/opaque-video",
+            "https://cf-st.sc-cdn.net/not-media/opaque-video",
+            "http://cf-st.sc-cdn.net/d/AbCdEf/opaque-video",
+        )
+        for (url in urls) {
+            val resolver = SnapchatResolverAdapter(
+                provider = FakeProvider(
+                    BrowserMediaSession(
+                        platform = MediaPlatform.Snapchat,
+                        pageUrl = "https://www.snapchat.com/spotlight/AbCdEf",
+                        mediaUrls = listOf(url),
+                    ),
+                ),
+            )
+            val result = resolver.resolve(ResolverRequest(link = link(MediaPlatform.Snapchat)))
+            assertTrue(result is ResolverResult.Failure)
+            assertEquals(
+                com.ahdownload.domain.resolver.FailureCode.NoCandidates,
+                (result as ResolverResult.Failure).code,
+            )
+        }
+    }
+
+    @Test
     fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = TikTokResolverAdapter(
