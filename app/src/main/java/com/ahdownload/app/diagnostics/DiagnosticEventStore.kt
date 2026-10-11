@@ -474,7 +474,7 @@ object DiagnosticDataSanitizer {
         "(?i)\\b(set-cookie|cookie)\\b(\\s*[:=]\\s*)[^\\r\\n]*",
     )
     private val authorizationPattern = Regex(
-        "(?i)\\b(proxy-authorization|authorization)\\b(\\s*[:=]\\s*)(?:bearer\\s+)?[^\\s&,;]+",
+        "(?i)\\b(proxy-authorization|authorization)\\b(\\s*[:=]\\s*)[^\\r\\n]*",
     )
     private val secretValuePattern = Regex(
         "(?i)(cookie|set-cookie|authorization|proxy-authorization|token|password|passwd|secret|signature|sig|api[_-]?key|po[_-]?token)(\\s*[:=]\\s*)[^\\s&;,]+",
