@@ -6,7 +6,11 @@ import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -50,7 +54,13 @@ internal open class StandardSocialPlatformExtractionStrategy(
             failureType = error.javaClass.simpleName
         }
 
-        val parsed = body?.let { WebPageMediaParser.parse(it, pageUrl) }
+        val parsed = body?.let {
+            if (platform == MediaPlatform.Vimeo) {
+                parseVimeoProgressiveMedia(it, pageUrl)
+            } else {
+                WebPageMediaParser.parse(it, pageUrl)
+            }
+        }
         val mediaCount = parsed?.mediaUrls?.size ?: 0
         val status = when {
             failureType != null -> "request_failed"
@@ -105,10 +115,13 @@ internal open class StandardSocialPlatformExtractionStrategy(
         return when (platform) {
             MediaPlatform.Facebook -> {
                 if (!isHostOrSubdomain(host, "facebook.com") && !isHostOrSubdomain(host, "fb.watch")) return null
-                // Use the public mobile web representation; no login cookie is sent.
+                // Facebook's public video plugin returns an embeddable representation when the
+                // post owner permits public embedding. No login cookie or session is forwarded.
+                val encodedPageUrl = URLEncoder.encode(pageUrl, StandardCharsets.UTF_8.name())
                 PublicFallbackRequest(
-                    kind = "facebook_mobile_web",
-                    url = "https://m.facebook.com$path$query",
+                    kind = "facebook_public_video_embed",
+                    url = "https://www.facebook.com/plugins/video.php?href=" +
+                        encodedPageUrl + "&show_text=0&width=560",
                     referer = "https://www.facebook.com/",
                 )
             }
@@ -159,6 +172,94 @@ internal open class StandardSocialPlatformExtractionStrategy(
 
     private fun isHostOrSubdomain(host: String, domain: String): Boolean =
         host == domain || host.endsWith(".$domain")
+
+
+    private fun parseVimeoProgressiveMedia(body: String, pageUrl: String): ParsedPageMedia {
+        val generic = WebPageMediaParser.parse(body, pageUrl)
+        val root = runCatching { JsonParser.parseString(body) }
+            .getOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?: return generic.copy(mediaUrls = generic.mediaUrls.filter(::isDirectVimeoMediaUrl))
+
+        val video = root.get("video")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+        val request = root.get("request")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+
+        fun progressiveUrls(files: JsonObject?): List<String> {
+            val progressive = files
+                ?.get("progressive")
+                ?.takeIf { it.isJsonArray }
+                ?.asJsonArray
+                ?: return emptyList()
+            return progressive.mapNotNull { entry ->
+                if (!entry.isJsonObject) return@mapNotNull null
+                val url = entry.asJsonObject.get("url")
+                    ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                    ?.asString
+                    ?.trim()
+                    ?: return@mapNotNull null
+                url.takeIf(::isAllowedVimeoProgressiveUrl)
+            }
+        }
+
+        val videoFiles = video?.get("files")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+        val requestFiles = request?.get("files")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+        val progressiveUrls = (progressiveUrls(videoFiles) + progressiveUrls(requestFiles))
+            .distinct()
+            .take(16)
+
+        // Prefer only direct progressive files. HLS/DASH manifest URLs are valid HTTP
+        // responses, but this app's current download pipeline must not label them as ordinary
+        // downloadable MP4 files.
+        val urls = if (progressiveUrls.isNotEmpty()) {
+            progressiveUrls
+        } else {
+            generic.mediaUrls.filter(::isDirectVimeoMediaUrl)
+        }
+        val title = video?.get("title")
+            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+            ?.asString
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+        return generic.copy(
+            title = generic.title ?: title,
+            mediaUrls = urls,
+        )
+    }
+
+    private fun isAllowedVimeoProgressiveUrl(raw: String): Boolean {
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return false
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null) return false
+        val host = uri.host?.lowercase().orEmpty()
+        return host == "vimeocdn.com" ||
+            host.endsWith(".vimeocdn.com") ||
+            host == "akamaized.net" ||
+            host.endsWith(".akamaized.net") ||
+            host == "vimeo.com" ||
+            host.endsWith(".vimeo.com")
+    }
+
+    private fun isDirectVimeoMediaUrl(raw: String): Boolean {
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return false
+        if (!uri.scheme.equals("https", ignoreCase = true)) return false
+        val host = uri.host?.lowercase().orEmpty()
+        if (!(host == "vimeocdn.com" ||
+                host.endsWith(".vimeocdn.com") ||
+                host == "akamaized.net" ||
+                host.endsWith(".akamaized.net") ||
+                host == "vimeo.com" ||
+                host.endsWith(".vimeo.com"))
+        ) return false
+        return uri.path.orEmpty().substringAfterLast('.', "").lowercase() in setOf("mp4", "m4v", "mov", "webm")
+    }
 
     private data class PublicFallbackRequest(
         val kind: String,

@@ -55,9 +55,9 @@ class LiveSocialMediaDownloadE2ETest {
             Target("Facebook-1", MediaPlatform.Facebook, "https://www.facebook.com/reel/1195289147628387"),
             Target("Facebook-2", MediaPlatform.Facebook, "https://www.facebook.com/reel/390369400459687/"),
             Target("X-1", MediaPlatform.X, "https://x.com/TopHeroes_/status/2001950365332455490"),
-            Target("X-2", MediaPlatform.X, "https://x.com/EAHelp/status/1913644764894843004"),
+            Target("X-2", MediaPlatform.X, "https://x.com/i/status/2023101819296366988"),
             Target("Snapchat-1", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"),
-            Target("Snapchat-2", MediaPlatform.Snapchat, "https://www.snapchat.com/@snapchat/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYaGd5YmVrcnliAZ8rLppUAZ8rLn83AAAAAQ"),
+            Target("Snapchat-2", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYeHRncnFycnhzAZQykON-AZQykMAxAAAAAQ"),
             Target("Pinterest-1", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/664281013778109217/"),
             Target("Pinterest-2", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/550213279492193633/"),
             Target("Reddit-1", MediaPlatform.Reddit, "https://www.reddit.com/r/Unexpected/comments/1cl9h0u/the_insurance_claim_will_be_interesting/"),
@@ -89,7 +89,8 @@ class LiveSocialMediaDownloadE2ETest {
                         }
                         .distinctBy { it.sourceUrl }
                         .sortedWith(
-                            compareBy<com.ahdownload.domain.resolver.MediaCandidate> { it.format.height ?: Int.MAX_VALUE }
+                            compareBy<com.ahdownload.domain.resolver.MediaCandidate> { it.streamingManifest }
+                                .thenBy { it.format.height ?: Int.MAX_VALUE }
                                 .thenBy { it.format.fileSizeBytes ?: Long.MAX_VALUE },
                         )
                         .take(2)

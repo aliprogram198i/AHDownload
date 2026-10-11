@@ -554,7 +554,7 @@ class SocialPlatformResolverTest {
             FallbackCase(
                 MediaPlatform.Facebook,
                 "https://www.facebook.com/reel/123456789/",
-                "https://m.facebook.com/reel/123456789/",
+                "https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F123456789%2F&show_text=0&width=560",
                 """{"video_url":"https://video.xx.fbcdn.net/v/t42.1790-2/clip.mp4?token=opaque"}""",
                 "https://video.xx.fbcdn.net/v/t42.1790-2/clip.mp4?token=opaque",
             ),
@@ -583,7 +583,7 @@ class SocialPlatformResolverTest {
                 MediaPlatform.Vimeo,
                 "https://vimeo.com/76979871",
                 "https://player.vimeo.com/video/76979871/config",
-                """{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque"}""",
+                """{"video":{"title":"Public clip","files":{"progressive":[{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque","quality":"720p"}]}},"request":{"files":{"dash":{"cdns":{"default":{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/master.mpd?token=opaque"}}}}}}""",
                 "https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque",
             ),
         )

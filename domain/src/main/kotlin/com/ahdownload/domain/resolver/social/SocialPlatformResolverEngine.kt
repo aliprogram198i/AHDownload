@@ -239,6 +239,7 @@ class SocialPlatformResolverEngine(
                     }
                     .sortedWith(
                         compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video }
+                            .thenBy { it.streamingManifest }
                             .thenByDescending { it.format.height ?: 0 }
                             .thenByDescending { it.format.bitrateKbps ?: 0 },
                     )
