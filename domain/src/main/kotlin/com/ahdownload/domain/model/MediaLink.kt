@@ -11,6 +11,7 @@ enum class MediaPlatform {
     Reddit,
     Twitch,
     Vimeo,
+    Web,
     SocialWeb,
     DirectMedia,
     Unknown,
