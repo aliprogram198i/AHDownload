@@ -54,6 +54,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.AlertDialog
@@ -176,6 +177,7 @@ fun DownloadsRoute(
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
+    onNavigateYouTubeSearch: () -> Unit,
     onNavigateSettings: () -> Unit,
     activeDownloads: Int = 0,
     performanceSummaries: Map<String, DownloadPerformanceSummary> = emptyMap(),
@@ -266,6 +268,7 @@ fun DownloadsRoute(
         records = records,
         onBack = onBack,
         onNavigateHome = onNavigateHome,
+        onNavigateYouTubeSearch = onNavigateYouTubeSearch,
         onNavigateSettings = onNavigateSettings,
         activeDownloads = activeDownloads,
         transferStats = transferStats,
@@ -311,6 +314,7 @@ private fun DownloadsScreen(
     favorites: Set<String>,
     onBack: () -> Unit,
     onNavigateHome: () -> Unit,
+    onNavigateYouTubeSearch: () -> Unit,
     onNavigateSettings: () -> Unit,
     activeDownloads: Int,
     transferStats: Map<String, TransferStats>,
@@ -426,6 +430,18 @@ private fun DownloadsScreen(
                     }
                 },
                 actions = {
+                    DiagnosticIconButton(
+                        trackingScreen = "DOWNLOADS",
+                        trackingId = "DOWNLOADS.iconbutton.settings",
+                        trackingLabel = "الإعدادات",
+                        disabledReason = "navigation_is_available",
+                        onClick = {
+                            uiTraceLogger.interaction("DOWNLOADS", "settings_button", "open_settings")
+                            onNavigateSettings()
+                        },
+                    ) {
+                        Icon(Icons.Rounded.Settings, contentDescription = "الإعدادات")
+                    }
                     if (activeCount > 0 || records.any { it.status.canBeCancelled || it.status.canBeResumed }) {
                         Box {
                             DiagnosticIconButton(
@@ -495,11 +511,11 @@ private fun DownloadsScreen(
                             uiTraceLogger.interaction("DOWNLOADS", "bottom_nav_home", "open_home")
                             onNavigateHome()
                         }
-                        AHBottomNavDestination.DOWNLOADS -> Unit
-                        AHBottomNavDestination.SETTINGS -> {
-                            uiTraceLogger.interaction("DOWNLOADS", "bottom_nav_settings", "open_settings")
-                            onNavigateSettings()
+                        AHBottomNavDestination.YOUTUBE_SEARCH -> {
+                            uiTraceLogger.interaction("DOWNLOADS", "bottom_nav_youtube_search", "open_youtube_search")
+                            onNavigateYouTubeSearch()
                         }
+                        AHBottomNavDestination.DOWNLOADS -> Unit
                     }
                 },
             )
@@ -547,6 +563,34 @@ private fun DownloadsScreen(
 
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DownloadFilter.entries.forEach { item ->
+                            val count = when (item) {
+                                DownloadFilter.All -> records.size
+                                DownloadFilter.Active -> activeCount
+                                DownloadFilter.Paused -> pausedCount
+                                DownloadFilter.Completed -> completedCount
+                                DownloadFilter.Failed -> failedCount
+                                DownloadFilter.Favorites -> records.count {
+                                    FavoriteKey.fromUrl(it.task.sourcePageUrl ?: it.task.sourceUrl) in favorites
+                                }
+                            }
+                            item {
+                                DiagnosticFilterChip(
+                                    trackingScreen = "DOWNLOADS",
+                                    trackingId = "DOWNLOADS.filterchip.${item.name.lowercase(Locale.ROOT)}",
+                                    trackingLabel = item.label,
+                                    disabledReason = "none",
+                                    selected = item == filter,
+                                    onClick = { filter = item },
+                                    label = { Text(item.label + " " + count) },
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         DownloadMediaFilter.entries.forEach { item ->
                             val count = when (item) {
                                 DownloadMediaFilter.All -> records.size
@@ -580,33 +624,6 @@ private fun DownloadsScreen(
                     }
                 }
 
-                item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DownloadFilter.entries.forEach { item ->
-                            val count = when (item) {
-                                DownloadFilter.All -> records.size
-                                DownloadFilter.Active -> activeCount
-                                DownloadFilter.Paused -> pausedCount
-                                DownloadFilter.Completed -> completedCount
-                                DownloadFilter.Failed -> failedCount
-                                DownloadFilter.Favorites -> records.count {
-                                    FavoriteKey.fromUrl(it.task.sourcePageUrl ?: it.task.sourceUrl) in favorites
-                                }
-                            }
-                            item {
-                                DiagnosticFilterChip(
-                                    trackingScreen = "DOWNLOADS",
-                                    trackingId = "DOWNLOADS.filterchip.${item.name.lowercase(Locale.ROOT)}",
-                                    trackingLabel = item.label,
-                                    disabledReason = "none",
-                                    selected = item == filter,
-                                    onClick = { filter = item },
-                                    label = { Text(item.label + " " + count) },
-                                )
-                            }
-                        }
-                    }
-                }
 
                 if (visibleSections.isEmpty()) {
                     item {
@@ -1406,7 +1423,10 @@ private fun DownloadRecordCard(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.outlinedbutton.01",
                             trackingLabel = "إيقاف مؤقت",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onPause) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.weight(1f),
+                            onClick = onPause,
+                        ) {
                             Icon(Icons.Rounded.Pause, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("إيقاف مؤقت")
@@ -1415,7 +1435,10 @@ private fun DownloadRecordCard(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.outlinedbutton.02",
                             trackingLabel = "إلغاء",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onCancel) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.weight(1f),
+                            onClick = onCancel,
+                        ) {
                             Icon(Icons.Rounded.Cancel, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("إلغاء")
@@ -1426,23 +1449,36 @@ private fun DownloadRecordCard(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.button.04",
                             trackingLabel = "استئناف",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onResume) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.weight(1f),
+                            onClick = onResume,
+                        ) {
                             Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("استئناف")
                         }
-                        DiagnosticTextButton(
+                        DiagnosticOutlinedButton(
                             trackingScreen = "DOWNLOADS",
-                            trackingId = "DOWNLOADS.textbutton.03",
+                            trackingId = "DOWNLOADS.outlinedbutton.cancel_paused",
                             trackingLabel = "إلغاء نهائي",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onCancel) { Text("إلغاء نهائي") }
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.weight(1f),
+                            onClick = onCancel,
+                        ) {
+                            Icon(Icons.Rounded.Cancel, contentDescription = null)
+                            Spacer(Modifier.size(5.dp))
+                            Text("إلغاء")
+                        }
                     }
                     DownloadStatus.CANCELLED -> {
                         DiagnosticButton(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.button.05",
                             trackingLabel = "إعادة التنزيل",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onResume) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onResume,
+                        ) {
                             Icon(Icons.Rounded.Refresh, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("إعادة التنزيل")
@@ -1453,7 +1489,10 @@ private fun DownloadRecordCard(
                             trackingScreen = "DOWNLOADS",
                             trackingId = "DOWNLOADS.button.06",
                             trackingLabel = "إعادة المحاولة",
-                            disabledReason = "callsite_precondition_not_explicit",onClick = onRetry) {
+                            disabledReason = "callsite_precondition_not_explicit",
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = onRetry,
+                        ) {
                             Icon(Icons.Rounded.Refresh, contentDescription = null)
                             Spacer(Modifier.size(5.dp))
                             Text("إعادة المحاولة")
@@ -1465,7 +1504,10 @@ private fun DownloadRecordCard(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.button.07",
                                 trackingLabel = "إعادة التنزيل",
-                                disabledReason = "callsite_precondition_not_explicit",onClick = onRetry) {
+                                disabledReason = "callsite_precondition_not_explicit",
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onRetry,
+                            ) {
                                 Icon(Icons.Rounded.Refresh, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
                                 Text("إعادة التنزيل")
@@ -1475,7 +1517,10 @@ private fun DownloadRecordCard(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.button.08",
                                 trackingLabel = "فتح",
-                                disabledReason = "callsite_precondition_not_explicit",onClick = onOpenDownload) {
+                                disabledReason = "callsite_precondition_not_explicit",
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenDownload,
+                            ) {
                                 Icon(Icons.Rounded.OpenInNew, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
                                 Text("فتح")
@@ -1484,7 +1529,10 @@ private fun DownloadRecordCard(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.outlinedbutton.03",
                                 trackingLabel = "مشاركة",
-                                disabledReason = "callsite_precondition_not_explicit",onClick = onShareDownload) {
+                                disabledReason = "callsite_precondition_not_explicit",
+                                modifier = Modifier.weight(1f),
+                                onClick = onShareDownload,
+                            ) {
                                 Icon(Icons.Rounded.Share, contentDescription = null)
                                 Spacer(Modifier.size(5.dp))
                                 Text("مشاركة")

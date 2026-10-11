@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
@@ -135,6 +134,9 @@ fun HomeRoute(
     preferencesProvider: DownloadPreferencesProvider,
     favoriteRepository: FavoriteRepository,
     onAnalysisPerformance: (LinkAnalysisPerformance) -> Unit = {},
+    initialMode: HomeMode = HomeMode.Link,
+    onNavigateHome: () -> Unit = {},
+    onOpenYouTubeSearch: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -151,6 +153,10 @@ fun HomeRoute(
     }
     val viewModel: HomeViewModel = viewModel(factory = factory)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(initialMode) {
+        viewModel.setMode(initialMode)
+    }
 
     LaunchedEffect(initialUrl) {
         initialUrl?.takeIf { it.isNotBlank() }?.let {
@@ -185,8 +191,8 @@ fun HomeRoute(
         onBatchDownload = viewModel::downloadSelectedSearchResults,
         onOpenSettings = onOpenSettings,
         onOpenDownloads = onOpenDownloads,
-        onRecentLinkSelected = viewModel::selectRecentLink,
-        onClearRecentLinks = viewModel::clearRecentLinks,
+        onNavigateHome = onNavigateHome,
+        onOpenYouTubeSearch = onOpenYouTubeSearch,
         uiTraceLogger = uiTraceLogger,
         onCopyHomeTrace = onCopyHomeTrace,
         onCopyResultCardTrace = onCopyResultCardTrace,
@@ -240,8 +246,8 @@ private fun HomeScreen(
     onBatchDownload: (List<ContentSearchItem>) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDownloads: () -> Unit,
-    onRecentLinkSelected: (RecentLink) -> Unit,
-    onClearRecentLinks: () -> Unit,
+    onNavigateHome: () -> Unit,
+    onOpenYouTubeSearch: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     onCopyHomeTrace: () -> String,
     onCopyResultCardTrace: () -> String,
@@ -337,7 +343,6 @@ private fun HomeScreen(
         state.batchTotal,
         state.batchQueued,
         state.batchError,
-        state.recentLinks.size,
         favoriteItems.size,
         currentFavorite,
         activeDownloads,
@@ -356,16 +361,12 @@ private fun HomeScreen(
                         if (state.url.isNotBlank()) add("clear_input_button")
                         add("paste_input_button")
                         if (state.analyzing || state.resolving) add("loading_state")
-                        if (state.url.isBlank() && state.resolution == null && state.recentLinks.isNotEmpty()) {
-                            add("recent_links_preview")
-                        }
                     }
                     HomeMode.Search -> {
                         add("youtube_search")
                         if (state.searching) add("search_loading")
                         if (state.searchResults.isNotEmpty()) add("search_results")
                     }
-                    HomeMode.Recent -> add("recent_links_page")
                 }
             }
             if (state.error != null && !(showResultsScreen && state.mode == HomeMode.Link)) add("error_card")
@@ -543,18 +544,27 @@ private fun HomeScreen(
         bottomBar = {
             AHBottomNavigationBar(
                 trackingScreen = "HOME",
-                selected = AHBottomNavDestination.HOME,
+                selected = if (state.mode == HomeMode.Search) {
+                    AHBottomNavDestination.YOUTUBE_SEARCH
+                } else {
+                    AHBottomNavDestination.HOME
+                },
                 activeDownloads = activeDownloads,
                 onDestinationSelected = { destination ->
                     when (destination) {
-                        AHBottomNavDestination.HOME -> Unit
+                        AHBottomNavDestination.HOME -> {
+                            uiTraceLogger.interaction("HOME", "bottom_nav_home", "open_home")
+                            onModeChanged(HomeMode.Link)
+                            onNavigateHome()
+                        }
+                        AHBottomNavDestination.YOUTUBE_SEARCH -> {
+                            uiTraceLogger.interaction("HOME", "bottom_nav_youtube_search", "open_youtube_search")
+                            onModeChanged(HomeMode.Search)
+                            onOpenYouTubeSearch()
+                        }
                         AHBottomNavDestination.DOWNLOADS -> {
                             uiTraceLogger.interaction("HOME", "bottom_nav_downloads", "open_downloads")
                             onOpenDownloads()
-                        }
-                        AHBottomNavDestination.SETTINGS -> {
-                            uiTraceLogger.interaction("HOME", "bottom_nav_settings", "open_settings")
-                            onOpenSettings()
                         }
                     }
                 },
@@ -581,7 +591,6 @@ private fun HomeScreen(
                         when (state.mode) {
                             HomeMode.Link -> "حمّل ما تحب"
                             HomeMode.Search -> "بحث YouTube"
-                            HomeMode.Recent -> "الروابط الأخيرة"
                         },
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
@@ -590,61 +599,10 @@ private fun HomeScreen(
                         when (state.mode) {
                             HomeMode.Link -> "الصق الرابط، اختر ما يناسبك، وابدأ التنزيل."
                             HomeMode.Search -> "ابحث في YouTube واختر الفيديو الذي تريد تنزيله."
-                            HomeMode.Recent -> "روابطك السابقة جاهزة للعودة السريعة وإعادة التحليل."
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-            }
-
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item {
-                        DiagnosticFilterChip(
-                            trackingScreen = "HOME",
-                            trackingId = "HOME.filterchip.01",
-                            trackingLabel = "رابط",
-                            disabledReason = "callsite_precondition_not_explicit",
-                            selected = state.mode == HomeMode.Link,
-                            onClick = {
-                                uiTraceLogger.interaction("HOME", "mode_link", "switch_to_link")
-                                onModeChanged(HomeMode.Link)
-                            },
-                            label = { Text("رابط") },
-                            leadingIcon = { Icon(Icons.Rounded.Link, contentDescription = null) },
-                        )
-                    }
-                    item {
-                        DiagnosticFilterChip(
-                            trackingScreen = "HOME",
-                            trackingId = "HOME.filterchip.02",
-                            trackingLabel = "بحث YouTube",
-                            disabledReason = "callsite_precondition_not_explicit",
-                            selected = state.mode == HomeMode.Search,
-                            onClick = {
-                                uiTraceLogger.interaction("HOME", "mode_search", "switch_to_search")
-                                onModeChanged(HomeMode.Search)
-                            },
-                            label = { Text("بحث YouTube") },
-                            leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                        )
-                    }
-                    item {
-                        DiagnosticFilterChip(
-                            trackingScreen = "HOME",
-                            trackingId = "HOME.filterchip.recent",
-                            trackingLabel = "الروابط الأخيرة",
-                            disabledReason = "لا توجد إجراءات متاحة أثناء التنقل",
-                            selected = state.mode == HomeMode.Recent,
-                            onClick = {
-                                uiTraceLogger.interaction("HOME", "mode_recent", "open_recent_links")
-                                onModeChanged(HomeMode.Recent)
-                            },
-                            label = { Text("الروابط الأخيرة") },
-                            leadingIcon = { Icon(Icons.Rounded.History, contentDescription = null) },
-                        )
-                    }
                 }
             }
 
@@ -965,59 +923,11 @@ private fun HomeScreen(
                             },
                             onClick = {
                                 uiTraceLogger.interaction("HOME", "search_result", "open_video")
+                                onNavigateHome()
                                 onModeChanged(HomeMode.Link)
                                 onSearchResultSelected(item)
                             },
                         )
-                    }
-                }
-            }
-
-            if (state.mode == HomeMode.Recent) {
-                if (state.recentLinks.isNotEmpty()) {
-                    item {
-                        RecentLinksCard(
-                            links = state.recentLinks,
-                            onSelect = {
-                                uiTraceLogger.interaction("HOME", "recent_link", "select_recent_from_page")
-                                onRecentLinkSelected(it)
-                            },
-                            onClear = {
-                                uiTraceLogger.interaction("HOME", "recent_links", "clear_recent_from_page")
-                                onClearRecentLinks()
-                            },
-                        )
-                    }
-                } else {
-                    item {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Icon(
-                                    Icons.Rounded.History,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(36.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text("لا توجد روابط سابقة", fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    "ستظهر هنا الروابط التي تحللها في التطبيق.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                DiagnosticButton(
-                                    trackingScreen = "HOME",
-                                    trackingId = "HOME.button.recent_empty",
-                                    trackingLabel = "إضافة رابط",
-                                    disabledReason = "callsite_precondition_not_explicit",
-                                    onClick = { onModeChanged(HomeMode.Link) },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("إضافة رابط") }
-                            }
-                        }
                     }
                 }
             }
@@ -1054,28 +964,7 @@ private fun HomeScreen(
                 }
             }
 
-            if (
-                state.mode == HomeMode.Link &&
-                state.url.isBlank() &&
-                state.resolution == null &&
-                !state.analyzing &&
-                !state.resolving &&
-                state.recentLinks.isNotEmpty()
-            ) {
-                item {
-                    RecentLinksCard(
-                        links = state.recentLinks.take(4),
-                        onSelect = {
-                            uiTraceLogger.interaction("HOME", "recent_link", "select_recent")
-                            onRecentLinkSelected(it)
-                        },
-                        onClear = {
-                            uiTraceLogger.interaction("HOME", "recent_links", "clear_recent")
-                            onClearRecentLinks()
-                        },
-                    )
-                }
-            }
+
 
             }
 
@@ -1366,90 +1255,6 @@ private fun SearchResultCard(
                 label = { Text(if (selected) "محدد" else "تحديد") },
             )
         }
-    }
-}
-
-@Composable
-private fun RecentLinksCard(
-    links: List<RecentLink>,
-    onSelect: (RecentLink) -> Unit,
-    onClear: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("الروابط الأخيرة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        "اضغط لإعادة تحليل رابط استخدمته مؤخرًا.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                DiagnosticTextButton(
-                    trackingScreen = "HOME",
-                    trackingId = "HOME.textbutton.03",
-                    trackingLabel = "مسح",
-                    disabledReason = "callsite_precondition_not_explicit",onClick = onClear) { Text("مسح") }
-            }
-            links.forEach { link ->
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .tracedClickable(
-                            trackingScreen = "HOME",
-                            trackingId = "HOME.clickable.02",
-                            trackingLabel = "recent_link_item",onClick = { onSelect(link) }),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        MediaThumbnail(
-                            url = link.thumbnailUrl,
-                            contentDescription = "صورة مصغرة: " + (link.title ?: link.url),
-                            modifier = Modifier
-                                .size(width = 72.dp, height = 48.dp)
-                                .clip(RoundedCornerShape(10.dp)),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                link.title ?: link.url,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                platformLabel(link.platform) + " · " + formatRelativeRecentTime(link.updatedAtEpochMs),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun formatRelativeRecentTime(epochMs: Long): String {
-    val age = System.currentTimeMillis() - epochMs
-    return when {
-        age < 60_000L -> "الآن"
-        age < 3_600_000L -> (age / 60_000L).toString() + " د"
-        age < 86_400_000L -> (age / 3_600_000L).toString() + " س"
-        else -> (age / 86_400_000L).toString() + " ي"
     }
 }
 

@@ -45,6 +45,7 @@ import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
+import com.ahdownload.feature.home.HomeMode
 import com.ahdownload.feature.studio.StudioRoute
 import com.ahdownload.feature.welcome.WelcomeRoute
 import java.io.File
@@ -53,6 +54,7 @@ import kotlinx.coroutines.launch
 private enum class RootDestination {
     Welcome,
     Home,
+    YouTubeSearch,
     Downloads,
     Diagnostics,
     Settings,
@@ -444,8 +446,8 @@ private fun AHRoot(
         if (openDownloadsOnStart) root(RootDestination.Downloads)
     }
 
-    BackHandler(enabled = backStack.size > 1) {
-        backStack.removeLast()
+    BackHandler(enabled = backStack.size > 1 || backStack.lastOrNull() == RootDestination.YouTubeSearch) {
+        if (backStack.size > 1) backStack.removeLast() else root(RootDestination.Home)
     }
 
     CompositionLocalProvider(LocalDiagnosticUiTraceLogger provides uiTraceLogger) {
@@ -454,13 +456,20 @@ private fun AHRoot(
             onContinue = { root(RootDestination.Home) },
             uiTraceLogger = uiTraceLogger,
         )
-        RootDestination.Home -> HomeRoute(
+        RootDestination.Home, RootDestination.YouTubeSearch -> HomeRoute(
+            initialMode = if (backStack.lastOrNull() == RootDestination.YouTubeSearch) HomeMode.Search else HomeMode.Link,
             initialUrl = initialUrl,
             onDownloadRequested = onDownloadRequested,
             onAudioOnlyRequested = onAudioOnlyRequested,
             logger = logger,
             onOpenSettings = { root(RootDestination.Settings) },
             onOpenDownloads = { root(RootDestination.Downloads) },
+            onNavigateHome = {
+                if (backStack.lastOrNull() != RootDestination.Home) root(RootDestination.Home)
+            },
+            onOpenYouTubeSearch = {
+                if (backStack.lastOrNull() != RootDestination.YouTubeSearch) root(RootDestination.YouTubeSearch)
+            },
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
             onCopyHomeTrace = uiTraceLogger::exportHomeText,
@@ -496,6 +505,7 @@ private fun AHRoot(
             uiTraceLogger = uiTraceLogger,
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
+            onNavigateYouTubeSearch = { root(RootDestination.YouTubeSearch) },
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
             performanceSummaries = downloadPerformanceSummaries,
@@ -526,6 +536,7 @@ private fun AHRoot(
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
             onBack = ::popOrHome,
             onNavigateHome = { root(RootDestination.Home) },
+            onNavigateYouTubeSearch = { root(RootDestination.YouTubeSearch) },
             onNavigateDownloads = { root(RootDestination.Downloads) },
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
