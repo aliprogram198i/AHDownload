@@ -41,7 +41,7 @@ class LinkAnalyzer {
                 MediaPlatform.Twitch
             host == "vimeo.com" || host.endsWith(".vimeo.com") ->
                 MediaPlatform.Vimeo
-            kind != MediaKind.Unknown -> MediaPlatform.DirectMedia
+            kind != MediaKind.Unknown && kind != MediaKind.Image -> MediaPlatform.DirectMedia
             else -> MediaPlatform.Web
         }
 
