@@ -4,7 +4,6 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.HttpTextClient
-import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.ahdownload.domain.resolver.browser.WebPageMediaParser
 import java.net.URI
@@ -124,7 +123,8 @@ internal open class StandardSocialPlatformExtractionStrategy(
             }
             MediaPlatform.Reddit -> {
                 if (!isHostOrSubdomain(host, "reddit.com")) return null
-                val jsonPath = if (path.endsWith(".json", ignoreCase = true)) path else "$path.json"
+                val normalizedPath = path.trimEnd('/').ifBlank { "/" }
+                val jsonPath = if (normalizedPath.endsWith(".json", ignoreCase = true)) normalizedPath else "$normalizedPath.json"
                 val separator = if (query.isBlank()) "?" else "&"
                 PublicFallbackRequest(
                     kind = "reddit_public_json",
