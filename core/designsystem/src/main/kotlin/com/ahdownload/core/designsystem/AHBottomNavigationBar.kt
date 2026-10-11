@@ -38,8 +38,8 @@ fun AHBottomNavigationBar(
         modifier = Modifier
             .padding(horizontal = 12.dp, vertical = 7.dp)
             .clip(RoundedCornerShape(22.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f), RoundedCornerShape(22.dp)),
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.62f), RoundedCornerShape(22.dp)),
+        containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
     ) {
         NavigationBarItem(
@@ -82,9 +82,9 @@ fun AHBottomNavigationBar(
 private object AHBottomNavigationDefaults {
     val ItemColors: androidx.compose.material3.NavigationBarItemColors
         @Composable get() = NavigationBarItemDefaults.colors(
-            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+            selectedIconColor = MaterialTheme.colorScheme.primary,
             selectedTextColor = MaterialTheme.colorScheme.primary,
-            indicatorColor = MaterialTheme.colorScheme.primary,
+            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
         )
