@@ -7,28 +7,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Verifies the actual native FFmpeg runtime packaged in the APK, not Gradle metadata. */
+/** Verifies that the native FFmpeg runtime packaged in the APK supports streaming inputs. */
 @RunWith(AndroidJUnit4::class)
 class FfmpegProtocolSupportTest {
     @Test
-    fun ffmpegRuntimeIncludesHttpsInputSupportRequiredByHlsDash() {
-        val session = FFmpegKit.executeWithArguments(arrayOf("-hide_banner", "-protocols"))
+    fun ffmpegRuntimeIncludesHttpsInputAndHlsDemuxer() {
+        val protocolSession = FFmpegKit.executeWithArguments(arrayOf("-hide_banner", "-protocols"))
         assertTrue(
-            "FFmpeg protocol listing must execute successfully: ${session.failStackTrace.orEmpty()}",
-            ReturnCode.isSuccess(session.returnCode),
+            "FFmpeg protocol listing must execute successfully: ${protocolSession.failStackTrace.orEmpty()}",
+            ReturnCode.isSuccess(protocolSession.returnCode),
         )
 
-        val output = session.output.orEmpty()
-        val inputProtocols = output.substringAfter("Input:", missingDelimiterValue = "")
+        val protocolsOutput = protocolSession.output.orEmpty()
+        val inputProtocols = protocolsOutput.substringAfter("Input:", missingDelimiterValue = "")
             .substringBefore("Output:", missingDelimiterValue = "")
-
         assertTrue(
             "The packaged FFmpeg runtime lacks HTTPS input support required by HLS/DASH URLs",
             Regex("""(?m)^\s*https\s*$""").containsMatchIn(inputProtocols),
         )
+
+        val demuxerSession = FFmpegKit.executeWithArguments(arrayOf("-hide_banner", "-demuxers"))
         assertTrue(
-            "The packaged FFmpeg runtime lacks HLS demux/input support",
-            Regex("""(?m)^\s*hls\s*$""").containsMatchIn(inputProtocols),
+            "FFmpeg demuxer listing must execute successfully: ${demuxerSession.failStackTrace.orEmpty()}",
+            ReturnCode.isSuccess(demuxerSession.returnCode),
+        )
+        assertTrue(
+            "The packaged FFmpeg runtime lacks the HLS demuxer required by Vimeo manifests",
+            Regex("""(?m)^\s*D\s+hls\s""").containsMatchIn(demuxerSession.output.orEmpty()),
         )
     }
 }
