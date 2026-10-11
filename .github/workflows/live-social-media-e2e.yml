@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/platform-specific-resolvers
+      - fix/instagram-timeout-classification
   workflow_dispatch:
 
 permissions:
