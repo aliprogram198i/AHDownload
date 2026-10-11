@@ -26,7 +26,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
-import java.net.InterruptedIOException
+import java.io.InterruptedIOException
 import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
