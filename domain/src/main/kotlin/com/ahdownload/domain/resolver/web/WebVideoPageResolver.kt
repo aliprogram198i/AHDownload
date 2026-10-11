@@ -234,6 +234,19 @@ class WebVideoPageResolver(
         }
     }
 
+    private fun readBounded(input: InputStream, maxBytes: Int): ByteArray {
+        val output = ByteArrayOutputStream(minOf(maxBytes, 16 * 1024))
+        val buffer = ByteArray(8 * 1024)
+        var remaining = maxBytes
+        while (remaining > 0) {
+            val count = input.read(buffer, 0, minOf(buffer.size, remaining))
+            if (count <= 0) break
+            output.write(buffer, 0, count)
+            remaining -= count
+        }
+        return output.toByteArray()
+    }
+
     private fun probe(initial: HttpUrl, method: Method, headers: Map<String, String> = emptyMap()): Probe {
         var current = initial
         var redirects = 0
@@ -319,9 +332,6 @@ class WebVideoPageResolver(
                     hasVideo = true,
                     // HLS/DASH manifests may describe a muxed stream or separate tracks.
                     hasAudio = true,
-                    webFile = false,
-                    fileExtension = extension,
-                    mimeType = mime ?: mimeFromExtension(extension),
                 ),
                 streamingManifest = manifest,
             )
