@@ -3,6 +3,7 @@ package com.ahdownload.domain.resolver.web
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaKind
+import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.FailureCode
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaContainer
