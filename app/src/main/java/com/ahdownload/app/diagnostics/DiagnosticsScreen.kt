@@ -74,13 +74,6 @@ fun DiagnosticsRoute(
     }
 
     LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(1000L)
-            uiEvents = uiTraceLogger.list()
-        }
-    }
-
-    LaunchedEffect(logs) {
         val latestError = logs.firstOrNull { it.level == DiagnosticLevel.ERROR }
         uiTraceLogger.snapshot(
             screen = "DIAGNOSTICS",
@@ -103,7 +96,6 @@ fun DiagnosticsRoute(
             uiEvents = uiTraceLogger.list()
         },
         onClear = {
-            uiTraceLogger.interaction("DIAGNOSTICS", "clear_button", "clear")
             logger.clear()
             logs = emptyList()
             uiEvents = emptyList()
@@ -161,38 +153,6 @@ private fun DiagnosticsScreen(
             .sortedByDescending { it.timestampEpochMs }
             .take(50)
     }
-    val unifiedReport = remember(report, uiEvents, controlAttempts) {
-        buildString {
-            appendLine(report)
-            appendLine()
-            appendLine("CONTROL_ATTEMPT_SUMMARY")
-            controlAttempts.forEach { attempt ->
-                appendLine(
-                    "${attempt.timestampEpochMs} | ${attempt.screen} | ${attempt.controlId} | " +
-                        "${attempt.label} | outcome=${attempt.outcome} | attempt_id=${attempt.attemptId}",
-                )
-            }
-            appendLine()
-            appendLine("UNIFIED_UI_INTERACTION_TRACE")
-            uiEvents.sortedBy { it.timestampEpochMs }.takeLast(400).forEach { event ->
-                val safeContext = DiagnosticDataSanitizer.sanitizeContext(event.context)
-                    .filterKeys { it !in UI_ENVIRONMENT_KEYS }
-                    .toSortedMap()
-                    .entries
-                    .joinToString(" ") { (key, value) -> "$key=$value" }
-                append(event.sequence).append(" | ")
-                    .append(formatDiagnosticTime(event.timestampEpochMs)).append(" | ")
-                    .append(event.level.name).append(" | ")
-                    .append(event.screen).append(" | ")
-                    .append(event.component).append(" | ")
-                    .append(event.event)
-                event.state?.let { append(" state=").append(it) }
-                if (safeContext.isNotBlank()) append(" | ").append(safeContext)
-                appendLine()
-            }
-        }.trimEnd()
-    }
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -217,7 +177,7 @@ private fun DiagnosticsScreen(
                         disabledReason = "لا يوجد تقرير خطأ لنسخه",
                         onClick = {
                             uiTraceLogger.interaction("DIAGNOSTICS", "copy_button", "copy_latest_incident")
-                            clipboard.setText(AnnotatedString(unifiedReport))
+                            clipboard.setText(AnnotatedString(report))
                         },
                         enabled = latestError != null,
                     ) {
@@ -507,11 +467,7 @@ private fun DiagnosticsScreen(
                 Text("سيتم حذف السجل المحلي للتشخيص من هذا الجهاز. لا يؤثر ذلك على الملفات أو التنزيلات.")
             },
             confirmButton = {
-                DiagnosticButton(
-                    trackingScreen = "DIAGNOSTICS",
-                    trackingId = "DIAGNOSTICS.button.01",
-                    trackingLabel = "مسح",
-                    disabledReason = "callsite_precondition_not_explicit",
+                Button(
                     onClick = {
                         showClearConfirmation = false
                         onClear()
@@ -521,11 +477,9 @@ private fun DiagnosticsScreen(
                 }
             },
             dismissButton = {
-                DiagnosticOutlinedButton(
-                    trackingScreen = "DIAGNOSTICS",
-                    trackingId = "DIAGNOSTICS.outlinedbutton.02",
-                    trackingLabel = "إلغاء",
-                    disabledReason = "callsite_precondition_not_explicit",onClick = { showClearConfirmation = false }) {
+                OutlinedButton(
+                    onClick = { showClearConfirmation = false },
+                ) {
                     Text("إلغاء")
                 }
             },
@@ -604,21 +558,13 @@ private data class ControlAttemptSummary(
     val outcome: String,
 )
 
-private val UI_ENVIRONMENT_KEYS = setOf(
-    "app_package", "app_version_name", "app_version_code", "app_build_type",
-    "app_target_sdk", "app_first_install_ms", "app_last_update_ms",
-    "android_sdk", "android_release", "device_manufacturer", "device_model",
-    "device_brand", "device_product", "locale", "timezone", "is_24_hour_format",
-    "process_id", "available_memory_bytes", "low_memory", "app_uptime_ms",
-    "process_uptime_ms", "thread", "thread_id", "diagnostic_session_id", "event_sequence",
-)
-
 private fun userFriendlyTitle(rootCause: String, fallbackType: String): String =
     when {
         rootCause == "AUTHENTICATION_REQUIRED" -> "يتطلب الفيديو تسجيل الدخول وتأكيد العمر"
         rootCause == "AUDIO_EXTRACTION_FAILED" -> "فشل استخراج الصوت"
         rootCause == "STORAGE_ERROR" -> "تعذر حفظ الملف"
         rootCause.startsWith("HTTP_403") -> "المصدر رفض الطلب"
+        rootCause in setOf("TIMEOUT", "DNS_FAILURE", "TLS_FAILURE", "CONNECTION_FAILURE", "CONNECTION_RESET", "SOCKET_FAILURE", "IO_FAILURE") -> "تعذر الاتصال بمصدر الفيديو"
         rootCause.startsWith("HTTP_") -> "خطأ في الاتصال بالمصدر"
         rootCause == "MEDIA_VALIDATION_FAILED" -> "لم يتم العثور على مصدر وسائط صالح"
         else -> fallbackType.ifBlank { "تعذر إكمال العملية" }
@@ -642,6 +588,12 @@ private fun userFriendlyRootCause(value: String): String =
         value == "STORAGE_ERROR" -> "التخزين"
         value == "MEDIA_VALIDATION_FAILED" -> "التحقق من الوسائط"
         value == "HTTP_403" -> "الخادم رفض الطلب (403)"
+        value == "TIMEOUT" -> "انتهت مهلة الاتصال"
+        value == "DNS_FAILURE" -> "تعذر العثور على عنوان الخادم (DNS)"
+        value == "TLS_FAILURE" -> "فشل الاتصال الآمن (TLS)"
+        value == "CONNECTION_FAILURE" -> "تعذر فتح الاتصال بالخادم"
+        value == "CONNECTION_RESET" -> "انقطع الاتصال أثناء الطلب"
+        value == "SOCKET_FAILURE" || value == "IO_FAILURE" -> "حدث خطأ أثناء نقل البيانات"
         value.startsWith("HTTP_") -> "خطأ HTTP أثناء الوصول للمصدر"
         value == "NONE" -> "لا يوجد"
         else -> value
@@ -665,6 +617,7 @@ private fun userFriendlyAction(value: String): String =
         "INSPECT_AUDIO_PROCESSOR" -> "تحقق من معالج الصوت أو جرّب صيغة صوت أخرى."
         "INSPECT_STORAGE" -> "تحقق من مجلد التنزيل والمساحة والصلاحيات."
         "INSPECT_BROWSER_MEDIA_CAPTURE" -> "أعد التحقق من جلسة المصدر أو أعد المحاولة."
+        "INSPECT_REQUEST_CONTEXT" -> "تحقق من الاتصال أو قيود الشبكة ثم أعد المحاولة."
         "INSPECT_MEDIA_VALIDATION" -> "أعد التحليل وتحقق من المصدر المتاح."
         "NONE" -> "لا يوجد إجراء مطلوب."
         else -> value.ifBlank { "أعد المحاولة بعد التحقق من المصدر." }

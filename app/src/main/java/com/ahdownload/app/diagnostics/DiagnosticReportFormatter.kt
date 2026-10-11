@@ -101,6 +101,8 @@ object DiagnosticReportFormatter {
                 anchor.type == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_EXTRACTION_FAILED"
                 anchor.type == "DOWNLOAD_DESTINATION_COPY_FAILED" -> "STORAGE_ERROR"
                 anchor.type == "MEDIASTORE_PUBLISH_FAILED" -> "STORAGE_ERROR"
+                anchor.context["failure_code"] == "ResolverUnavailable" &&
+                    networkFailureCategory(scopedEvents) != null -> networkFailureCategory(scopedEvents)!!
                 !anchor.context["failure_code"].isNullOrBlank() -> anchor.context["failure_code"]!!
                 statusCode(anchor)?.let { it in 400..599 } == true -> "HTTP_" + statusCode(anchor)
                 anchor.type.contains("VALIDATION", ignoreCase = true) -> "MEDIA_VALIDATION_FAILED"
@@ -223,7 +225,7 @@ object DiagnosticReportFormatter {
         if (status == "OK") {
             if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
         } else when {
-            rootCause.startsWith("HTTP_") -> "NETWORK"
+            rootCause.startsWith("HTTP_") || isNetworkFailureCause(rootCause) -> "NETWORK"
             rootCause == "YOUTUBE_BOT_CHALLENGE" -> "UPSTREAM_CHALLENGE"
             rootCause == "AUTHENTICATION_REQUIRED" -> "AUTHENTICATION"
             rootCause == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_PROCESSING"
@@ -363,6 +365,11 @@ object DiagnosticReportFormatter {
     ): String {
         if (latestError == null) return "NONE"
 
+        val networkFailure = networkFailureCategory(events)
+        if (latestError.context["failure_code"] == "ResolverUnavailable" && networkFailure != null) {
+            return "resolver -> page_request_failed:$networkFailure -> resolution_failed_without_candidates"
+        }
+
         // Destination failures happen after resolution, validation, and local output creation.
         // Do not report an earlier successful validation phase as the failing stage.
         when (latestError.type) {
@@ -433,6 +440,30 @@ object DiagnosticReportFormatter {
         else parts.distinct().joinToString(" -> ")
     }
 
+    private fun networkFailureCategory(events: List<DiagnosticLog>): String? {
+        val allowed = setOf(
+            "TIMEOUT", "DNS_FAILURE", "TLS_FAILURE", "CONNECTION_FAILURE",
+            "CONNECTION_RESET", "SOCKET_FAILURE", "IO_FAILURE",
+        )
+        return events.asSequence()
+            .filter { event ->
+                (event.type == "HTTP_REQUEST" && event.context["network_outcome"] == "FAILED") ||
+                    (event.type == "WEB_VIDEO_PAGE_FAILED" &&
+                        event.context["failure_stage"] in setOf("PAGE_FETCH", "STATIC_MEDIA_PROBE", "BROWSER_MEDIA_PROBE"))
+            }
+            .sortedWith(
+                compareBy<DiagnosticLog> { it.timestampEpochMs }
+                    .thenBy { eventSequence(it) },
+            )
+            .mapNotNull { it.context["failure_category"] }
+            .lastOrNull { it in allowed }
+    }
+
+    private fun isNetworkFailureCause(value: String): Boolean = value in setOf(
+        "TIMEOUT", "DNS_FAILURE", "TLS_FAILURE", "CONNECTION_FAILURE",
+        "CONNECTION_RESET", "SOCKET_FAILURE", "IO_FAILURE",
+    )
+
     private fun formatEvent(log: DiagnosticLog): String {
         val context = formatContext(log.context).joinToString(" ")
         val sequence = log.context["event_sequence"] ?: "-"
@@ -472,6 +503,8 @@ object DiagnosticReportFormatter {
                 "اكتمل تجهيز الملف، لكن تعذر حفظه في موقع التخزين النهائي للمستخدم."
             rootCause.startsWith("HTTP_") ->
                 "تعذر إكمال العملية بسبب رفض أو خطأ HTTP أثناء الوصول إلى المصدر."
+            isNetworkFailureCause(rootCause) ->
+                "تعذر جلب صفحة المصدر بسبب خطأ شبكي مصنف: $rootCause. أعد المحاولة بعد التحقق من الاتصال أو إعدادات الشبكة."
             else ->
                 "حدث خطأ في مرحلة ${stageOf(error)}؛ التقرير يضم تسلسل الحادثة وسياقها الكامل قبل الفشل."
         }
