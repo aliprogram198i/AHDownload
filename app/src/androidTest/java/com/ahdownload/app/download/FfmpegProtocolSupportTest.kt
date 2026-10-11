@@ -7,23 +7,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Verifies that the native FFmpeg runtime packaged in the APK supports streaming inputs. */
+/** Verifies protocols used by the secure localhost bridge and adaptive manifest demuxers. */
 @RunWith(AndroidJUnit4::class)
 class FfmpegProtocolSupportTest {
     @Test
-    fun ffmpegRuntimeIncludesHttpsInputAndHlsDemuxer() {
+    fun ffmpegRuntimeIncludesHttpInputAndHlsDemuxerForTheSecureBridge() {
         val protocolSession = FFmpegKit.executeWithArguments(arrayOf("-hide_banner", "-protocols"))
         assertTrue(
             "FFmpeg protocol listing must execute successfully: ${protocolSession.failStackTrace.orEmpty()}",
             ReturnCode.isSuccess(protocolSession.returnCode),
         )
-
-        val protocolsOutput = protocolSession.output.orEmpty()
-        val inputProtocols = protocolsOutput.substringAfter("Input:", missingDelimiterValue = "")
+        val inputProtocols = protocolSession.output.orEmpty()
+            .substringAfter("Input:", missingDelimiterValue = "")
             .substringBefore("Output:", missingDelimiterValue = "")
         assertTrue(
-            "The packaged FFmpeg runtime lacks HTTPS input support required by HLS/DASH URLs",
-            Regex("""(?m)^\s*https\s*$""").containsMatchIn(inputProtocols),
+            "The packaged FFmpeg runtime lacks HTTP input required by the secure localhost bridge",
+            Regex("""(?m)^\s*http\s*$""").containsMatchIn(inputProtocols),
         )
 
         val demuxerSession = FFmpegKit.executeWithArguments(arrayOf("-hide_banner", "-demuxers"))
@@ -32,7 +31,7 @@ class FfmpegProtocolSupportTest {
             ReturnCode.isSuccess(demuxerSession.returnCode),
         )
         assertTrue(
-            "The packaged FFmpeg runtime lacks the HLS demuxer required by Vimeo manifests",
+            "The packaged FFmpeg runtime lacks the HLS demuxer required for adaptive manifests",
             Regex("""(?m)^\s*D\s+hls\s""").containsMatchIn(demuxerSession.output.orEmpty()),
         )
     }
