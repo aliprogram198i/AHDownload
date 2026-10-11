@@ -38,7 +38,13 @@ class DownloadLauncher(
         }
 
         val extension = extensionFor(candidate)
-        val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
+        val sanitizedTitle = sanitize(title)
+        val fallbackName = "AHDownload-" + candidate.id
+        val baseName = if (candidate.format.webFile && sanitizedTitle.endsWith(extension, ignoreCase = true)) {
+            sanitizedTitle.dropLast(extension.length).trimEnd('.').ifBlank { fallbackName }
+        } else {
+            sanitizedTitle.ifBlank { fallbackName }
+        }
         val fingerprint = fingerprint(candidate)
         if (repository.findByContentFingerprint(fingerprint) != null) {
             return DownloadEnqueueResult.DUPLICATE
@@ -52,7 +58,8 @@ class DownloadLauncher(
                 id = taskId,
                 sourceUrl = candidate.sourceUrl,
                 destinationPath = file.absolutePath,
-                displayName = title?.trim()?.takeIf { it.isNotBlank() } ?: baseName,
+                displayName = if (candidate.format.webFile) baseName + extension
+                    else title?.trim()?.takeIf { it.isNotBlank() } ?: baseName,
                 thumbnailUrl = thumbnailUrl?.trim()?.takeIf {
                     it.startsWith("http://") || it.startsWith("https://")
                 },
@@ -198,7 +205,14 @@ class DownloadLauncher(
             .take(120)
 
     private fun extensionFor(candidate: MediaCandidate): String =
-        if (candidate.streamingManifest) {
+        if (candidate.format.webFile) {
+            candidate.format.fileExtension
+                ?.lowercase()
+                ?.removePrefix(".")
+                ?.takeIf { it.matches(Regex("[a-z0-9]{1,10}")) }
+                ?.let { ".$it" }
+                ?: ".bin"
+        } else if (candidate.streamingManifest) {
             ".mkv"
         } else if (!candidate.companionAudioSourceUrl.isNullOrBlank()) {
             when (candidate.format.container) {
