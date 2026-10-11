@@ -573,6 +573,13 @@ class SocialPlatformResolverTest {
                 "https://v.redd.it/abc123/DASH_720.mp4?source=fallback",
             ),
             FallbackCase(
+                MediaPlatform.Pinterest,
+                "https://www.pinterest.com/pin/664281013778109217/",
+                "https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=664281013778109217&sub=www&base_scheme=https",
+                """{"data":[{"id":"664281013778109217","videos":{"video_list":[{"url":"https://v1.pinimg.com/videos/mc/720p/clip.mp4"}]}}]}""",
+                "https://v1.pinimg.com/videos/mc/720p/clip.mp4",
+            ),
+            FallbackCase(
                 MediaPlatform.Vimeo,
                 "https://vimeo.com/76979871",
                 "https://player.vimeo.com/video/76979871/config",
