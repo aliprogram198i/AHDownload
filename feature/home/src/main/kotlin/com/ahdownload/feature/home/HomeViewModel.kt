@@ -1328,7 +1328,7 @@ class HomeViewModel(
     }
 
     private companion object {
-        const val AUTO_ANALYZE_DEBOUNCE_MS = 500L
+        const val AUTO_ANALYZE_DEBOUNCE_MS = 300L
     }
 
     class Factory(
