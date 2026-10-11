@@ -467,11 +467,7 @@ private fun DiagnosticsScreen(
                 Text("سيتم حذف السجل المحلي للتشخيص من هذا الجهاز. لا يؤثر ذلك على الملفات أو التنزيلات.")
             },
             confirmButton = {
-                DiagnosticButton(
-                    trackingScreen = "DIAGNOSTICS",
-                    trackingId = "DIAGNOSTICS.button.01",
-                    trackingLabel = "مسح",
-                    disabledReason = "callsite_precondition_not_explicit",
+                Button(
                     onClick = {
                         showClearConfirmation = false
                         onClear()
@@ -481,11 +477,9 @@ private fun DiagnosticsScreen(
                 }
             },
             dismissButton = {
-                DiagnosticOutlinedButton(
-                    trackingScreen = "DIAGNOSTICS",
-                    trackingId = "DIAGNOSTICS.outlinedbutton.02",
-                    trackingLabel = "إلغاء",
-                    disabledReason = "callsite_precondition_not_explicit",onClick = { showClearConfirmation = false }) {
+                OutlinedButton(
+                    onClick = { showClearConfirmation = false },
+                ) {
                     Text("إلغاء")
                 }
             },
