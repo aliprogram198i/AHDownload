@@ -12,16 +12,13 @@ import com.ahdownload.domain.resolver.ResolverResult
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Dns
+import com.ahdownload.domain.network.PublicInternetDns
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
-import java.net.Inet4Address
-import java.net.Inet6Address
 import java.net.InetAddress
-import java.net.UnknownHostException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
@@ -382,7 +379,7 @@ class WebDownloadResolver(
         ) return false
         if (host.contains(":")) {
             val address = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return false
-            return !isNonPublicAddress(address)
+            return !PublicInternetDns.isNonPublicAddress(address)
         }
         if (host.matches(Regex("""\d{1,3}(?:\.\d{1,3}){3}"""))) {
             val octets = host.split('.').mapNotNull(String::toIntOrNull)
@@ -421,38 +418,8 @@ class WebDownloadResolver(
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(12, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
-            .dns(object : Dns {
-                override fun lookup(hostname: String): List<InetAddress> {
-                    val addresses = Dns.SYSTEM.lookup(hostname)
-                    if (addresses.isEmpty() || addresses.any(::isNonPublicAddress)) {
-                        throw UnknownHostException("Blocked non-public destination")
-                    }
-                    return addresses
-                }
-            })
+            .dns(PublicInternetDns)
             .build()
 
-        fun isNonPublicAddress(address: InetAddress): Boolean {
-            if (address.isAnyLocalAddress || address.isLoopbackAddress ||
-                address.isLinkLocalAddress || address.isSiteLocalAddress || address.isMulticastAddress
-            ) return true
-            val bytes = address.address.map { it.toInt() and 0xff }
-            if (address is Inet4Address && bytes.size == 4) {
-                val a = bytes[0]
-                val b = bytes[1]
-                return a == 0 || a == 10 || a == 127 ||
-                    (a == 169 && b == 254) ||
-                    (a == 172 && b in 16..31) ||
-                    (a == 192 && b == 168) ||
-                    (a == 100 && b in 64..127) ||
-                    a >= 224 ||
-                    (a == 198 && b in 18..19)
-            }
-            if (address is Inet6Address && bytes.size == 16) {
-                return (bytes[0] and 0xfe) == 0xfc ||
-                    (bytes[0] == 0xfe && (bytes[1] and 0xc0) == 0x80)
-            }
-            return false
-        }
     }
 }
