@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -55,18 +54,12 @@ fun AHGradientPrimaryButton(
         if (enabled) "none" else "callsite_precondition_not_explicit",
     )
     val tracedClick = { dispatchDiagnosticAction(diagnosticLogger, trackingScreen, trackingId, text, onClick) }
-    val targetStart = if (enabled) {
+    val targetFill = if (enabled) {
         MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
-    val targetEnd = if (enabled) {
-        MaterialTheme.colorScheme.secondary
-    } else {
-        MaterialTheme.colorScheme.outline
-    }
-    val start by animateColorAsState(targetStart, tween(160), label = "buttonStart")
-    val end by animateColorAsState(targetEnd, tween(160), label = "buttonEnd")
+    val fill by animateColorAsState(targetFill, tween(160), label = "buttonFill")
     val scale by animateFloatAsState(
         targetValue = if (enabled) 1f else 0.985f,
         animationSpec = tween(180, easing = FastOutSlowInEasing),
@@ -79,7 +72,7 @@ fun AHGradientPrimaryButton(
         modifier = tracedModifier,
         shape = MaterialTheme.shapes.medium,
         color = Color.Transparent,
-        shadowElevation = if (enabled) 4.dp else 0.dp,
+        shadowElevation = 0.dp,
     ) {
         Box(
             modifier = Modifier
@@ -87,7 +80,7 @@ fun AHGradientPrimaryButton(
                 .defaultMinSize(minHeight = 56.dp)
                 .scale(scale)
                 .clip(MaterialTheme.shapes.medium)
-                .background(Brush.horizontalGradient(listOf(start, end)))
+                .background(fill)
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -170,7 +163,7 @@ fun AHCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.72f),
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f),
         ),
         content = { content() },
     )
