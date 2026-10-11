@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ahdownload.app.AHDownloadApplication
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.DownloadEnqueueResult
@@ -46,13 +47,21 @@ class LiveSocialMediaDownloadE2ETest {
         val analyzer = LinkAnalyzer()
         val report = mutableListOf<String>()
 
-        // This focused live acceptance run targets the two platforms under active repair.
-        val targets = listOf(
+        // A dedicated CI run can select one platform with the targetPlatform instrumentation argument.
+        val requestedTarget = InstrumentationRegistry.getArguments()
+            .getString("targetPlatform")
+            .orEmpty()
+            .trim()
+        val allTargets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
             Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"),
         )
+        val targets = allTargets.filter {
+            requestedTarget.isBlank() || it.name.equals(requestedTarget, ignoreCase = true)
+        }
+        check(targets.isNotEmpty()) { "Unknown live media target: " + requestedTarget }
 
         for (target in targets) {
             val started = SystemClock.elapsedRealtime()
