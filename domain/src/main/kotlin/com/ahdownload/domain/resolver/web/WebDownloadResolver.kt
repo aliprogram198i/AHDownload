@@ -385,7 +385,7 @@ class WebDownloadResolver(
             val octets = host.split('.').mapNotNull(String::toIntOrNull)
             if (octets.size != 4 || octets.any { it !in 0..255 }) return false
             val address = InetAddress.getByAddress(octets.map { it.toByte() }.toByteArray())
-            return !isNonPublicAddress(address)
+            return !PublicInternetDns.isNonPublicAddress(address)
         }
         return host.contains('.') && !host.startsWith('.') && !host.endsWith('.')
     }
