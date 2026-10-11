@@ -67,6 +67,14 @@ class DiagnosticDataSanitizerTest {
         assertFalse(cookies.contains("sessionid"))
         assertFalse(cookies.contains("cookie-secret"))
         assertFalse(cookies.contains("second-cookie-secret"))
+
+        val proxyAuthorization = DiagnosticDataSanitizer.sanitizeText(
+            "Proxy-Authorization: Basic dXNlcjpzZWNyZXQ= trailing-credential",
+        )
+        assertTrue(proxyAuthorization.contains("[REDACTED]"))
+        assertFalse(proxyAuthorization.contains("Basic"))
+        assertFalse(proxyAuthorization.contains("dXNlcjpzZWNyZXQ="))
+        assertFalse(proxyAuthorization.contains("trailing-credential"))
     }
 
     @Test
