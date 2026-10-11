@@ -3,6 +3,7 @@ package com.ahdownload.domain.validation
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.resolver.MediaSourceContext
+import com.ahdownload.domain.network.PublicInternetDns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -14,6 +15,7 @@ class OkHttpMediaProbe(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)
+        .dns(PublicInternetDns)
         .build(),
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
 ) : MediaProbe {
