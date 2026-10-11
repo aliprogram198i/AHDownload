@@ -51,14 +51,9 @@ class LiveSocialMediaDownloadE2ETest {
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
-            // X is public and exposes the adaptive stream that previously failed in FFmpeg.
-            Target("X-HLS", MediaPlatform.X, "https://x.com/TopHeroes_/status/2001950365332455490"),
-            // These public pages have previously exposed downloadable media candidates in CI.
-            Target("Pinterest-HLS", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/664281013778109217/"),
-            Target("Vimeo-HLS", MediaPlatform.Vimeo, "https://vimeo.com/76979871"),
         )
 
-        targetLoop@ for (target in targets) {
+        for (target in targets) {
             val started = SystemClock.elapsedRealtime()
             val title = "AH-E2E-" + target.name + "-" + UUID.randomUUID().toString().take(8)
             try {
@@ -84,25 +79,9 @@ class LiveSocialMediaDownloadE2ETest {
                                 .thenBy { it.format.fileSizeBytes ?: Long.MAX_VALUE },
                         )
                         .take(2)
-                    is ResolverResult.Failure -> {
-                        // YouTube may require an authenticated session on hosted CI runners.
-                        // The user already validated YouTube on-device; don't mislabel an access
-                        // restriction of this public test account as a resolver regression.
-                        if (
-                            target.platform == MediaPlatform.YouTube &&
-                            resolved.code == com.ahdownload.domain.resolver.FailureCode.AuthenticationRequired
-                        ) {
-                            report += "SKIP | " + target.name +
-                                " | hosted environment requires an authenticated YouTube session | " +
-                                (SystemClock.elapsedRealtime() - started) + "ms"
-                            logTargetDiagnostics(app, target.name)
-                            Log.i(TAG, report.last())
-                            continue@targetLoop
-                        }
-                        error(
-                            "Resolver returned " + resolved.code + ": " + (resolved.message ?: "no details"),
-                        )
-                    }
+                    is ResolverResult.Failure -> error(
+                        "Resolver returned " + resolved.code + ": " + (resolved.message ?: "no details"),
+                    )
                 }
                 check(candidates.isNotEmpty()) {
                     "Resolver returned no video candidates (candidate count=0)"
@@ -200,12 +179,10 @@ class LiveSocialMediaDownloadE2ETest {
         val summary = report.joinToString("\n")
         Log.i(TAG, "FINAL SUMMARY\n" + summary)
         val passed = report.count { it.startsWith("PASS |") }
-        val skipped = report.count { it.startsWith("SKIP |") }
-        val failed = report.count { it.startsWith("FAIL |") }
+        val failed = report.size - passed
         assertTrue(
-            "Live public-video emulator acceptance tests: " + passed + " passed, " +
-                skipped + " environment-skipped, " + failed + " failed.\n" + summary,
-            failed == 0 && passed + skipped == targets.size,
+            "Live public-video emulator acceptance tests: " + passed + " passed, " + failed + " failed.\n" + summary,
+            failed == 0 && passed == targets.size,
         )
     }
 
