@@ -124,19 +124,7 @@ class HomeViewModel(
             resultFilter = ResultFilter.All,
         )
 
-        val normalized = value.trim()
-        if (normalized.isNotBlank()) {
-            analyzer.analyze(normalized)?.let { link ->
-                logger.log(
-                    DiagnosticLevel.INFO,
-                    "LINK_INPUT_RECEIVED",
-                    "تم استلام رابط صالح من حقل الرابط",
-                    "home.input",
-                    mapOf("platform" to link.platform.name),
-                    null,
-                )
-            }
-        }
+
     }
 
     fun setUrlAndAnalyze(value: String) {
