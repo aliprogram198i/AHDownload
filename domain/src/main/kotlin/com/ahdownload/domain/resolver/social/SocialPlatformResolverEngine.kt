@@ -159,11 +159,27 @@ class SocialPlatformResolverEngine(
                     }
                 }
 
+                // Spotlight links use opaque IDs without media extensions. Treat a browser source as
+                // usable only when it can already be classified as video; image-only or unclassified
+                // browser observations must not suppress Snapchat's target-scoped fallback.
+                val snapchatBrowserHasVideo = platform == MediaPlatform.Snapchat &&
+                    session.mediaUrls.withIndex().any { (index, url) ->
+                        inferCandidate(
+                            platform = platform,
+                            sourceUrl = url,
+                            index = index,
+                            requestHeaders = session.requestHeadersByUrl[url],
+                            audioPresence = session.mediaHasAudioByUrl[url],
+                            platformFallbackVideoSource = false,
+                            sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+                        )?.format?.kind == MediaKind.Video
+                    }
+
                 // Platform-specific fallback extraction lives in the selected strategy.
                 // The shared engine retains common orchestration, candidate building and validation.
                 val platformFallback = strategy.extractAdditionalMedia(
                     pageUrl = pageUrl,
-                    browserMediaCount = session.mediaUrls.size,
+                    browserMediaCount = if (platform == MediaPlatform.Snapchat && !snapchatBrowserHasVideo) 0 else session.mediaUrls.size,
                     pageFallbackMediaCount = fallback?.mediaUrls?.size ?: 0,
                     pageClient = pageClient,
                     operationId = request.operationId,
@@ -177,12 +193,16 @@ class SocialPlatformResolverEngine(
                 val platformFallbackMediaCount = platformFallback?.mediaUrls?.size ?: 0
                 val hasScopedSnapchatFallback =
                     platform == MediaPlatform.Snapchat &&
-                        session.mediaUrls.isEmpty() &&
+                        !snapchatBrowserHasVideo &&
                         platformFallbackMediaUrls.isNotEmpty()
                 val urls = (
-                    session.mediaUrls +
-                        (if (hasScopedSnapchatFallback) emptyList() else fallback?.mediaUrls.orEmpty()) +
-                        platformFallback?.mediaUrls.orEmpty()
+                    if (hasScopedSnapchatFallback) {
+                        platformFallbackMediaUrls.toList()
+                    } else {
+                        session.mediaUrls +
+                            fallback?.mediaUrls.orEmpty() +
+                            platformFallback?.mediaUrls.orEmpty()
+                    }
                     )
                     .distinct()
                     .take(64)
