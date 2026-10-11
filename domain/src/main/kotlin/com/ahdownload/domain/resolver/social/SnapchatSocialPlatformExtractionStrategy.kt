@@ -37,7 +37,7 @@ internal class SnapchatSocialPlatformExtractionStrategy :
         logger: DiagnosticLogger,
     ): ParsedPageMedia? {
         // Keep browser-observed direct media and common HTML extraction as the primary paths.
-        if (browserMediaCount > 0 || pageFallbackMediaCount > 0) return null
+        if (browserMediaCount > 0) return null
 
         val spotlightId = extractSpotlightId(pageUrl) ?: return null
         val safePageUrl = pageUrl ?: return null
