@@ -669,5 +669,50 @@ class DiagnosticReportFormatterTest {
         assertTrue(!report.contains("FAILURE_CHAIN\nresolver -> candidate"))
     }
 
+    @Test
+    fun resolverUnavailableUsesCapturedNetworkFailureCategory() {
+        val session = "session-web-network"
+        val operation = "op-web-network"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "HTTP_REQUEST",
+                level = DiagnosticLevel.WARNING,
+                reason = "HTTP request failed before a response was received",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "network_outcome" to "FAILED",
+                    "failure_category" to "TLS_FAILURE",
+                    "request_stage" to "PAGE_FETCH",
+                    "exception_type" to "SSLHandshakeException",
+                ),
+            ).copy(operation = "web.video.resolve"),
+            event(
+                time = 2_000L,
+                sequence = "2",
+                type = "RESOLVER",
+                level = DiagnosticLevel.ERROR,
+                reason = "ResolverUnavailable",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "stage" to "RESOLUTION",
+                    "failure_code" to "ResolverUnavailable",
+                    "platform" to "Web",
+                ),
+            ).copy(operation = "home.resolve"),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("requests=1"))
+        assertTrue(report.contains("root_cause=TLS_FAILURE"))
+        assertTrue(report.contains("classification=NETWORK"))
+        assertTrue(report.contains("action=INSPECT_REQUEST_CONTEXT"))
+        assertTrue(report.contains("FAILURE_CHAIN\\nresolver -> page_request_failed:TLS_FAILURE -> resolution_failed_without_candidates"))
+    }
+
 
 }
