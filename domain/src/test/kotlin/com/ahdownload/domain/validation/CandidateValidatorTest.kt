@@ -71,6 +71,46 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun acceptsOpaqueBinaryVideoFromSnapchatMediaCdn() = kotlinx.coroutines.test.runTest {
+        val candidate = candidate(MediaKind.Video).copy(
+            sourceUrl = "https://bolt-gcdn.sc-cdn.net/opaque-spotlight-id",
+        )
+        val result = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "application/octet-stream",
+                    contentLengthBytes = 128L,
+                    finalUrl = "https://bolt-gcdn.sc-cdn.net/opaque-spotlight-id",
+                ),
+            ),
+        ).validate(candidate)
+
+        val valid = assertIs<CandidateValidationResult.Valid>(result)
+        assertEquals(128L, valid.candidate.format.fileSizeBytes)
+        assertEquals("https://bolt-gcdn.sc-cdn.net/opaque-spotlight-id", valid.finalUrl)
+    }
+
+    @Test
+    fun rejectsOpaqueBinaryVideoFromUntrustedHost() = kotlinx.coroutines.test.runTest {
+        val result = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "application/octet-stream",
+                    contentLengthBytes = 128L,
+                    finalUrl = "https://cdn.example/media",
+                ),
+            ),
+        ).validate(candidate(MediaKind.Video))
+
+        assertEquals(
+            ValidationFailure.ContentTypeMismatch,
+            assertIs<CandidateValidationResult.Invalid>(result).failure,
+        )
+    }
+
+    @Test
     fun rejectsYouTubeUmpResponseAsRawVideo() = kotlinx.coroutines.test.runTest {
         val result = CandidateValidator(
             FakeProbe(

@@ -17,7 +17,7 @@ class LinkAnalyzer {
         if (scheme !in setOf("http", "https")) return null
 
         val host = normalizeHost(uri.host) ?: return null
-        val kind = detectMediaKind(uri)
+        val kind = if (isSnapchatSpotlight(uri)) MediaKind.Video else detectMediaKind(uri)
 
         val platform = when {
             host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be" ->
@@ -93,6 +93,14 @@ class LinkAnalyzer {
         host?.trim('.')?.lowercase(Locale.ROOT)?.removePrefix("www.")
             ?.removePrefix("m.")
             ?.takeIf { it.isNotBlank() }
+
+    private fun isSnapchatSpotlight(uri: URI): Boolean {
+        val host = normalizeHost(uri.host).orEmpty()
+        val isSnapchatHost = host == "snapchat.com" || host.endsWith(".snapchat.com")
+        return isSnapchatHost && uri.path.orEmpty()
+            .split('/')
+            .any { it.equals("spotlight", ignoreCase = true) }
+    }
 
     private fun detectMediaKind(uri: URI): MediaKind {
         val extension = uri.path

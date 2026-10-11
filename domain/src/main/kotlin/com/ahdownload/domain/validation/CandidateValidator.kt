@@ -98,7 +98,16 @@ class CandidateValidator(
             return reject(ValidationFailure.ContentTypeMismatch)
         }
 
-        if (!candidate.streamingManifest && !probeResult.contentType.matchesKind(candidate.format.kind)) {
+        val snapchatOpaqueVideoResponse =
+            candidate.format.kind == MediaKind.Video &&
+                probeResult.contentType.isGenericBinary() &&
+                isSnapchatMediaCdn(probeResult.finalUrl)
+
+        if (
+            !candidate.streamingManifest &&
+            !probeResult.contentType.matchesKind(candidate.format.kind) &&
+            !snapchatOpaqueVideoResponse
+        ) {
             return reject(ValidationFailure.ContentTypeMismatch)
         }
 
@@ -144,6 +153,14 @@ class CandidateValidator(
         ValidationFailure.HtmlResponse -> "HTML_RESPONSE"
         ValidationFailure.ContentTypeMismatch -> "CONTENT_TYPE_MISMATCH"
     }
+
+    private fun isSnapchatMediaCdn(url: String): Boolean {
+        val host = hostOf(url)
+        return host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")
+    }
+
+    private fun String?.isGenericBinary(): Boolean =
+        this?.substringBefore(';')?.trim()?.equals("application/octet-stream", ignoreCase = true) == true
 
     private fun hostOf(url: String): String =
         runCatching { java.net.URI(url).host?.lowercase() }.getOrNull() ?: "invalid"
