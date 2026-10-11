@@ -1659,7 +1659,7 @@ private fun UnifiedDownloadResultCard(
                                 if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
                                 else if (videoOnlyFallbackOptions.isNotEmpty()) add("${videoOnlyFallbackOptions.size} خيار فيديو فقط")
                                 when {
-                                    directAudioAvailable || muxedVideoAvailable -> add("${AudioOutputFormat.entries.size} صيغة صوت")
+                                    directAudioAvailable || muxedVideoAvailable -> add("صيغ إخراج صوتية متاحة")
                                     directVideoSourceAvailable -> add("استخراج الصوت يحتاج تحققًا")
                                     showAudioSection -> add("لا يوجد مصدر صوت موثوق")
                                 }
@@ -1792,7 +1792,7 @@ private fun UnifiedDownloadResultCard(
                     },
                 )
 
-                if (audioAvailable) {
+                if (directAudioAvailable || muxedVideoAvailable) {
                     if (audioOptions.isNotEmpty()) {
                         Text(
                             "جودة وصيغة مصدر الصوت",
@@ -1847,7 +1847,11 @@ private fun UnifiedDownloadResultCard(
                     )
                 } else {
                     UnifiedResultEmptyState(
-                        "لم يُرصد مصدر صوت موثّق؛ لن تتاح صيغ استخراج الصوت حتى يكتمل تحليل المصدر.",
+                        if (directVideoSourceAvailable) {
+                            "رُصد ملف فيديو، لكن لم يُؤكد وجود مسار صوت صالح. لن نعرض خيارات استخراج الصوت قبل تأكيد المصدر."
+                        } else {
+                            "لم يُرصد مصدر صوت موثّق؛ لن تتاح صيغ استخراج الصوت حتى يكتمل تحليل المصدر."
+                        },
                     )
                 }
             }
