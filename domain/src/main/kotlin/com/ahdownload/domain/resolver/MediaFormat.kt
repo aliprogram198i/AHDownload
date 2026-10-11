@@ -31,4 +31,8 @@ data class MediaFormat(
     val fileSizeBytes: Long? = null,
     val hasVideo: Boolean,
     val hasAudio: Boolean,
+    /** Metadata used only by the generic web-file download path. */
+    val webFile: Boolean = false,
+    val fileExtension: String? = null,
+    val mimeType: String? = null,
 )
