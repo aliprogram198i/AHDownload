@@ -446,7 +446,15 @@ object DiagnosticReportFormatter {
             "CONNECTION_RESET", "SOCKET_FAILURE", "IO_FAILURE",
         )
         return events.asSequence()
-            .filter { it.type == "HTTP_REQUEST" && it.context["network_outcome"] == "FAILED" }
+            .filter { event ->
+                (event.type == "HTTP_REQUEST" && event.context["network_outcome"] == "FAILED") ||
+                    (event.type == "WEB_VIDEO_PAGE_FAILED" &&
+                        event.context["failure_stage"] in setOf("PAGE_FETCH", "STATIC_MEDIA_PROBE", "BROWSER_MEDIA_PROBE"))
+            }
+            .sortedWith(
+                compareBy<DiagnosticLog> { it.timestampEpochMs }
+                    .thenBy { eventSequence(it) },
+            )
             .mapNotNull { it.context["failure_category"] }
             .lastOrNull { it in allowed }
     }
