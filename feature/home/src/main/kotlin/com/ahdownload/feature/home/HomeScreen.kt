@@ -1390,6 +1390,10 @@ private fun UnifiedDownloadResultCard(
     val allVideoOptions = videoOptionGroups.mainOptions
     val videoOnlyFallbackOptions = videoOptionGroups.videoOnlyFallback
     val allSelectableVideoOptions = videoOptionGroups.selectableOptions
+    val webFileOptions = primaryOptions.filter {
+        it.candidate.format.webFile && it.candidate.format.kind == MediaKind.Unknown
+    }
+    val selectedWebFile = webFileOptions.firstOrNull { it.candidate.id == selectedCandidateId }
 
     var showAllVideoOptions by remember(allVideoOptions) { mutableStateOf(false) }
     var showAudioSourceOptions by remember(title, thumbnailUrl, platform, durationMs) { mutableStateOf(false) }
@@ -1410,13 +1414,16 @@ private fun UnifiedDownloadResultCard(
         hasRawAudioSource || (kind == MediaKind.Unknown && hasRawVideoSource)
     val canDownload = validatingCandidateId == null && (
         selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ||
+            selectionMode == OutputSelectionMode.FILE && selectedWebFile != null ||
             selectionMode == OutputSelectionMode.AUDIO && selectedAudioOutputFormat != null
         )
 
     val sourceFingerprint = sourceCandidates.joinToString("|") { candidate ->
         candidate.id + ":" + candidate.format.id + ":" + candidate.format.kind.name + ":" +
             candidate.format.container.name + ":" + candidate.format.height + ":" +
-            candidate.format.bitrateKbps + ":" + candidate.format.hasVideo + ":" + candidate.format.hasAudio
+            candidate.format.bitrateKbps + ":" + candidate.format.hasVideo + ":" + candidate.format.hasAudio + ":" +
+            candidate.format.webFile + ":" + candidate.format.fileExtension + ":" + candidate.format.mimeType + ":" +
+            candidate.format.fileSizeBytes
     } + "|" + primaryOptions.joinToString(",") { it.candidate.id } +
         "|" + videoOnlyFallbackOptions.joinToString(",") { it.candidate.id } +
         "|" + audioOptions.joinToString(",") { it.candidate.id }
@@ -1566,12 +1573,14 @@ private fun UnifiedDownloadResultCard(
             ) {
                 Icon(
                     imageVector = when {
+                        webFileOptions.isNotEmpty() -> Icons.Rounded.CheckCircle
                         allVideoOptions.isNotEmpty() || directAudioAvailable -> Icons.Rounded.CheckCircle
                         videoOnlyFallbackOptions.isNotEmpty() -> Icons.Rounded.VideoFile
                         else -> Icons.Rounded.ErrorOutline
                     },
                     contentDescription = null,
                     tint = if (
+                        webFileOptions.isNotEmpty() ||
                         allVideoOptions.isNotEmpty() ||
                         directAudioAvailable ||
                         videoOnlyFallbackOptions.isNotEmpty()
@@ -1588,6 +1597,7 @@ private fun UnifiedDownloadResultCard(
                 ) {
                     Text(
                         when {
+                            webFileOptions.isNotEmpty() -> "الملف جاهز للتنزيل"
                             allVideoOptions.isNotEmpty() || directAudioAvailable -> "خيارات التنزيل جاهزة"
                             videoOnlyFallbackOptions.isNotEmpty() -> "الفيديو متاح فقط"
                             audioAvailable -> "مصدر الصوت يحتاج تحققًا"
@@ -1597,6 +1607,7 @@ private fun UnifiedDownloadResultCard(
                     )
                     Text(
                         buildList {
+                            if (webFileOptions.isNotEmpty()) add("${webFileOptions.size} ملف مباشر")
                             if (allVideoOptions.isNotEmpty()) add("${allVideoOptions.size} جودة فيديو")
                             else if (videoOnlyFallbackOptions.isNotEmpty()) add("${videoOnlyFallbackOptions.size} خيار فيديو فقط")
                             when {
@@ -1612,10 +1623,92 @@ private fun UnifiedDownloadResultCard(
             }
 
             Text(
-                "اختر جودة الفيديو أو صيغة الصوت، ثم اضغط زر التنزيل. لن يبدأ التنزيل قبل اختيارك.",
+                if (webFileOptions.isNotEmpty()) {
+                    "راجع نوع الملف واسمه، ثم حدده واضغط زر التنزيل. لن يبدأ التنزيل قبل اختيارك."
+                } else {
+                    "اختر جودة الفيديو أو صيغة الصوت، ثم اضغط زر التنزيل. لن يبدأ التنزيل قبل اختيارك."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+
+            if (webFileOptions.isNotEmpty()) {
+                AHSectionHeader(
+                    icon = Icons.Rounded.Download,
+                    title = if (webFileOptions.size == 1) "ملف مباشر" else "الملفات المتاحة",
+                    subtitle = "تم التعرف على الملف من استجابة الموقع. اختره للمتابعة إلى التنزيل.",
+                )
+                webFileOptions.forEach { option ->
+                    val selected = selectionMode == OutputSelectionMode.FILE &&
+                        selectedWebFile?.candidate?.id == option.candidate.id
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .tracedClickable(
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.clickable.web_file_option",
+                                trackingLabel = "web_file_option",
+                                enabled = validatingCandidateId == null,
+                                onClick = {
+                                    resultCardTrace.recordAction(
+                                        action = "select_web_file",
+                                        component = "web_file_option",
+                                        context = mapOf(
+                                            "candidate_id" to option.candidate.id,
+                                            "file_extension" to (option.candidate.format.fileExtension ?: "unknown"),
+                                            "mime_type" to (option.candidate.format.mimeType ?: "unknown"),
+                                        ),
+                                    )
+                                    selectionMode = OutputSelectionMode.FILE
+                                    onSelect(option)
+                                },
+                            )
+                            .semantics {
+                                contentDescription = if (selected) "الملف محدد للتنزيل" else "اختيار الملف للتنزيل"
+                            },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.Download,
+                                contentDescription = null,
+                                tint = if (selected) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp),
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(
+                                    title?.takeIf { it.isNotBlank() } ?: "ملف ويب",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    buildList {
+                                        option.candidate.format.fileExtension?.let { add(it.uppercase()) }
+                                        option.candidate.format.mimeType?.let(::add)
+                                        option.sizeLabel?.let(::add)
+                                    }.distinct().joinToString(" · ").ifBlank { "نوع الملف أو حجمه غير معروف" },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             if (showVideoSection) {
                 AHSectionHeader(
@@ -1832,6 +1925,8 @@ private fun UnifiedDownloadResultCard(
                 trackingId = "HOME.gradient_primary.01",
                 text = when {
                     validatingCandidateId != null -> "جارٍ تجهيز التنزيل..."
+                    selectionMode == OutputSelectionMode.FILE && selectedWebFile != null ->
+                        "تنزيل الملف" + (selectedWebFile.candidate.format.fileExtension?.let { " · ${it.uppercase()}" } ?: "")
                     selectionMode == OutputSelectionMode.VIDEO && selectedVideo != null ->
                         "تنزيل " + buildQualityLine(selectedVideo) + when {
                             selectedVideo.candidate.format.hasAudio -> ""
@@ -1851,8 +1946,12 @@ private fun UnifiedDownloadResultCard(
                         context = mapOf(
                             "selection_mode" to (selectionMode?.name ?: "NONE"),
                             "candidate_id" to (
-                                if (selectionMode == OutputSelectionMode.VIDEO) selectedVideo?.candidate?.id
-                                else selectedAudioSource?.candidate?.id
+                                when (selectionMode) {
+                                    OutputSelectionMode.VIDEO -> selectedVideo?.candidate?.id
+                                    OutputSelectionMode.FILE -> selectedWebFile?.candidate?.id
+                                    OutputSelectionMode.AUDIO -> selectedAudioSource?.candidate?.id
+                                    null -> null
+                                }
                             ).orEmpty(),
                             "output_format" to (selectedAudioOutputFormat?.name ?: "not_audio"),
                             "can_download" to canDownload.toString(),
@@ -1860,6 +1959,7 @@ private fun UnifiedDownloadResultCard(
                     )
                     when (selectionMode) {
                         OutputSelectionMode.VIDEO -> selectedVideo?.candidate?.id?.let(onDownload)
+                        OutputSelectionMode.FILE -> selectedWebFile?.candidate?.id?.let(onDownload)
                         OutputSelectionMode.AUDIO -> onDownloadAudio(selectedAudioCandidateId)
                         null -> Unit
                     }
@@ -1868,6 +1968,11 @@ private fun UnifiedDownloadResultCard(
                     .fillMaxWidth()
                     .semantics {
                         contentDescription = when (selectionMode) {
+                            OutputSelectionMode.FILE -> if (selectedWebFile != null) {
+                                "تنزيل الملف المباشر"
+                            } else {
+                                "اختر ملفًا للتنزيل أولًا"
+                            }
                             OutputSelectionMode.VIDEO -> when {
                                 selectedVideo?.candidate?.format?.hasAudio == true ->
                                     "تنزيل الفيديو مع الصوت"
@@ -1918,6 +2023,7 @@ private fun UnifiedDownloadResultCard(
 
 private enum class OutputSelectionMode {
     VIDEO,
+    FILE,
     AUDIO,
 }
 
@@ -2423,6 +2529,7 @@ private fun platformLabel(platform: String): String = when (platform) {
     "Twitch" -> "Twitch"
     "Vimeo" -> "Vimeo"
     "DirectMedia" -> "رابط مباشر"
+    "Web" -> "موقع ويب"
     else -> platform
 }
 
