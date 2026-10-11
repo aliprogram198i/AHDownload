@@ -52,6 +52,32 @@ class DiagnosticDataSanitizerTest {
     }
 
     @Test
+    fun sanitizesBearerAuthorizationAndCompleteCookieHeaders() {
+        val authorization = DiagnosticDataSanitizer.sanitizeText(
+            "Authorization: Bearer bearer-secret-123",
+        )
+        val cookies = DiagnosticDataSanitizer.sanitizeText(
+            "Cookie: sessionid=cookie-secret; sid=second-cookie-secret",
+        )
+
+        assertTrue(authorization.contains("[REDACTED]"))
+        assertFalse(authorization.contains("Bearer"))
+        assertFalse(authorization.contains("bearer-secret-123"))
+        assertTrue(cookies.contains("[REDACTED]"))
+        assertFalse(cookies.contains("sessionid"))
+        assertFalse(cookies.contains("cookie-secret"))
+        assertFalse(cookies.contains("second-cookie-secret"))
+
+        val proxyAuthorization = DiagnosticDataSanitizer.sanitizeText(
+            "Proxy-Authorization: Basic dXNlcjpzZWNyZXQ= trailing-credential",
+        )
+        assertTrue(proxyAuthorization.contains("[REDACTED]"))
+        assertFalse(proxyAuthorization.contains("Basic"))
+        assertFalse(proxyAuthorization.contains("dXNlcjpzZWNyZXQ="))
+        assertFalse(proxyAuthorization.contains("trailing-credential"))
+    }
+
+    @Test
     fun sanitizesSecretsAndFullUrlsInThrowableText() {
         val text = DiagnosticDataSanitizer.sanitizeText(
             "HTTP 403 token=hidden-value at https://media.example/videoplayback?sig=hidden-signature",

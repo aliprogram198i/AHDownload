@@ -8,12 +8,16 @@ import java.util.Locale
 
 object DiagnosticReportFormatter {
     private const val DEFAULT_MAX_EVENTS = 120
-    private const val DIAGNOSTIC_SCHEMA = 3
+    private const val DIAGNOSTIC_SCHEMA = 4
 
     fun format(logs: List<DiagnosticLog>, maxEvents: Int = DEFAULT_MAX_EVENTS): String {
         if (logs.isEmpty()) return "AHDownload Diagnostic Report\nstatus=NO_LOGS"
 
-        val ordered = logs.sortedByDescending { it.timestampEpochMs }
+        val ordered = logs.sortedWith(
+            compareByDescending<DiagnosticLog> { it.timestampEpochMs }
+                .thenByDescending { eventSequence(it) }
+                .thenByDescending { it.id },
+        )
         val latestError = ordered.firstOrNull { it.level == DiagnosticLevel.ERROR }
         val sessionId = latestError?.context?.get("diagnostic_session_id")
             ?: ordered.first().context["diagnostic_session_id"]
@@ -27,15 +31,22 @@ object DiagnosticReportFormatter {
         } else if (!operationId.isNullOrBlank()) {
             sessionEvents.filter { it.context["operation_id"] == operationId }.ifEmpty { sessionEvents }
         } else {
-            val previousErrorTime = sessionEvents
-                .filter { it.level == DiagnosticLevel.ERROR && it.timestampEpochMs < anchor.timestampEpochMs }
-                .maxOfOrNull { it.timestampEpochMs }
-            sessionEvents.filter { event ->
-                event.timestampEpochMs <= anchor.timestampEpochMs &&
-                    (previousErrorTime == null || event.timestampEpochMs > previousErrorTime)
+            // sessionEvents is newest-first. Use the event position, not timestamps alone,
+            // so errors recorded in the same millisecond cannot merge two incidents.
+            val anchorIndex = sessionEvents.indexOfFirst { it.id == anchor.id }
+            if (anchorIndex < 0) {
+                sessionEvents
+            } else {
+                val previousErrorIndex = (anchorIndex + 1 until sessionEvents.size)
+                    .firstOrNull { sessionEvents[it].level == DiagnosticLevel.ERROR }
+                sessionEvents.subList(anchorIndex, previousErrorIndex ?: sessionEvents.size)
             }
         }
-        val chronological = scopedEvents.sortedBy { it.timestampEpochMs }
+        val chronological = scopedEvents.sortedWith(
+            compareBy<DiagnosticLog> { it.timestampEpochMs }
+                .thenBy { eventSequence(it) }
+                .thenBy { it.id },
+        )
         val durationMs = chronological.takeIf { it.size >= 2 }?.let {
             it.last().timestampEpochMs - it.first().timestampEpochMs
         }
@@ -131,7 +142,9 @@ object DiagnosticReportFormatter {
                     "${anchor.context["device_model"] ?: "unknown"}",
             )
             appendLine("session=${sessionId ?: "unknown"} session_events=${sessionEvents.size} incident_events=${scopedEvents.size}")
-            operationId?.let { appendLine("operation=$it") }
+            operationId?.let { appendLine("operation_id=$it") }
+            (anchor.context["download_task_id"] ?: anchor.context["task_id"])
+                ?.let { appendLine("download_task_id=$it") }
             durationMs?.let { appendLine("duration_ms=$it") }
 
             appendLine()
@@ -463,6 +476,9 @@ object DiagnosticReportFormatter {
                 "حدث خطأ في مرحلة ${stageOf(error)}؛ التقرير يضم تسلسل الحادثة وسياقها الكامل قبل الفشل."
         }
 
+    private fun eventSequence(log: DiagnosticLog): Long =
+        log.context["event_sequence"]?.toLongOrNull() ?: 0L
+
     private fun formatTime(epochMs: Long): String =
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(Date(epochMs))
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).format(Date(epochMs))
 }

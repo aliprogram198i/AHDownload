@@ -32,8 +32,20 @@ class PersistentDiagnosticLogger(
         throwable: Throwable?,
     ) {
         val sequence = eventStore.nextSequence()
+        val correlatedContext = context.toMutableMap()
+        val taskId = context["download_task_id"]
+            ?.takeIf { it.isNotBlank() }
+            ?: context["task_id"]?.takeIf { it.isNotBlank() }
+        if (!taskId.isNullOrBlank()) {
+            if (correlatedContext["operation_id"].isNullOrBlank()) {
+                correlatedContext["operation_id"] = "download:$taskId"
+            }
+            if (correlatedContext["download_task_id"].isNullOrBlank()) {
+                correlatedContext["download_task_id"] = taskId
+            }
+        }
         val enrichedContext = DiagnosticDataSanitizer.sanitizeContext(
-            context + DiagnosticEnvironment.snapshot(appContext) + mapOf(
+            correlatedContext + DiagnosticEnvironment.snapshot(appContext) + mapOf(
                 "diagnostic_session_id" to sessionId,
                 "event_sequence" to sequence.toString(),
                 "process_uptime_ms" to (android.os.SystemClock.elapsedRealtime() - processStartedElapsedMs).toString(),
