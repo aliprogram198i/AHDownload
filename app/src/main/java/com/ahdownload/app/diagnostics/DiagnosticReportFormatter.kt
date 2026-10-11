@@ -142,7 +142,7 @@ object DiagnosticReportFormatter {
                     "${anchor.context["device_model"] ?: "unknown"}",
             )
             appendLine("session=${sessionId ?: "unknown"} session_events=${sessionEvents.size} incident_events=${scopedEvents.size}")
-            operationId?.let { appendLine("operation=$it") }
+            operationId?.let { appendLine("operation_id=$it") }
             (anchor.context["download_task_id"] ?: anchor.context["task_id"])
                 ?.let { appendLine("download_task_id=$it") }
             durationMs?.let { appendLine("duration_ms=$it") }
