@@ -76,7 +76,7 @@ class LinkAnalyzerTest {
     }
 
     @Test
-    fun recognizesDirectMediaByType() {
+    fun recognizesDirectMediaAndRoutesImagesToWebDownloads() {
         assertEquals(
             MediaPlatform.DirectMedia,
             analyzer.analyze("https://cdn.example.com/video.mp4")?.platform,
@@ -94,7 +94,7 @@ class LinkAnalyzerTest {
             analyzer.analyze("https://cdn.example.com/audio.m4a")?.kind,
         )
         assertEquals(
-            MediaPlatform.DirectMedia,
+            MediaPlatform.Web,
             analyzer.analyze("https://cdn.example.com/image.webp")?.platform,
         )
         assertEquals(
