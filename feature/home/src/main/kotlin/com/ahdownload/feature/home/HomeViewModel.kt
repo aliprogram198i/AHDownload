@@ -124,7 +124,6 @@ class HomeViewModel(
             resultFilter = ResultFilter.All,
         )
 
-
     }
 
     fun setUrlAndAnalyze(value: String) {
@@ -183,7 +182,6 @@ class HomeViewModel(
         )
         analyzeUrl(normalized)
     }
-
 
     fun searchContent(query: String = _uiState.value.searchQuery) {
         val normalized = query.trim()
@@ -1260,9 +1258,6 @@ class HomeViewModel(
             extractAudio = extractAudio,
             audioOutputFormat = audioOutputFormat,
         )
-    }
-
-    private companion object {
     }
 
     class Factory(
