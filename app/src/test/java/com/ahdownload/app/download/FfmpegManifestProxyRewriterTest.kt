@@ -5,6 +5,15 @@ import org.junit.Test
 
 class FfmpegManifestProxyRewriterTest {
     @Test
+    fun bridgeRoutesPreserveOnlyTrustedMediaExtensions() {
+        assertEquals("m3u8", ffmpegRouteExtension("https://cdn.example.net/master.m3u8?sig=secret"))
+        assertEquals("m4s", ffmpegRouteExtension("https://cdn.example.net/segment.m4s?token=secret"))
+        assertEquals("ts", ffmpegRouteExtension("https://cdn.example.net/segment.ts?token=secret"))
+        assertEquals("bin", ffmpegRouteExtension("https://cdn.example.net/segment.unknown?token=secret"))
+        assertEquals("bin", ffmpegRouteExtension("https://cdn.example.net/path/"))
+    }
+
+    @Test
     fun hlsPlaylistRoutesSegmentAndEncryptionKeyThroughLoopback() {
         val localOrigin = "http://127.0.0.1:43210"
         val routed = mutableMapOf<String, String>()

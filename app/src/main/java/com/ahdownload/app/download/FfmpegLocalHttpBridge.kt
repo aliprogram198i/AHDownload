@@ -1,5 +1,19 @@
 package com.ahdownload.app.download
 
+/** Select only extensions recognized by FFmpeg's HLS/DASH demuxers. */
+internal fun ffmpegRouteExtension(rawUrl: String): String {
+    val ext = runCatching {
+        URI(rawUrl).path.orEmpty().substringAfterLast('.', "").lowercase()
+    }.getOrDefault("")
+    return ext.takeIf { it in FFMPEG_ROUTE_EXTENSIONS } ?: "bin"
+}
+
+private val FFMPEG_ROUTE_EXTENSIONS = setOf(
+    "m3u8", "mpd", "ts", "m4s", "m4f", "mp4", "m4a", "m4v", "3gp",
+    "mov", "mkv", "avi", "mpeg", "mpg", "aac", "ac3", "eac3", "ec3",
+    "mp3", "ogg", "oga", "wav", "webm", "vtt", "webvtt", "key", "bin",
+)
+
 import android.util.Base64
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -258,7 +272,11 @@ internal class FfmpegLocalHttpBridge(
         val uri = runCatching { URI(target) }.getOrNull() ?: return null
         val path = uri.rawPath.orEmpty()
         if (path.startsWith("/u/")) {
-            val token = path.removePrefix("/u/").takeIf { it.isNotBlank() && '/' !in it } ?: return null
+            // The final path component intentionally preserves a safe media extension for
+            // FFmpeg's HLS demuxer; only the opaque first segment identifies the upstream URL.
+            val token = path.removePrefix("/u/").substringBefore('/')
+                .takeIf { it.isNotBlank() }
+                ?: return null
             return decodeToken(token)
         }
         if (path.startsWith("/b/")) {
@@ -281,7 +299,7 @@ internal class FfmpegLocalHttpBridge(
     }
 
     private fun routeForUrl(url: String): String =
-        loopbackOrigin.orEmpty() + "/u/" + encodeToken(url)
+        loopbackOrigin.orEmpty() + "/u/" + encodeToken(url) + "/segment." + ffmpegRouteExtension(url)
 
     private fun routeForBase(url: String): String =
         loopbackOrigin.orEmpty() + "/b/" + encodeToken(url)
