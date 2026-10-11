@@ -321,6 +321,8 @@ class DownloadWorker(
                     requestedCancellationState = {
                         downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
                     },
+                    // The outer worker catch owns the generation-checked history update.
+                    persistCancellationState = false,
                 )
                 coordinator.execute(sourceTask) { state ->
                     updateNotificationSpeed(state)
@@ -831,12 +833,7 @@ class DownloadWorker(
             )
             queue.applyState(task.id, DownloadState.Completed, System.currentTimeMillis())
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val state = downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
-            if (state != null) {
-                // Do not mark the task cancelled when WorkManager replaced this worker
-                // for a newer resume request or stopped it for a non-user lifecycle reason.
-                updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
-            }
+            // The enclosing worker handler alone persists explicit, current user intent.
             throw cancelled
         } catch (error: Throwable) {
             diagnostics.log(
@@ -1036,12 +1033,7 @@ class DownloadWorker(
             )
             return queue.applyState(task.id, DownloadState.Completed, now)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            val state = downloadStateForControlIntent(controlStore.snapshot(task.id)?.intent)
-            if (state != null) {
-                // Do not mark the task cancelled when WorkManager replaced this worker
-                // for a newer resume request or stopped it for a non-user lifecycle reason.
-                updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
-            }
+            // The enclosing worker handler alone persists explicit, current user intent.
             throw cancelled
         } catch (error: Throwable) {
             diagnostics.log(
