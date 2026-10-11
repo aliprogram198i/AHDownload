@@ -33,6 +33,31 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun acceptsNonMediaMimeForWebFileCandidates() = kotlinx.coroutines.test.runTest {
+        val candidate = candidate(MediaKind.Unknown).copy(
+            format = candidate(MediaKind.Unknown).format.copy(
+                webFile = true,
+                fileExtension = "pdf",
+                mimeType = "application/pdf",
+            ),
+        )
+        val result = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "application/pdf",
+                    contentLengthBytes = 1024L,
+                    finalUrl = "https://files.example/download",
+                ),
+            ),
+        ).validate(candidate)
+
+        val valid = assertIs<CandidateValidationResult.Valid>(result)
+        assertEquals("pdf", valid.candidate.format.fileExtension)
+        assertEquals("https://files.example/download", valid.finalUrl)
+    }
+
+    @Test
     fun rejectsHtmlResponse() = kotlinx.coroutines.test.runTest {
         val result = CandidateValidator(
             FakeProbe(
