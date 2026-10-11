@@ -39,7 +39,6 @@ import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
@@ -368,7 +367,6 @@ private fun HomeScreen(
                         if (state.searching) add("search_loading")
                         if (state.searchResults.isNotEmpty()) add("search_results")
                     }
-                    HomeMode.Recent -> Unit
                 }
             }
             if (state.error != null && !(showResultsScreen && state.mode == HomeMode.Link)) add("error_card")
@@ -593,7 +591,6 @@ private fun HomeScreen(
                         when (state.mode) {
                             HomeMode.Link -> "حمّل ما تحب"
                             HomeMode.Search -> "بحث YouTube"
-                            HomeMode.Recent -> "الروابط الأخيرة"
                         },
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
@@ -602,7 +599,6 @@ private fun HomeScreen(
                         when (state.mode) {
                             HomeMode.Link -> "الصق الرابط، اختر ما يناسبك، وابدأ التنزيل."
                             HomeMode.Search -> "ابحث في YouTube واختر الفيديو الذي تريد تنزيله."
-                            HomeMode.Recent -> "روابطك السابقة جاهزة للعودة السريعة وإعادة التحليل."
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1258,90 +1254,6 @@ private fun SearchResultCard(
                 label = { Text(if (selected) "محدد" else "تحديد") },
             )
         }
-    }
-}
-
-@Composable
-private fun RecentLinksCard(
-    links: List<RecentLink>,
-    onSelect: (RecentLink) -> Unit,
-    onClear: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("الروابط الأخيرة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        "اضغط لإعادة تحليل رابط استخدمته مؤخرًا.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                DiagnosticTextButton(
-                    trackingScreen = "HOME",
-                    trackingId = "HOME.textbutton.03",
-                    trackingLabel = "مسح",
-                    disabledReason = "callsite_precondition_not_explicit",onClick = onClear) { Text("مسح") }
-            }
-            links.forEach { link ->
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .tracedClickable(
-                            trackingScreen = "HOME",
-                            trackingId = "HOME.clickable.02",
-                            trackingLabel = "recent_link_item",onClick = { onSelect(link) }),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        MediaThumbnail(
-                            url = link.thumbnailUrl,
-                            contentDescription = "صورة مصغرة: " + (link.title ?: link.url),
-                            modifier = Modifier
-                                .size(width = 72.dp, height = 48.dp)
-                                .clip(RoundedCornerShape(10.dp)),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                link.title ?: link.url,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                platformLabel(link.platform) + " · " + formatRelativeRecentTime(link.updatedAtEpochMs),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun formatRelativeRecentTime(epochMs: Long): String {
-    val age = System.currentTimeMillis() - epochMs
-    return when {
-        age < 60_000L -> "الآن"
-        age < 3_600_000L -> (age / 60_000L).toString() + " د"
-        age < 86_400_000L -> (age / 3_600_000L).toString() + " س"
-        else -> (age / 86_400_000L).toString() + " ي"
     }
 }
 
