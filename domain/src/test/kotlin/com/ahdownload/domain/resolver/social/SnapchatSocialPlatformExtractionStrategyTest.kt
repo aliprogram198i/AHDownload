@@ -127,7 +127,7 @@ class SnapchatSocialPlatformExtractionStrategyTest {
         storyId: String = SPOTLIGHT_ID,
         contentUrl: String,
     ): String = """
-        <html><head><title>Snapchat Spotlight</title></head><body>
+        <html><body>
         <script id="__NEXT_DATA__" type="application/json">
         {
           "props": {
