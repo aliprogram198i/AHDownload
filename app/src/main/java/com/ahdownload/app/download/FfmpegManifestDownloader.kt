@@ -3,16 +3,18 @@ package com.ahdownload.app.download
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
- * Acquires VOD HLS/DASH sources by letting FFmpeg resolve the manifest and
- * assemble the available streams into a codec-safe Matroska container.
+ * Downloads HLS/DASH sources through a loopback HTTP bridge.
  *
- * Cookies are accepted only as an in-memory execution parameter. They are never
- * persisted to WorkManager input or written to diagnostics.
+ * FFmpeg consumes an ordinary localhost HTTP URL. The bridge retrieves original HTTPS
+ * manifests, keys and segments through OkHttp TLS, rewrites HLS/DASH references back through
+ * localhost, and never logs or persists signed URLs or cookies. This retains the full LGPL codec
+ * tier for local remux/transcode work even when a packaged FFmpeg build lacks its HTTPS protocol.
  */
 class FfmpegManifestDownloader {
 
@@ -38,107 +40,107 @@ class FfmpegManifestDownloader {
             }
         }
 
-        val temp = File(
-            outputFile.parentFile,
-            ".${outputFile.name}.manifesting.mkv",
-        )
+        val temp = File(outputFile.parentFile, ".${outputFile.name}.manifesting.mkv")
         temp.delete()
-
         val safeHeaders = requestHeaders.filterKeys(::isSafeHeader)
-        val headerBlock = buildString {
-            safeHeaders.entries
-                .filterNot { it.key.equals("User-Agent", true) }
-                .forEach { (name, value) ->
-                    append(name).append(": ").append(value).append("\r\n")
-                }
-            cookie?.takeIf { it.isNotBlank() }?.let {
-                append("Cookie: ").append(it).append("\r\n")
-            }
-        }
-
         val userAgent = safeHeaders.entries
             .firstOrNull { it.key.equals("User-Agent", true) }
             ?.value
             ?: DEFAULT_USER_AGENT
 
-        val base = mutableListOf(
-            "-hide_banner",
-            "-loglevel", "error",
-            "-nostdin",
-            "-y",
-            "-rw_timeout", "30000000",
-            "-reconnect", "1",
-            "-reconnect_streamed", "1",
-            "-reconnect_delay_max", "5",
-            "-user_agent", userAgent,
+        val bridge = FfmpegLocalHttpBridge(
+            sourceUrl = sourceUrl,
+            requestHeaders = safeHeaders,
+            cookie = cookie,
         )
-        if (headerBlock.isNotBlank()) {
-            base += listOf("-headers", headerBlock)
+        val bridgedSourceUrl = try {
+            bridge.start()
+        } catch (error: Throwable) {
+            bridge.close()
+            return@withContext Result.failure(
+                IllegalStateException("Unable to initialize secure manifest transport", error),
+            )
         }
-        base += listOf(
-            "-i", sourceUrl,
-            "-map", "0:v:0?",
-            "-map", "0:a:0?",
-            "-sn",
-            "-dn",
-            "-c:v", "copy",
-            "-c:a", "copy",
-            "-f", "matroska",
-            temp.absolutePath,
-        )
 
-        fun execute(arguments: List<String>): Boolean =
-            runCatching {
-                val session = FFmpegKit.executeWithArguments(arguments.toTypedArray())
-                ReturnCode.isSuccess(session.returnCode) &&
-                    temp.isFile &&
-                    temp.length() > 0L
+        try {
+            val base = listOf(
+                "-hide_banner",
+                "-loglevel", "error",
+                "-nostdin",
+                "-y",
+                "-rw_timeout", "30000000",
+                "-reconnect", "1",
+                "-reconnect_streamed", "1",
+                "-reconnect_delay_max", "5",
+                "-user_agent", userAgent,
+                "-i", bridgedSourceUrl,
+                "-map", "0:v:0?",
+                "-map", "0:a:0?",
+                "-sn",
+                "-dn",
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-f", "matroska",
+                temp.absolutePath,
+            )
+
+            fun execute(arguments: List<String>): Boolean =
+                runCatching {
+                    val session = FFmpegKit.executeWithArguments(arguments.toTypedArray())
+                    ReturnCode.isSuccess(session.returnCode) &&
+                        temp.isFile &&
+                        temp.length() > 0L
+                }.getOrDefault(false)
+
+            var success = execute(base)
+
+            // Retry without touching video when a source audio codec cannot be copied
+            // cleanly into the selected Matroska output by the bundled FFmpeg build.
+            if (!success) {
+                temp.delete()
+                val fallback = base.toMutableList().also { args ->
+                    val audioCodecIndex = args.indexOf("-c:a")
+                    if (audioCodecIndex >= 0 && audioCodecIndex + 1 < args.size) {
+                        args[audioCodecIndex + 1] = "aac"
+                        args.add(audioCodecIndex + 2, "-b:a")
+                        args.add(audioCodecIndex + 3, "192k")
+                    }
+                }
+                success = execute(fallback)
+            }
+
+            if (!success) {
+                temp.delete()
+                return@withContext Result.failure(
+                    IllegalStateException("FFmpeg could not acquire the HLS/DASH source through secure transport"),
+                )
+            }
+
+            coroutineContext.ensureActive()
+            outputFile.delete()
+            val published = temp.renameTo(outputFile) || runCatching {
+                temp.copyTo(outputFile, overwrite = true)
+                temp.delete()
+                true
             }.getOrDefault(false)
 
-        var success = execute(base)
-
-        // Retry without touching video when a source audio codec cannot be copied
-        // cleanly into the selected Matroska output by the bundled FFmpeg build.
-        if (!success) {
-            temp.delete()
-            val fallback = base.toMutableList().also { args ->
-                val audioCodecIndex = args.indexOf("-c:a")
-                if (audioCodecIndex >= 0 && audioCodecIndex + 1 < args.size) {
-                    args[audioCodecIndex + 1] = "aac"
-                    args.add(audioCodecIndex + 2, "-b:a")
-                    args.add(audioCodecIndex + 3, "192k")
-                }
+            if (!published || !outputFile.isFile || outputFile.length() <= 0L) {
+                temp.delete()
+                outputFile.delete()
+                return@withContext Result.failure(
+                    IllegalStateException("Unable to publish the manifest media output"),
+                )
             }
-            success = execute(fallback)
-        }
-
-        if (!success) {
+            Result.success(outputFile)
+        } catch (cancelled: CancellationException) {
             temp.delete()
-            return@withContext Result.failure(
-                IllegalStateException(
-                    "FFmpeg could not acquire the HLS/DASH media source",
-                ),
-            )
-        }
-
-        coroutineContext.ensureActive()
-
-        outputFile.delete()
-        val published = temp.renameTo(outputFile) || runCatching {
-            temp.copyTo(outputFile, overwrite = true)
+            throw cancelled
+        } catch (error: Throwable) {
             temp.delete()
-            true
-        }.getOrDefault(false)
-
-        if (!published || !outputFile.isFile || outputFile.length() <= 0L) {
-            temp.delete()
-            outputFile.delete()
-            return@withContext Result.failure(
-                IllegalStateException("Unable to publish the manifest media output"),
-            )
+            Result.failure(error)
+        } finally {
+            bridge.close()
         }
-
-        Result.success(outputFile)
     }
 
     private fun isSafeHeader(name: String): Boolean =
