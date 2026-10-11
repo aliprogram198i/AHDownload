@@ -649,7 +649,7 @@ class WebVideoPageResolver(
             current = current.cause
             depth++
         }
-        return "IO_FAILURE"
+        return "UNEXPECTED_FAILURE"
     }
 
     private data class Page(
