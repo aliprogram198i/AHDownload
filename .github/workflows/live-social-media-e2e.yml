@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/platform-specific-resolvers
+      - fix/public-social-platform-fallbacks
   workflow_dispatch:
 
 permissions:

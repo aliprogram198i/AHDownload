@@ -109,6 +109,10 @@ class AndroidBrowserMediaSessionProvider(
                     return true
                 }
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
+                val snapchatOpaqueVideo = (
+                    host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")
+                ) && path.startsWith("/d/")
+                if (snapchatOpaqueVideo) return true
                 return (
                     host.endsWith(".fbcdn.net") ||
                         host.endsWith(".cdninstagram.com") ||
@@ -128,8 +132,11 @@ class AndroidBrowserMediaSessionProvider(
                 if (ext in IMAGE_EXTENSIONS) return false
                 if (ext in MEDIA_EXTENSIONS || ext == "m3u8" || ext == "mpd" || "/videoplayback" in lower) return true
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
-                return host.endsWith(".fbcdn.net") || host.endsWith(".cdninstagram.com")
-                    || host == "cdninstagram.com"
+                val snapchatOpaqueVideo = (
+                    host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")
+                ) && path.startsWith("/d/")
+                return snapchatOpaqueVideo || host.endsWith(".fbcdn.net") ||
+                    host.endsWith(".cdninstagram.com") || host == "cdninstagram.com"
             }
 
             fun safeHeaders(input: Map<String, String>): Map<String, String> = buildMap {
@@ -498,10 +505,33 @@ class AndroidBrowserMediaSessionProvider(
                           if(/\.(?:jpe?g|png|webp|gif|avif|heic|heif)$/.test(path))return false;
                           if(/\.(?:mp4|m4v|webm|mov|mkv|3gp|avi|m3u8|mpd|m4a|mp3|aac|ogg|flac|wav)$/.test(path))return true;
                           const host=u.hostname.toLowerCase();
+                          if((host==='sc-cdn.net'||host.endsWith('.sc-cdn.net'))&&path.startsWith('/d/'))return true;
                           return (host.endsWith('.fbcdn.net')||host.endsWith('.cdninstagram.com')||host==='cdninstagram.com')&&
                             /\/(?:o1\/v\/|v\/t|video)/.test(path);
                         }catch(_){return false;}
                       };
+                      // Snapchat exposes public Spotlight playback URLs in Next.js page props.
+                      // The URL often has no file extension, so inspect only contentUrl fields under the
+                      // hydrated page state and still require the exact trusted sc-cdn.net/d/ URL shape.
+                      const snapchatMedia=[];
+                      const collectSnapchatMedia=(node,depth)=>{
+                        if(!node||depth>20)return;
+                        if(Array.isArray(node)){
+                          node.slice(0,500).forEach(item=>collectSnapchatMedia(item,depth+1));
+                          return;
+                        }
+                        if(typeof node!=='object')return;
+                        if(node.videoMetadata&&typeof node.videoMetadata.contentUrl==='string'&&
+                           isMediaCandidate(node.videoMetadata.contentUrl)){
+                          snapchatMedia.push(node.videoMetadata.contentUrl);
+                        }
+                        Object.values(node).slice(0,500).forEach(value=>{
+                          if(value&&typeof value==='object')collectSnapchatMedia(value,depth+1);
+                        });
+                      };
+                      if(window.__NEXT_DATA__){
+                        collectSnapchatMedia(window.__NEXT_DATA__.props?.pageProps?.spotlightFeed?.spotlightStories||[],0);
+                      }
                       // Filter by media shape before limiting: Instagram often loads many JS/image resources first.
                       const perf=(performance.getEntriesByType('resource')||[])
                         .map(e=>e.name).filter(isMediaCandidate).slice(0,80);
@@ -546,6 +576,7 @@ class AndroidBrowserMediaSessionProvider(
                           ...sources,
                           ...perf,
                           ...embedded,
+                          ...snapchatMedia,
                           ...(window.__ahInstagramApiMedia||[])
                         ])].filter(isMediaCandidate).slice(0,64),
                         instagramApiStatus:window.__ahInstagramApiStatus ||

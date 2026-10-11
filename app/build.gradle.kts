@@ -88,6 +88,7 @@ dependencies {
     implementation(project(":feature:downloads"))
     implementation(project(":feature:studio"))
     implementation(project(":domain"))
+    implementation("com.squareup.okhttp3:okhttp:5.1.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -95,7 +96,8 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-audio:8.1.7")
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.9")
+    // Streaming HLS/DASH downloads require FFmpeg input support for HTTPS; the audio-only tier omits TLS.
     // FFmpegKit 8.1.7 declares this runtime dependency incompletely; keep it explicit to prevent release-time NoClassDefFoundError.
     implementation("com.arthenica:smart-exception-java:0.2.1")
     implementation("androidx.compose.material3:material3")

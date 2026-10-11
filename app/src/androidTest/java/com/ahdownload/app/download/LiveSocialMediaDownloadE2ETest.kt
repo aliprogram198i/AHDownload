@@ -46,11 +46,25 @@ class LiveSocialMediaDownloadE2ETest {
         val analyzer = LinkAnalyzer()
         val report = mutableListOf<String>()
 
-        // This focused live acceptance run targets the two platforms under active repair.
+        // Every target is a real public post/clip. Multiple independent URLs reduce the risk
+        // of treating one deleted/private item as a platform-wide resolver failure.
         val targets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
+            Target("Facebook-1", MediaPlatform.Facebook, "https://www.facebook.com/reel/1195289147628387"),
+            Target("Facebook-2", MediaPlatform.Facebook, "https://www.facebook.com/reel/390369400459687/"),
+            Target("X-1", MediaPlatform.X, "https://x.com/TopHeroes_/status/2001950365332455490"),
+            Target("X-2", MediaPlatform.X, "https://x.com/starwars/status/665052190608723968"),
+            Target("Snapchat-1", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYWtidGhudGZpAX1TKn0JAX1TKnXJAAAAAA"),
+            Target("Snapchat-2", MediaPlatform.Snapchat, "https://www.snapchat.com/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYeHRncnFycnhzAZQykON-AZQykMAxAAAAAQ"),
+            Target("Pinterest-1", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/664281013778109217/"),
+            Target("Pinterest-2", MediaPlatform.Pinterest, "https://www.pinterest.com/pin/550213279492193633/"),
+            Target("Reddit-1", MediaPlatform.Reddit, "https://www.reddit.com/r/Unexpected/comments/1cl9h0u/the_insurance_claim_will_be_interesting/"),
+            Target("Reddit-2", MediaPlatform.Reddit, "https://www.reddit.com/r/interesting/comments/1t5410z/just-how-does-this-species-survive-in-the-wild/"),
+            Target("Twitch", MediaPlatform.Twitch, "https://www.twitch.tv/xqc/clip/CulturedAmazingKuduDatSheffy-TiZ_-ixAGYR3y2Uy"),
+            Target("Vimeo-1", MediaPlatform.Vimeo, "https://vimeo.com/76979871"),
+            Target("Vimeo-2", MediaPlatform.Vimeo, "https://vimeo.com/1147525044"),
         )
 
         for (target in targets) {
@@ -75,10 +89,11 @@ class LiveSocialMediaDownloadE2ETest {
                         }
                         .distinctBy { it.sourceUrl }
                         .sortedWith(
-                            compareBy<com.ahdownload.domain.resolver.MediaCandidate> { it.format.height ?: Int.MAX_VALUE }
+                            compareBy<com.ahdownload.domain.resolver.MediaCandidate> { it.streamingManifest }
+                                .thenBy { it.format.height ?: Int.MAX_VALUE }
                                 .thenBy { it.format.fileSizeBytes ?: Long.MAX_VALUE },
                         )
-                        .take(2)
+                        .take(5)
                     is ResolverResult.Failure -> error(
                         "Resolver returned " + resolved.code + ": " + (resolved.message ?: "no details"),
                     )
@@ -103,9 +118,10 @@ class LiveSocialMediaDownloadE2ETest {
                         continue
                     }
 
+                    val candidateTitle = title + "-C" + (index + 1)
                     val enqueue = launcher.enqueue(
                         candidate = validation.candidate.copy(sourceUrl = validation.finalUrl),
-                        title = title,
+                        title = candidateTitle,
                         sourcePageUrl = target.url,
                         thumbnailUrl = null,
                     )
@@ -117,7 +133,7 @@ class LiveSocialMediaDownloadE2ETest {
                     val record = awaitTerminalRecord(
                         app = app,
                         sourcePageUrl = target.url,
-                        displayName = title,
+                        displayName = candidateTitle,
                         timeoutMs = 90_000L,
                     )
                     if (record == null) {
@@ -144,21 +160,24 @@ class LiveSocialMediaDownloadE2ETest {
                         continue
                     }
 
-                    val (byteCount, prefix) = probe.getOrThrow()
-                    if (byteCount <= 0L) {
-                        candidateFailure = "Candidate " + (index + 1) + ": output is empty"
+                    val (byteCount, prefixBytes) = probe.getOrThrow()
+                    if (byteCount < MIN_VALID_VIDEO_BYTES) {
+                        candidateFailure = "Candidate " + (index + 1) +
+                            ": output is too small to be a valid video container (" + byteCount + " bytes)"
+                        runCatching { context.contentResolver.delete(uri, null, null) }
                         continue
                     }
-                    if (prefix.trimStart().startsWith("<html", ignoreCase = true) ||
-                        prefix.trimStart().startsWith("<!doctype", ignoreCase = true)
-                    ) {
-                        candidateFailure = "Candidate " + (index + 1) + ": output is HTML, not a media file"
+                    if (!hasRecognizableVideoContainer(byteCount, prefixBytes)) {
+                        candidateFailure = "Candidate " + (index + 1) +
+                            ": output failed video-container signature verification"
+                        runCatching { context.contentResolver.delete(uri, null, null) }
                         continue
                     }
 
                     downloaded = true
-                    val headerHex = prefix.take(12).toByteArray().joinToString("") { "%02x".format(it) }
-                    candidateFailure = "downloaded " + byteCount + " bytes; header=" + headerHex
+                    val headerHex = prefixBytes.take(12).joinToString("") { "%02x".format(it) }
+                    candidateFailure = "verified video container; downloaded " + byteCount +
+                        " bytes; header=" + headerHex
                     runCatching { context.contentResolver.delete(uri, null, null) }
                     break
                 }
@@ -297,7 +316,7 @@ class LiveSocialMediaDownloadE2ETest {
         return null
     }
 
-    private fun inspectPublishedFile(context: Context, uri: Uri): Pair<Long, String> {
+    private fun inspectPublishedFile(context: Context, uri: Uri): Pair<Long, ByteArray> {
         val input = context.contentResolver.openInputStream(uri)
             ?: error("Published MediaStore URI cannot be opened")
         val bytes = input.use { stream ->
@@ -308,7 +327,44 @@ class LiveSocialMediaDownloadE2ETest {
         }
         val size = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length }
             ?.takeIf { it > 0L } ?: bytes.size.toLong()
-        return size to String(bytes, Charsets.ISO_8859_1)
+        return size to bytes
+    }
+
+    private fun hasRecognizableVideoContainer(byteCount: Long, prefix: ByteArray): Boolean {
+        if (byteCount < MIN_VALID_VIDEO_BYTES || prefix.size < 12) return false
+        fun ascii(start: Int, end: Int): String =
+            String(prefix.copyOfRange(start, end), Charsets.US_ASCII)
+
+        // ISO BMFF containers: MP4/M4V/MOV must have the ftyp box at offset 4.
+        if (ascii(4, 8) == "ftyp") return true
+        // Matroska and WebM begin with the EBML header marker.
+        if (prefix.size >= 4 &&
+            prefix[0] == 0x1A.toByte() &&
+            prefix[1] == 0x45.toByte() &&
+            prefix[2] == 0xDF.toByte() &&
+            prefix[3] == 0xA3.toByte()
+        ) return true
+        // AVI has a RIFF container header and the AVI form type at offset 8.
+        if (ascii(0, 4) == "RIFF" && ascii(8, 12) == "AVI ") return true
+        // MPEG transport streams expose a repeating sync byte every 188 bytes.
+        return prefix.size >= 377 &&
+            prefix[0] == 0x47.toByte() &&
+            prefix[188] == 0x47.toByte() &&
+            prefix[376] == 0x47.toByte()
+    }
+
+    @Test
+    fun videoVerifierRejectsTinyPlaceholderWithAnMp4FileTypeHeader() {
+        val tinyPlaceholder = ByteArray(897)
+        tinyPlaceholder[4] = 'f'.code.toByte()
+        tinyPlaceholder[5] = 't'.code.toByte()
+        tinyPlaceholder[6] = 'y'.code.toByte()
+        tinyPlaceholder[7] = 'p'.code.toByte()
+
+        assertTrue(
+            "A file under the minimum size must not be accepted just because it contains ftyp",
+            !hasRecognizableVideoContainer(tinyPlaceholder.size.toLong(), tinyPlaceholder),
+        )
     }
 
     private data class Target(
@@ -319,5 +375,6 @@ class LiveSocialMediaDownloadE2ETest {
 
     private companion object {
         const val TAG = "AH_LIVE_E2E"
+        const val MIN_VALID_VIDEO_BYTES = 8_192L
     }
 }

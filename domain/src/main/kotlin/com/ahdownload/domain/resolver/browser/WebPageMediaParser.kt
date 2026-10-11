@@ -92,6 +92,11 @@ object WebPageMediaParser {
         ) return true
 
         val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
+        val snapchatCdn = (
+            host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")
+        ) && path.startsWith("/d/")
+        if (snapchatCdn) return true
+
         return (
             host.endsWith(".fbcdn.net") ||
                 host.endsWith(".cdninstagram.com") ||

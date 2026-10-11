@@ -239,6 +239,7 @@ class SocialPlatformResolverEngine(
                     }
                     .sortedWith(
                         compareByDescending<MediaCandidate> { it.format.kind == MediaKind.Video }
+                            .thenBy { it.streamingManifest }
                             .thenByDescending { it.format.height ?: 0 }
                             .thenByDescending { it.format.bitrateKbps ?: 0 },
                     )
@@ -351,9 +352,21 @@ class SocialPlatformResolverEngine(
         val streamingManifest = extension in setOf("m3u8", "mpd") ||
             mime.contains("mpegurl") ||
             mime.contains("dash+xml")
+        val opaqueSnapchatVideo = if (platform == MediaPlatform.Snapchat) {
+            runCatching {
+                val uri = URI(sourceUrl)
+                val host = uri.host.orEmpty().lowercase()
+                uri.scheme.equals("https", ignoreCase = true) &&
+                    (host == "sc-cdn.net" || host.endsWith(".sc-cdn.net")) &&
+                    uri.path.orEmpty().startsWith("/d/")
+            }.getOrDefault(false)
+        } else {
+            false
+        }
 
         val kind = when {
-            streamingManifest || mime.startsWith("video") || extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
+            streamingManifest || mime.startsWith("video") || opaqueSnapchatVideo ||
+                extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
             mime.startsWith("audio") || extension in setOf("mp3", "m4a", "aac", "ogg", "flac", "wav") -> MediaKind.Audio
             mime.startsWith("image") || extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
             else -> return null

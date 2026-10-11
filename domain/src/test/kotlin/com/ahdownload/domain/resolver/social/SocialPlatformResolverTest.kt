@@ -148,6 +148,57 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun snapchatOpaqueCdnUrlIsClassifiedAsVideoOnlyForTrustedScCdnPath() = runTest {
+        val mediaUrl = "https://cf-st.sc-cdn.net/d/AbCdEf/opaque-video?token=redacted"
+        val resolver = SnapchatResolverAdapter(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Snapchat,
+                    pageUrl = "https://www.snapchat.com/spotlight/AbCdEf",
+                    mediaUrls = listOf(mediaUrl),
+                    requestHeadersByUrl = mapOf(mediaUrl to mapOf("Referer" to "https://www.snapchat.com/")),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(link = link(MediaPlatform.Snapchat)),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertEquals(mediaUrl, candidate.sourceUrl)
+        assertEquals(com.ahdownload.domain.model.MediaKind.Video, candidate.format.kind)
+        assertEquals(com.ahdownload.domain.resolver.MediaContainer.Unknown, candidate.format.container)
+    }
+
+    @Test
+    fun snapchatOpaqueCdnClassificationRejectsUntrustedHostAndPath() = runTest {
+        val urls = listOf(
+            "https://sc-cdn.net.attacker.example/d/AbCdEf/opaque-video",
+            "https://cf-st.sc-cdn.net/not-media/opaque-video",
+            "http://cf-st.sc-cdn.net/d/AbCdEf/opaque-video",
+        )
+        for (url in urls) {
+            val resolver = SnapchatResolverAdapter(
+                provider = FakeProvider(
+                    BrowserMediaSession(
+                        platform = MediaPlatform.Snapchat,
+                        pageUrl = "https://www.snapchat.com/spotlight/AbCdEf",
+                        mediaUrls = listOf(url),
+                    ),
+                ),
+            )
+            val result = resolver.resolve(ResolverRequest(link = link(MediaPlatform.Snapchat)))
+            assertTrue(result is ResolverResult.Failure)
+            assertEquals(
+                com.ahdownload.domain.resolver.FailureCode.NoCandidates,
+                (result as ResolverResult.Failure).code,
+            )
+        }
+    }
+
+    @Test
     fun observedVideoWithoutAudioTrackIsNotMarkedMuxed() = runTest {
         val url = "https://cdn.example.com/video.mp4"
         val resolver = TikTokResolverAdapter(
@@ -538,6 +589,171 @@ class SocialPlatformResolverTest {
                 (result as ResolverResult.Failure).code,
             )
         }
+    }
+
+    @Test
+    fun knownPublicPlatformFallbacksExtractDirectMediaFromFirstPartyPayloads() = runTest {
+        data class FallbackCase(
+            val platform: MediaPlatform,
+            val pageUrl: String,
+            val expectedEndpoint: String,
+            val response: String,
+            val expectedMediaUrl: String,
+            val existingBrowserMediaCount: Int = 0,
+            val existingPageFallbackMediaCount: Int = 0,
+        )
+
+        val cases = listOf(
+            FallbackCase(
+                MediaPlatform.Facebook,
+                "https://www.facebook.com/reel/123456789/",
+                "https://www.facebook.com/plugins/video.php?href=https%3A%2F%2Fwww.facebook.com%2Freel%2F123456789%2F&show_text=0&width=560",
+                """{"video_url":"https://video.xx.fbcdn.net/v/t42.1790-2/clip.mp4?token=opaque"}""",
+                "https://video.xx.fbcdn.net/v/t42.1790-2/clip.mp4?token=opaque",
+            ),
+            FallbackCase(
+                MediaPlatform.X,
+                "https://x.com/example/status/123456789",
+                "https://cdn.syndication.twimg.com/tweet-result?id=123456789&lang=en",
+                """{"url":"https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/clip.mp4?tag=12"}""",
+                "https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/clip.mp4?tag=12",
+                existingBrowserMediaCount = 1,
+                existingPageFallbackMediaCount = 1,
+            ),
+            FallbackCase(
+                MediaPlatform.Reddit,
+                "https://www.reddit.com/r/example/comments/abc123/post/",
+                "https://www.reddit.com/r/example/comments/abc123/post.json?raw_json=1",
+                """{"fallback_url":"https://v.redd.it/abc123/DASH_720.mp4?source=fallback"}""",
+                "https://v.redd.it/abc123/DASH_720.mp4?source=fallback",
+            ),
+            FallbackCase(
+                MediaPlatform.Pinterest,
+                "https://www.pinterest.com/pin/664281013778109217/",
+                "https://widgets.pinterest.com/v3/pidgets/pins/info/?pin_ids=664281013778109217&sub=www&base_scheme=https",
+                """{"data":[{"id":"664281013778109217","videos":{"video_list":[{"url":"https://v1.pinimg.com/videos/mc/720p/clip.mp4"}]}}]}""",
+                "https://v1.pinimg.com/videos/mc/720p/clip.mp4",
+            ),
+            FallbackCase(
+                MediaPlatform.Vimeo,
+                "https://vimeo.com/76979871",
+                "https://player.vimeo.com/video/76979871/config",
+                """{"video":{"title":"Public clip","files":{"progressive":[{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque","quality":"720p"}]}},"request":{"files":{"dash":{"cdns":{"default":{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/master.mpd?token=opaque"}}}}}}""",
+                "https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque",
+                existingBrowserMediaCount = 1,
+                existingPageFallbackMediaCount = 1,
+            ),
+        )
+
+        for (testCase in cases) {
+            var requestedUrl = ""
+            var requestedHeaders = emptyMap<String, String>()
+            val client = object : HttpTextClient {
+                override suspend fun get(url: String): String = error("Fallback must pass explicit safe headers")
+
+                override suspend fun get(url: String, headers: Map<String, String>): String {
+                    requestedUrl = url
+                    requestedHeaders = headers
+                    return testCase.response
+                }
+
+                override suspend fun postJson(url: String, body: String): String = error("Unexpected POST")
+
+                override suspend fun postJson(
+                    url: String,
+                    body: String,
+                    headers: Map<String, String>,
+                ): String = error("Unexpected POST")
+            }
+            val strategy = socialPlatformExtractionStrategy(testCase.platform)
+            val parsed = strategy.extractAdditionalMedia(
+                pageUrl = testCase.pageUrl,
+                browserMediaCount = testCase.existingBrowserMediaCount,
+                pageFallbackMediaCount = testCase.existingPageFallbackMediaCount,
+                pageClient = client,
+                operationId = "public-fallback-test",
+                logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
+            )
+
+            assertEquals(testCase.platform.name, testCase.expectedEndpoint, requestedUrl)
+            assertTrue(
+                "${testCase.platform} fallback must not forward credentials",
+                requestedHeaders.keys.none { it.equals("Cookie", true) || it.equals("Authorization", true) },
+            )
+            assertTrue(parsed?.mediaUrls.orEmpty().contains(testCase.expectedMediaUrl))
+        }
+    }
+
+    @Test
+    fun vimeoFallbackReturnsHlsAndDashManifestsWhenProgressiveFilesAreUnavailable() = runTest {
+        val pageUrl = "https://vimeo.com/76979871"
+        val hlsUrl = "https://player.vimeo.com/play/c/76979871/hls.m3u8?token=opaque"
+        val dashUrl = "https://player.vimeo.com/play/c/76979871/dash.mpd?token=opaque"
+        var requestedUrl = ""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = error("Fallback must pass explicit safe headers")
+
+            override suspend fun get(url: String, headers: Map<String, String>): String {
+                requestedUrl = url
+                return """{"request":{"files":{"hls":{"link":"$hlsUrl"},"dash":{"link":"$dashUrl"}}}}"""
+            }
+
+            override suspend fun postJson(url: String, body: String): String = error("Unexpected POST")
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+            ): String = error("Unexpected POST")
+        }
+
+        val parsed = socialPlatformExtractionStrategy(MediaPlatform.Vimeo).extractAdditionalMedia(
+            pageUrl = pageUrl,
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "vimeo-adaptive-manifest-test",
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
+        )
+
+        assertEquals("https://player.vimeo.com/video/76979871/config", requestedUrl)
+        assertEquals(listOf(hlsUrl, dashUrl), parsed?.mediaUrls)
+    }
+
+    @Test
+    fun publicFallbackDoesNotFetchUrlsOutsideTheRecognizedPlatformDomain() = runTest {
+        var requestCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String {
+                requestCount++
+                return ""
+            }
+
+            override suspend fun get(url: String, headers: Map<String, String>): String {
+                requestCount++
+                return ""
+            }
+
+            override suspend fun postJson(url: String, body: String): String = ""
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+            ): String = ""
+        }
+
+        val parsed = socialPlatformExtractionStrategy(MediaPlatform.Reddit).extractAdditionalMedia(
+            pageUrl = "https://reddit.com.attacker.example/r/example/comments/abc123/post/",
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "invalid-host-test",
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
+        )
+
+        assertEquals(null, parsed)
+        assertEquals(0, requestCount)
     }
 
     private fun link(platform: MediaPlatform) =

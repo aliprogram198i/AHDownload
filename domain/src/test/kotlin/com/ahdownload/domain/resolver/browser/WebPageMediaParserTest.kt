@@ -162,4 +162,17 @@ class WebPageMediaParserTest {
             result.mediaUrls,
         )
     }
+
+    @Test
+    fun extractsSnapchatCdnVideoWithOpaqueFileExtensionFromJsonLd() {
+        val mediaUrl = "https://cf-st.sc-cdn.net/d/kKJHIR1QAznRKK9jgYYDq.27.IRZXSOY?mo=opaque&uc=46"
+        val html = """<script type="application/ld+json">{"contentUrl":"$mediaUrl"}</script>"""
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://www.snapchat.com/spotlight/example",
+        )
+
+        assertEquals(listOf(mediaUrl), result.mediaUrls)
+    }
 }
