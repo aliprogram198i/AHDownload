@@ -228,7 +228,8 @@ class WebVideoPageResolverTest {
                 context["failure_category"] == "DNS_FAILURE"
         })
         val serializedEvents = events.joinToString(" ") { (type, context) -> "$type $context" }
-        assertFalse(serializedEvents.contains("private.example"))
+        assertFalse(serializedEvents.contains("https://"))
+        assertFalse(serializedEvents.contains("/watch"))
         assertFalse(serializedEvents.contains("never-log"))
     }
 
