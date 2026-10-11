@@ -3,7 +3,6 @@ package com.ahdownload.domain.resolver.web
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaKind
-import com.ahdownload.domain.model.MediaLink
 import com.ahdownload.domain.resolver.FailureCode
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.domain.resolver.MediaContainer
@@ -17,7 +16,6 @@ import okhttp3.Dns
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.IOException
 import java.net.Inet4Address
@@ -384,7 +382,7 @@ class WebDownloadResolver(
         if (host.matches(Regex("""\d{1,3}(?:\.\d{1,3}){3}"""))) {
             val octets = host.split('.').mapNotNull(String::toIntOrNull)
             if (octets.size != 4 || octets.any { it !in 0..255 }) return false
-            val address = InetAddress.getByAddress(octets.map(Int::toByte).toByteArray())
+            val address = InetAddress.getByAddress(octets.map { it.toByte() }.toByteArray())
             return !isNonPublicAddress(address)
         }
         return host.contains('.') && !host.startsWith('.') && !host.endsWith('.')
