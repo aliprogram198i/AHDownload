@@ -25,7 +25,13 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.net.ConnectException
+import java.net.InterruptedIOException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.InetAddress
+import javax.net.ssl.SSLException
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -51,12 +57,14 @@ class WebVideoPageResolver(
             )
         }
 
+        var resolverStage = "PAGE_FETCH"
         try {
             // Only HTTP responses that do not yield HTML can use the WebView fallback.
             // Transport, DNS, unsafe-redirect, and cancellation errors must not be converted
             // into a second navigation path.
-            val page = fetchPage(initial)
+            val page = fetchPage(initial, request)
             val pageUrl = page?.finalUrl ?: initial.toString()
+            resolverStage = "HTML_PARSE"
             val parsedPage = page?.let { WebPageMediaParser.parse(it.html, it.finalUrl) }
                 ?: ParsedPageMedia(title = null, thumbnailUrl = null, durationMs = null, mediaUrls = emptyList())
             val parsedHints = parsedPage.mediaUrls.mapNotNull { raw ->
@@ -78,18 +86,33 @@ class WebVideoPageResolver(
             val staticHints = ((page?.let { extractHints(it.html, it.finalUrl) } ?: emptyList()) + parsedHints)
                 .distinctBy { it.url }
                 .take(MAX_CANDIDATES * 3)
-            var candidates = buildCandidates(pageUrl, staticHints)
+            resolverStage = "STATIC_MEDIA_PROBE"
+            var candidates = buildCandidates(pageUrl, staticHints, request, resolverStage)
             var browserSession: BrowserMediaSession? = null
 
             // Only open the WebView when server-delivered HTML did not yield a valid
             // source. This lets JavaScript-driven players expose their real media requests
             // without adding browser startup latency to ordinary HTML5 pages.
             if (candidates.isEmpty() && browserMediaSessionProvider != null) {
+                resolverStage = "BROWSER_FALLBACK"
                 browserSession = try {
                     browserMediaSessionProvider.snapshot(pageUrl, MediaPlatform.Web)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
+                    log(
+                        DiagnosticLevel.WARNING,
+                        "WEB_VIDEO_BROWSER_FALLBACK_FAILED",
+                        "تعذر الحصول على جلسة المتصفح لاكتشاف الوسائط",
+                        request,
+                        mapOf(
+                            "failure_stage" to resolverStage,
+                            "failure_category" to "BROWSER_SESSION_FAILURE",
+                            "exception_type" to error.javaClass.simpleName,
+                            "host" to hostOf(pageUrl),
+                        ),
+                        error,
+                    )
                     null
                 }
                 val observedPageUrl = safeHttpUrl(browserSession?.finalUrl, pageUrl) ?: pageUrl
@@ -111,7 +134,8 @@ class WebVideoPageResolver(
                         requestHeaders = browserSession?.requestHeadersByUrl?.get(raw).orEmpty(),
                     )
                 }.distinctBy { it.url }
-                candidates = buildCandidates(observedPageUrl, observedHints)
+                resolverStage = "BROWSER_MEDIA_PROBE"
+                candidates = buildCandidates(observedPageUrl, observedHints, request, resolverStage)
             }
 
             if (candidates.isEmpty()) {
@@ -178,7 +202,12 @@ class WebVideoPageResolver(
                 "WEB_VIDEO_PAGE_FAILED",
                 error.javaClass.simpleName,
                 request,
-                mapOf("exception_type" to error.javaClass.simpleName),
+                mapOf(
+                    "exception_type" to error.javaClass.simpleName,
+                    "failure_stage" to resolverStage,
+                    "failure_category" to failureCategory(error),
+                ),
+                error,
             )
             ResolverResult.Failure(
                 FailureCode.ResolverUnavailable,
@@ -187,20 +216,19 @@ class WebVideoPageResolver(
         }
     }
 
-    private fun fetchPage(initial: HttpUrl): Page? {
+    private fun fetchPage(initial: HttpUrl, resolverRequest: ResolverRequest): Page? {
         var current = initial
         var redirects = 0
         while (true) {
             if (!isAllowedDestination(current)) throw UnsafeDestinationException()
-            val response = client.newCall(
-                Request.Builder()
-                    .url(current)
-                    .get()
-                    .header("User-Agent", USER_AGENT)
-                    .header("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5")
-                    .header("Accept-Encoding", "identity")
-                    .build(),
-            ).execute()
+            val pageRequest = Request.Builder()
+                .url(current)
+                .get()
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5")
+                .header("Accept-Encoding", "identity")
+                .build()
+            val response = executeLogged(pageRequest, resolverRequest, "PAGE_FETCH")
             val location = response.header("Location")
             if (response.code in REDIRECT_CODES && !location.isNullOrBlank()) {
                 val next = current.resolve(location)?.let(::preferHttps)
@@ -247,7 +275,13 @@ class WebVideoPageResolver(
         return output.toByteArray()
     }
 
-    private fun probe(initial: HttpUrl, method: Method, headers: Map<String, String> = emptyMap()): Probe {
+    private fun probe(
+        initial: HttpUrl,
+        method: Method,
+        headers: Map<String, String>,
+        resolverRequest: ResolverRequest,
+        stage: String,
+    ): Probe {
         var current = initial
         var redirects = 0
         while (true) {
@@ -263,7 +297,7 @@ class WebVideoPageResolver(
             if (method == Method.HEAD) builder.head()
             else builder.get().header("Range", "bytes=0-0")
 
-            val response = client.newCall(builder.build()).execute()
+            val response = executeLogged(builder.build(), resolverRequest, "${stage}_${method.name}")
             val location = response.header("Location")
             if (response.code in REDIRECT_CODES && !location.isNullOrBlank()) {
                 val next = current.resolve(location)?.let(::preferHttps)
@@ -289,15 +323,20 @@ class WebVideoPageResolver(
         }
     }
 
-    private fun buildCandidates(pageUrl: String, hints: List<Hint>): List<MediaCandidate> =
+    private fun buildCandidates(
+        pageUrl: String,
+        hints: List<Hint>,
+        resolverRequest: ResolverRequest,
+        stage: String,
+    ): List<MediaCandidate> =
         hints.take(MAX_CANDIDATES).mapNotNull { hint ->
             val mediaUrl = pageUrl.toHttpUrlOrNull()?.resolve(hint.url)?.let(::preferHttps) ?: return@mapNotNull null
             if (!isAllowedDestination(mediaUrl)) return@mapNotNull null
             val requestHeaders = safeMediaHeaders(hint.requestHeaders + ("Referer" to pageUrl))
             val response = try {
-                val head = probe(mediaUrl, Method.HEAD, requestHeaders)
+                val head = probe(mediaUrl, Method.HEAD, requestHeaders, resolverRequest, stage)
                 if (head.status in 200..299 && !head.contentType.isNullOrBlank()) head
-                else probe(mediaUrl, Method.RANGE, requestHeaders)
+                else probe(mediaUrl, Method.RANGE, requestHeaders, resolverRequest, stage)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -531,6 +570,7 @@ class WebVideoPageResolver(
         reason: String,
         request: ResolverRequest,
         values: Map<String, String>,
+        throwable: Throwable? = null,
     ) {
         logger.log(
             level,
@@ -542,8 +582,74 @@ class WebVideoPageResolver(
                 put("operation_id", request.operationId ?: "none")
                 putAll(values)
             },
-            null,
+            throwable,
         )
+    }
+
+    private fun executeLogged(
+        callRequest: Request,
+        resolverRequest: ResolverRequest,
+        stage: String,
+    ): okhttp3.Response {
+        val startedAtNanos = System.nanoTime()
+        val host = callRequest.url.host.lowercase(Locale.ROOT)
+        return try {
+            val response = client.newCall(callRequest).execute()
+            log(
+                level = if (response.isSuccessful) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                event = "HTTP_REQUEST",
+                reason = "HTTP request completed",
+                request = resolverRequest,
+                values = mapOf(
+                    "request_stage" to stage,
+                    "request_method" to callRequest.method,
+                    "host" to host,
+                    "http_status" to response.code.toString(),
+                    "duration_ms" to ((System.nanoTime() - startedAtNanos) / 1_000_000L).toString(),
+                    "network_outcome" to if (response.isSuccessful) "SUCCESS" else "HTTP_ERROR",
+                ),
+            )
+            response
+        } catch (error: IOException) {
+            log(
+                level = DiagnosticLevel.WARNING,
+                event = "HTTP_REQUEST",
+                reason = "HTTP request failed before a response was received",
+                request = resolverRequest,
+                values = mapOf(
+                    "request_stage" to stage,
+                    "request_method" to callRequest.method,
+                    "host" to host,
+                    "duration_ms" to ((System.nanoTime() - startedAtNanos) / 1_000_000L).toString(),
+                    "network_outcome" to "FAILED",
+                    "failure_category" to failureCategory(error),
+                    "exception_type" to error.javaClass.simpleName,
+                ),
+                throwable = error,
+            )
+            throw error
+        }
+    }
+
+    private fun failureCategory(error: Throwable): String {
+        var current: Throwable? = error
+        var depth = 0
+        while (current != null && depth < 6) {
+            when (current) {
+                is SocketTimeoutException, is InterruptedIOException -> return "TIMEOUT"
+                is UnknownHostException -> return "DNS_FAILURE"
+                is SSLException -> return "TLS_FAILURE"
+                is ConnectException -> return "CONNECTION_FAILURE"
+                is SocketException -> {
+                    val message = current.message.orEmpty().lowercase(Locale.ROOT)
+                    return if ("reset" in message || "broken pipe" in message) "CONNECTION_RESET" else "SOCKET_FAILURE"
+                }
+                is IOException -> return "IO_FAILURE"
+            }
+            current = current.cause
+            depth++
+        }
+        return "IO_FAILURE"
     }
 
     private data class Page(
