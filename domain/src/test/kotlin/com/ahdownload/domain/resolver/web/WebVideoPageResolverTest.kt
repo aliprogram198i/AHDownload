@@ -128,6 +128,61 @@ class WebVideoPageResolverTest {
     }
 
     @Test
+    fun upgradesInitialHttpPageUrlToHttpsBeforeRequest() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val resolver = WebVideoPageResolver(client = client(requests, listOf(
+            response(200, mapOf("Content-Type" to "text/html"), "<html><title>Plain page</title></html>"),
+        )))
+
+        val result = resolver.resolve(request("http://site.example/watch/episode-1"))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(FailureCode.NoCandidates, (result as ResolverResult.Failure).code)
+        assertEquals(1, requests.size)
+        assertEquals("https://site.example/watch/episode-1", requests.single().url.toString())
+    }
+
+    @Test
+    fun upgradesHttpMediaSourceToHttpsBeforeProbingIt() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val html = """
+            <html><head><title>Media Page</title></head>
+            <body><video><source src="http://cdn.example.com/media/movie.mp4" type="video/mp4"></video></body></html>
+        """.trimIndent()
+        val resolver = WebVideoPageResolver(client = client(requests, listOf(
+            response(200, mapOf("Content-Type" to "text/html"), html),
+            response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "12345")),
+        )))
+
+        val result = resolver.resolve(request("https://site.example/watch/movie"))
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(2, requests.size)
+        assertEquals("https://cdn.example.com/media/movie.mp4", requests[1].url.toString())
+        assertEquals(
+            "https://cdn.example.com/media/movie.mp4",
+            (result as ResolverResult.Success).candidates.single().sourceUrl,
+        )
+    }
+
+    @Test
+    fun upgradesHttpRedirectTargetToHttpsBeforeFollowingIt() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val resolver = WebVideoPageResolver(client = client(requests, listOf(
+            response(301, mapOf("Location" to "http://site.example/watch/final")),
+            response(200, mapOf("Content-Type" to "text/html"), "<html><title>Final page</title></html>"),
+        )))
+
+        val result = resolver.resolve(request("https://site.example/watch/start"))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(FailureCode.NoCandidates, (result as ResolverResult.Failure).code)
+        assertEquals(2, requests.size)
+        assertEquals("https://site.example/watch/start", requests[0].url.toString())
+        assertEquals("https://site.example/watch/final", requests[1].url.toString())
+    }
+
+    @Test
     fun rejectsLocalPageBeforeMakingNetworkRequest() = runBlocking {
         val requests = mutableListOf<Request>()
         val resolver = WebVideoPageResolver(client = client(requests, emptyList()))

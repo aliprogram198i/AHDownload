@@ -43,7 +43,7 @@ class WebVideoPageResolver(
     private val browserMediaSessionProvider: BrowserMediaSessionProvider? = null,
 ) {
     suspend fun resolve(request: ResolverRequest): ResolverResult = withContext(Dispatchers.IO) {
-        val initial = request.link.normalizedUrl.toHttpUrlOrNull()
+        val initial = request.link.normalizedUrl.toHttpUrlOrNull()?.let(::preferHttps)
         if (initial == null || !isAllowedDestination(initial)) {
             return@withContext ResolverResult.Failure(
                 FailureCode.InvalidRequest,
@@ -203,7 +203,7 @@ class WebVideoPageResolver(
             ).execute()
             val location = response.header("Location")
             if (response.code in REDIRECT_CODES && !location.isNullOrBlank()) {
-                val next = current.resolve(location)
+                val next = current.resolve(location)?.let(::preferHttps)
                 response.close()
                 if (next == null || !isAllowedDestination(next)) throw UnsafeDestinationException()
                 if (redirects >= MAX_REDIRECTS) throw IOException("Redirect limit exceeded")
@@ -266,7 +266,7 @@ class WebVideoPageResolver(
             val response = client.newCall(builder.build()).execute()
             val location = response.header("Location")
             if (response.code in REDIRECT_CODES && !location.isNullOrBlank()) {
-                val next = current.resolve(location)
+                val next = current.resolve(location)?.let(::preferHttps)
                 response.close()
                 if (next == null || !isAllowedDestination(next)) throw UnsafeDestinationException()
                 if (redirects >= MAX_REDIRECTS) throw IOException("Redirect limit exceeded")
@@ -291,7 +291,7 @@ class WebVideoPageResolver(
 
     private fun buildCandidates(pageUrl: String, hints: List<Hint>): List<MediaCandidate> =
         hints.take(MAX_CANDIDATES).mapNotNull { hint ->
-            val mediaUrl = pageUrl.toHttpUrlOrNull()?.resolve(hint.url) ?: return@mapNotNull null
+            val mediaUrl = pageUrl.toHttpUrlOrNull()?.resolve(hint.url)?.let(::preferHttps) ?: return@mapNotNull null
             if (!isAllowedDestination(mediaUrl)) return@mapNotNull null
             val requestHeaders = safeMediaHeaders(hint.requestHeaders + ("Referer" to pageUrl))
             val response = try {
@@ -358,7 +358,7 @@ class WebVideoPageResolver(
 
     private fun safeHttpUrl(value: String?, baseUrl: String): String? {
         if (value.isNullOrBlank()) return null
-        val parsed = runCatching { baseUrl.toHttpUrlOrNull()?.resolve(value) }.getOrNull() ?: return null
+        val parsed = runCatching { baseUrl.toHttpUrlOrNull()?.resolve(value)?.let(::preferHttps) }.getOrNull() ?: return null
         return parsed.toString().takeIf { isAllowedDestination(parsed) }
     }
 
@@ -499,6 +499,14 @@ class WebVideoPageResolver(
         "mpd" -> "application/dash+xml"
         else -> "application/octet-stream"
     }
+
+    /**
+     * Prefer encrypted transport for user-supplied and page-discovered URLs.
+     * This avoids Android cleartext-policy failures without globally enabling HTTP.
+     * HTTP-only hosts may fail TLS negotiation; the resolver never downgrades back to HTTP.
+     */
+    private fun preferHttps(url: HttpUrl): HttpUrl =
+        if (url.scheme == "http") url.newBuilder().scheme("https").build() else url
 
     private fun isAllowedDestination(url: HttpUrl): Boolean {
         if (url.scheme != "http" && url.scheme != "https") return false
