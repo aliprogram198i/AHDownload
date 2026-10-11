@@ -24,11 +24,11 @@ class FfmpegProtocolSupportTest {
 
         assertTrue(
             "The packaged FFmpeg runtime lacks HTTPS input support required by HLS/DASH URLs",
-            Regex("""(?m)^\\s*https\\s*$""").containsMatchIn(inputProtocols),
+            Regex("""(?m)^\s*https\s*$""").containsMatchIn(inputProtocols),
         )
         assertTrue(
             "The packaged FFmpeg runtime lacks HLS demux/input support",
-            Regex("""(?m)^\\s*hls\\s*$""").containsMatchIn(inputProtocols),
+            Regex("""(?m)^\s*hls\s*$""").containsMatchIn(inputProtocols),
         )
     }
 }
