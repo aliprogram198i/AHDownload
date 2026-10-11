@@ -33,9 +33,9 @@ import java.util.concurrent.TimeUnit
 /**
  * Discovers downloadable video resources declared by a normal HTML page.
  *
- * It supports HTML5 video/source tags, Open Graph/Twitter video metadata and
- * explicit MP4/WebM/HLS/DASH URLs exposed in page markup. It does not execute
- * JavaScript, defeat DRM or bypass an authenticated session.
+ * It supports HTML5 video/source tags, Open Graph/Twitter video metadata, script data
+ * exposed by the shared parser, and browser-observed media requests as a fallback.
+ * It does not defeat DRM or bypass an authenticated session.
  */
 class WebVideoPageResolver(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
@@ -79,12 +79,7 @@ class WebVideoPageResolver(
                     explicitVideo = true,
                 )
             }
-            val staticHints = ((page?.let { extractHints(it.html, it.finalUrl) } ?: emptyList()) + parsedHints.mediaUrls.mapNotNull { raw ->
-                val parsedUrl = raw.toHttpUrlOrNull() ?: return@mapNotNull null
-                val ext = extensionFromUrl(raw)
-                if (ext !in VIDEO_EXTENSIONS && ext !in MANIFEST_EXTENSIONS) return@mapNotNull null
-                Hint(url = parsedUrl.toString(), label = null, height = inferHeight(null, raw), explicitVideo = true)
-            })
+            val staticHints = ((page?.let { extractHints(it.html, it.finalUrl) } ?: emptyList()) + parsedHints)
                 .distinctBy { it.url }
                 .take(MAX_CANDIDATES * 3)
             var candidates = buildCandidates(pageUrl, staticHints)
