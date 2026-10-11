@@ -711,7 +711,7 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("root_cause=TLS_FAILURE"))
         assertTrue(report.contains("classification=NETWORK"))
         assertTrue(report.contains("action=INSPECT_REQUEST_CONTEXT"))
-        assertTrue(report.contains("FAILURE_CHAIN\\nresolver -> page_request_failed:TLS_FAILURE -> resolution_failed_without_candidates"))
+        assertTrue(report.contains("FAILURE_CHAIN\nresolver -> page_request_failed:TLS_FAILURE -> resolution_failed_without_candidates"))
     }
 
 
