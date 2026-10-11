@@ -8,6 +8,12 @@ class DownloadCoordinator(
     private val clock: DownloadExecutionClock = SystemDownloadExecutionClock,
     private val progressPersistIntervalMs: Long = DEFAULT_PROGRESS_PERSIST_INTERVAL_MS,
     private val isPauseRequested: () -> Boolean = { false },
+    /**
+     * Optional app-aware cancellation intent. When supplied, null means this worker was
+     * interrupted/replaced rather than explicitly paused or cancelled by the user.
+     * Omitted by existing domain callers to preserve legacy cancellation behavior.
+     */
+    private val requestedCancellationState: (() -> DownloadState?)? = null,
 ) {
     init {
         require(progressPersistIntervalMs >= 0) {
@@ -56,9 +62,19 @@ class DownloadCoordinator(
                 }
             }
         } catch (cancelled: CancellationException) {
-            val state = if (isPauseRequested()) DownloadState.Paused else DownloadState.Cancelled
-            latestRecord = queue.applyState(task.id, state, clock.nowEpochMs())
-            onPersistedState(state)
+            val state = if (requestedCancellationState != null) {
+                requestedCancellationState.invoke()
+            } else if (isPauseRequested()) {
+                DownloadState.Paused
+            } else {
+                DownloadState.Cancelled
+            }
+            // Do not overwrite persisted task state when WorkManager replaces this worker or
+            // stops it for a system lifecycle event. A newer worker/user action owns that state.
+            if (state != null) {
+                latestRecord = queue.applyState(task.id, state, clock.nowEpochMs())
+                onPersistedState(state)
+            }
             throw cancelled
         }
 
