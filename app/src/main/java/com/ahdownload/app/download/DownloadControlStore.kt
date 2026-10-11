@@ -23,10 +23,10 @@ class DownloadControlStore(context: Context) {
     fun markCancelled(taskId: String): DownloadControlIntentSnapshot =
         writeIntent(taskId, INTENT_CANCELLED, paused = false)
 
-    fun markActive(taskId: String): DownloadControlIntentSnapshot =
-        writeIntent(taskId, INTENT_ACTIVE, paused = false)
+    /** Active/enqueued work has no pending pause/cancel request; clear the prior control keys. */
+    fun markActive(taskId: String) = clearPaused(taskId)
 
-    /** Clears both current and legacy control keys; use markActive when scheduling work. */
+    /** Clears both current and legacy control keys. */
     fun clearPaused(taskId: String) {
         preferences.edit()
             .remove(pausedKey(taskId))
@@ -88,7 +88,6 @@ class DownloadControlStore(context: Context) {
         const val PAUSED_PREFIX = "paused_"
         const val INTENT_PREFIX = "intent_"
         const val TOKEN_PREFIX = "intent_token_"
-        const val INTENT_ACTIVE = "ACTIVE"
         const val INTENT_PAUSED = "PAUSED"
         const val INTENT_CANCELLED = "CANCELLED"
         const val LEGACY_INTENT_TOKEN = "legacy-explicit-intent"
