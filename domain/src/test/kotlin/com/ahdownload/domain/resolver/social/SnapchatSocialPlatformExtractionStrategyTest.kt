@@ -21,7 +21,10 @@ class SnapchatSocialPlatformExtractionStrategyTest {
     fun resolvesRequestedSpotlightContentUrlWithoutMistakingThumbnailForVideo() = runTest {
         val events = mutableListOf<Pair<String, Map<String, String>>>()
         val resolver = resolver(
-            html = spotlightHtml(contentUrl = VIDEO_URL),
+            html = spotlightHtml(contentUrl = VIDEO_URL).replace(
+                "<html><body>",
+                """<html><head><meta property="og:video" content="https://cdn.example.com/unrelated-recommended-video.mp4"></head><body>""",
+            ),
             logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context },
         )
 
