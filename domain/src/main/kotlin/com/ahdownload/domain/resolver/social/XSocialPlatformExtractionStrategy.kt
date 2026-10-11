@@ -4,7 +4,6 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.HttpTextClient
-import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -33,9 +32,10 @@ internal class XSocialPlatformExtractionStrategy : StandardSocialPlatformExtract
         operationId: String?,
         logger: DiagnosticLogger,
     ): ParsedPageMedia? {
-        // Avoid extra network traffic when an earlier extraction path already
-        // found media. The syndication fallback is deliberately bounded.
-        if (browserMediaCount > 0 || pageFallbackMediaCount > 0) return null
+        // Browser-observed URLs retain the original request context and are preferred.
+        // HTML-only candidates may be stale, poster-like, or incomplete, so still
+        // consult syndication when WebView did not observe a media request.
+        if (browserMediaCount > 0) return null
 
         val statusId = extractStatusId(pageUrl) ?: return null
         val requestUrl = "$SYNDICATION_ENDPOINT?id=$statusId&lang=en&token=0"
