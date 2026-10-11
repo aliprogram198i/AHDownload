@@ -540,6 +540,122 @@ class SocialPlatformResolverTest {
         }
     }
 
+    @Test
+    fun knownPublicPlatformFallbacksExtractDirectMediaFromFirstPartyPayloads() = runTest {
+        data class FallbackCase(
+            val platform: MediaPlatform,
+            val pageUrl: String,
+            val expectedEndpoint: String,
+            val response: String,
+            val expectedMediaUrl: String,
+        )
+
+        val cases = listOf(
+            FallbackCase(
+                MediaPlatform.Facebook,
+                "https://www.facebook.com/reel/123456789/",
+                "https://m.facebook.com/reel/123456789/",
+                """{"video_url":"https://video.xx.fbcdn.net/v/t42.1790-2/clip.mp4?token=opaque"}""",
+                "https://video.xx.fbcdn.net/v/t42.1790-2/clip.mp4?token=opaque",
+            ),
+            FallbackCase(
+                MediaPlatform.X,
+                "https://x.com/example/status/123456789",
+                "https://cdn.syndication.twimg.com/tweet-result?id=123456789&lang=en",
+                """{"url":"https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/clip.mp4?tag=12"}""",
+                "https://video.twimg.com/ext_tw_video/123/pu/vid/avc1/clip.mp4?tag=12",
+            ),
+            FallbackCase(
+                MediaPlatform.Reddit,
+                "https://www.reddit.com/r/example/comments/abc123/post/",
+                "https://www.reddit.com/r/example/comments/abc123/post/.json?raw_json=1",
+                """{"fallback_url":"https://v.redd.it/abc123/DASH_720.mp4?source=fallback"}""",
+                "https://v.redd.it/abc123/DASH_720.mp4?source=fallback",
+            ),
+            FallbackCase(
+                MediaPlatform.Vimeo,
+                "https://vimeo.com/76979871",
+                "https://player.vimeo.com/video/76979871/config",
+                """{"url":"https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque"}""",
+                "https://vod-adaptive-ak.vimeocdn.com/abcdef/clip.mp4?token=opaque",
+            ),
+        )
+
+        for (testCase in cases) {
+            var requestedUrl = ""
+            var requestedHeaders = emptyMap<String, String>()
+            val client = object : HttpTextClient {
+                override suspend fun get(url: String): String = error("Fallback must pass explicit safe headers")
+
+                override suspend fun get(url: String, headers: Map<String, String>): String {
+                    requestedUrl = url
+                    requestedHeaders = headers
+                    return testCase.response
+                }
+
+                override suspend fun postJson(url: String, body: String): String = error("Unexpected POST")
+
+                override suspend fun postJson(
+                    url: String,
+                    body: String,
+                    headers: Map<String, String>,
+                ): String = error("Unexpected POST")
+            }
+            val strategy = socialPlatformExtractionStrategy(testCase.platform)
+            val parsed = strategy.extractAdditionalMedia(
+                pageUrl = testCase.pageUrl,
+                browserMediaCount = 0,
+                pageFallbackMediaCount = 0,
+                pageClient = client,
+                operationId = "public-fallback-test",
+                logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
+            )
+
+            assertEquals(testCase.platform.name, testCase.expectedEndpoint, requestedUrl)
+            assertTrue(
+                "${testCase.platform} fallback must not forward credentials",
+                requestedHeaders.keys.none { it.equals("Cookie", true) || it.equals("Authorization", true) },
+            )
+            assertTrue(parsed?.mediaUrls.orEmpty().contains(testCase.expectedMediaUrl))
+        }
+    }
+
+    @Test
+    fun publicFallbackDoesNotFetchUrlsOutsideTheRecognizedPlatformDomain() = runTest {
+        var requestCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String {
+                requestCount++
+                return ""
+            }
+
+            override suspend fun get(url: String, headers: Map<String, String>): String {
+                requestCount++
+                return ""
+            }
+
+            override suspend fun postJson(url: String, body: String): String = ""
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+            ): String = ""
+        }
+
+        val parsed = socialPlatformExtractionStrategy(MediaPlatform.Reddit).extractAdditionalMedia(
+            pageUrl = "https://reddit.com.attacker.example/r/example/comments/abc123/post/",
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "invalid-host-test",
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, _, _, _, _, _ -> },
+        )
+
+        assertEquals(null, parsed)
+        assertEquals(0, requestCount)
+    }
+
     private fun link(platform: MediaPlatform) =
         com.ahdownload.domain.model.MediaLink(
             originalUrl = "https://example.com/post",
