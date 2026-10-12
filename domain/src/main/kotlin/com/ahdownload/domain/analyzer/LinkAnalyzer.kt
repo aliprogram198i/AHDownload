@@ -14,7 +14,7 @@ class LinkAnalyzer {
         val normalized = unwrapRedirect(extracted)
         val uri = runCatching { URI(normalized) }.getOrNull() ?: return null
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
-        if (scheme !in setOf("http", "https")) return null
+        if (scheme != "https") return null
 
         val host = normalizeHost(uri.host) ?: return null
         val kind = if (isSnapchatSpotlight(uri)) MediaKind.Video else detectMediaKind(uri)
