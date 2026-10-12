@@ -48,7 +48,7 @@ jobs:
           set -uo pipefail
           mkdir -p cloud-test-results
           set +e
-          gradle --no-daemon --no-parallel --max-workers=2 --stacktrace testDebugUnitTest assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee cloud-test-results/build-and-unit-tests.log
+          gradle --no-daemon --no-parallel --max-workers=2 --stacktrace :domain:test testDebugUnitTest assembleDebug :app:assembleDebugAndroidTest 2>&1 | tee cloud-test-results/build-and-unit-tests.log
           test_exit_code=$?
           printf '%s\n' "$test_exit_code" > cloud-test-results/build-exit-code.txt
           exit "$test_exit_code"
