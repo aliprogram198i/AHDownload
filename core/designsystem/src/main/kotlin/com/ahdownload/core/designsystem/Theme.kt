@@ -20,7 +20,7 @@ enum class AHThemeMode(
     LIGHT("light", "Modern Indigo Light", "واجهة فاتحة بخلفيات هادئة ولمسات بنفسجية نيلية"),
     DARK("dark", "Indigo Dark", "واجهة داكنة بألوان نيلية وتباين مريح"),
     DARK_TECH("dark_tech", "Dark Tech", "فحمي عميق مع لمسات نيلية وسماوية"),
-)
+}
 
 private val AhDarkColors = darkColorScheme(
     primary = Color(0xFFA99BFF),
