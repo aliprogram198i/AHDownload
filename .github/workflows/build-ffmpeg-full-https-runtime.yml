@@ -46,7 +46,9 @@ jobs:
       - name: Install Android platform
         run: |
           set -euo pipefail
+          set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          set -o pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35"
 
       - name: Cache Android NDK r27c
