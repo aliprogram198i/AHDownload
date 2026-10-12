@@ -87,7 +87,7 @@ class FfmpegHttpsProtocolSmokeTest {
     private fun sanitize(value: String): String =
         value
             .replace(Regex("""https?://[^\s]+"""), "[url-redacted]")
-            .replace(Regex("""(?i)(token|sig|signature|auth|cookie|key)=?[^&\s]+"""), "$1=[redacted]")
+            .replace(Regex("""(?i)(token|sig|signature|auth|cookie|key)=?[^&\s]+"""), "[parameter-redacted]")
             .replace('\n', ' ')
             .take(1800)
 
