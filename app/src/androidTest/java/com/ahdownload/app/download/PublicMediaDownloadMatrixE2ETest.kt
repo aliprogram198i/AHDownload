@@ -25,14 +25,14 @@ import org.junit.runner.RunWith
 import java.util.UUID
 
 /**
- * Live acceptance matrix for the exact 20 public URLs requested.
+ * Live acceptance matrix for the configured public media URLs (including the XNXX full-size assertion).
  * Uses the production LinkAnalyzer, HomeResolver, CandidateValidator, WorkManager pipeline,
  * and MediaStore publication. No mocked HTTP responses or fabricated media candidates.
  */
 @RunWith(AndroidJUnit4::class)
 class PublicMediaDownloadMatrixE2ETest {
     @Test(timeout = 3_300_000L)
-    fun allTwentyPublicMediaUrlsResolveDownloadAndPublishValidBytes() = runBlocking {
+    fun allConfiguredPublicMediaUrlsResolveDownloadAndPublishValidBytes() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = context.applicationContext as AHDownloadApplication
         val resolver = HomeResolver(
@@ -128,15 +128,21 @@ class PublicMediaDownloadMatrixE2ETest {
                     // A positive file and a media-looking signature do not prove that the
                     // whole source was downloaded. Compare the published byte count against
                     // an independently observed total size whenever available.
-                    val expectedBytes = validation.candidate.validatedContentLengthBytes
-                        ?: record.totalBytes?.takeIf { it > 0L }
+                    // The resolver's validated source length is independent of the bytes
+                    // observed after publishing. A terminal download record's totalBytes can
+                    // be only the bytes transferred, so it must not be used to prove that
+                    // the source itself was fully downloaded for this acceptance target.
+                    val validatedSourceBytes = validation.candidate.validatedContentLengthBytes
+                        ?.takeIf { it > 0L }
+                    if (target.id == "21_xnxx_arabic" && validatedSourceBytes == null) {
+                        lastFailure =
+                            "Candidate ${index + 1}: cannot prove full XNXX download because independently validated source size is unknown"
+                        continue
+                    }
+                    val expectedBytes = validatedSourceBytes ?: record.totalBytes?.takeIf { it > 0L }
                     if (expectedBytes != null && bytes != expectedBytes) {
                         lastFailure = "Candidate ${index + 1}: output size mismatch; expectedBytes=" +
                             "${expectedBytes}; publishedBytes=${bytes}"
-                        continue
-                    }
-                    if (target.id == "21_xnxx_arabic" && expectedBytes == null) {
-                        lastFailure = "Candidate ${index + 1}: cannot prove full download because total source size is unknown"
                         continue
                     }
 
