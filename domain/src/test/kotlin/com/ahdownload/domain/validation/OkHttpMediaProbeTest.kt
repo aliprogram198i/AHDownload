@@ -132,6 +132,91 @@ class OkHttpMediaProbeTest {
     }
 
     @Test
+    fun probesOneByteRangeWhenHeadHasNoTotalSize() = runTest {
+        val methods = mutableListOf<String>()
+        val ranges = mutableListOf<String?>()
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val request = chain.request()
+                methods += request.method
+                ranges += request.header("Range")
+                if (request.method == "HEAD") {
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .header("Content-Type", "video/mp4")
+                        .body(object : okhttp3.ResponseBody() {
+                            private val bytes = okio.Buffer().writeByte(0)
+                            override fun contentType() = "video/mp4".toMediaType()
+                            override fun contentLength() = -1L
+                            override fun source() = bytes
+                        })
+                        .build()
+                } else {
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(206)
+                        .message("Partial Content")
+                        .header("Content-Type", "video/mp4")
+                        .header("Content-Range", "bytes 0-0/123456")
+                        .body(byteArrayOf(0).toResponseBody("video/mp4".toMediaType()))
+                        .build()
+                }
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://cdn.example.com/unknown-length.mp4",
+            emptyMap(),
+            operationId = "op-head-unknown-size",
+        )
+
+        assertEquals(206, result.statusCode)
+        assertEquals(123456L, result.contentLengthBytes)
+        assertEquals(listOf("HEAD", "GET"), methods)
+        assertEquals(listOf(null, "bytes=0-0"), ranges)
+    }
+
+    @Test
+    fun doesNotTreatPartialBodyLengthAsWholeResourceSize() = runTest {
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                val request = chain.request()
+                if (request.method == "HEAD") {
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(405)
+                        .message("Method Not Allowed")
+                        .build()
+                } else {
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(206)
+                        .message("Partial Content")
+                        .header("Content-Type", "video/mp4")
+                        .header("Content-Length", "1")
+                        .body(byteArrayOf(0).toResponseBody("video/mp4".toMediaType()))
+                        .build()
+                }
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://cdn.example.com/range-without-total.mp4",
+            emptyMap(),
+            operationId = "op-no-content-range-total",
+        )
+
+        assertEquals(206, result.statusCode)
+        assertEquals(null, result.contentLengthBytes)
+    }
+
+    @Test
     fun retriesYouTube403WithoutSessionHeadersForGenericSessionContext() = runTest {
         val requestHeaders = mutableListOf<Map<String, String>>()
         val client = OkHttpClient.Builder()
