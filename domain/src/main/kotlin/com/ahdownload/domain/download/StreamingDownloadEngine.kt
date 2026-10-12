@@ -98,11 +98,13 @@ class StreamingDownloadEngine(
         }
         if (expectedBytes != null && declaredResponseTotal != null && expectedBytes != declaredResponseTotal) {
             response.body.close()
+            if (partialBytes > 0L && !discardPartial()) return
             onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
         }
         if (response.statusCode == 206 && declaredResponseTotal == null && expectedBytes == null) {
             response.body.close()
+            if (partialBytes > 0L && !discardPartial()) return
             onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
         }
