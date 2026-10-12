@@ -495,7 +495,7 @@ class DownloadWorker(
 
             val outputFile = java.io.File(task.destinationPath)
             val fastCopyFile = java.io.File(outputFile.parentFile, ".${outputFile.name}.fastcopy")
-            val extraction = try {
+            val extraction: kotlin.Result<java.io.File> = try {
                 AudioTranscoder()
                     .transcode(
                         inputFile = java.io.File(sourceTask.destinationPath),
@@ -568,7 +568,7 @@ class DownloadWorker(
                 )
                 throw cancelled
             } catch (error: Throwable) {
-                Result.failure(error)
+                kotlin.Result.failure(error)
             }
 
             if (extraction.isFailure) {
