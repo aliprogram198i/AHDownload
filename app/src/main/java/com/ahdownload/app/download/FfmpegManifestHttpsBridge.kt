@@ -67,7 +67,16 @@ internal class FfmpegManifestHttpsBridge(
         requireHttpUrl(url)
         val id = ids.getAndIncrement().toString(36)
         targets[id] = Target(url, forceManifest)
-        return "$root/resource/$id"
+
+        // FFmpeg's HLS demuxer checks segment extensions against an allowlist.
+        // Keep a safe extension hint on opaque proxy paths so .ts/.m4s/.mp4
+        // segments remain recognizable without disabling that security check.
+        val path = runCatching { URI(url).path.orEmpty() }.getOrDefault("")
+        val leaf = path.substringAfterLast('/')
+        val extension = leaf.substringAfterLast('.', "")
+            .takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) }
+        val suffix = extension?.let { "/resource.$it" }.orEmpty()
+        return "$root/resource/$id$suffix"
     }
 
     private fun addBase(url: String): String {
@@ -103,7 +112,7 @@ internal class FfmpegManifestHttpsBridge(
                 val id = parts.getOrNull(1)
                 val target = id?.let(targets::get)
                 val remoteUrl = when {
-                    parts.size == 2 && parts[0] == "resource" -> target?.url
+                    parts.size >= 2 && parts[0] == "resource" -> target?.url
                     parts.size >= 2 && parts[0] == "base" && target != null ->
                         resolveBase(target.url, parts.drop(2).joinToString("/"), local.rawQuery)
                     else -> null
