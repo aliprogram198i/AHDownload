@@ -9,7 +9,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.WindowCompat
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +94,18 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themeMode by remember { mutableStateOf(themePreferenceStore.read()) }
+            val systemDark = isSystemInDarkTheme()
+            val useDarkSystemBars = when (themeMode) {
+                AHThemeMode.SYSTEM -> systemDark
+                AHThemeMode.LIGHT -> false
+                AHThemeMode.DARK, AHThemeMode.DARK_TECH -> true
+            }
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !useDarkSystemBars
+                    isAppearanceLightNavigationBars = !useDarkSystemBars
+                }
+            }
             AHTheme(themeMode = themeMode) {
                 AHRoot(
                     themeMode = themeMode,
