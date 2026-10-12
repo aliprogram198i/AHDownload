@@ -37,6 +37,55 @@ class StreamingDownloadEngineTest {
     }
 
     @Test
+    fun doesNotCommitWhenBodyEndsBeforeDeclaredContentLength() = runTest {
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = 10,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("short".encodeToByteArray()),
+                ),
+            ),
+            sink = sink,
+        ).download(task(), states::add)
+
+        assertEquals(
+            DownloadFailure.IncompleteResponse(expectedBytes = 10, receivedBytes = 5),
+            assertIs<DownloadState.Failed>(states.last()).reason,
+        )
+        assertEquals(false, sink.committed)
+        assertEquals("short", sink.committedData())
+    }
+
+    @Test
+    fun usesValidatedExpectedLengthWhenResponseOmitsContentLength() = runTest {
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = null,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("short".encodeToByteArray()),
+                ),
+            ),
+            sink = sink,
+        ).download(task().copy(expectedBytes = 10), states::add)
+
+        assertEquals(
+            DownloadFailure.IncompleteResponse(expectedBytes = 10, receivedBytes = 5),
+            assertIs<DownloadState.Failed>(states.last()).reason,
+        )
+        assertEquals(false, sink.committed)
+    }
+
+    @Test
     fun forwardsTaskRequestHeadersToSource() = runTest {
         val source = CapturingSource(
             DownloadResponse(
