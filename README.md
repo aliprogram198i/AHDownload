@@ -29,3 +29,9 @@ AHDownload is being rebuilt from an empty repository with a modular Android arch
 Future work includes `feature:auth`, `feature:analyzer`, `feature:media`, `feature:history`, and further separation of `data:local`, `data:remote`, resolver, and downloader implementation details where that reduces coupling.
 
 Legacy resolver code, embedded Python, old storage logic, and previous UI are intentionally not carried forward.
+## Transport and device compatibility
+
+- The app minimum OS level is Android 7.0 (API 24). OS version support and CPU ABI support are separate requirements.
+- The currently pinned custom FFmpeg Full + HTTPS runtime is built with `armeabi-v7a`, `armeabi-v7a-neon`, and `x86` disabled. Native FFmpeg processing is therefore intended for `arm64-v8a` and `x86_64`; 32-bit-only devices need a separately built and tested runtime before they can be advertised as fully supported.
+- URL inputs and media candidates must use HTTPS. Scheme-less input is normalized to HTTPS; explicit HTTP links and downgrade targets are rejected rather than enabling global cleartext traffic.
+- App backup is disabled so local download records, preferences, favorites, and diagnostic data are not automatically included in Android backup.
