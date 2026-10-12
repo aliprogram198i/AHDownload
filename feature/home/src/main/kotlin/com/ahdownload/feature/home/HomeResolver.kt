@@ -75,30 +75,30 @@ class HomeResolver(
         val result = try {
             withTimeout(resolveTimeoutMs) {
                 when (link.platform) {
-            MediaPlatform.Web -> webVideoPageResolver.resolve(
-                ResolverRequest(link, operationId = operationId),
-            )
-            MediaPlatform.YouTube -> {
-                val request = ResolverRequest(link, operationId = operationId)
-                if (forceYouTubeFallbacks) {
-                    youtubeResolver.resolveWithFallbacks(request)
-                } else {
-                    youtubeResolver.resolve(request)
-                }
-            }
-            MediaPlatform.Instagram,
-            MediaPlatform.Facebook,
-            MediaPlatform.TikTok,
-            MediaPlatform.X,
-            MediaPlatform.Snapchat,
-            MediaPlatform.Pinterest,
-            MediaPlatform.Reddit,
-            MediaPlatform.Twitch,
-            MediaPlatform.Vimeo -> resolveSocial(link, operationId)
-            else -> ResolverResult.Failure(
-                com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
-                "المنصة غير مدعومة في المحرك الحالي.",
-            )
+                    MediaPlatform.Web -> webVideoPageResolver.resolve(
+                        ResolverRequest(link, operationId = operationId),
+                    )
+                    MediaPlatform.YouTube -> {
+                        val request = ResolverRequest(link, operationId = operationId)
+                        if (forceYouTubeFallbacks) {
+                            youtubeResolver.resolveWithFallbacks(request)
+                        } else {
+                            youtubeResolver.resolve(request)
+                        }
+                    }
+                    MediaPlatform.Instagram,
+                    MediaPlatform.Facebook,
+                    MediaPlatform.TikTok,
+                    MediaPlatform.X,
+                    MediaPlatform.Snapchat,
+                    MediaPlatform.Pinterest,
+                    MediaPlatform.Reddit,
+                    MediaPlatform.Twitch,
+                    MediaPlatform.Vimeo -> resolveSocial(link, operationId)
+                    else -> ResolverResult.Failure(
+                        com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
+                        "المنصة غير مدعومة في المحرك الحالي.",
+                    )
                 }
             }
         } catch (timeout: TimeoutCancellationException) {
