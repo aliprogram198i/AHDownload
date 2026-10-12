@@ -96,8 +96,8 @@ val useVerifiedFfmpegRuntime = useVerifiedFfmpegRuntimeProperty.orNull?.let { va
     value.toBoolean()
 } ?: false
 
-val verifiedFfmpegAar = layout.buildDirectory
-    .file("verified-ffmpeg/ahdownload-ffmpeg-full-https-8.1.9.aar")
+val verifiedFfmpegAar = rootProject.layout.projectDirectory
+    .file(".gradle/verified-ffmpeg/ahdownload-ffmpeg-full-https-8.1.9.aar")
     .get()
     .asFile
 
