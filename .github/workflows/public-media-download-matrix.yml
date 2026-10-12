@@ -1,9 +1,6 @@
 name: Internal Public Media Download Matrix
 
 on:
-  push:
-    branches:
-      - test/internal-media-download-matrix-2026-10-12
   pull_request:
     branches: ["main"]
   workflow_dispatch:
