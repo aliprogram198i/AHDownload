@@ -66,7 +66,7 @@ class LocalAtomicFileSinkTest {
         }
     }
 
-    private fun withTemporaryDirectory(block: (File) -> Unit) {
+    private suspend fun withTemporaryDirectory(block: suspend (File) -> Unit) {
         val directory = File(
             System.getProperty("java.io.tmpdir"),
             "ahdownload-sink-test-${System.nanoTime()}",
