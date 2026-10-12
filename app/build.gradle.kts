@@ -98,7 +98,6 @@ val useVerifiedFfmpegRuntime = useVerifiedFfmpegRuntimeProperty.orNull?.let { va
 
 val verifiedFfmpegAar = rootProject.layout.projectDirectory
     .file(".gradle/verified-ffmpeg/ahdownload-ffmpeg-full-https-8.1.9.aar")
-    .get()
     .asFile
 
 val prepareVerifiedFfmpegRuntimeAar by tasks.registering {
