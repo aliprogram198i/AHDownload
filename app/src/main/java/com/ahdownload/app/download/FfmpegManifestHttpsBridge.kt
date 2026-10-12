@@ -199,15 +199,37 @@ internal class FfmpegManifestHttpsBridge(
         }
     }
 
+    /**
+     * Resolve a child reference while retaining the signed query on a manifest URL
+     * when the child is relative and does not supply its own query.
+     */
+    private fun resolveManifestReference(base: URI, reference: URI): URI {
+        val resolved = base.resolve(reference)
+        if (
+            reference.isAbsolute ||
+            reference.rawAuthority != null ||
+            resolved.rawQuery != null ||
+            base.rawQuery.isNullOrBlank()
+        ) {
+            return resolved
+        }
+
+        val resolvedText = resolved.toString()
+        val fragmentIndex = resolvedText.indexOf('#')
+        val location = if (fragmentIndex >= 0) resolvedText.substring(0, fragmentIndex) else resolvedText
+        val fragment = if (fragmentIndex >= 0) resolvedText.substring(fragmentIndex) else ""
+        return URI("$location?${base.rawQuery}$fragment")
+    }
+
     private fun rewriteHls(text: String, finalUrl: String): String {
         val base = URI(finalUrl)
         return text.lineSequence().joinToString("\n") { line ->
             when {
                 line.trim().isEmpty() -> line
                 line.trim().startsWith("#") -> HLS_URI.replace(line) { m ->
-                    """URI="${addResource(base.resolve(URI(m.groupValues[1])).toString(), false)}""""
+                    """URI="${addResource(resolveManifestReference(base, URI(m.groupValues[1])).toString(), false)}""""
                 }
-                else -> addResource(base.resolve(URI(line.trim())).toString(), false)
+                else -> addResource(resolveManifestReference(base, URI(line.trim())).toString(), false)
             }
         }
     }
@@ -222,7 +244,7 @@ internal class FfmpegManifestHttpsBridge(
         var rewritten = BASE_URL.replace(text) { m ->
             val raw = xmlUnescape(m.groupValues[2].trim())
             val resolved = runCatching {
-                if (raw.isEmpty()) base.resolve(".") else base.resolve(URI(raw))
+                resolveManifestReference(base, if (raw.isEmpty()) URI(".") else URI(raw))
             }.getOrNull()
             if (resolved != null &&
                 (resolved.scheme.equals("http", true) || resolved.scheme.equals("https", true))
@@ -236,7 +258,7 @@ internal class FfmpegManifestHttpsBridge(
         val firstPeriod = PERIOD_OR_LOCATION.find(rewritten)
         val rootHasBase = existingBase != null && (firstPeriod == null || existingBase.range.first < firstPeriod.range.first)
         if (!rootHasBase) {
-            val defaultBase = addBase(base.resolve(".").toString())
+            val defaultBase = addBase(resolveManifestReference(base, URI(".")).toString())
             val programInfo = PROGRAM_INFO_END.find(rewritten)
             val insertAt = programInfo?.range?.last?.plus(1) ?: rootOpen.range.last + 1
             rewritten = rewritten.substring(0, insertAt) + "<BaseURL>$defaultBase</BaseURL>" + rewritten.substring(insertAt)
@@ -244,13 +266,13 @@ internal class FfmpegManifestHttpsBridge(
 
         rewritten = ABSOLUTE_DASH_URI.replace(rewritten) { m ->
             val urlValue = xmlUnescape(m.groupValues[2])
-            val absolute = base.resolve(URI(urlValue)).toString()
+            val absolute = resolveManifestReference(base, URI(urlValue)).toString()
             val local = if ('$' in urlValue) templateUrl(URI(absolute)) else addResource(absolute, false)
             "${m.groupValues[1]}$local${m.groupValues[3]}"
         }
         rewritten = LOCATION_TEXT.replace(rewritten) { m ->
             val raw = xmlUnescape(m.groupValues[2].trim())
-            val absolute = base.resolve(URI(raw)).toString()
+            val absolute = resolveManifestReference(base, URI(raw)).toString()
             "${m.groupValues[1]}${addResource(absolute, false)}${m.groupValues[3]}"
         }
         return rewritten
