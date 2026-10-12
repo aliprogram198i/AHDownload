@@ -74,6 +74,8 @@ object DownloadRecordMapper {
 
     private fun DownloadFailure.detail(): String? = when (this) {
         is DownloadFailure.HttpError -> code.toString()
+        is DownloadFailure.IncompleteResponse ->
+            "expected_bytes=${expectedBytes}; received_bytes=${receivedBytes}"
         DownloadFailure.InvalidResponse,
         DownloadFailure.StorageError,
         DownloadFailure.NetworkError,
