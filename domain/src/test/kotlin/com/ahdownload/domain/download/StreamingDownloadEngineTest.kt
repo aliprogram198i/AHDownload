@@ -350,6 +350,32 @@ class StreamingDownloadEngineTest {
     }
 
     @Test
+    fun discardsExistingPartialWhenResponseTotalConflictsWithValidatedSize() = runTest {
+        val sink = FakeSink()
+        sink.seed("old".encodeToByteArray())
+        val states = mutableListOf<DownloadState>()
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 206,
+                    contentLengthBytes = 6,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("abcdef".encodeToByteArray()),
+                    totalBytes = 9,
+                    rangeStartBytes = 3,
+                    rangeEndBytes = 8,
+                ),
+            ),
+            sink = sink,
+        ).download(task().copy(expectedBytes = 10), states::add)
+
+        assertEquals(DownloadFailure.InvalidResponse, assertIs<DownloadState.Failed>(states.last()).reason)
+        assertFalse(sink.committed)
+        assertEquals(1, sink.discardCount)
+        assertEquals("", sink.committedData())
+    }
+
+    @Test
     fun rejectsPartialResponseWithUnknownTotalWhenNoValidatedSizeExists() = runTest {
         val sink = FakeSink()
         val states = mutableListOf<DownloadState>()
