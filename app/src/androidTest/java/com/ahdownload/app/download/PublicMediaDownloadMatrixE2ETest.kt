@@ -67,12 +67,14 @@ class PublicMediaDownloadMatrixE2ETest {
                 var lastFailure = "No candidate passed validation"
                 var passed = false
                 for ((index, candidate) in candidates.withIndex()) {
-                    val validation = withTimeoutOrNull(20_000L) {
+                    val validationResult = withTimeoutOrNull(20_000L) {
                         resolver.validate(candidate, operationId = "matrix-${target.id}-${index + 1}")
-                    } ?: run {
+                    }
+                    if (validationResult == null) {
                         lastFailure = "Candidate ${index + 1}: validation timeout"
                         continue
                     }
+                    val validation = validationResult
                     if (validation !is CandidateValidationResult.Valid) {
                         lastFailure = "Candidate ${index + 1}: validation rejected"
                         continue
