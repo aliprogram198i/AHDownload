@@ -22,7 +22,7 @@ class YouTubeResolverTest {
                     "formats": [
                       {
                         "itag":"18",
-                        "mimeType":"video/mp4; codecs=\\"avc1.42001E, mp4a.40.2\\"",
+                        "mimeType":"video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"",
                         "width":640,
                         "height":360,
                         "url":"https://cdn.example.com/18"
@@ -31,7 +31,7 @@ class YouTubeResolverTest {
                     "adaptiveFormats": [
                       {
                         "itag":"140",
-                        "mimeType":"audio/mp4; codecs=\\"mp4a.40.2\\"",
+                        "mimeType":"audio/mp4; codecs=\"mp4a.40.2\"",
                         "bitrate":128000,
                         "url":"https://cdn.example.com/140"
                       }
@@ -96,7 +96,7 @@ class YouTubeResolverTest {
                   "videoDetails":{"title":"Fallback Test","lengthSeconds":"8"},
                   "playabilityStatus":{"status":"OK"},
                   "streamingData":{"formats":[
-                    {"itag":"18","mimeType":"video/mp4; codecs=\\"avc1.42001E, mp4a.40.2\\"","width":640,"height":360,"url":"https://cdn.example.com/fallback"}
+                    {"itag":"18","mimeType":"video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"","width":640,"height":360,"url":"https://cdn.example.com/fallback"}
                   ]}
                 }
             """.trimIndent()
@@ -373,7 +373,7 @@ class YouTubeResolverTest {
     fun preservesCommonVideoCodecsAndContainers() = runBlocking {
         val client = object : HttpTextClient {
             override suspend fun get(url: String): String = """
-                {
+                var ytInitialPlayerResponse = {
                   "videoDetails":{"title":"Codec Test","lengthSeconds":"12"},
                   "streamingData":{
                     "formats":[
@@ -401,7 +401,7 @@ class YouTubeResolverTest {
                       }
                     ]
                   }
-                }
+                };
             """.trimIndent()
         }
 
@@ -454,7 +454,7 @@ class YouTubeResolverTest {
                           "videoDetails":{"title":"Browser Source Test","lengthSeconds":"8"},
                           "playabilityStatus":{"status":"OK"},
                           "streamingData":{"formats":[
-                            {"itag":"136","mimeType":"video/mp4; codecs=\\"avc1.4d401f\\"","width":1280,"height":720,"url":"$playerUrl"}
+                            {"itag":"136","mimeType":"video/mp4; codecs=\"avc1.4d401f\"","width":1280,"height":720,"url":"$playerUrl"}
                           ]}
                         }
                     """.trimIndent(),
@@ -490,7 +490,7 @@ class YouTubeResolverTest {
 
         val client = object : HttpTextClient {
             override suspend fun get(url: String): String = """
-                {
+                var ytInitialPlayerResponse = {
                   "videoDetails":{"title":"Session Context Test","lengthSeconds":"8"},
                   "streamingData":{
                     "formats":[
@@ -503,7 +503,7 @@ class YouTubeResolverTest {
                       }
                     ]
                   }
-                }
+                };
             """.trimIndent()
         }
 
@@ -511,7 +511,7 @@ class YouTubeResolverTest {
             override suspend fun snapshot(url: String): YouTubeSessionSnapshot =
                 YouTubeSessionSnapshot(
                     cookies = "SID=redacted",
-                    videoUrls = listOf(browserUrl),
+                    videoUrls = emptyList(),
                     audioUrls = emptyList(),
                     authenticated = true,
                     userAgent = "Mozilla/5.0 (Linux; Android 15)",
@@ -525,7 +525,7 @@ class YouTubeResolverTest {
                             "X-YouTube-Client-Version" to "2",
                         ),
                     ),
-                    browserMediaObservedCount = 1,
+                    browserMediaObservedCount = 0,
                 )
         }
 

@@ -27,6 +27,7 @@ class SocialPlatformResolverTest {
                     instagramApiStatus = "success_media",
                 ),
             ),
+            pageClient = RecordingTextClient { },
         )
 
         val result = resolver.resolve(ResolverRequest(link = link(MediaPlatform.Instagram)))
@@ -159,6 +160,7 @@ class SocialPlatformResolverTest {
                     mediaHasAudioByUrl = mapOf(url to false),
                 ),
             ),
+            pageClient = RecordingTextClient { },
         )
 
         val result = resolver.resolve(
@@ -433,6 +435,7 @@ class SocialPlatformResolverTest {
                     mediaHasAudioByUrl = mapOf(url to true),
                 ),
             ),
+            pageClient = RecordingTextClient { },
         )
 
         val result = resolver.resolve(
@@ -500,7 +503,9 @@ class SocialPlatformResolverTest {
         assertTrue(strategies.drop(1).none { it is InstagramSocialPlatformExtractionStrategy })
         assertEquals(32_000L, strategies.first().effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
         strategies.drop(1).forEach { strategy ->
-            assertEquals(SOCIAL_RESOLVE_TIMEOUT_MS, strategy.effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
+            val expectedTimeout = if (strategy.platform == MediaPlatform.X) 28_000L
+            else SOCIAL_RESOLVE_TIMEOUT_MS
+            assertEquals(expectedTimeout, strategy.effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
         }
     }
 
@@ -540,13 +545,27 @@ class SocialPlatformResolverTest {
         }
     }
 
-    private fun link(platform: MediaPlatform) =
-        com.ahdownload.domain.model.MediaLink(
-            originalUrl = "https://example.com/post",
-            normalizedUrl = "https://example.com/post",
+    private fun link(platform: MediaPlatform): com.ahdownload.domain.model.MediaLink {
+        val url = when (platform) {
+            MediaPlatform.Instagram -> "https://www.instagram.com/reel/ABC123/"
+            MediaPlatform.Facebook -> "https://www.facebook.com/watch/?v=123456789"
+            MediaPlatform.TikTok -> "https://www.tiktok.com/@user/video/1234567890123456789"
+            MediaPlatform.X -> "https://x.com/user/status/1234567890"
+            MediaPlatform.Snapchat -> "https://www.snapchat.com/spotlight/test"
+            MediaPlatform.Pinterest -> "https://www.pinterest.com/pin/123456789012345678/"
+            MediaPlatform.Reddit -> "https://www.reddit.com/r/test/comments/abc123/sample/"
+            MediaPlatform.Twitch -> "https://www.twitch.tv/videos/123456789"
+            MediaPlatform.Vimeo -> "https://vimeo.com/76979871"
+            MediaPlatform.YouTube -> "https://www.youtube.com/watch?v=abcdefghijk"
+            else -> "https://example.com/post"
+        }
+        return com.ahdownload.domain.model.MediaLink(
+            originalUrl = url,
+            normalizedUrl = url,
             platform = platform,
             kind = com.ahdownload.domain.model.MediaKind.Video,
         )
+    }
 
     private class RecordingTextClient(
         private val onGet: (String) -> Unit,

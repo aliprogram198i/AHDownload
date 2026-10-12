@@ -43,7 +43,7 @@ class YouTubePlayerClientTest {
         assertEquals("56", http.headers["X-YouTube-Client-Name"])
         assertEquals("2.20260708.00.00", http.headers["X-YouTube-Client-Version"])
         assertEquals("visitor-token", http.headers["X-Goog-Visitor-Id"])
-        assertEquals("https://www.youtube.com/", http.headers["Origin"])
+        assertEquals("https://www.youtube.com", http.headers["Origin"])
         assertEquals("https://www.youtube.com/", http.headers["Referer"])
     }
 

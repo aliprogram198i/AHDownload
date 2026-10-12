@@ -245,6 +245,8 @@ class StreamingDownloadEngineTest {
 
         fun seed(bytes: ByteArray) { data.write(bytes) }
 
+        override suspend fun temporarySize(destinationPath: String): Long = data.size().toLong()
+
         override suspend fun commit(destinationPath: String) {
             committed = true
         }

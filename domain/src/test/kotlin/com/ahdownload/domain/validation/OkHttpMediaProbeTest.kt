@@ -264,11 +264,14 @@ class OkHttpMediaProbeTest {
         )
 
         assertEquals(200, result.statusCode)
-        assertEquals(2, requestHeaders.size)
-        assertTrue(requestHeaders.first().keys.any { it.equals("Cookie", ignoreCase = true) })
+        assertEquals(3, requestHeaders.size)
+        assertTrue(requestHeaders[0].keys.any { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.any { it.equals("Cookie", ignoreCase = true) })
         assertTrue(requestHeaders[1].keys.any { it.equals("Referer", ignoreCase = true) })
         assertTrue(requestHeaders[1].keys.any { it.equals("Origin", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.none { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[2].keys.none { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[2].keys.none { it.equals("Referer", ignoreCase = true) })
+        assertTrue(requestHeaders[2].keys.none { it.equals("Origin", ignoreCase = true) })
     }
 
     @Test
@@ -293,7 +296,7 @@ class OkHttpMediaProbeTest {
                     assertEquals("mweb", current.header("X-YouTube-Client-Name"))
                     assertEquals("2.20260708.00.00", current.header("X-YouTube-Client-Version"))
                     assertEquals("visitor", current.header("X-Goog-Visitor-Id"))
-                    assertEquals("bytes=0-1048575", current.header("Range"))
+                    assertEquals(null, current.header("Range"))
                     assertEquals("https://www.youtube.com/watch?v=test", current.header("Referer"))
                     Response.Builder()
                         .request(current)

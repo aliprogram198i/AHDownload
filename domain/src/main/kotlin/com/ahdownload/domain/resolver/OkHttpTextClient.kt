@@ -111,7 +111,7 @@ class OkHttpTextClient(
         putAll(diagnosticContext)
         put("stage", diagnosticContext["stage"] ?: "RESOLUTION")
         put("request_method", request.method)
-        put("request_host", request.url.host)
+        put("request_host", request.url.host.removePrefix("www."))
         put("request_path", request.url.encodedPath)
         put("request_outcome", outcome)
         statusCode?.let { put("http_status", it.toString()) }

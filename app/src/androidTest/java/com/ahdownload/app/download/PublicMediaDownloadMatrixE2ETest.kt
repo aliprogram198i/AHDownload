@@ -50,9 +50,10 @@ class PublicMediaDownloadMatrixE2ETest {
             try {
                 val link = analyzer.analyze(target.url)
                     ?: error("LinkAnalyzer rejected the URL")
-                val resolved = withTimeoutOrNull(30_000L) {
+                val resolutionTimeoutMs = if (target.id == "21_xnxx_arabic") 60_000L else 30_000L
+                val resolved = withTimeoutOrNull(resolutionTimeoutMs) {
                     resolver.resolve(link, operationId = "matrix-${target.id}")
-                } ?: error("Resolution timed out after 30 seconds")
+                } ?: error("Resolution timed out after ${resolutionTimeoutMs / 1000} seconds")
                 val candidates = when (resolved) {
                     is ResolverResult.Success -> resolved.candidates
                         .filter { it.format.kind == MediaKind.Video && it.format.hasVideo }

@@ -59,9 +59,15 @@ class SmartResultEngine {
             }
         }
 
-        val finalBestOverall = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.BestOverall }
-        val finalBestQuality = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.BestQuality }
-        val finalSmallest = recommended.firstOrNull { it.recommendation == MediaResultRecommendation.SmallestSize }
+        val finalBestOverall = recommended.firstOrNull {
+            it.candidate.id == bestOverall?.candidate?.id
+        }
+        val finalBestQuality = recommended.firstOrNull {
+            it.candidate.id == bestQuality?.candidate?.id
+        }
+        val finalSmallest = recommended.firstOrNull {
+            it.candidate.id == smallestSize?.candidate?.id
+        }
         val visibleIds = buildList {
             finalBestOverall?.candidate?.id?.let(::add)
             addAll(presentationVideo.take(maxVideo).map { it.candidate.id })

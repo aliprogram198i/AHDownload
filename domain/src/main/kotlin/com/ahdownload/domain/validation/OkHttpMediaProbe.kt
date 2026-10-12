@@ -318,7 +318,8 @@ class OkHttpMediaProbe(
                 // For 206 responses the body length may only describe the returned range,
                 // not the complete media resource.
                 code == 206 -> null
-                else -> body.contentLength().takeIf { it >= 0L }
+                else -> header("Content-Length")?.toLongOrNull()?.takeIf { it >= 0L }
+                    ?: body.contentLength().takeIf { it >= 0L }
             }
 
             return MediaProbeResult(

@@ -34,10 +34,28 @@ class DownloadCoordinator(
 
         var lastPersistedProgressAt = Long.MIN_VALUE
         var latestRecord = queueRecord(task.id)
+        var lastObservedProgress: DownloadState.Downloading? = null
 
         try {
             engine.download(task) { state ->
                 val now = clock.nowEpochMs()
+                if (state is DownloadState.Downloading) {
+                    lastObservedProgress = state
+                }
+                if (state == DownloadState.Completed) {
+                    val finalProgress = lastObservedProgress
+                    if (
+                        finalProgress != null &&
+                        (finalProgress.totalBytes == null ||
+                            finalProgress.bytesDownloaded >= finalProgress.totalBytes) &&
+                        (latestRecord.bytesDownloaded != finalProgress.bytesDownloaded ||
+                            latestRecord.totalBytes != finalProgress.totalBytes)
+                    ) {
+                        latestRecord = queue.applyState(task.id, finalProgress, now)
+                        lastPersistedProgressAt = now
+                        onPersistedState(finalProgress)
+                    }
+                }
                 val shouldPersist = when (state) {
                     DownloadState.Queued,
                     DownloadState.Preparing,
