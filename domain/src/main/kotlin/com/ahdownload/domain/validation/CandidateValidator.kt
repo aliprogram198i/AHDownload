@@ -111,18 +111,18 @@ class CandidateValidator(
             return reject(ValidationFailure.ContentTypeMismatch)
         }
 
-        val updated = if (
-            candidate.format.fileSizeBytes == null &&
-            probeResult.contentLengthBytes != null
+        val measuredContentLength = probeResult.contentLengthBytes?.takeIf { it > 0L }
+        val updatedFormat = if (
+            candidate.format.fileSizeBytes == null && measuredContentLength != null
         ) {
-            candidate.copy(
-                format = candidate.format.copy(
-                    fileSizeBytes = probeResult.contentLengthBytes,
-                ),
-            )
+            candidate.format.copy(fileSizeBytes = measuredContentLength)
         } else {
-            candidate
+            candidate.format
         }
+        val updated = candidate.copy(
+            format = updatedFormat,
+            validatedContentLengthBytes = measuredContentLength,
+        )
 
         logger.log(
             DiagnosticLevel.INFO,
