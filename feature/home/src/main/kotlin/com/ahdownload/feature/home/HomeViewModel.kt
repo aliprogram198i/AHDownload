@@ -38,6 +38,13 @@ enum class HomeMode {
     Search,
 }
 
+/**
+ * Root navigation can re-emit Link mode after a search-result selection has started analysis.
+ * Re-applying the same mode is a synchronization no-op, not a request to cancel that analysis.
+ */
+internal fun shouldSkipLinkModeSynchronization(currentMode: HomeMode): Boolean =
+    currentMode == HomeMode.Link
+
 enum class ResultFilter(val label: String) {
     All("الكل"),
     Video("فيديو"),
@@ -240,8 +247,14 @@ class HomeViewModel(
         when (mode) {
             HomeMode.Search -> enterSearchMode()
             HomeMode.Link -> {
+                // Navigation may re-apply Link after a search result has already started
+                // resolving. Repeating the current mode must not cancel that active analysis.
+                if (shouldSkipLinkModeSynchronization(_uiState.value.mode)) return
+
                 analysisJob?.cancel()
+                analysisJob = null
                 searchJob?.cancel()
+                searchJob = null
                 _uiState.value = _uiState.value.copy(
                     mode = HomeMode.Link,
                     searching = false,
