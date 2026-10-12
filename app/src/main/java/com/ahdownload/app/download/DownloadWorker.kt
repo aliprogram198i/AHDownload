@@ -753,6 +753,7 @@ class DownloadWorker(
             companionAudioSessionCookieHost = companionAudioSessionCookieHost,
             streamingManifest = streamingManifest,
             companionAudioStreamingManifest = companionAudioStreamingManifest,
+            expectedBytes = expectedBytes,
             requestHeaders = requestHeaders,
         )
     }
