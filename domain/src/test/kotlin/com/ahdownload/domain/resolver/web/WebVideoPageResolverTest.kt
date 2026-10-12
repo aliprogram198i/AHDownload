@@ -185,6 +185,95 @@ class WebVideoPageResolverTest {
     }
 
     @Test
+    fun detectsRedirectLoopsAndReportsSpecificFailureWithoutLoggingUrls() = runBlocking {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context }
+        val requests = mutableListOf<Request>()
+        val resolver = WebVideoPageResolver(
+            logger = logger,
+            client = client(
+                requests,
+                listOf(
+                    response(301, mapOf("Location" to "/step")),
+                    response(301, mapOf("Location" to "/watch")),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(request("https://site.example/watch"))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(FailureCode.ResolverUnavailable, (result as ResolverResult.Failure).code)
+        assertEquals(2, requests.size)
+        assertTrue(events.any { (type, context) ->
+            type == "WEB_VIDEO_REDIRECT_LOOP_DETECTED" &&
+                context["failure_category"] == "REDIRECT_LOOP"
+        })
+        assertTrue(events.any { (type, context) ->
+            type == "WEB_VIDEO_PAGE_FAILED" &&
+                context["failure_category"] == "REDIRECT_LOOP"
+        })
+        val serializedEvents = events.joinToString(" ") { (type, context) -> "$type $context" }
+        assertFalse(serializedEvents.contains("https://"))
+        assertFalse(serializedEvents.contains("/watch"))
+        assertFalse(serializedEvents.contains("/step"))
+    }
+
+    @Test
+    fun followsSixUniqueRedirectsAndParsesTheFinalPage() = runBlocking {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context }
+        val requests = mutableListOf<Request>()
+        val locations = listOf("/one", "/two", "/three", "/four", "/five", "/six")
+        val replies = locations.map { location -> response(301, mapOf("Location" to location)) } +
+            response(200, mapOf("Content-Type" to "text/html"), "<html><title>Final</title><p>No media</p></html>")
+        val resolver = WebVideoPageResolver(
+            logger = logger,
+            client = client(requests, replies),
+        )
+
+        val result = resolver.resolve(request("https://site.example/start"))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(FailureCode.NoCandidates, (result as ResolverResult.Failure).code)
+        assertEquals(7, requests.size)
+        assertEquals("/six", requests.last().url.encodedPath)
+        assertFalse(events.any { (type, _) -> type == "WEB_VIDEO_PAGE_FAILED" })
+    }
+
+    @Test
+    fun classifiesRedirectLimitSeparatelyFromRedirectLoops() = runBlocking {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context }
+        val requests = mutableListOf<Request>()
+        val locations = listOf(
+            "/one", "/two", "/three", "/four", "/five",
+            "/six", "/seven", "/eight", "/nine",
+        )
+        val replies = locations.map { location -> response(301, mapOf("Location" to location)) }
+        val resolver = WebVideoPageResolver(
+            logger = logger,
+            client = client(requests, replies),
+        )
+
+        val result = resolver.resolve(request("https://site.example/start"))
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(FailureCode.ResolverUnavailable, (result as ResolverResult.Failure).code)
+        assertEquals(9, requests.size)
+        assertEquals("/eight", requests.last().url.encodedPath)
+        assertTrue(events.any { (type, context) ->
+            type == "WEB_VIDEO_REDIRECT_LIMIT_EXCEEDED" &&
+                context["failure_category"] == "REDIRECT_LIMIT_EXCEEDED" &&
+                context["redirect_count"] == "8"
+        })
+        assertTrue(events.any { (type, context) ->
+            type == "WEB_VIDEO_PAGE_FAILED" &&
+                context["failure_category"] == "REDIRECT_LIMIT_EXCEEDED"
+        })
+    }
+
+    @Test
     fun rejectsLocalPageBeforeMakingNetworkRequest() = runBlocking {
         val requests = mutableListOf<Request>()
         val resolver = WebVideoPageResolver(client = client(requests, emptyList()))
