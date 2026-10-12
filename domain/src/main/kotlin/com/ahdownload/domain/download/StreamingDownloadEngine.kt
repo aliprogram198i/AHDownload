@@ -241,7 +241,9 @@ class StreamingDownloadEngine(
             if (rangeLength <= 0L || response.contentLengthBytes != rangeLength) return false
         }
         val total = response.totalBytes
-        if (total != null && (total <= end || end != total - 1L)) return false
+        // A server may honor an open-ended range in bounded chunks. The declared total
+        // is still authoritative; the engine can resume the remaining suffix on retry.
+        if (total != null && total <= end) return false
         return true
     }
 
