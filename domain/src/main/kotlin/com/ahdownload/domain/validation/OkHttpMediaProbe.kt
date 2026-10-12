@@ -136,7 +136,7 @@ class OkHttpMediaProbe(
                     operationId,
                 ) + mapOf(
                     "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_NO_RANGE_RETRY",
-                    "removed_session_headers" to "Cookie,Origin,Referer",
+                    "removed_session_headers" to "Cookie,Origin",
                 ),
                 throwable = null,
             )

@@ -269,7 +269,7 @@ class OkHttpMediaProbeTest {
         assertTrue(requestHeaders[0].keys.any { it.equals("Referer", ignoreCase = true) })
         assertTrue(requestHeaders[0].keys.any { it.equals("Origin", ignoreCase = true) })
         assertTrue(requestHeaders[1].keys.none { it.equals("Cookie", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.none { it.equals("Referer", ignoreCase = true) })
+        assertEquals("https://www.youtube.com/", requestHeaders[1]["Referer"])
         assertTrue(requestHeaders[1].keys.none { it.equals("Origin", ignoreCase = true) })
     }
 
