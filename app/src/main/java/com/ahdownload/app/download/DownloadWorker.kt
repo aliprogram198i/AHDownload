@@ -326,10 +326,10 @@ class DownloadWorker(
                 val size = reusableAudioSource.length()
                 val existing = queue.enqueue(sourceTask, System.currentTimeMillis())
                 val reused = existing.copy(
-                    task = sourceTask,
-                    status = DownloadStatus.COMPLETED,
-                    bytesDownloaded = size,
-                    totalBytes = size,
+                    task = task,
+                    status = DownloadStatus.PREPARING,
+                    bytesDownloaded = 0L,
+                    totalBytes = null,
                     failureCode = null,
                     failureDetail = null,
                     destinationUri = null,
@@ -458,7 +458,12 @@ class DownloadWorker(
         }
 
         var completedRecord = record
-        if (record.status == DownloadStatus.COMPLETED && audioExtractionRequested) {
+        val stagedAudioSource = if (audioExtractionRequested) {
+            java.io.File(sourceTask.destinationPath).takeIf { it.isFile && it.length() > 0L }
+        } else {
+            null
+        }
+        if (stagedAudioSource != null) {
             // The source transfer is complete, but the user-visible audio output is not.
             // Do not expose this task as completed while extraction is still running.
             completedRecord = record.copy(
@@ -588,6 +593,8 @@ class DownloadWorker(
                 completedRecord = record.copy(
                     task = task,
                     status = DownloadStatus.FAILED,
+                    bytesDownloaded = 0L,
+                    totalBytes = null,
                     failureCode = "audio_extraction_error",
                     failureDetail = detail,
                     updatedAtEpochMs = System.currentTimeMillis(),
