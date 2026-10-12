@@ -264,14 +264,13 @@ class OkHttpMediaProbeTest {
         )
 
         assertEquals(200, result.statusCode)
-        assertEquals(3, requestHeaders.size)
+        assertEquals(2, requestHeaders.size)
         assertTrue(requestHeaders[0].keys.any { it.equals("Cookie", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.any { it.equals("Cookie", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.any { it.equals("Referer", ignoreCase = true) })
-        assertTrue(requestHeaders[1].keys.any { it.equals("Origin", ignoreCase = true) })
-        assertTrue(requestHeaders[2].keys.none { it.equals("Cookie", ignoreCase = true) })
-        assertTrue(requestHeaders[2].keys.none { it.equals("Referer", ignoreCase = true) })
-        assertTrue(requestHeaders[2].keys.none { it.equals("Origin", ignoreCase = true) })
+        assertTrue(requestHeaders[0].keys.any { it.equals("Referer", ignoreCase = true) })
+        assertTrue(requestHeaders[0].keys.any { it.equals("Origin", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.none { it.equals("Cookie", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.none { it.equals("Referer", ignoreCase = true) })
+        assertTrue(requestHeaders[1].keys.none { it.equals("Origin", ignoreCase = true) })
     }
 
     @Test

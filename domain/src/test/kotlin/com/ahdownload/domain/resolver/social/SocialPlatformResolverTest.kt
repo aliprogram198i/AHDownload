@@ -503,8 +503,11 @@ class SocialPlatformResolverTest {
         assertTrue(strategies.drop(1).none { it is InstagramSocialPlatformExtractionStrategy })
         assertEquals(32_000L, strategies.first().effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
         strategies.drop(1).forEach { strategy ->
-            val expectedTimeout = if (strategy.platform == MediaPlatform.X) 28_000L
-            else SOCIAL_RESOLVE_TIMEOUT_MS
+            val expectedTimeout = when (strategy.platform) {
+                MediaPlatform.X -> 28_000L
+                MediaPlatform.Snapchat -> 30_000L
+                else -> SOCIAL_RESOLVE_TIMEOUT_MS
+            }
             assertEquals(expectedTimeout, strategy.effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
         }
     }

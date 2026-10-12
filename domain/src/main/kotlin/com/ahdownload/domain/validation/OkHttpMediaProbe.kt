@@ -52,7 +52,7 @@ class OkHttpMediaProbe(
                 it.equals("Sec-Fetch-Dest", ignoreCase = true) ||
                 it.equals("Sec-CH-UA", ignoreCase = true)
         }
-        val initialRange = explicitRange ?: "bytes=0-"
+        val initialRange = explicitRange
         val started = TimeSource.Monotonic.markNow()
         var response = execute(url, "GET", headers, initialRange)
 
@@ -77,12 +77,12 @@ class OkHttpMediaProbe(
             throwable = null,
         )
 
-        if (response.code == 403) {
+        if (response.code == 403 && explicitRange != null) {
             response.close()
 
             // First fallback: preserve the browser/session headers and exact URL,
-            // but remove Range. This tests whether the endpoint rejects probing
-            // semantics rather than rejecting the authenticated source itself.
+            // but remove a browser-captured Range. This tests whether the endpoint
+            // rejects the captured range semantics rather than the media source itself.
             val noRangeStarted = TimeSource.Monotonic.markNow()
             response = execute(url, "GET", headers, null)
             logger.log(
