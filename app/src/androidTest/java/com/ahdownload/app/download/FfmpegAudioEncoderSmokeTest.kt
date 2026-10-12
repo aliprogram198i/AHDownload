@@ -2,6 +2,7 @@ package com.ahdownload.app.download
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.arthenica.ffmpegkit.FFmpegKit
+import com.arthenica.ffmpegkit.ReturnCode
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -40,7 +41,7 @@ class FfmpegAudioEncoderSmokeTest {
             "Bundled FFmpeg is missing audio encoders advertised by AHDownload: " +
                 "${missing.sorted().joinToString()}; exit=${session.returnCode}; " +
                 "encoder listing=${output.take(5000)}",
-            session.returnCode?.let { it.value == 0 } == true && missing.isEmpty(),
+            ReturnCode.isSuccess(session.returnCode) && missing.isEmpty(),
         )
     }
 }
