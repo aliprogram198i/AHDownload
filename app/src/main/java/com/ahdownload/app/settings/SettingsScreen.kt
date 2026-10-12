@@ -31,7 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import com.ahdownload.core.designsystem.AHProgressBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -366,8 +366,8 @@ fun SettingsRoute(
                             Icon(Icons.Rounded.Refresh, contentDescription = "تحديث مساحة التخزين")
                         }
                     }
-                    LinearProgressIndicator(
-                        progress = { storageInfo.freeRatio },
+                    AHProgressBar(
+                        progress = storageInfo.freeRatio,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(
