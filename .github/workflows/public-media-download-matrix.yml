@@ -1,4 +1,4 @@
-name: Single-URL XNXX Media Download Test
+name: FFmpeg HTTPS and XNXX Media Acceptance
 
 on:
   pull_request:
@@ -34,7 +34,7 @@ jobs:
           retention-days: 14
 
   production-download-matrix:
-    name: Resolve, download, and verify the single XNXX URL on Android emulator
+    name: Verify HTTPS MP4/HLS/DASH and the requested XNXX URL
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -61,7 +61,7 @@ jobs:
           test -e /dev/kvm
           sudo chmod a+rw /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
-      - name: Run production pipeline for the single XNXX URL
+      - name: Run FFmpeg HTTPS fixture matrix and the requested XNXX download
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -73,13 +73,24 @@ jobs:
           emulator-boot-timeout: 600
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data"
           script: |
-            bash -c 'set -o pipefail; gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee single-url-download.log; status=$?; adb logcat -d -v threadtime -s AH_MEDIA_MATRIX:I AndroidRuntime:E > single-url-download-logcat.txt || true; exit "$status"'
-      - name: Upload matrix report and device logs
+            bash -c 'set -o pipefail;
+              gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest 2>&1 | tee ffmpeg-https-matrix.log;
+              protocol_status=$?;
+              adb logcat -d -v threadtime -s AH_FFMPEG_HTTPS_MATRIX:I AndroidRuntime:E > ffmpeg-https-matrix-logcat.txt || true;
+              if [ "$protocol_status" -ne 0 ]; then exit "$protocol_status"; fi;
+              gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee single-url-download.log;
+              download_status=$?;
+              adb logcat -d -v threadtime -s AH_MEDIA_MATRIX:I AndroidRuntime:E > single-url-download-logcat.txt || true;
+              exit "$download_status"'
+
+      - name: Upload media acceptance logs and reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ahdownload-single-url-download-test-${{ github.run_id }}
+          name: ahdownload-media-acceptance-${{ github.run_id }}
           path: |
+            ffmpeg-https-matrix.log
+            ffmpeg-https-matrix-logcat.txt
             single-url-download.log
             single-url-download-logcat.txt
             app/build/outputs/androidTest-results/connected/
