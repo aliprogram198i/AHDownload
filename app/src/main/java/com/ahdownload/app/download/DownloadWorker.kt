@@ -598,6 +598,7 @@ class DownloadWorker(
 
                 if (
                     completedRecord.failureCode == "network_error" ||
+                    completedRecord.failureCode == "incomplete_response" ||
                     completedRecord.failureCode == "http_error" && isRetryableHttp(completedRecord.failureDetail) ||
                     retryableYouTube403
                 ) {
