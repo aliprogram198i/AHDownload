@@ -95,7 +95,7 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-https:7.1.6")
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.9")
     // Keep the FFmpegKit runtime exception dependency explicit to prevent release-time NoClassDefFoundError.
     implementation("com.arthenica:smart-exception-java:0.2.1")
     implementation("androidx.compose.material3:material3")
