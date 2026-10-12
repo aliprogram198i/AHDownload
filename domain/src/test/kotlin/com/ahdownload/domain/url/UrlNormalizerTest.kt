@@ -25,6 +25,15 @@ class UrlNormalizerTest {
     }
 
     @Test
+    fun rejectsCleartextHttp() {
+        val error = assertFails {
+            normalizer.normalize("http://example.com/video").getOrThrow()
+        }
+        assertTrue(error is IllegalArgumentException)
+        assertTrue(error.message.orEmpty().contains("HTTPS"))
+    }
+
+    @Test
     fun rejectsUnsupportedScheme() {
         val error = assertFails {
             normalizer.normalize("ftp://example.com").getOrThrow()
