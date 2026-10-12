@@ -504,7 +504,9 @@ class SocialPlatformResolverTest {
         assertEquals(32_000L, strategies.first().effectiveTimeoutMillis(SOCIAL_RESOLVE_TIMEOUT_MS))
         strategies.drop(1).forEach { strategy ->
             val expectedTimeout = when (strategy.platform) {
-                MediaPlatform.X -> 28_000L
+                MediaPlatform.X,
+                MediaPlatform.Vimeo,
+                MediaPlatform.Reddit -> 28_000L
                 MediaPlatform.Snapchat -> 30_000L
                 else -> SOCIAL_RESOLVE_TIMEOUT_MS
             }
