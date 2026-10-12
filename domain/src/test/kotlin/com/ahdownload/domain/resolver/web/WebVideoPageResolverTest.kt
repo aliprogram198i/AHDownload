@@ -130,6 +130,55 @@ class WebVideoPageResolverTest {
     }
 
     @Test
+    fun fallsBackToBrowserObservedMediaWhenPageFetchRedirectLoops() = runBlocking {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context }
+        val requests = mutableListOf<Request>()
+        val pageUrl = "https://site.example/watch"
+        val mediaUrl = "https://cdn.example.com/media/redirect-loop-fallback.mp4"
+        var providerCalled = false
+        val browser = object : BrowserMediaSessionProvider {
+            override suspend fun snapshot(url: String, platform: MediaPlatform): BrowserMediaSession {
+                providerCalled = true
+                assertEquals(pageUrl, url)
+                assertEquals(MediaPlatform.Web, platform)
+                return BrowserMediaSession(
+                    platform = platform,
+                    pageUrl = url,
+                    finalUrl = url,
+                    title = "Browser fallback video",
+                    mediaUrls = listOf(mediaUrl),
+                )
+            }
+        }
+        val resolver = WebVideoPageResolver(
+            logger = logger,
+            client = client(
+                requests,
+                listOf(
+                    response(301, mapOf("Location" to "/watch")),
+                    response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "9999")),
+                ),
+            ),
+            browserMediaSessionProvider = browser,
+        )
+
+        val result = resolver.resolve(request(pageUrl))
+
+        assertTrue(result is ResolverResult.Success)
+        assertTrue(providerCalled)
+        val success = result as ResolverResult.Success
+        assertEquals("Browser fallback video", success.title)
+        assertEquals(mediaUrl, success.candidates.single().sourceUrl)
+        assertTrue(events.any { (type, context) ->
+            type == "WEB_VIDEO_REDIRECT_LOOP_BROWSER_FALLBACK" &&
+                context["failure_category"] == "REDIRECT_LOOP" &&
+                context["fallback"] == "BROWSER_MEDIA_SESSION"
+        })
+        assertEquals(2, requests.size)
+    }
+
+    @Test
     fun upgradesInitialHttpPageUrlToHttpsBeforeRequest() = runBlocking {
         val requests = mutableListOf<Request>()
         val resolver = WebVideoPageResolver(client = client(requests, listOf(
