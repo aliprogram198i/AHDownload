@@ -219,6 +219,8 @@ class WebVideoPageResolver(
     private fun fetchPage(initial: HttpUrl, resolverRequest: ResolverRequest): Page? {
         var current = initial
         var redirects = 0
+        // HTTP fragments are not sent to servers, so exclude them from loop detection.
+        val visitedRedirectUrls = mutableSetOf(redirectKey(current))
         while (true) {
             if (!isAllowedDestination(current)) throw UnsafeDestinationException()
             val pageRequest = Request.Builder()
@@ -231,10 +233,63 @@ class WebVideoPageResolver(
             val response = executeLogged(pageRequest, resolverRequest, "PAGE_FETCH")
             val location = response.header("Location")
             if (response.code in REDIRECT_CODES && !location.isNullOrBlank()) {
+                val statusCode = response.code
+                val fromHost = current.host.lowercase(Locale.ROOT)
                 val next = current.resolve(location)?.let(::preferHttps)
                 response.close()
                 if (next == null || !isAllowedDestination(next)) throw UnsafeDestinationException()
-                if (redirects >= MAX_REDIRECTS) throw IOException("Redirect limit exceeded")
+
+                val nextKey = redirectKey(next)
+                val targetAlreadyVisited = nextKey in visitedRedirectUrls
+                log(
+                    level = DiagnosticLevel.INFO,
+                    event = "WEB_VIDEO_REDIRECT",
+                    reason = "HTTP redirect observed",
+                    request = resolverRequest,
+                    values = mapOf(
+                        "request_stage" to "PAGE_FETCH",
+                        "http_status" to statusCode.toString(),
+                        "redirect_index" to (redirects + 1).toString(),
+                        "from_host" to fromHost,
+                        "to_host" to next.host.lowercase(Locale.ROOT),
+                        "same_host" to (fromHost == next.host.lowercase(Locale.ROOT)).toString(),
+                        "target_already_visited" to targetAlreadyVisited.toString(),
+                    ),
+                )
+
+                if (targetAlreadyVisited) {
+                    log(
+                        level = DiagnosticLevel.WARNING,
+                        event = "WEB_VIDEO_REDIRECT_LOOP_DETECTED",
+                        reason = "Redirect target was already visited",
+                        request = resolverRequest,
+                        values = mapOf(
+                            "request_stage" to "PAGE_FETCH",
+                            "failure_category" to "REDIRECT_LOOP",
+                            "redirect_count" to redirects.toString(),
+                            "from_host" to fromHost,
+                            "to_host" to next.host.lowercase(Locale.ROOT),
+                        ),
+                    )
+                    throw RedirectLoopException()
+                }
+                if (redirects >= MAX_REDIRECTS) {
+                    log(
+                        level = DiagnosticLevel.WARNING,
+                        event = "WEB_VIDEO_REDIRECT_LIMIT_EXCEEDED",
+                        reason = "Maximum page redirect count exceeded",
+                        request = resolverRequest,
+                        values = mapOf(
+                            "request_stage" to "PAGE_FETCH",
+                            "failure_category" to "REDIRECT_LIMIT_EXCEEDED",
+                            "redirect_count" to redirects.toString(),
+                            "from_host" to fromHost,
+                            "to_host" to next.host.lowercase(Locale.ROOT),
+                        ),
+                    )
+                    throw RedirectLimitExceededException()
+                }
+                visitedRedirectUrls += nextKey
                 current = next
                 redirects++
                 continue
@@ -644,6 +699,8 @@ class WebVideoPageResolver(
                     val message = current.message.orEmpty().lowercase(Locale.ROOT)
                     return if ("reset" in message || "broken pipe" in message) "CONNECTION_RESET" else "SOCKET_FAILURE"
                 }
+                is RedirectLoopException -> return "REDIRECT_LOOP"
+                is RedirectLimitExceededException -> return "REDIRECT_LIMIT_EXCEEDED"
                 is IOException -> return "IO_FAILURE"
             }
             current = current.cause
@@ -675,6 +732,11 @@ class WebVideoPageResolver(
     )
     private enum class Method { HEAD, RANGE }
     private class UnsafeDestinationException : IOException()
+    private class RedirectLoopException : IOException()
+    private class RedirectLimitExceededException : IOException()
+
+    private fun redirectKey(url: HttpUrl): String =
+        url.newBuilder().fragment(null).build().toString()
 
     private companion object {
         const val MAX_HTML_BYTES = 1_048_576
