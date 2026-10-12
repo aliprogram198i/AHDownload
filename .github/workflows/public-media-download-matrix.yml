@@ -52,9 +52,10 @@ jobs:
           emulator-boot-timeout: 600
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data"
           script: |
-            set -o pipefail
-            gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee public-media-matrix.log
+            bash -o pipefail -c 'gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee public-media-matrix.log'
+            test_status=$?
             adb logcat -d -v threadtime -s AH_MEDIA_MATRIX:I AndroidRuntime:E > public-media-matrix-logcat.txt || true
+            exit "$test_status"
       - name: Upload matrix report and device logs
         if: always()
         uses: actions/upload-artifact@v4
