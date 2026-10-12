@@ -15,7 +15,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -67,7 +66,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import com.ahdownload.core.designsystem.AHProgressBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -992,11 +991,6 @@ private fun DownloadRecordCard(
     } else {
         rawProgress?.coerceAtMost(0.99f)
     }
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress ?: 0f,
-        animationSpec = tween(durationMillis = 220),
-        label = "downloadProgress",
-    )
     var previousStatus by remember(record.task.id) { mutableStateOf(record.status) }
     var showSuccessAnimation by remember(record.task.id) { mutableStateOf(false) }
 
@@ -1276,7 +1270,7 @@ private fun DownloadRecordCard(
                         )
                     }
                     DownloadProgressTrack(
-                        progress = animatedProgress.takeIf { progress != null },
+                        progress = progress,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -1737,23 +1731,12 @@ private fun DownloadProgressTrack(
     color: androidx.compose.ui.graphics.Color,
     modifier: Modifier = Modifier,
 ) {
-    val trackModifier = modifier
-        .height(8.dp)
-        .clip(RoundedCornerShape(50))
-    if (progress == null) {
-        LinearProgressIndicator(
-            modifier = trackModifier,
-            color = color,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
-    } else {
-        LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
-            modifier = trackModifier,
-            color = color,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant,
-        )
-    }
+    AHProgressBar(
+        progress = progress,
+        color = color,
+        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier,
+    )
 }
 
 private data class TransferSample(

@@ -31,7 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import com.ahdownload.core.designsystem.AHProgressBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,7 +48,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -367,8 +366,8 @@ fun SettingsRoute(
                             Icon(Icons.Rounded.Refresh, contentDescription = "تحديث مساحة التخزين")
                         }
                     }
-                    LinearProgressIndicator(
-                        progress = { storageInfo.freeRatio },
+                    AHProgressBar(
+                        progress = storageInfo.freeRatio,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(
@@ -452,11 +451,11 @@ fun SettingsRoute(
                         }
                     }
 
-                    if (themeMode == AHThemeMode.DARK_TECH) {
+                    if (themeMode == AHThemeMode.LIGHT) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFF09090B),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -467,27 +466,66 @@ fun SettingsRoute(
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        "Orange Forge",
+                                        "Modern Indigo Light",
                                         style = MaterialTheme.typography.titleSmall,
-                                        color = Color(0xFFF2F7FF),
+                                        color = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.weight(1f),
                                     )
                                     Surface(
                                         shape = RoundedCornerShape(50),
-                                        color = Color(0xFFFF791A).copy(alpha = 0.14f),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
                                     ) {
                                         Text(
-                                            "الهوية مفعّلة",
+                                            "الثيم مفعّل",
                                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Color(0xFFFF791A),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         )
                                     }
                                 }
                                 Text(
-                                    "أسود فحمي مع لمسات برتقالية واضحة وتباين مريح دون تشتيت.",
+                                    "خلفيات فاتحة، بطاقات بيضاء، وتباين نيلي واضح للأزرار والاختيارات وأشرطة التقدم.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFA1A1AA),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    } else if (themeMode == AHThemeMode.DARK_TECH) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Dark Tech",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                    ) {
+                                        Text(
+                                            "Engine Ready",
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "فحمي عميق مع لمسات نيلية وسماوية وتباين مريح دون تشتيت.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                         }

@@ -11,8 +11,8 @@ class ThemePreferenceStore(context: Context) {
 
     fun read(): AHThemeMode =
         AHThemeMode.entries.firstOrNull { mode ->
-            mode.storageValue == preferences.getString(KEY_THEME, AHThemeMode.DARK_TECH.storageValue)
-        } ?: AHThemeMode.SYSTEM
+            mode.storageValue == preferences.getString(KEY_THEME, AHThemeMode.LIGHT.storageValue)
+        } ?: AHThemeMode.LIGHT
 
     fun set(mode: AHThemeMode) {
         preferences.edit().putString(KEY_THEME, mode.storageValue).apply()

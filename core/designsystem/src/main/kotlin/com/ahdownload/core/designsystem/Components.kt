@@ -163,7 +163,7 @@ fun AHCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f),
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f),
         ),
         content = { content() },
     )
@@ -258,12 +258,18 @@ fun AHProgressBar(
     color: Color = MaterialTheme.colorScheme.primary,
     trackColor: Color = MaterialTheme.colorScheme.surfaceVariant,
 ) {
+    val targetProgress = progress?.takeIf { it.isFinite() }?.coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress ?: 0f,
+        animationSpec = tween(240, easing = FastOutSlowInEasing),
+        label = "progressValue",
+    )
     val progressModifier = modifier
         .fillMaxWidth()
         .height(7.dp)
         .clip(RoundedCornerShape(50))
 
-    if (progress == null) {
+    if (targetProgress == null) {
         LinearProgressIndicator(
             modifier = progressModifier,
             color = color,
@@ -271,7 +277,7 @@ fun AHProgressBar(
         )
     } else {
         LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
+            progress = { animatedProgress },
             modifier = progressModifier,
             trackColor = trackColor,
             color = color,
