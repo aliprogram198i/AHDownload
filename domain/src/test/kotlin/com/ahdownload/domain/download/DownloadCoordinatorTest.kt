@@ -203,7 +203,7 @@ class DownloadCoordinatorTest {
             task: DownloadTask,
             onState: suspend (DownloadState) -> Unit,
         ) {
-            states.forEach(onState)
+            for (state in states) onState(state)
         }
     }
 
