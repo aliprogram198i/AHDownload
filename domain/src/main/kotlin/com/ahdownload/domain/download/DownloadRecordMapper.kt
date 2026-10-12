@@ -65,6 +65,7 @@ object DownloadRecordMapper {
 
     private fun DownloadFailure.code(): String = when (this) {
         is DownloadFailure.HttpError -> "http_error"
+        is DownloadFailure.IncompleteResponse -> "incomplete_response"
         DownloadFailure.InvalidResponse -> "invalid_response"
         DownloadFailure.StorageError -> "storage_error"
         DownloadFailure.NetworkError -> "network_error"
