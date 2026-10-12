@@ -205,7 +205,7 @@ class StreamingDownloadEngineTest {
         assertIs<DownloadState.Completed>(states.last())
         assertEquals("hello", sink.committedData())
         assertEquals(2L, source.requestedRange)
-    )
+    }
 
     private fun task() = DownloadTask("task-1", "https://cdn.example/video.mp4", "/tmp/video.mp4")
 
