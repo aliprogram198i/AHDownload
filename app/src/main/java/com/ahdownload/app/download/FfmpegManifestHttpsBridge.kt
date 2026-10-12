@@ -260,8 +260,8 @@ internal class FfmpegManifestHttpsBridge(
             setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
             setFeature("http://xml.org/sax/features/external-general-entities", false)
             setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-            runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-            runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+            runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
+            runCatching { setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
         }
         val document = try {
             factory.newDocumentBuilder().parse(InputSource(StringReader(text)))
@@ -294,8 +294,8 @@ internal class FfmpegManifestHttpsBridge(
             runCatching {
                 transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
             }
-            runCatching { transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-            runCatching { transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "") }
+            runCatching { transformerFactory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
+            runCatching { transformerFactory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalStylesheet", "") }
             val transformer = transformerFactory.newTransformer().apply {
                 setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
                 setOutputProperty(OutputKeys.ENCODING, "UTF-8")
