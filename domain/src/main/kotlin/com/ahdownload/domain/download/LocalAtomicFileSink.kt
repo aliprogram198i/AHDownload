@@ -53,16 +53,18 @@ class LocalAtomicFileSink : AtomicFileSink {
         val backup = DownloadTemporaryFiles.backupFile(destinationPath, transferId)
         if (staging.exists() && !staging.delete()) throw IOException("Unable to clear staged download output")
 
-        FileInputStream(temporary).use { input ->
-            FileOutputStream(staging, false).use { output ->
-                input.copyTo(output, COPY_BUFFER_SIZE)
-                output.flush()
-                output.fd.sync()
-            }
-        }
-
         var destinationBackedUp = false
         try {
+            // Include the staging copy in this cleanup scope too. A write failure must not
+            // leave a stale staging file that a later attempt could mistake for a valid output.
+            FileInputStream(temporary).use { input ->
+                FileOutputStream(staging, false).use { output ->
+                    input.copyTo(output, COPY_BUFFER_SIZE)
+                    output.flush()
+                    output.fd.sync()
+                }
+            }
+
             if (destination.exists()) {
                 if (backup.exists() && !backup.delete()) throw IOException("Unable to clear previous destination backup")
                 if (!destination.renameTo(backup)) throw IOException("Unable to preserve the previous destination")
@@ -92,7 +94,12 @@ class LocalAtomicFileSink : AtomicFileSink {
         if (!scoped.exists() && legacy.isFile) {
             try {
                 if (!legacy.renameTo(scoped)) {
-                    legacy.copyTo(scoped, overwrite = false)
+                    try {
+                        legacy.copyTo(scoped, overwrite = false)
+                    } catch (error: Exception) {
+                        scoped.delete()
+                        throw error
+                    }
                     if (!legacy.delete()) {
                         scoped.delete()
                         throw IOException("Unable to migrate legacy temporary download file")
