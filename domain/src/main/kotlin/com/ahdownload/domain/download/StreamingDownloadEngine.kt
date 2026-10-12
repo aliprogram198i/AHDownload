@@ -77,13 +77,17 @@ class StreamingDownloadEngine(
         }
 
         val append = partialBytes > 0L && response.statusCode == 206
-        val totalBytes = when {
+        val responseTotalBytes = when {
             response.totalBytes != null -> response.totalBytes
-            response.contentLengthBytes != null ->
-                (response.contentLengthBytes + partialBytes).takeIf { append }
-                    ?: response.contentLengthBytes
+            response.statusCode == 206 && append && response.contentLengthBytes != null ->
+                response.contentLengthBytes + partialBytes
+            response.statusCode == 206 -> null
+            response.contentLengthBytes != null -> response.contentLengthBytes
             else -> null
         }
+        // A size measured during candidate validation is authoritative for this source URL.
+        // Server headers remain the fallback for sources whose total size is unknown at probe time.
+        val totalBytes = task.expectedBytes?.takeIf { it > 0L } ?: responseTotalBytes
 
         val output = try {
             sink.openTemporary(task.destinationPath, append = append)
@@ -114,7 +118,15 @@ class StreamingDownloadEngine(
                                 throw NetworkReadException()
                             }
 
-                            if (read < 0) break
+                            if (read < 0) {
+                                if (totalBytes != null && downloaded != totalBytes) {
+                                    throw IncompleteDownloadException(
+                                        expectedBytes = totalBytes,
+                                        receivedBytes = downloaded,
+                                    )
+                                }
+                                break
+                            }
                             if (read == 0) continue
 
                             try {
@@ -134,6 +146,18 @@ class StreamingDownloadEngine(
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
+        } catch (incomplete: IncompleteDownloadException) {
+            // Never commit a known-short/overlong transfer as a completed media file.
+            // Keep the .part bytes so WorkManager may resume it with a Range request.
+            onState(
+                DownloadState.Failed(
+                    DownloadFailure.IncompleteResponse(
+                        expectedBytes = incomplete.expectedBytes,
+                        receivedBytes = incomplete.receivedBytes,
+                    ),
+                ),
+            )
+            return
         } catch (_: NetworkReadException) {
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
             return
@@ -162,6 +186,10 @@ class StreamingDownloadEngine(
         }
     }
 
+    private class IncompleteDownloadException(
+        val expectedBytes: Long,
+        val receivedBytes: Long,
+    ) : IOException()
     private class NetworkReadException : IOException()
     private class StorageWriteException : IOException()
 
