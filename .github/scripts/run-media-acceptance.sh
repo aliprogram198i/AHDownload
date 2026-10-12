@@ -59,11 +59,15 @@ run_instrumented_class() {
   validate_instrumentation_results "$label"
 }
 
+# Run both suites even if one fails so diagnostics always include the independent
+# source-matrix result and the requested full-download result. Aggregate failures last.
+set +e
 run_instrumented_class \
   "com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest" \
   "FFmpeg HTTPS fixture matrix" \
   "ffmpeg-https-matrix.log" \
   "AH_FFMPEG_HTTPS_MATRIX"
+https_status=$?
 
 rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
 
@@ -72,3 +76,11 @@ run_instrumented_class \
   "requested XNXX end-to-end test" \
   "single-url-download.log" \
   "AH_MEDIA_MATRIX"
+download_status=$?
+set -e
+
+printf 'Acceptance summary: https_matrix=%s requested_download=%s\n' "$https_status" "$download_status"
+if [[ "$https_status" -ne 0 || "$download_status" -ne 0 ]]; then
+  echo "Media acceptance failed; inspect both per-suite logs and instrumentation reports." >&2
+  exit 1
+fi
