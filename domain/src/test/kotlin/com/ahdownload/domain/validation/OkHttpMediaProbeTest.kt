@@ -249,6 +249,7 @@ class OkHttpMediaProbeTest {
                         )
                         .build()
                 }
+                response
             })
             .build()
 
@@ -280,7 +281,7 @@ class OkHttpMediaProbeTest {
                     current.header(name).orEmpty()
                 }
 
-                if (requestHeaders.size == 1) {
+                val response = if (requestHeaders.size == 1) {
                     Response.Builder()
                         .request(current)
                         .protocol(Protocol.HTTP_1_1)
