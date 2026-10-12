@@ -117,8 +117,9 @@ jobs:
           find "$RUNNER_TEMP/ffmpeg-aar-inspect/jni" -type f -name 'libavcodec.so' -print -quit | grep -q .
           for LIB in "$RUNNER_TEMP"/ffmpeg-aar-inspect/jni/*/libavformat.so; do
             test -s "$LIB"
-            strings "$LIB" | grep -Fxq https
-            strings "$LIB" | grep -Eiq 'gnutls'
+            strings "$LIB" > "$RUNNER_TEMP/libavformat.strings"
+            grep -Fxq https "$RUNNER_TEMP/libavformat.strings"
+            grep -Eiq 'gnutls' "$RUNNER_TEMP/libavformat.strings"
           done
           for LIB in "$RUNNER_TEMP"/ffmpeg-aar-inspect/jni/*/libavcodec.so; do
             test -s "$LIB"
