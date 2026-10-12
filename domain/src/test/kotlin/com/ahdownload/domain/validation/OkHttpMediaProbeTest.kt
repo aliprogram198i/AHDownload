@@ -49,7 +49,7 @@ class OkHttpMediaProbeTest {
         assertEquals("video/webm; codecs=\"vp9\"", result.contentType)
         assertEquals(123456L, result.contentLengthBytes)
         assertEquals(listOf("GET"), methods)
-        assertEquals(listOf<String?>(null), ranges)
+        assertTrue(ranges.size == 1 && ranges.single() == null)
         assertEquals("GET", result.method)
         assertEquals<String?>(null, result.range)
     }
@@ -249,7 +249,6 @@ class OkHttpMediaProbeTest {
                         )
                         .build()
                 }
-                response
             })
             .build()
 
@@ -281,7 +280,7 @@ class OkHttpMediaProbeTest {
                     current.header(name).orEmpty()
                 }
 
-                val response = if (requestHeaders.size == 1) {
+                if (requestHeaders.size == 1) {
                     Response.Builder()
                         .request(current)
                         .protocol(Protocol.HTTP_1_1)
