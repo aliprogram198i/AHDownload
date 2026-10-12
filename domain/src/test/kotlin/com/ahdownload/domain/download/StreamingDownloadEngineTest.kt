@@ -106,6 +106,7 @@ class StreamingDownloadEngineTest {
                     "Origin" to "https://www.youtube.com",
                 ),
             ),
+            onState = {},
         )
         assertEquals("WebView-UA", source.headers["User-Agent"])
         assertEquals("https://www.youtube.com/", source.headers["Referer"])
