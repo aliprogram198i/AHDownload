@@ -98,6 +98,19 @@ class FfmpegManifestDownloader {
             ?.value
             ?: DEFAULT_USER_AGENT
 
+        val bridge = runCatching {
+            FfmpegManifestHttpsBridge(
+                requestHeaders = safeHeaders,
+                cookie = cookie,
+                userAgent = userAgent,
+            )
+        }.getOrElse {
+            return@withContext Result.failure(
+                IllegalStateException("Unable to initialize secure manifest bridge", it),
+            )
+        }
+
+        try {
         val base = mutableListOf(
             "-hide_banner",
             "-loglevel", "error",
@@ -113,7 +126,7 @@ class FfmpegManifestDownloader {
             base += listOf("-headers", headerBlock)
         }
         base += listOf(
-            "-i", sourceUrl,
+            "-i", bridge.manifestUrl(sourceUrl),
             "-map", "0:v:0?",
             "-map", "0:a:0?",
             "-sn",
@@ -203,6 +216,9 @@ class FfmpegManifestDownloader {
         }
 
         Result.success(outputFile)
+        } finally {
+            bridge.close()
+        }
     }
 
     private fun isSafeHeader(name: String): Boolean =
