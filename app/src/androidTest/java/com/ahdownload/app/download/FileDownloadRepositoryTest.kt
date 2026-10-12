@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import java.io.File
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -21,6 +22,13 @@ class FileDownloadRepositoryTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        context.deleteFileStore()
+        context.deleteTestTemporaryFiles()
+    }
+
+    @After
+    fun tearDown() {
+        context.deleteTestTemporaryFiles()
         context.deleteFileStore()
     }
 
@@ -117,6 +125,15 @@ class FileDownloadRepositoryTest {
         sourceUrl = "https://example.com/video.mp4",
         destinationPath = File(context.cacheDir, "video.mp4").absolutePath,
     )
+
+    private fun Context.deleteTestTemporaryFiles() {
+        cacheDir.listFiles()
+            .orEmpty()
+            .filter { file ->
+                file.name.startsWith("video.mp4.") && file.name.endsWith(".part")
+            }
+            .forEach { it.delete() }
+    }
 
     private fun Context.deleteFileStore() {
         File(filesDir, "downloads").deleteRecursively()
