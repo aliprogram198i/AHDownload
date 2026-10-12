@@ -1,6 +1,9 @@
 package com.ahdownload.domain.download
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,7 +55,7 @@ class DownloadCoordinatorTest {
             progressPersistIntervalMs = 500,
         )
 
-        coordinator.execute(task(), states::add)
+        coordinator.execute(task()) { state -> states.add(state) }
 
         assertEquals(
             listOf(
@@ -206,12 +209,21 @@ class DownloadCoordinatorTest {
 
     private class FakeRepository : DownloadRepository {
         val records = linkedMapOf<String, DownloadRecord>()
+        private val historyFlow = MutableStateFlow<List<DownloadRecord>>(emptyList())
         var upsertCount = 0
 
         override suspend fun upsert(record: DownloadRecord) {
             records[record.task.id] = record
+            historyFlow.value = records.values.toList()
             upsertCount++
         }
+
+        override suspend fun delete(taskId: String) {
+            records.remove(taskId)
+            historyFlow.value = records.values.toList()
+        }
+
+        override fun observeHistory(): Flow<List<DownloadRecord>> = historyFlow.asStateFlow()
 
         override suspend fun get(taskId: String): DownloadRecord? = records[taskId]
 
