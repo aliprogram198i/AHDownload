@@ -59,6 +59,7 @@ class HomeResolver(
                             hasVideo = link.kind == MediaKind.Video,
                             hasAudio = link.kind == MediaKind.Audio,
                         ),
+                        streamingManifest = extensionOf(link.normalizedUrl) in setOf("m3u8", "mpd"),
                     ),
                 ),
             )
@@ -126,7 +127,7 @@ class HomeResolver(
         candidateValidator.validate(candidate, operationId)
 
     private fun containerFor(kind: MediaKind, url: String): MediaContainer {
-        val extension = url.substringBefore('?').substringAfterLast('.').lowercase()
+        val extension = extensionOf(url)
         return if (kind == MediaKind.Audio) {
             when (extension) {
                 "m4a" -> MediaContainer.M4a
@@ -141,10 +142,16 @@ class HomeResolver(
             when (extension) {
                 "mp4", "m4v" -> MediaContainer.Mp4
                 "webm" -> MediaContainer.Webm
-                "mkv" -> MediaContainer.Mkv
+                "mkv", "m3u8", "mpd" -> MediaContainer.Mkv
                 "mov" -> MediaContainer.Mov
+                "3gp" -> MediaContainer.ThreeGp
+                "avi" -> MediaContainer.Avi
                 else -> MediaContainer.Unknown
             }
         }
     }
+
+    private fun extensionOf(url: String): String =
+        runCatching { java.net.URI(url).path.orEmpty().substringAfterLast('.', "").lowercase() }
+            .getOrDefault("")
 }

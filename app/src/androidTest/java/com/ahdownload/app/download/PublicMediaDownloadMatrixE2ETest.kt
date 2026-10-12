@@ -77,13 +77,15 @@ class PublicMediaDownloadMatrixE2ETest {
                     }
                     val validation = validationResult
                     if (validation !is CandidateValidationResult.Valid) {
-                        lastFailure = "Candidate ${index + 1}: validation rejected"
+                        lastFailure = "Candidate ${index + 1}: validation rejected; failure=${(validation as CandidateValidationResult.Invalid).failure}"
                         continue
                     }
 
+                    // A previous failed record must not satisfy this candidate's polling loop.
+                    val candidateTitle = "$title-candidate-${index + 1}"
                     val enqueue = launcher.enqueue(
                         candidate = validation.candidate.copy(sourceUrl = validation.finalUrl),
-                        title = title,
+                        title = candidateTitle,
                         sourcePageUrl = target.url,
                         thumbnailUrl = null,
                     )
@@ -92,13 +94,16 @@ class PublicMediaDownloadMatrixE2ETest {
                         continue
                     }
 
-                    val record = awaitTerminalRecord(app, target.url, title, 100_000L)
+                    val record = awaitTerminalRecord(app, target.url, candidateTitle, 100_000L)
                     if (record == null) {
                         lastFailure = "Candidate ${index + 1}: no terminal/published record within 100 seconds"
                         continue
                     }
                     if (record.status != DownloadStatus.COMPLETED) {
-                        lastFailure = "Candidate ${index + 1}: status=${record.status}; code=${record.failureCode ?: "unknown"}"
+                        lastFailure = "Candidate ${index + 1}: status=${record.status}; code=${record.failureCode ?: "unknown"}; " +
+                            "detail=${safeFailureDetail(record.failureDetail)}; downloadedBytes=${record.bytesDownloaded}; " +
+                            "recordTotalBytes=${record.totalBytes ?: "unknown"}; container=${candidate.format.container}; " +
+                            "manifest=${candidate.streamingManifest}; sourceExtension=${safeExtension(candidate.sourceUrl)}"
                         continue
                     }
                     val destination = record.destinationUri
@@ -199,6 +204,21 @@ class PublicMediaDownloadMatrixE2ETest {
         return null
     }
 
+    private fun safeExtension(url: String): String {
+        val path = runCatching { java.net.URI(url).path.orEmpty() }.getOrDefault("")
+        return path.substringAfterLast('.', "")
+            .lowercase()
+            .takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
+            ?: "unknown"
+    }
+
+    private fun safeFailureDetail(detail: String?): String =
+        detail.orEmpty()
+            .replace(Regex("""https?://[^\s]+"""), "[url-redacted]")
+            .replace(Regex("""(?i)(token|sig|signature|auth|cookie|key)=?[^&\s]+"""), "[value-redacted]")
+            .take(180)
+
+
     private fun inspectPublishedFile(context: Context, uri: Uri): Pair<Long, String> {
         val input = context.contentResolver.openInputStream(uri)
             ?: error("Published MediaStore URI cannot be opened")
@@ -229,7 +249,7 @@ class PublicMediaDownloadMatrixE2ETest {
             Target("09_wikimedia_webm", "https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.480p.vp9.webm"),
             Target("10_wikimedia_ogv", "https://upload.wikimedia.org/wikipedia/commons/7/79/Chameleon_color_change.ogv"),
             Target("11_youtube_watch", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-            Target("12_youtube_shorts", "https://www.youtube.com/shorts/qRrv4hcrp-0"),
+            Target("12_youtube_shorts", "https://www.youtube.com/shorts/U80grnZJm_8"),
             Target("13_vimeo", "https://vimeo.com/76979871"),
             Target("14_dailymotion", "https://www.dailymotion.com/video/x7tgad0"),
             Target("15_ted", "https://www.ted.com/talks/tim_urban_inside_the_mind_of_a_master_procrastinator"),

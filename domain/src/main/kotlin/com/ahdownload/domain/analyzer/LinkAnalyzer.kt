@@ -124,7 +124,7 @@ class LinkAnalyzer {
             mediaValue.contains("video/") || mediaValue.contains("video") -> MediaKind.Video
             mediaValue.contains("audio/") || mediaValue.contains("audio") -> MediaKind.Audio
             mediaValue.contains("image/") || mediaValue.contains("image") -> MediaKind.Image
-            extension in setOf("mp4", "m4v", "webm", "mov", "mkv") -> MediaKind.Video
+            extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi", "ogv", "m3u8", "mpd") -> MediaKind.Video
             extension in setOf("mp3", "m4a", "aac", "wav", "ogg", "flac") -> MediaKind.Audio
             extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
             else -> MediaKind.Unknown

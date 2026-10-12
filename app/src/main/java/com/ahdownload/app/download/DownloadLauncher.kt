@@ -206,6 +206,11 @@ class DownloadLauncher(
     private fun extensionFor(candidate: MediaCandidate): String =
         if (candidate.streamingManifest) {
             ".mkv"
+        } else if (
+            candidate.format.kind == com.ahdownload.domain.model.MediaKind.Video &&
+            candidate.sourceUrl.substringBefore('?').substringBefore('#').endsWith(".ogv", ignoreCase = true)
+        ) {
+            ".ogv"
         } else if (!candidate.companionAudioSourceUrl.isNullOrBlank()) {
             when (candidate.format.container) {
                 com.ahdownload.domain.resolver.MediaContainer.Mp4 -> ".mp4"

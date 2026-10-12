@@ -137,7 +137,7 @@ object WebPageMediaParser {
     }
 
     private val MEDIA_EXTENSIONS = setOf(
-        "mp4", "m4v", "webm", "mov", "mkv", "m4a", "mp3", "aac", "ogg", "flac", "wav",
+        "mp4", "m4v", "webm", "mov", "mkv", "ogv", "m4a", "mp3", "aac", "ogg", "flac", "wav",
         "m3u8", "mpd",
     )
     private val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif")
