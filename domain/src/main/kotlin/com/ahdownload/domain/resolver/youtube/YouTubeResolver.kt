@@ -13,6 +13,7 @@ import com.ahdownload.domain.resolver.PlatformAdapter
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import java.net.URI
+import kotlinx.coroutines.CancellationException
 
 private data class KnownYouTubeFormat(
     val kind: MediaKind,
@@ -105,7 +106,7 @@ class YouTubeResolver(
             lastFailure = preferFailure(lastFailure, direct as? ResolverResult.Failure)
             logPlayerFailure(videoId, direct, "page", request.operationId)
             if (lastFailure?.code != FailureCode.AuthenticationRequired) {
-            val apiResponse = runCatching { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
+            val apiResponse = runCatchingCancellable { playerClient.fetchPlayerResponse(html, request.link.normalizedUrl, operationId = request.operationId) }.getOrNull()
             if (apiResponse != null) {
                 val apiResult = parser.parsePlayerResponse(apiResponse)
                 if (apiResult is ResolverResult.Success) {
@@ -140,7 +141,7 @@ class YouTubeResolver(
             val embeddedResponse = if (lastFailure?.code == FailureCode.AuthenticationRequired) {
                 null
             } else {
-                runCatching {
+                runCatchingCancellable {
                     playerClient.fetchEmbeddedPlayerResponse(
                         html = html,
                         videoUrl = request.link.normalizedUrl,
@@ -172,7 +173,7 @@ class YouTubeResolver(
             // Preserve explicit sign-in/age-gate failures; never use another client to
             // bypass a YouTube access requirement.
             if (lastFailure?.code != FailureCode.AuthenticationRequired) {
-                val androidResponse = runCatching {
+                val androidResponse = runCatchingCancellable {
                     playerClient.fetchAndroidPlayerResponse(
                         html = html,
                         videoUrl = request.link.normalizedUrl,
@@ -199,6 +200,8 @@ class YouTubeResolver(
                 }
             }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             val challenge = error.message?.takeIf(::isBotChallenge)
             lastFailure = ResolverResult.Failure(
@@ -221,7 +224,7 @@ class YouTubeResolver(
             context = diagnosticContext(videoId, request.operationId),
         )
 
-        val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrElse { error ->
+        val snapshot = runCatchingCancellable { provider.snapshot(request.link.normalizedUrl) }.getOrElse { error ->
             logger.log(
                 DiagnosticLevel.WARNING,
                 type = "youtube.session_unavailable",
@@ -393,11 +396,11 @@ class YouTubeResolver(
             put("Referer", "https://www.youtube.com/")
         }
         if (headers.containsKey("Cookie")) {
-            val sessionHtml = runCatching { httpClient.get(request.link.normalizedUrl, headers, diagnosticContext(videoId, request.operationId) + mapOf("stage" to "RESOLUTION")) }.getOrNull()
+            val sessionHtml = runCatchingCancellable { httpClient.get(request.link.normalizedUrl, headers, diagnosticContext(videoId, request.operationId) + mapOf("stage" to "RESOLUTION")) }.getOrNull()
             if (sessionHtml != null) {
                 val direct = parser.parse(sessionHtml)
                 if (direct is ResolverResult.Success) return filterKind(enrichWithSessionIfNeeded(direct, request), request)
-                val api = runCatching {
+                val api = runCatchingCancellable {
                     playerClient.fetchPlayerResponse(sessionHtml, request.link.normalizedUrl, headers, request.operationId)
                 }.getOrNull()
                 if (api != null) {
@@ -500,7 +503,7 @@ class YouTubeResolver(
         if (result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
 
         val videoId = extractVideoId(request.link.normalizedUrl).orEmpty()
-        val androidResponse = runCatching {
+        val androidResponse = runCatchingCancellable {
             playerClient.fetchAndroidPlayerResponse(
                 html = html,
                 videoUrl = request.link.normalizedUrl,
@@ -546,7 +549,7 @@ class YouTubeResolver(
         if (result.candidates.none { isYouTubeMediaHost(it.sourceUrl) }) return result
 
         val videoId = extractVideoId(request.link.normalizedUrl).orEmpty()
-        val embeddedResponse = runCatching {
+        val embeddedResponse = runCatchingCancellable {
             playerClient.fetchEmbeddedPlayerResponse(
                 html = html,
                 videoUrl = request.link.normalizedUrl,
@@ -594,7 +597,7 @@ class YouTubeResolver(
         if (youtubeCandidates.isEmpty()) return result
         if (youtubeCandidates.none { it.requestHeaders.isEmpty() }) return result
         val provider = sessionProvider ?: return result
-        val snapshot = runCatching { provider.snapshot(request.link.normalizedUrl) }.getOrNull() ?: return result
+        val snapshot = runCatchingCancellable { provider.snapshot(request.link.normalizedUrl) }.getOrNull() ?: return result
         logger.log(
             if (snapshot.browserPoTokenObserved) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             type = "youtube.gvs_strategy",
