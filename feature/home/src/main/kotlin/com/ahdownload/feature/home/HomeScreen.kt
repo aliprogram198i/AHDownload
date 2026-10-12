@@ -56,7 +56,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
+import com.ahdownload.core.designsystem.AHProgressBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -844,9 +844,11 @@ private fun HomeScreen(
                                             "جاري تجهيز التنزيل الجماعي " + state.batchIndex + "/" + state.batchTotal,
                                             fontWeight = FontWeight.SemiBold,
                                         )
-                                        LinearProgressIndicator(
-                                            progress = {
-                                                if (state.batchTotal > 0) state.batchIndex.toFloat() / state.batchTotal.toFloat() else 0f
+                                        AHProgressBar(
+                                            progress = if (state.batchTotal > 0) {
+                                                state.batchIndex.toFloat() / state.batchTotal.toFloat()
+                                            } else {
+                                                null
                                             },
                                             modifier = Modifier.fillMaxWidth(),
                                         )
