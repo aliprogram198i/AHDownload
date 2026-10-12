@@ -5,12 +5,14 @@ import androidx.test.core.app.ApplicationProvider
 import com.ahdownload.domain.download.DownloadRecordMapper
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadTemporaryFiles
 import com.ahdownload.domain.download.DownloadTask
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import java.io.File
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -20,6 +22,13 @@ class FileDownloadRepositoryTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        context.deleteFileStore()
+        context.deleteTestTemporaryFiles()
+    }
+
+    @After
+    fun tearDown() {
+        context.deleteTestTemporaryFiles()
         context.deleteFileStore()
     }
 
@@ -83,11 +92,48 @@ class FileDownloadRepositoryTest {
         assertTrue(persisted.updatedAtEpochMs == 2000L)
     }
 
+    @Test
+    fun recoveryUsesTheCurrentTaskScopedPartialNotAnotherTasksBytes() = runTest {
+        val task = task()
+        val ownPartial = DownloadTemporaryFiles.temporaryFile(task.destinationPath, task.id).apply {
+            parentFile?.mkdirs()
+            writeBytes(ByteArray(123))
+        }
+        val unrelatedPartial = DownloadTemporaryFiles.temporaryFile(task.destinationPath, "unrelated-task").apply {
+            writeBytes(ByteArray(999))
+        }
+        val repository = FileDownloadRepository(context)
+        val queued = DownloadRecordMapper.queued(task, 1000)
+        repository.upsert(queued)
+        repository.upsert(
+            DownloadRecordMapper.fromState(
+                queued,
+                DownloadState.Downloading(123, 2048),
+                1100,
+            ),
+        )
+
+        val recovered = repository.recoverInterrupted(2000)
+
+        assertEquals(123L, recovered.single().bytesDownloaded)
+        assertTrue(ownPartial.exists())
+        assertTrue(unrelatedPartial.exists())
+    }
+
     private fun task() = DownloadTask(
         id = "instrumented-task",
         sourceUrl = "https://example.com/video.mp4",
         destinationPath = File(context.cacheDir, "video.mp4").absolutePath,
     )
+
+    private fun Context.deleteTestTemporaryFiles() {
+        cacheDir.listFiles()
+            .orEmpty()
+            .filter { file ->
+                file.name.startsWith("video.mp4.") && file.name.endsWith(".part")
+            }
+            .forEach { it.delete() }
+    }
 
     private fun Context.deleteFileStore() {
         File(filesDir, "downloads").deleteRecursively()

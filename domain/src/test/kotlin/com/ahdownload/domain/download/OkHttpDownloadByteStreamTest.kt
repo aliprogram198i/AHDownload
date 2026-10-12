@@ -76,6 +76,38 @@ class OkHttpDownloadByteStreamTest {
         }
     }
 
+    @Test
+    fun parsesContentRangeStartEndAndTotalFromPartialResponse() = runBlocking {
+        val client = OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(206)
+                    .message("Partial Content")
+                    .header("Content-Range", "bytes 5-9/10")
+                    .body("12345".toResponseBody())
+                    .build()
+            }
+            .build()
+
+        val response = OkHttpDownloadByteStream(client = client).open(
+            url = YOUTUBE_MEDIA_URL,
+            rangeStart = 5L,
+            headers = emptyMap(),
+        )
+
+        try {
+            assertEquals(206, response.statusCode)
+            assertEquals(5L, response.rangeStartBytes)
+            assertEquals(9L, response.rangeEndBytes)
+            assertEquals(10L, response.totalBytes)
+            assertEquals(5L, response.contentLengthBytes)
+        } finally {
+            response.body.close()
+        }
+    }
+
     private fun retryTestClient(requests: MutableList<Request>): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor { chain ->

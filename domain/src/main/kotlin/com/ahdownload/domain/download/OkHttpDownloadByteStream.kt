@@ -214,11 +214,8 @@ class OkHttpDownloadByteStream(
                 null,
             )
         }
-        val contentRange = response.header("Content-Range")
-        val totalBytes = contentRange
-            ?.substringAfter('/', "")
-            ?.toLongOrNull()
-            ?.takeIf { it >= 0L }
+        val contentRange = parseContentRange(response.header("Content-Range"))
+        val totalBytes = contentRange?.totalBytes
 
         logger.log(
             if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
@@ -247,7 +244,24 @@ class OkHttpDownloadByteStream(
             contentType = response.header("Content-Type"),
             body = response.body.byteStream(),
             totalBytes = totalBytes,
+            rangeStartBytes = contentRange?.startBytes,
+            rangeEndBytes = contentRange?.endBytes,
         )
+    }
+
+    private data class ParsedContentRange(
+        val startBytes: Long,
+        val endBytes: Long,
+        val totalBytes: Long?,
+    )
+
+    private fun parseContentRange(value: String?): ParsedContentRange? {
+        val match = CONTENT_RANGE_PATTERN.matchEntire(value?.trim().orEmpty()) ?: return null
+        val start = match.groupValues[1].toLongOrNull() ?: return null
+        val end = match.groupValues[2].toLongOrNull() ?: return null
+        val total = match.groupValues[3].takeIf { it != "*" }?.toLongOrNull()
+        if (end < start || (total != null && total <= end)) return null
+        return ParsedContentRange(start, end, total)
     }
 
     private fun hostOf(url: String): String =
@@ -279,6 +293,7 @@ class OkHttpDownloadByteStream(
         if (isYouTubeMediaHost(url)) YOUTUBE_USER_AGENT else DEFAULT_USER_AGENT
 
     private companion object {
+        val CONTENT_RANGE_PATTERN = Regex("(?i)^bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)$")
         const val DEFAULT_USER_AGENT = "AHDownload/1.0 (Android; download engine)"
         const val YOUTUBE_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +

@@ -6,6 +6,10 @@ data class DownloadResponse(
     val contentType: String?,
     val body: java.io.InputStream,
     val totalBytes: Long? = null,
+    /** Exact start offset declared by a 206 Content-Range response. */
+    val rangeStartBytes: Long? = null,
+    /** Exact final offset declared by a 206 Content-Range response. */
+    val rangeEndBytes: Long? = null,
 )
 
 interface DownloadByteStream {
