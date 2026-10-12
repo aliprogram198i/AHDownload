@@ -258,7 +258,7 @@ fun AHProgressBar(
     color: Color = MaterialTheme.colorScheme.primary,
     trackColor: Color = MaterialTheme.colorScheme.surfaceVariant,
 ) {
-    val targetProgress = progress?.coerceIn(0f, 1f)
+    val targetProgress = progress?.takeIf { it.isFinite() }?.coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(
         targetValue = targetProgress ?: 0f,
         animationSpec = tween(240, easing = FastOutSlowInEasing),
