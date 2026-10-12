@@ -159,6 +159,17 @@ class StreamingDownloadEngine(
                             }
 
                             if (read < 0) {
+                                if (response.statusCode == 206) {
+                                    val rangeStart = response.rangeStartBytes
+                                        ?: throw InvalidRangeBodyException()
+                                    val rangeEnd = response.rangeEndBytes
+                                        ?: throw InvalidRangeBodyException()
+                                    val declaredRangeBytes = rangeEnd - rangeStart + 1L
+                                    val actualRangeBytes = downloaded - partialBytes
+                                    if (declaredRangeBytes <= 0L || actualRangeBytes > declaredRangeBytes) {
+                                        throw InvalidRangeBodyException()
+                                    }
+                                }
                                 if (totalBytes != null && downloaded != totalBytes) {
                                     throw IncompleteDownloadException(
                                         expectedBytes = totalBytes,
@@ -187,8 +198,8 @@ class StreamingDownloadEngine(
             onState(DownloadState.Cancelled)
             throw cancelled
         } catch (incomplete: IncompleteDownloadException) {
-            // Never commit a known-short/overlong transfer as a completed media file.
-            // Keep the .part bytes so WorkManager may resume it with a Range request.
+            // Never commit a known-short transfer as a completed media file.
+            // Keep valid prefix bytes so WorkManager may resume with a matching Range request.
             onState(
                 DownloadState.Failed(
                     DownloadFailure.IncompleteResponse(
@@ -197,6 +208,10 @@ class StreamingDownloadEngine(
                     ),
                 ),
             )
+            return
+        } catch (_: InvalidRangeBodyException) {
+            discardPartialBestEffort(task, onState)
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
         } catch (_: NetworkReadException) {
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
@@ -277,6 +292,7 @@ class StreamingDownloadEngine(
         val expectedBytes: Long,
         val receivedBytes: Long,
     ) : IOException()
+    private class InvalidRangeBodyException : IOException()
     private class NetworkReadException : IOException()
     private class StorageWriteException : IOException()
 
