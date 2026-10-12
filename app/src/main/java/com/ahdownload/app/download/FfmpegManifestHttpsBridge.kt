@@ -232,134 +232,7 @@ internal class FfmpegManifestHttpsBridge(
         rewritten = ABSOLUTE_DASH_URI.replace(rewritten) { m ->
             val urlValue = xmlUnescape(m.groupValues[2])
             val absolute = base.resolve(URI(urlValue)).toString()
-            val local = if ('
-        return rewritten
-    }
-
-    private fun templateUrl(remote: URI): String {
-        val path = remote.rawPath.orEmpty()
-        val slash = path.lastIndexOf('/')
-        val directory = if (slash >= 0) path.substring(0, slash + 1) else "/"
-        val name = if (slash >= 0) path.substring(slash + 1) else path
-        val local = addBase("${remote.scheme}://${remote.rawAuthority}$directory") + name
-        return remote.rawQuery?.let { "$local?$it" } ?: local
-    }
-
-    private fun resolveBase(baseUrl: String, suffix: String, query: String?): String {
-        val base = URI(baseUrl)
-        val relative = suffix + if (query.isNullOrBlank()) "" else "?$query"
-        val resolved = base.resolve(URI(relative))
-        val pairs = linkedMapOf<String, String>()
-        fun add(raw: String?) {
-            raw?.split('&')?.filter(String::isNotEmpty)?.forEach { part ->
-                val key = part.substringBefore('=')
-                pairs.remove(key)
-                pairs[key] = part
-            }
-        }
-        add(base.rawQuery)
-        add(query)
-        return buildString {
-            append(resolved.scheme).append("://").append(resolved.rawAuthority).append(resolved.rawPath.orEmpty())
-            val merged = pairs.values.joinToString("&")
-            if (merged.isNotBlank()) append('?').append(merged)
-        }.also(::requireHttpUrl)
-    }
-
-    private fun readBounded(input: InputStream): ByteArray {
-        val output = ByteArrayOutputStream()
-        val buffer = ByteArray(BUFFER_BYTES)
-        while (true) {
-            val count = input.read(buffer)
-            if (count < 0) break
-            if (output.size() + count > MAX_MANIFEST_BYTES) throw IOException("Manifest exceeds safe size limit")
-            output.write(buffer, 0, count)
-        }
-        return output.toByteArray()
-    }
-
-    private fun responseHeaders(connection: HttpURLConnection): Map<String, String> = buildMap {
-        listOf("Content-Range", "Accept-Ranges", "Last-Modified", "ETag").forEach { name ->
-            connection.getHeaderField(name)?.takeIf(String::isNotBlank)?.let { put(name, it) }
-        }
-    }
-
-    private fun writeHeaders(socket: Socket, status: Int, type: String, length: Long, extra: Map<String, String>) {
-        val reason = when (status) {
-            200 -> "OK"; 206 -> "Partial Content"; 301 -> "Moved Permanently"; 302 -> "Found"
-            304 -> "Not Modified"; 400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"
-            404 -> "Not Found"; 416 -> "Range Not Satisfiable"; 429 -> "Too Many Requests"
-            500 -> "Internal Server Error"; 502 -> "Bad Gateway"; 503 -> "Service Unavailable"
-            else -> "Response"
-        }
-        val output = BufferedOutputStream(socket.getOutputStream())
-        output.write("HTTP/1.1 $status $reason\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-        if (type.isNotBlank()) output.write("Content-Type: $type\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-        if (length >= 0) output.write("Content-Length: $length\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-        extra.forEach { (name, value) ->
-            if (name.matches(Regex("[A-Za-z0-9-]+")) && !value.contains('\r') && !value.contains('\n')) {
-                output.write("$name: $value\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-            }
-        }
-        output.write("Connection: close\r\n\r\n".toByteArray(StandardCharsets.ISO_8859_1))
-        output.flush()
-    }
-
-    private fun writeSimpleResponse(socket: Socket, status: Int, reason: String) {
-        val body = "Manifest proxy request failed".toByteArray(StandardCharsets.UTF_8)
-        runCatching {
-            writeHeaders(socket, status, "text/plain; charset=utf-8", body.size.toLong(), emptyMap())
-            socket.getOutputStream().apply { write(body); flush() }
-        }
-    }
-
-    private fun forwardHeader(name: String): Boolean =
-        name.equals("Referer", true) || name.equals("Origin", true) ||
-            name.equals("Accept", true) || name.equals("Accept-Language", true) ||
-            name.startsWith("Sec-Fetch-", true) || name.startsWith("Sec-CH-UA", true) ||
-            name.equals("X-Goog-Visitor-Id", true) || name.equals("X-YouTube-Client-Name", true) ||
-            name.equals("X-YouTube-Client-Version", true)
-
-    private fun requireHttpUrl(url: String) {
-        val scheme = runCatching { URI(url).scheme }.getOrNull()
-        require(scheme.equals("http", true) || scheme.equals("https", true)) {
-            "Only HTTP(S) resources are supported by the manifest bridge"
-        }
-    }
-
-    private fun xmlUnescape(value: String): String =
-        value.replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'")
-            .replace("&lt;", "<").replace("&gt;", ">")
-
-    override fun close() {
-        if (!closed.compareAndSet(false, true)) return
-        runCatching { server.close() }
-        executor.shutdownNow()
-        targets.clear()
-        @Suppress("UNUSED_VARIABLE") val keepReference = acceptThread
-    }
-
-    private companion object {
-        const val SOCKET_TIMEOUT_MS = 60_000
-        const val CONNECT_TIMEOUT_MS = 15_000
-        const val READ_TIMEOUT_MS = 60_000
-        const val SNIFF_BYTES = 1024
-        const val BUFFER_BYTES = 32 * 1024
-        const val MAX_MANIFEST_BYTES = 8 * 1024 * 1024
-        const val DEFAULT_USER_AGENT =
-            "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
-        val HLS_URI = Regex("""(?i)\bURI="([^"]+)"""")
-        val MPD_TAG = Regex("<(?:[a-zA-Z0-9_-]+:)?MPD(?:\\s|>)", RegexOption.IGNORE_CASE)
-        val MPD_OPEN = Regex("<(?:[a-zA-Z0-9_-]+:)?MPD\\b[^>]*>", RegexOption.IGNORE_CASE)
-        val BASE_URL = Regex("""<BaseURL([^>]*)>(.*?)</BaseURL>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        val ABSOLUTE_DASH_URI = Regex("""((?:media|initialization|sourceURL|href|index)=")(https?://[^"]+)(")""", RegexOption.IGNORE_CASE)
-        val LOCATION_TEXT = Regex("""(<(?:[\w.-]+:)?(?:Location|PatchLocation)\b[^>]*>)([^<]+)(</(?:[\w.-]+:)?(?:Location|PatchLocation)\s*>)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        val PERIOD_OR_LOCATION = Regex("<(?:[\\w.-]+:)?(?:Period|Location)\\b", RegexOption.IGNORE_CASE)
-        val PROGRAM_INFO_END = Regex("</(?:[\\w.-]+:)?ProgramInformation\\s*>", RegexOption.IGNORE_CASE)
-    }
-}
- in urlValue) templateUrl(URI(absolute)) else addResource(absolute, false)
+            val local = if ('$' in urlValue) templateUrl(URI(absolute)) else addResource(absolute, false)
             "${m.groupValues[1]}$local${m.groupValues[3]}"
         }
         rewritten = LOCATION_TEXT.replace(rewritten) { m ->
@@ -487,7 +360,7 @@ internal class FfmpegManifestHttpsBridge(
         val MPD_TAG = Regex("<(?:[a-zA-Z0-9_-]+:)?MPD(?:\\s|>)", RegexOption.IGNORE_CASE)
         val MPD_OPEN = Regex("<(?:[a-zA-Z0-9_-]+:)?MPD\\b[^>]*>", RegexOption.IGNORE_CASE)
         val BASE_URL = Regex("""<BaseURL([^>]*)>(.*?)</BaseURL>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        val ABSOLUTE_DASH_URI = Regex("""((?:media|initialization|sourceURL|href|index)=")(https?://)([^"]+)""", RegexOption.IGNORE_CASE)
+        val ABSOLUTE_DASH_URI = Regex("""((?:media|initialization|sourceURL|href|index)=")(https?://[^"]+)(")""", RegexOption.IGNORE_CASE)
         val LOCATION_TEXT = Regex("""(<(?:[\w.-]+:)?(?:Location|PatchLocation)\b[^>]*>)([^<]+)(</(?:[\w.-]+:)?(?:Location|PatchLocation)\s*>)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
         val PERIOD_OR_LOCATION = Regex("<(?:[\\w.-]+:)?(?:Period|Location)\\b", RegexOption.IGNORE_CASE)
         val PROGRAM_INFO_END = Regex("</(?:[\\w.-]+:)?ProgramInformation\\s*>", RegexOption.IGNORE_CASE)
