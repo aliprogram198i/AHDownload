@@ -212,9 +212,13 @@ internal class FfmpegManifestHttpsBridge(
         val base = URI(finalUrl)
         var rewritten = BASE_URL.replace(text) { m ->
             val raw = xmlUnescape(m.groupValues[2].trim())
-            if (raw.startsWith("http://", true) || raw.startsWith("https://", true) || raw.startsWith("//")) {
-                val absolute = base.resolve(URI(raw)).toString()
-                "<BaseURL${m.groupValues[1]}>${addBase(absolute)}</BaseURL>"
+            val resolved = runCatching {
+                if (raw.isEmpty()) base.resolve(".") else base.resolve(URI(raw))
+            }.getOrNull()
+            if (resolved != null &&
+                (resolved.scheme.equals("http", true) || resolved.scheme.equals("https", true))
+            ) {
+                "<BaseURL${m.groupValues[1]}>${addBase(resolved.toString())}</BaseURL>"
             } else m.value
         }
 
