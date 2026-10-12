@@ -32,7 +32,7 @@ internal fun sanitizeFfmpegDiagnostic(rawOutput: String): String {
                     "$1[redacted]",
                 )
                 .replace(
-                    Regex("(?i)https?://[^\\s\\"'<>]+"),
+                    Regex("""(?i)https?://[^\s"'<>]+"""),
                     "[url redacted]",
                 )
         }
