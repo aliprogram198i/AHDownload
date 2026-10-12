@@ -155,6 +155,7 @@ class DownloadWorkScheduler(
                 DownloadWorker.KEY_COMPANION_AUDIO_STREAMING_MANIFEST,
                 task.companionAudioStreamingManifest,
             )
+            .putLong(DownloadWorker.KEY_EXPECTED_BYTES, task.expectedBytes ?: -1L)
             .putBoolean(DownloadWorker.KEY_FORCE_REFRESH, forceRefresh)
             .apply {
                 task.requestHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }
