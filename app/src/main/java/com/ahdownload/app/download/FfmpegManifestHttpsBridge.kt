@@ -17,6 +17,17 @@ import java.net.SocketException
 import java.net.URI
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import org.xml.sax.InputSource
+import org.w3c.dom.Node
+import org.w3c.dom.Element
+import javax.xml.transform.stream.StreamResult
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.XMLConstants
+import java.io.StringWriter
+import java.io.StringReader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -240,43 +251,146 @@ internal class FfmpegManifestHttpsBridge(
      * their $Number$ / $RepresentationID$ placeholders for FFmpeg to expand.
      */
     private fun rewriteDash(text: String, finalUrl: String): String {
-        val base = URI(finalUrl)
-        var rewritten = BASE_URL.replace(text) { m ->
-            val raw = xmlUnescape(m.groupValues[2].trim())
-            val resolved = runCatching {
-                resolveManifestReference(base, if (raw.isEmpty()) URI(".") else URI(raw))
-            }.getOrNull()
-            if (resolved != null &&
-                (resolved.scheme.equals("http", true) || resolved.scheme.equals("https", true))
-            ) {
-                "<BaseURL${m.groupValues[1]}>${addBase(resolved.toString())}</BaseURL>"
-            } else m.value
+        val manifestUri = URI(finalUrl)
+        val factory = DocumentBuilderFactory.newInstance().apply {
+            isNamespaceAware = true
+            isXIncludeAware = false
+            isExpandEntityReferences = false
+            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            setFeature("http://xml.org/sax/features/external-general-entities", false)
+            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
+            runCatching { setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+        }
+        val document = try {
+            factory.newDocumentBuilder().parse(InputSource(StringReader(text)))
+        } catch (error: Exception) {
+            throw IOException("DASH manifest could not be parsed safely", error)
+        }
+        val root = document.documentElement ?: throw IOException("DASH manifest has no document root")
+        if (!localElementName(root).equals("MPD", ignoreCase = true)) {
+            throw IOException("DASH manifest root element is not MPD")
         }
 
-        val rootOpen = MPD_OPEN.find(rewritten) ?: throw IOException("DASH manifest has no MPD root")
-        val existingBase = BASE_URL.find(rewritten)
-        val firstPeriod = PERIOD_OR_LOCATION.find(rewritten)
-        val rootHasBase = existingBase != null && (firstPeriod == null || existingBase.range.first < firstPeriod.range.first)
-        if (!rootHasBase) {
-            val defaultBase = addBase(resolveManifestReference(base, URI(".")).toString())
-            val programInfo = PROGRAM_INFO_END.find(rewritten)
-            val insertAt = programInfo?.range?.last?.plus(1) ?: rootOpen.range.last + 1
-            rewritten = rewritten.substring(0, insertAt) + "<BaseURL>$defaultBase</BaseURL>" + rewritten.substring(insertAt)
+        // Add a directory base for manifests whose segments use relative URLs only.
+        if (directElementChildren(root).none { localElementName(it).equals("BaseURL", true) }) {
+            val defaultBase = resolveManifestReference(manifestUri, URI("."))
+            val prefix = root.prefix?.takeIf { it.isNotBlank() }
+            val qualifiedName = prefix?.let { "$it:BaseURL" } ?: "BaseURL"
+            val baseElement = document.createElementNS(root.namespaceURI, qualifiedName).apply {
+                textContent = defaultBase.toString()
+            }
+            val insertionPoint = directElementChildren(root)
+                .firstOrNull { !localElementName(it).equals("ProgramInformation", true) }
+            if (insertionPoint == null) root.appendChild(baseElement)
+            else root.insertBefore(baseElement, insertionPoint)
         }
 
-        rewritten = ABSOLUTE_DASH_URI.replace(rewritten) { m ->
-            val urlValue = xmlUnescape(m.groupValues[2])
-            val absolute = resolveManifestReference(base, URI(urlValue)).toString()
-            val local = if ('$' in urlValue) templateUrl(URI(absolute)) else addResource(absolute, false)
-            "${m.groupValues[1]}$local${m.groupValues[3]}"
+        rewriteDashElement(root, manifestUri)
+
+        return try {
+            val transformerFactory = TransformerFactory.newInstance()
+            runCatching {
+                transformerFactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            }
+            runCatching { transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "") }
+            runCatching { transformerFactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "") }
+            val transformer = transformerFactory.newTransformer().apply {
+                setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
+                setOutputProperty(OutputKeys.ENCODING, "UTF-8")
+                setOutputProperty(OutputKeys.INDENT, "no")
+            }
+            StringWriter().also { writer ->
+                transformer.transform(DOMSource(document), StreamResult(writer))
+            }.toString()
+        } catch (error: Exception) {
+            throw IOException("DASH manifest could not be rewritten safely", error)
         }
-        rewritten = LOCATION_TEXT.replace(rewritten) { m ->
-            val raw = xmlUnescape(m.groupValues[2].trim())
-            val absolute = resolveManifestReference(base, URI(raw)).toString()
-            "${m.groupValues[1]}${addResource(absolute, false)}${m.groupValues[3]}"
-        }
-        return rewritten
     }
+
+    /**
+     * Resolve BaseURL hierarchically. A Representation-level "480p/" must be
+     * resolved against its AdaptationSet's effective URL, not the MPD URL.
+     */
+    private fun rewriteDashElement(element: Element, inheritedBase: URI) {
+        val baseElements = directElementChildren(element)
+            .filter { localElementName(it).equals("BaseURL", ignoreCase = true) }
+        var effectiveBase = inheritedBase
+        var selectedBase: URI? = null
+
+        // Multiple BaseURL values represent alternatives at the same level. Map
+        // each alternative against the parent's base, while using the first as
+        // the deterministic base for its descendants.
+        for (baseElement in baseElements) {
+            val raw = baseElement.textContent.trim()
+            val resolved = runCatching {
+                if (raw.isEmpty()) inheritedBase
+                else resolveManifestReference(inheritedBase, URI(raw))
+            }.getOrNull()
+            if (resolved != null && isHttpUri(resolved) && !isBridgeUri(resolved)) {
+                baseElement.textContent = addBase(resolved.toString())
+                if (selectedBase == null) selectedBase = resolved
+            } else if (resolved != null && selectedBase == null) {
+                selectedBase = resolved
+            }
+        }
+        effectiveBase = selectedBase ?: effectiveBase
+
+        directElementChildren(element)
+            .filterNot { localElementName(it).equals("BaseURL", ignoreCase = true) }
+            .forEach { child ->
+                rewriteAbsoluteDashAttributes(child)
+                if (
+                    localElementName(child).equals("Location", ignoreCase = true) ||
+                    localElementName(child).equals("PatchLocation", ignoreCase = true)
+                ) {
+                    val raw = child.textContent.trim()
+                    val resolved = runCatching {
+                        resolveManifestReference(effectiveBase, URI(raw))
+                    }.getOrNull()
+                    if (resolved != null && isHttpUri(resolved) && !isBridgeUri(resolved)) {
+                        child.textContent = addResource(resolved.toString(), false)
+                    }
+                }
+                rewriteDashElement(child, effectiveBase)
+            }
+    }
+
+    private fun rewriteAbsoluteDashAttributes(element: Element) {
+        val attributes = element.attributes
+        for (index in 0 until attributes.length) {
+            val attribute = attributes.item(index)
+            val name = (attribute.localName ?: attribute.nodeName.substringAfter(':')).lowercase()
+            if (name !in DASH_REFERENCE_ATTRIBUTES) continue
+
+            val raw = attribute.nodeValue?.trim().orEmpty()
+            val uri = runCatching { URI(raw) }.getOrNull() ?: continue
+            if (!isHttpUri(uri) || isBridgeUri(uri)) continue
+
+            attribute.nodeValue = if ('$' in raw) templateUrl(uri) else addResource(uri.toString(), false)
+        }
+    }
+
+    private fun directElementChildren(node: Node): List<Element> {
+        val children = mutableListOf<Element>()
+        var child = node.firstChild
+        while (child != null) {
+            if (child.nodeType == Node.ELEMENT_NODE && child is Element) children += child
+            child = child.nextSibling
+        }
+        return children
+    }
+
+    private fun localElementName(element: Element): String =
+        element.localName ?: element.nodeName.substringAfter(':')
+
+    private fun isHttpUri(uri: URI): Boolean =
+        (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) &&
+            !uri.host.isNullOrBlank()
+
+    private fun isBridgeUri(uri: URI): Boolean =
+        uri.host.equals("127.0.0.1", ignoreCase = true) && uri.port == server.localPort
 
     private fun templateUrl(remote: URI): String {
         val path = remote.rawPath.orEmpty()
@@ -369,10 +483,6 @@ internal class FfmpegManifestHttpsBridge(
         }
     }
 
-    private fun xmlUnescape(value: String): String =
-        value.replace("&amp;", "&").replace("&quot;", "\"").replace("&apos;", "'")
-            .replace("&lt;", "<").replace("&gt;", ">")
-
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         runCatching { server.close() }
@@ -392,12 +502,7 @@ internal class FfmpegManifestHttpsBridge(
             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36"
         val HLS_URI = Regex("""(?i)\bURI="([^"]+)"""")
+        val DASH_REFERENCE_ATTRIBUTES = setOf("media", "initialization", "sourceurl", "href", "index")
         val MPD_TAG = Regex("<(?:[a-zA-Z0-9_-]+:)?MPD(?:\\s|>)", RegexOption.IGNORE_CASE)
-        val MPD_OPEN = Regex("<(?:[a-zA-Z0-9_-]+:)?MPD\\b[^>]*>", RegexOption.IGNORE_CASE)
-        val BASE_URL = Regex("""<BaseURL([^>]*)>(.*?)</BaseURL>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        val ABSOLUTE_DASH_URI = Regex("""((?:media|initialization|sourceURL|href|index)=")(https?://[^"]+)(")""", RegexOption.IGNORE_CASE)
-        val LOCATION_TEXT = Regex("""(<(?:[\w.-]+:)?(?:Location|PatchLocation)\b[^>]*>)([^<]+)(</(?:[\w.-]+:)?(?:Location|PatchLocation)\s*>)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-        val PERIOD_OR_LOCATION = Regex("<(?:[\\w.-]+:)?(?:Period|Location)\\b", RegexOption.IGNORE_CASE)
-        val PROGRAM_INFO_END = Regex("</(?:[\\w.-]+:)?ProgramInformation\\s*>", RegexOption.IGNORE_CASE)
     }
 }
