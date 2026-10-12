@@ -139,13 +139,14 @@ class PublicMediaDownloadMatrixE2ETest {
                     // be only the bytes transferred, so it must not be used to prove that
                     // the source itself was fully downloaded for this acceptance target.
                     val validatedSourceBytes = validation.candidate.validatedContentLengthBytes
-                        ?.takeIf { it > 0L }
+                        ?.takeIf { it > 0L && !candidate.streamingManifest }
                     if (target.id == "21_xnxx_arabic" && validatedSourceBytes == null) {
                         lastFailure =
                             "Candidate ${index + 1}: cannot prove full XNXX download because independently validated source size is unknown"
                         continue
                     }
-                    val expectedBytes = validatedSourceBytes ?: record.totalBytes?.takeIf { it > 0L }
+                    val expectedBytes = validatedSourceBytes
+                        ?: record.totalBytes?.takeIf { it > 0L && !candidate.streamingManifest }
                     if (expectedBytes != null && bytes != expectedBytes) {
                         lastFailure = "Candidate ${index + 1}: output size mismatch; expectedBytes=" +
                             "${expectedBytes}; publishedBytes=${bytes}"
