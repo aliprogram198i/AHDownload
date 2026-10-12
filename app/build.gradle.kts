@@ -95,8 +95,8 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
     implementation("com.google.code.gson:gson:2.13.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
-    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:8.1.9")
-    // FFmpegKit 8.1.7 declares this runtime dependency incompletely; keep it explicit to prevent release-time NoClassDefFoundError.
+    implementation("dev.ffmpegkit-maintained:ffmpeg-kit-full:7.1.6")
+    // Keep the FFmpegKit runtime exception dependency explicit to prevent release-time NoClassDefFoundError.
     implementation("com.arthenica:smart-exception-java:0.2.1")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
