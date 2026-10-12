@@ -490,6 +490,45 @@ fun SettingsRoute(
                                 )
                             }
                         }
+                    } else if (themeMode == AHThemeMode.DARK) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        "Indigo Dark",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                    ) {
+                                        Text(
+                                            "وضع داكن",
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                    }
+                                }
+                                Text(
+                                    "خلفيات داكنة، أسطح متدرجة بصريًا، ولمسات نيلية متناسقة مع Dark Tech.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     } else if (themeMode == AHThemeMode.DARK_TECH) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),

@@ -218,12 +218,12 @@ fun AHStatusPill(
     modifier: Modifier = Modifier,
 ) {
     val containerColor = if (success) {
-        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
+        MaterialTheme.colorScheme.tertiaryContainer
     } else {
         MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = if (success) {
-        MaterialTheme.colorScheme.tertiary
+        MaterialTheme.colorScheme.onTertiaryContainer
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }

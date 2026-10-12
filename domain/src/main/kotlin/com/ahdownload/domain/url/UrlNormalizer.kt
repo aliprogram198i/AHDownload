@@ -10,7 +10,10 @@ class UrlNormalizer {
         val candidate = if ("://" in trimmed) trimmed else "https://$trimmed"
         val uri = URI(candidate)
         val scheme = uri.scheme?.lowercase()
-        require(scheme == "http" || scheme == "https") { "Unsupported URL scheme" }
+        require(scheme == "https") {
+            if (scheme == "http") "Cleartext HTTP is not supported; use an HTTPS URL"
+            else "Unsupported URL scheme"
+        }
 
         require(!uri.host.isNullOrBlank()) { "URL host is missing" }
 

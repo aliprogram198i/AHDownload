@@ -173,6 +173,45 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun rejectsCleartextHttpBeforeProbe() = kotlinx.coroutines.test.runTest {
+        var called = false
+        val probe = object : MediaProbe {
+            override suspend fun probe(
+                url: String,
+                headers: Map<String, String>,
+                operationId: String?,
+                sourceContext: MediaSourceContext,
+            ): MediaProbeResult {
+                called = true
+                error("probe must not be called for HTTP")
+            }
+        }
+
+        val result = CandidateValidator(probe).validate(
+            candidate(MediaKind.Video).copy(sourceUrl = "http://cdn.example/video.mp4"),
+        )
+
+        assertEquals(ValidationFailure.InvalidUrl, assertIs<CandidateValidationResult.Invalid>(result).failure)
+        assertEquals(false, called)
+    }
+
+    @Test
+    fun rejectsHttpRedirectTargetAfterSuccessfulProbe() = kotlinx.coroutines.test.runTest {
+        val result = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "video/mp4",
+                    contentLengthBytes = 1024L,
+                    finalUrl = "http://cdn.example/video.mp4",
+                ),
+            ),
+        ).validate(candidate(MediaKind.Video))
+
+        assertEquals(ValidationFailure.InvalidUrl, assertIs<CandidateValidationResult.Invalid>(result).failure)
+    }
+
+    @Test
     fun rejectsUnsupportedSchemeBeforeProbe() = kotlinx.coroutines.test.runTest {
         var called = false
         val probe = object : MediaProbe {

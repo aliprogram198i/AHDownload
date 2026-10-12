@@ -220,7 +220,7 @@ jobs:
           echo "== APK checksum =="
           sha256sum "$APK" | tee app-release.apk.sha256
 
-      - name: Verify Android 7+ package compatibility
+      - name: Verify OS floor and packaged native ABIs
         run: |
           set -euo pipefail
 
@@ -246,16 +246,23 @@ jobs:
           test "$MIN_SDK" = "24"
           test "$TARGET_SDK" = "36"
 
+          ABI_LIST="$(unzip -Z1 "$APK" | sed -nE 's#^lib/([^/]+)/.*#\1#p' | sort -u)"
+          printf '%s\n' "$ABI_LIST" | grep -Fxq "arm64-v8a"
+          printf '%s\n' "$ABI_LIST" | grep -Fxq "x86_64"
+          ABI_CSV="$(printf '%s\n' "$ABI_LIST" | paste -sd, -)"
+
           {
             echo "applicationId=$PACKAGE_NAME"
             echo "versionCode=$VERSION_CODE"
             echo "versionName=$VERSION_NAME"
             echo "minSdkVersion=$MIN_SDK"
             echo "targetSdkVersion=$TARGET_SDK"
+            echo "nativeAbis=$ABI_CSV"
           } | tee apk-compatibility.txt
 
           echo "Confirmed minSdkVersion=$MIN_SDK (Android 7.0 Nougat)"
           echo "Confirmed targetSdkVersion=$TARGET_SDK"
+          echo "Confirmed native ABIs=$ABI_CSV"
           echo "Confirmed applicationId=$PACKAGE_NAME"
 
       - name: Package verification outputs

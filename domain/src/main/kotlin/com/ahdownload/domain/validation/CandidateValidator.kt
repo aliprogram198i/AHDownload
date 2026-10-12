@@ -32,7 +32,7 @@ class CandidateValidator(
         }
 
         val url = candidate.sourceUrl.trim()
-        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        if (!isHttpsUrl(url)) {
             return reject(ValidationFailure.InvalidUrl)
         }
 
@@ -82,6 +82,10 @@ class CandidateValidator(
             },
             null,
         )
+
+        if (!isHttpsUrl(probeResult.finalUrl)) {
+            return reject(ValidationFailure.InvalidUrl)
+        }
 
         if (probeResult.statusCode !in 200..299) {
             return reject(ValidationFailure.HttpStatus(probeResult.statusCode))
@@ -166,6 +170,11 @@ class CandidateValidator(
         is ValidationFailure.HttpStatus -> "HTTP_${failure.code}"
         ValidationFailure.HtmlResponse -> "HTML_RESPONSE"
         ValidationFailure.ContentTypeMismatch -> "CONTENT_TYPE_MISMATCH"
+    }
+
+    private fun isHttpsUrl(value: String): Boolean {
+        val uri = runCatching { java.net.URI(value.trim()) }.getOrNull() ?: return false
+        return uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
     }
 
     private fun isSnapchatMediaCdn(url: String): Boolean {

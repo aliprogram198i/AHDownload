@@ -131,6 +131,12 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun rejectsCleartextHttpLinks() {
+        assertNull(analyzer.analyze("http://youtu.be/example"))
+        assertNull(analyzer.analyze("http://cdn.example.com/video.mp4"))
+    }
+
+    @Test
     fun rejectsInvalidAndMalformedUrls() {
         assertNull(analyzer.analyze(""))
         assertNull(analyzer.analyze("   "))
