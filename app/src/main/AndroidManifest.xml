@@ -10,7 +10,8 @@
 
     <application
         android:name=".AHDownloadApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="false"
         android:label="AHDownload"
         android:icon="@drawable/ic_ahdownload"
         android:roundIcon="@drawable/ic_ahdownload"
