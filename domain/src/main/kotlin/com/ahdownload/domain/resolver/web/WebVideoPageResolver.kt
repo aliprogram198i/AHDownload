@@ -62,7 +62,27 @@ class WebVideoPageResolver(
             // Only HTTP responses that do not yield HTML can use the WebView fallback.
             // Transport, DNS, unsafe-redirect, and cancellation errors must not be converted
             // into a second navigation path.
-            val page = fetchPage(initial, request)
+            val page = try {
+                fetchPage(initial, request)
+            } catch (error: RedirectLoopException) {
+                // A server-side redirect loop can be specific to the raw HTTP navigation path.
+                // When the browser provider is available, let it attempt media discovery rather
+                // than terminating resolution before browser-observed sources can be inspected.
+                if (browserMediaSessionProvider == null) throw error
+                log(
+                    level = DiagnosticLevel.WARNING,
+                    event = "WEB_VIDEO_REDIRECT_LOOP_BROWSER_FALLBACK",
+                    reason = "Redirect loop detected; trying browser media observation",
+                    request = request,
+                    values = mapOf(
+                        "failure_stage" to "PAGE_FETCH",
+                        "failure_category" to "REDIRECT_LOOP",
+                        "fallback" to "BROWSER_MEDIA_SESSION",
+                        "host" to hostOf(initial.toString()),
+                    ),
+                )
+                null
+            }
             val pageUrl = page?.finalUrl ?: initial.toString()
             resolverStage = "HTML_PARSE"
             val parsedPage = page?.let { WebPageMediaParser.parse(it.html, it.finalUrl) }
