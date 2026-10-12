@@ -33,7 +33,7 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "platforms;android-37.1" "build-tools;36.1.0" "system-images;android-35;google_apis;x86_64"
       - name: Compile app and test suite
-        run: gradle --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' testDebugUnitTest assembleDebug assembleDebugAndroidTest
+        run: gradle --no-daemon --max-workers=2 -Dorg.gradle.parallel=false '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' :domain:test testDebugUnitTest assembleDebug assembleDebugAndroidTest
       - name: Enable KVM
         run: |
           set -euo pipefail
