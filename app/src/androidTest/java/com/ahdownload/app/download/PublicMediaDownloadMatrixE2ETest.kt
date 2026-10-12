@@ -125,6 +125,21 @@ class PublicMediaDownloadMatrixE2ETest {
                         continue
                     }
 
+                    // A positive file and a media-looking signature do not prove that the
+                    // whole source was downloaded. Compare the published byte count against
+                    // an independently observed total size whenever available.
+                    val expectedBytes = validation.candidate.validatedContentLengthBytes
+                        ?: record.totalBytes?.takeIf { it > 0L }
+                    if (expectedBytes != null && bytes != expectedBytes) {
+                        lastFailure = "Candidate ${index + 1}: output size mismatch; expectedBytes=" +
+                            "${expectedBytes}; publishedBytes=${bytes}"
+                        continue
+                    }
+                    if (target.id == "21_xnxx_arabic" && expectedBytes == null) {
+                        lastFailure = "Candidate ${index + 1}: cannot prove full download because total source size is unknown"
+                        continue
+                    }
+
                     val signature = prefix.toByteArray(Charsets.ISO_8859_1)
                         .take(12).joinToString("") { "%02x".format(it) }
                     val knownTotal = record.totalBytes?.toString() ?: "unknown"
