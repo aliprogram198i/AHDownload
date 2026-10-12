@@ -49,9 +49,9 @@ class OkHttpMediaProbeTest {
         assertEquals("video/webm; codecs=\"vp9\"", result.contentType)
         assertEquals(123456L, result.contentLengthBytes)
         assertEquals(listOf("GET"), methods)
-        assertEquals(listOf(null), ranges)
+        assertEquals(listOf<String?>(null), ranges)
         assertEquals("GET", result.method)
-        assertEquals(null, result.range)
+        assertEquals<String?>(null, result.range)
     }
 
     @Test
@@ -213,7 +213,7 @@ class OkHttpMediaProbeTest {
         )
 
         assertEquals(206, result.statusCode)
-        assertEquals(null, result.contentLengthBytes)
+        assertEquals<Long?>(null, result.contentLengthBytes)
     }
 
     @Test
@@ -309,6 +309,7 @@ class OkHttpMediaProbeTest {
                         )
                         .build()
                 }
+                response
             })
             .build()
 
