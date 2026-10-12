@@ -129,15 +129,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 
-private enum class DownloadFilter(val label: String) {
-    All("الكل"),
-    Active("نشطة"),
-    Paused("متوقفة"),
-    Completed("مكتملة"),
-    Failed("فشل"),
-    Favorites("المفضلة"),
-}
-
 private enum class DownloadMediaFilter(val label: String) {
     All("الكل"),
     Video("الفيديو"),
@@ -337,7 +328,7 @@ private fun DownloadsScreen(
     uiTraceLogger: UiTraceLogger,
 ) {
     var query by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf(DownloadFilter.All) }
+    var favoritesOnly by remember { mutableStateOf(false) }
     var mediaFilter by remember { mutableStateOf(DownloadMediaFilter.All) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
@@ -356,20 +347,14 @@ private fun DownloadsScreen(
     }
 
     val normalizedQuery = query.trim().lowercase(Locale.ROOT)
-    val filtered = remember(records, filter, normalizedQuery, favorites) {
+    val filtered = remember(records, favoritesOnly, normalizedQuery, favorites) {
         records
             .filter { record ->
-                val matchesFilter = when (filter) {
-                    DownloadFilter.All -> true
-                    DownloadFilter.Active -> record.status.isActivelyRunning
-                    DownloadFilter.Paused -> record.status == DownloadStatus.PAUSED
-                    DownloadFilter.Completed -> record.status == DownloadStatus.COMPLETED
-                    DownloadFilter.Failed -> record.status == DownloadStatus.FAILED
-                    DownloadFilter.Favorites -> FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites
-                }
+                val matchesFavorite = !favoritesOnly ||
+                    FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites
                 val title = record.task.displayName.orEmpty()
                 val path = record.task.destinationPath
-                matchesFilter && (
+                matchesFavorite && (
                     normalizedQuery.isBlank() ||
                         title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
                         path.lowercase(Locale.ROOT).contains(normalizedQuery)
@@ -647,30 +632,32 @@ private fun DownloadsScreen(
                 }
 
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DownloadFilter.entries.forEach { item ->
-                            val count = when (item) {
-                                DownloadFilter.All -> records.size
-                                DownloadFilter.Active -> activeCount
-                                DownloadFilter.Paused -> pausedCount
-                                DownloadFilter.Completed -> completedCount
-                                DownloadFilter.Failed -> failedCount
-                                DownloadFilter.Favorites -> records.count {
-                                    FavoriteKey.fromUrl(it.task.sourcePageUrl ?: it.task.sourceUrl) in favorites
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        DiagnosticFilterChip(
+                            trackingScreen = "DOWNLOADS",
+                            trackingId = "DOWNLOADS.filterchip.favorites",
+                            trackingLabel = "المفضلة",
+                            disabledReason = "none",
+                            selected = favoritesOnly,
+                            onClick = { favoritesOnly = !favoritesOnly },
+                            label = {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Favorite,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                    Text("المفضلة · ${records.count { FavoriteKey.fromUrl(it.task.sourcePageUrl ?: it.task.sourceUrl) in favorites }}")
                                 }
-                            }
-                            item {
-                                DiagnosticFilterChip(
-                                    trackingScreen = "DOWNLOADS",
-                                    trackingId = "DOWNLOADS.filterchip.${item.name.lowercase(Locale.ROOT)}",
-                                    trackingLabel = item.label,
-                                    disabledReason = "none",
-                                    selected = item == filter,
-                                    onClick = { filter = item },
-                                    label = { Text(item.label + " " + count) },
-                                )
-                            }
-                        }
+                            },
+                        )
                     }
                 }
 
