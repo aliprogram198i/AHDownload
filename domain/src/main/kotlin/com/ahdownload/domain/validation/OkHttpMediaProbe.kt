@@ -52,7 +52,7 @@ class OkHttpMediaProbe(
                 it.equals("Sec-Fetch-Dest", ignoreCase = true) ||
                 it.equals("Sec-CH-UA", ignoreCase = true)
         }
-        val initialRange = explicitRange ?: "bytes=0-"
+        val initialRange = explicitRange
         val started = TimeSource.Monotonic.markNow()
         var response = execute(url, "GET", headers, initialRange)
 
@@ -77,12 +77,12 @@ class OkHttpMediaProbe(
             throwable = null,
         )
 
-        if (response.code == 403) {
+        if (response.code == 403 && explicitRange != null) {
             response.close()
 
             // First fallback: preserve the browser/session headers and exact URL,
-            // but remove Range. This tests whether the endpoint rejects probing
-            // semantics rather than rejecting the authenticated source itself.
+            // but remove a browser-captured Range. This tests whether the endpoint
+            // rejects the captured range semantics rather than the media source itself.
             val noRangeStarted = TimeSource.Monotonic.markNow()
             response = execute(url, "GET", headers, null)
             logger.log(
@@ -136,7 +136,7 @@ class OkHttpMediaProbe(
                     operationId,
                 ) + mapOf(
                     "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_NO_RANGE_RETRY",
-                    "removed_session_headers" to "Cookie,Origin,Referer",
+                    "removed_session_headers" to "Cookie,Origin",
                 ),
                 throwable = null,
             )
@@ -205,7 +205,40 @@ class OkHttpMediaProbe(
             ),
             throwable = null,
         )
-        if (head.code in 200..299) return head.toResult("HEAD", null)
+        if (head.code in 200..299) {
+            val headResult = head.toResult("HEAD", null)
+            if (headResult.contentLengthBytes != null) return headResult
+
+            // Some CDNs omit Content-Length on HEAD but disclose the complete object size
+            // in Content-Range for a one-byte probe. Use the probe only when it yields a
+            // valid result; otherwise preserve the successful HEAD validation result.
+            val range = "bytes=0-0"
+            val rangeStarted = TimeSource.Monotonic.markNow()
+            val response = execute(url, "GET", headers, range)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "head_size_unknown_range_probe",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    range,
+                    response.code,
+                    response.header("Content-Type"),
+                    rangeStarted.elapsedNow().inWholeMilliseconds,
+                    headers,
+                    operationId,
+                ),
+                throwable = null,
+            )
+            val rangedResult = response.toResult("GET", range)
+            return if (rangedResult.statusCode in 200..299 && rangedResult.contentLengthBytes != null) {
+                rangedResult
+            } else {
+                headResult
+            }
+        }
 
         if (head.code in RETRY_HEAD_CODES) {
             head.close()
@@ -277,10 +310,17 @@ class OkHttpMediaProbe(
 
     private fun okhttp3.Response.toResult(method: String, range: String?): MediaProbeResult {
         use {
-            val totalSize = header("Content-Range")
+            val rangeTotalSize = header("Content-Range")
                 ?.substringAfterLast('/', "")
                 ?.toLongOrNull()
-                ?: body.contentLength().takeIf { it >= 0L }
+            val totalSize = when {
+                rangeTotalSize != null -> rangeTotalSize
+                // For 206 responses the body length may only describe the returned range,
+                // not the complete media resource.
+                code == 206 -> null
+                else -> header("Content-Length")?.toLongOrNull()?.takeIf { it >= 0L }
+                    ?: body.contentLength().takeIf { it >= 0L }
+            }
 
             return MediaProbeResult(
                 statusCode = code,

@@ -102,27 +102,41 @@ class CandidateValidator(
             candidate.format.kind == MediaKind.Video &&
                 probeResult.contentType.isGenericBinary() &&
                 isSnapchatMediaCdn(probeResult.finalUrl)
+        val knownExtensionBinaryResponse =
+            !candidate.streamingManifest &&
+                probeResult.contentType.isGenericBinary() &&
+                (
+                    urlSupportsMediaKind(url, candidate.format.kind) ||
+                        urlSupportsMediaKind(probeResult.finalUrl, candidate.format.kind)
+                    )
+        val oggVideoResponse =
+            !candidate.streamingManifest &&
+                candidate.format.kind == MediaKind.Video &&
+                probeResult.contentType.isOggContainer() &&
+                listOf(url, probeResult.finalUrl).any { urlExtension(it) == "ogv" }
 
         if (
             !candidate.streamingManifest &&
             !probeResult.contentType.matchesKind(candidate.format.kind) &&
-            !snapchatOpaqueVideoResponse
+            !snapchatOpaqueVideoResponse &&
+            !knownExtensionBinaryResponse &&
+            !oggVideoResponse
         ) {
             return reject(ValidationFailure.ContentTypeMismatch)
         }
 
-        val updated = if (
-            candidate.format.fileSizeBytes == null &&
-            probeResult.contentLengthBytes != null
+        val measuredContentLength = probeResult.contentLengthBytes?.takeIf { it > 0L }
+        val updatedFormat = if (
+            candidate.format.fileSizeBytes == null && measuredContentLength != null
         ) {
-            candidate.copy(
-                format = candidate.format.copy(
-                    fileSizeBytes = probeResult.contentLengthBytes,
-                ),
-            )
+            candidate.format.copy(fileSizeBytes = measuredContentLength)
         } else {
-            candidate
+            candidate.format
         }
+        val updated = candidate.copy(
+            format = updatedFormat,
+            validatedContentLengthBytes = measuredContentLength,
+        )
 
         logger.log(
             DiagnosticLevel.INFO,
@@ -160,7 +174,30 @@ class CandidateValidator(
     }
 
     private fun String?.isGenericBinary(): Boolean =
-        this?.substringBefore(';')?.trim()?.equals("application/octet-stream", ignoreCase = true) == true
+        this?.substringBefore(';')?.trim()?.lowercase() in setOf(
+            "application/octet-stream",
+            "binary/octet-stream",
+        )
+
+    private fun String?.isOggContainer(): Boolean =
+        this?.substringBefore(';')?.trim()?.lowercase() in setOf(
+            "application/ogg",
+            "video/ogg",
+        )
+
+    private fun urlExtension(url: String): String =
+        runCatching { java.net.URI(url).path.orEmpty().substringAfterLast('.', "").lowercase() }
+            .getOrDefault("")
+
+    private fun urlSupportsMediaKind(url: String, kind: MediaKind): Boolean {
+        val extension = urlExtension(url)
+        return when (kind) {
+            MediaKind.Video -> extension in VIDEO_EXTENSIONS
+            MediaKind.Audio -> extension in AUDIO_EXTENSIONS
+            MediaKind.Image -> extension in IMAGE_EXTENSIONS
+            MediaKind.Unknown -> false
+        }
+    }
 
     private fun hostOf(url: String): String =
         runCatching { java.net.URI(url).host?.lowercase() }.getOrNull() ?: "invalid"
@@ -177,6 +214,12 @@ class CandidateValidator(
             type == "application/dash+xml" ||
             type == "text/vnd.apple.mpegurl" ||
             type == "text/plain"
+    }
+
+    private companion object {
+        val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi", "ogv")
+        val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "aac", "ogg", "opus", "flac", "wav")
+        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif")
     }
 
     private fun String?.matchesKind(kind: MediaKind): Boolean {

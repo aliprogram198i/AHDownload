@@ -598,6 +598,7 @@ class DownloadWorker(
 
                 if (
                     completedRecord.failureCode == "network_error" ||
+                    completedRecord.failureCode == "incomplete_response" && runAttemptCount < MAX_INCOMPLETE_RESPONSE_RETRIES ||
                     completedRecord.failureCode == "http_error" && isRetryableHttp(completedRecord.failureDetail) ||
                     retryableYouTube403
                 ) {
@@ -705,6 +706,7 @@ class DownloadWorker(
         val streamingManifest = inputData.getBoolean(KEY_STREAMING_MANIFEST, false)
         val companionAudioStreamingManifest =
             inputData.getBoolean(KEY_COMPANION_AUDIO_STREAMING_MANIFEST, false)
+        val expectedBytes = inputData.getLong(KEY_EXPECTED_BYTES, -1L).takeIf { it > 0L }
         val companionAudioRequestHeaders = buildMap {
             inputData.getString(KEY_COMPANION_AUDIO_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_COMPANION_AUDIO_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
@@ -751,6 +753,7 @@ class DownloadWorker(
             companionAudioSessionCookieHost = companionAudioSessionCookieHost,
             streamingManifest = streamingManifest,
             companionAudioStreamingManifest = companionAudioStreamingManifest,
+            expectedBytes = expectedBytes,
             requestHeaders = requestHeaders,
         )
     }
@@ -818,11 +821,22 @@ class DownloadWorker(
                     ),
                     error,
                 )
-                return queue.applyState(
+                val failedRecord = queue.applyState(
                     task.id,
                     DownloadState.Failed(DownloadFailure.InvalidResponse),
                     System.currentTimeMillis(),
                 )
+                val safeDetail = error?.message
+                    ?.replace('\n', ' ')
+                    ?.take(1000)
+                    ?.takeIf { it.isNotBlank() }
+                val enrichedFailure = failedRecord.copy(
+                    failureDetail = safeDetail ?: failedRecord.failureDetail
+                        ?: "FFmpeg could not acquire the HLS/DASH media source.",
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+                repository.upsert(enrichedFailure)
+                return enrichedFailure
             }
 
             val output = result.getOrThrow()
@@ -1382,6 +1396,8 @@ class DownloadWorker(
     }
 
     companion object {
+        private const val MAX_INCOMPLETE_RESPONSE_RETRIES = 2
+
         const val KEY_TASK_ID = "task_id"
         const val KEY_SOURCE_URL = "source_url"
         const val KEY_DESTINATION_PATH = "destination_path"
@@ -1396,6 +1412,7 @@ class DownloadWorker(
         const val KEY_COMPANION_AUDIO_SOURCE_URL = "companion_audio_source_url"
         const val KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST = "companion_audio_session_cookie_host"
         const val KEY_COMPANION_AUDIO_STREAMING_MANIFEST = "companion_audio_streaming_manifest"
+        const val KEY_EXPECTED_BYTES = "expected_bytes"
         const val KEY_STREAMING_MANIFEST = "streaming_manifest"
         const val KEY_COMPANION_AUDIO_USER_AGENT = "companion_audio_user_agent"
         const val KEY_COMPANION_AUDIO_REFERER = "companion_audio_referer"

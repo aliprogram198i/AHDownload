@@ -72,6 +72,66 @@ class WebVideoPageResolverTest {
     }
 
     @Test
+    fun discoversArchiveOrgDownloadFileFromPublicMetadataApi() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val resolver = WebVideoPageResolver(
+            client = client(
+                requests,
+                listOf(
+                    response(200, mapOf("Content-Type" to "text/html"), "<html><title>Moon</title></html>"),
+                    response(
+                        200,
+                        mapOf("Content-Type" to "application/json"),
+                        """{"files":[{"name":"A_Trip_to_the_Moon.mp4","size":"1024","format":"MPEG4"},{"name":"metadata.xml","size":"200"}]}""",
+                    ),
+                    response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "1024")),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(request("https://archive.org/details/A_Trip_to_the_Moon"))
+
+        assertTrue(result is ResolverResult.Success)
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertEquals(
+            "https://archive.org/download/A_Trip_to_the_Moon/A_Trip_to_the_Moon.mp4",
+            candidate.sourceUrl,
+        )
+        assertFalse(candidate.streamingManifest)
+        assertTrue(requests[1].url.encodedPath.startsWith("/metadata/"))
+    }
+
+    @Test
+    fun discoversPeerTubeManifestFromPublicVideoApi() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val videoId = "64cda44b-f748-42f4-a0c4-9a8be8e4f16a"
+        val playlistUrl = "https://video.blender.org/static/streaming-playlists/hls/$videoId/master.m3u8"
+        val resolver = WebVideoPageResolver(
+            client = client(
+                requests,
+                listOf(
+                    response(200, mapOf("Content-Type" to "text/html"), "<html><title>PeerTube</title></html>"),
+                    response(
+                        200,
+                        mapOf("Content-Type" to "application/json"),
+                        """{"streamingPlaylists":[{"playlistUrl":"$playlistUrl"}]}""",
+                    ),
+                    response(200, mapOf("Content-Type" to "application/vnd.apple.mpegurl", "Content-Length" to "640")),
+                ),
+            ),
+        )
+
+        val result = resolver.resolve(request("https://video.blender.org/w/$videoId"))
+
+        assertTrue(result is ResolverResult.Success)
+        val candidate = (result as ResolverResult.Success).candidates.single()
+        assertEquals(playlistUrl, candidate.sourceUrl)
+        assertTrue(candidate.streamingManifest)
+        assertTrue(requests[1].url.encodedPath.startsWith("/api/v1/videos/"))
+    }
+
+
+    @Test
     fun reportsNoCandidatesForHtmlWithoutRecognizedVideoSources() = runBlocking {
         val requests = mutableListOf<Request>()
         val resolver = WebVideoPageResolver(client = client(requests, listOf(

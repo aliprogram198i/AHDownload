@@ -24,7 +24,7 @@ class ResolverContractTest {
     }
 
     @Test
-    fun rankerPrefersMuxedHigherQualityVideo() {
+    fun rankerPrefersMuxedVideoOverHigherResolutionSilentVideo() {
         val candidates = listOf(
             candidate(
                 id = "audio",
@@ -61,7 +61,7 @@ class ResolverContractTest {
 
         val ranked = CandidateRanker().rank(candidates, requestedKind = MediaKind.Video)
 
-        assertEquals(listOf("video-only-1440", "video-1080", "video-720"), ranked.map { it.id })
+        assertEquals(listOf("video-1080", "video-720", "video-only-1440"), ranked.map { it.id })
     }
 
     @Test

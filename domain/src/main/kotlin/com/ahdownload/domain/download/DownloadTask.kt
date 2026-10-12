@@ -40,4 +40,6 @@ data class DownloadTask(
     val streamingManifest: Boolean = false,
     /** True when the paired audio source is an HLS/DASH manifest. */
     val companionAudioStreamingManifest: Boolean = false,
+    /** Exact byte count measured during source validation; null when the source size is unknown. */
+    val expectedBytes: Long? = null,
 )

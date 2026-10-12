@@ -72,6 +72,9 @@ class DownloadLauncher(
                 companionAudioSessionCookieHost = candidate.companionAudioSessionCookieHost,
                 streamingManifest = candidate.streamingManifest,
                 companionAudioStreamingManifest = candidate.companionAudioStreamingManifest,
+                expectedBytes = candidate.validatedContentLengthBytes?.takeIf {
+                    it > 0L && !candidate.streamingManifest
+                },
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
@@ -137,6 +140,9 @@ class DownloadLauncher(
                 processingMode = DownloadProcessingMode.ExtractAudio,
                 audioOutputFormat = outputFormat,
                 streamingManifest = candidate.streamingManifest,
+                expectedBytes = candidate.validatedContentLengthBytes?.takeIf {
+                    it > 0L && !candidate.streamingManifest
+                },
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
@@ -200,6 +206,11 @@ class DownloadLauncher(
     private fun extensionFor(candidate: MediaCandidate): String =
         if (candidate.streamingManifest) {
             ".mkv"
+        } else if (
+            candidate.format.kind == com.ahdownload.domain.model.MediaKind.Video &&
+            candidate.sourceUrl.substringBefore('?').substringBefore('#').endsWith(".ogv", ignoreCase = true)
+        ) {
+            ".ogv"
         } else if (!candidate.companionAudioSourceUrl.isNullOrBlank()) {
             when (candidate.format.container) {
                 com.ahdownload.domain.resolver.MediaContainer.Mp4 -> ".mp4"

@@ -14,6 +14,24 @@ class UrlNormalizer {
 
         require(!uri.host.isNullOrBlank()) { "URL host is missing" }
 
-        return Result.success(uri.normalize().toString())
+        val normalized = uri.normalize()
+        val authority = normalized.rawAuthority
+            ?: throw IllegalArgumentException("URL authority is missing")
+        val host = normalized.host
+            ?: throw IllegalArgumentException("URL host is missing")
+        val hostIndex = authority.lastIndexOf(host)
+        require(hostIndex >= 0) { "URL host is missing from authority" }
+        val normalizedAuthority = authority.substring(0, hostIndex) +
+            host.lowercase(java.util.Locale.ROOT) +
+            authority.substring(hostIndex + host.length)
+        val normalizedUrl = buildString {
+            append(scheme)
+            append("://")
+            append(normalizedAuthority)
+            append(normalized.rawPath.orEmpty())
+            normalized.rawQuery?.let { append('?').append(it) }
+            normalized.rawFragment?.let { append('#').append(it) }
+        }
+        return Result.success(URI(normalizedUrl).normalize().toString())
     }
 }

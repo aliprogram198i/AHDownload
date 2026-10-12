@@ -37,6 +37,55 @@ class StreamingDownloadEngineTest {
     }
 
     @Test
+    fun doesNotCommitWhenBodyEndsBeforeDeclaredContentLength() = runTest {
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = 10,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("short".encodeToByteArray()),
+                ),
+            ),
+            sink = sink,
+        ).download(task(), states::add)
+
+        assertEquals(
+            DownloadFailure.IncompleteResponse(expectedBytes = 10, receivedBytes = 5),
+            assertIs<DownloadState.Failed>(states.last()).reason,
+        )
+        assertEquals(false, sink.committed)
+        assertEquals("short", sink.committedData())
+    }
+
+    @Test
+    fun usesValidatedExpectedLengthWhenResponseOmitsContentLength() = runTest {
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = null,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("short".encodeToByteArray()),
+                ),
+            ),
+            sink = sink,
+        ).download(task().copy(expectedBytes = 10), states::add)
+
+        assertEquals(
+            DownloadFailure.IncompleteResponse(expectedBytes = 10, receivedBytes = 5),
+            assertIs<DownloadState.Failed>(states.last()).reason,
+        )
+        assertEquals(false, sink.committed)
+    }
+
+    @Test
     fun forwardsTaskRequestHeadersToSource() = runTest {
         val source = CapturingSource(
             DownloadResponse(
@@ -57,6 +106,7 @@ class StreamingDownloadEngineTest {
                     "Origin" to "https://www.youtube.com",
                 ),
             ),
+            onState = {},
         )
         assertEquals("WebView-UA", source.headers["User-Agent"])
         assertEquals("https://www.youtube.com/", source.headers["Referer"])
@@ -156,7 +206,7 @@ class StreamingDownloadEngineTest {
         assertIs<DownloadState.Completed>(states.last())
         assertEquals("hello", sink.committedData())
         assertEquals(2L, source.requestedRange)
-    )
+    }
 
     private fun task() = DownloadTask("task-1", "https://cdn.example/video.mp4", "/tmp/video.mp4")
 
@@ -194,6 +244,8 @@ class StreamingDownloadEngineTest {
         }
 
         fun seed(bytes: ByteArray) { data.write(bytes) }
+
+        override suspend fun temporarySize(destinationPath: String): Long = data.size().toLong()
 
         override suspend fun commit(destinationPath: String) {
             committed = true

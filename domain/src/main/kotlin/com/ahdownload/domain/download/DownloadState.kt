@@ -15,6 +15,10 @@ sealed interface DownloadState {
 
 sealed interface DownloadFailure {
     data class HttpError(val code: Int) : DownloadFailure
+    data class IncompleteResponse(
+        val expectedBytes: Long,
+        val receivedBytes: Long,
+    ) : DownloadFailure
     data object InvalidResponse : DownloadFailure
     data object StorageError : DownloadFailure
     data object NetworkError : DownloadFailure

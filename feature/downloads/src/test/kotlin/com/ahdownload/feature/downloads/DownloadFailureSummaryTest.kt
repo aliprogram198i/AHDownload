@@ -19,6 +19,7 @@ class DownloadFailureSummaryTest {
             "audio_extraction_error" to "استخراج الصوت",
             "destination_storage_error" to "حفظ الملف",
             "network_error" to "الشبكة",
+            "incomplete_response" to "الحجم المتوقع",
             "invalid_response" to "بيانات غير صالحة",
         )
 

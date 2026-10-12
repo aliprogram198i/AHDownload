@@ -97,6 +97,20 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun recognizesDirectHlsDashAndOgvMediaLinks() {
+        listOf(
+            "https://cdn.example.com/stream.m3u8",
+            "https://cdn.example.com/stream.mpd",
+            "https://cdn.example.com/movie.ogv",
+        ).forEach { url ->
+            val result = analyzer.analyze(url)
+            assertEquals(MediaPlatform.DirectMedia, result?.platform)
+            assertEquals(MediaKind.Video, result?.kind)
+        }
+    }
+
+
+    @Test
     fun routesLookalikeHostsToWebWithoutMisclassifyingThemAsSocialPlatforms() {
         assertEquals(
             MediaPlatform.Web,

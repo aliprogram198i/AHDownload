@@ -2,6 +2,7 @@ package com.ahdownload.domain.resolver.web
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.google.gson.JsonParser
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.FailureCode
@@ -108,6 +109,19 @@ class WebVideoPageResolver(
                 .take(MAX_CANDIDATES * 3)
             resolverStage = "STATIC_MEDIA_PROBE"
             var candidates = buildCandidates(pageUrl, staticHints, request, resolverStage)
+            if (candidates.isEmpty()) {
+                resolverStage = "PLATFORM_API_FALLBACK"
+                val apiHints = try {
+                    discoverPlatformApiHints(pageUrl, request)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    emptyList()
+                }
+                if (apiHints.isNotEmpty()) {
+                    candidates = buildCandidates(pageUrl, apiHints, request, resolverStage)
+                }
+            }
             var browserSession: BrowserMediaSession? = null
 
             // Only open the WebView when server-delivered HTML did not yield a valid
@@ -455,6 +469,145 @@ class WebVideoPageResolver(
             )
         }.distinctBy { it.sourceUrl }.take(MAX_CANDIDATES)
 
+    /**
+     * Narrow public-metadata fallbacks for sites that do not put progressive media
+     * links in their HTML. These endpoints do not authenticate or bypass DRM.
+     */
+    private fun discoverPlatformApiHints(
+        pageUrl: String,
+        resolverRequest: ResolverRequest,
+    ): List<Hint> {
+        val page = pageUrl.toHttpUrlOrNull() ?: return emptyList()
+        val host = page.host.lowercase(Locale.ROOT)
+        if (host == "archive.org" || host == "www.archive.org") {
+            val segments = page.pathSegments
+            val index = segments.indexOfFirst { it.equals("details", ignoreCase = true) }
+            val identifier = segments.getOrNull(index + 1)
+                ?.takeIf { index >= 0 && it.matches(Regex("[A-Za-z0-9_.-]{1,120}")) }
+                ?: return emptyList()
+            return archiveMetadataHints(page, identifier, resolverRequest)
+        }
+
+        val segments = page.pathSegments
+        val index = segments.indexOfFirst { it.equals("w", ignoreCase = true) }
+        val videoId = segments.getOrNull(index + 1)
+            ?.takeIf { index >= 0 && it.matches(Regex("[A-Za-z0-9_-]{20,64}")) }
+            ?: return emptyList()
+        return peerTubeMetadataHints(page, videoId, resolverRequest)
+    }
+
+    private fun archiveMetadataHints(
+        page: HttpUrl,
+        identifier: String,
+        resolverRequest: ResolverRequest,
+    ): List<Hint> {
+        val apiUrl = page.newBuilder()
+            .encodedPath("/metadata")
+            .addPathSegment(identifier)
+            .query(null)
+            .fragment(null)
+            .build()
+        val body = fetchPlatformJson(apiUrl, page.toString(), resolverRequest) ?: return emptyList()
+        val files = runCatching {
+            val root = JsonParser.parseString(body).asJsonObject
+            root.getAsJsonArray("files")?.mapNotNull { element ->
+                if (!element.isJsonObject) return@mapNotNull null
+                val file = element.asJsonObject
+                val name = file.get("name")?.takeIf { it.isJsonPrimitive }?.asString
+                    ?.takeIf { it.isNotBlank() && '/' !in it && '\\' !in it }
+                    ?: return@mapNotNull null
+                val extension = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
+                if (extension !in VIDEO_EXTENSIONS && extension !in MANIFEST_EXTENSIONS) {
+                    return@mapNotNull null
+                }
+                val size = file.get("size")?.takeIf { it.isJsonPrimitive }
+                    ?.asString?.toLongOrNull() ?: 0L
+                Triple(name, extension, size)
+            }.orEmpty()
+        }.getOrDefault(emptyList())
+
+        return files
+            .sortedWith(
+                compareBy<Triple<String, String, Long>> {
+                    when (it.second) {
+                        "mp4", "m4v" -> 0
+                        "webm", "mkv" -> 1
+                        "ogv", "avi", "3gp" -> 2
+                        "m3u8", "mpd" -> 3
+                        else -> 4
+                    }
+                }.thenByDescending { it.third },
+            )
+            .take(MAX_CANDIDATES)
+            .map { (name, _, _) ->
+                val url = page.newBuilder()
+                    .encodedPath("/download")
+                    .addPathSegment(identifier)
+                    .addPathSegment(name)
+                    .query(null)
+                    .fragment(null)
+                    .build()
+                    .toString()
+                Hint(url, name.take(80), inferHeight(null, url), explicitVideo = true)
+            }
+    }
+
+    private fun peerTubeMetadataHints(
+        page: HttpUrl,
+        videoId: String,
+        resolverRequest: ResolverRequest,
+    ): List<Hint> {
+        val apiUrl = page.newBuilder()
+            .encodedPath("/api/v1/videos")
+            .addPathSegment(videoId)
+            .query(null)
+            .fragment(null)
+            .build()
+        val body = fetchPlatformJson(apiUrl, page.toString(), resolverRequest) ?: return emptyList()
+        return WebPageMediaParser.parse(body, page.toString()).mediaUrls
+            .mapNotNull { raw ->
+                val mediaUrl = raw.toHttpUrlOrNull() ?: return@mapNotNull null
+                if (!isAllowedDestination(mediaUrl)) return@mapNotNull null
+                val extension = extensionFromUrl(mediaUrl.toString())
+                if (extension !in VIDEO_EXTENSIONS && extension !in MANIFEST_EXTENSIONS) {
+                    return@mapNotNull null
+                }
+                Hint(
+                    url = mediaUrl.toString(),
+                    label = null,
+                    height = inferHeight(null, mediaUrl.toString()),
+                    explicitVideo = true,
+                )
+            }
+            .distinctBy { it.url }
+            .take(MAX_CANDIDATES)
+    }
+
+    private fun fetchPlatformJson(
+        apiUrl: HttpUrl,
+        referer: String,
+        resolverRequest: ResolverRequest,
+    ): String? {
+        if (!isAllowedDestination(apiUrl)) return null
+        val request = Request.Builder()
+            .url(apiUrl)
+            .get()
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json,text/plain,*/*")
+            .header("Referer", referer)
+            .build()
+        return executeLogged(request, resolverRequest, "PLATFORM_API_FALLBACK").use { response ->
+            if (response.code !in 200..299) return@use null
+            val mime = response.header("Content-Type").orEmpty()
+                .substringBefore(';').trim().lowercase(Locale.ROOT)
+            if (mime == "text/html" || mime == "application/xhtml+xml") return@use null
+            val input = response.body?.byteStream() ?: return@use null
+            val bytes = input.use { readBounded(it, MAX_API_BYTES) }
+            String(bytes, StandardCharsets.UTF_8).takeIf { it.isNotBlank() }
+        }
+    }
+
+
     private fun safeMediaHeaders(source: Map<String, String>): Map<String, String> = buildMap {
         source.forEach { (name, value) ->
             when (name.lowercase(Locale.ROOT)) {
@@ -580,6 +733,7 @@ class WebVideoPageResolver(
         "video/webm" -> "webm"
         "video/quicktime" -> "mov"
         "video/x-matroska" -> "mkv"
+        "video/ogg", "application/ogg" -> "ogv"
         "video/3gpp" -> "3gp"
         "application/vnd.apple.mpegurl", "application/x-mpegurl", "application/mpegurl", "audio/mpegurl" -> "m3u8"
         "application/dash+xml" -> "mpd"
@@ -598,6 +752,7 @@ class WebVideoPageResolver(
         extension == "webm" -> MediaContainer.Webm
         extension == "mov" -> MediaContainer.Mov
         extension == "mkv" -> MediaContainer.Mkv
+        extension == "ogv" -> MediaContainer.Unknown
         extension == "3gp" -> MediaContainer.ThreeGp
         extension == "avi" -> MediaContainer.Avi
         else -> MediaContainer.Unknown
@@ -608,6 +763,7 @@ class WebVideoPageResolver(
         "webm" -> "video/webm"
         "mov" -> "video/quicktime"
         "mkv" -> "video/x-matroska"
+        "ogv" -> "video/ogg"
         "3gp" -> "video/3gpp"
         "m3u8" -> "application/vnd.apple.mpegurl"
         "mpd" -> "application/dash+xml"
@@ -760,11 +916,12 @@ class WebVideoPageResolver(
 
     private companion object {
         const val MAX_HTML_BYTES = 1_048_576
+        const val MAX_API_BYTES = 1_048_576
         const val MAX_CANDIDATES = 12
         const val MAX_REDIRECTS = 8
         const val USER_AGENT = "AHDownload/1.0 (Android)"
         val HTML_MIME_TYPES = setOf("text/html", "application/xhtml+xml")
-        val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi")
+        val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi", "ogv")
         val MANIFEST_EXTENSIONS = setOf("m3u8", "mpd")
         val AUDIO_EXTENSIONS = setOf("m4a", "mp3", "aac", "ogg", "flac", "wav", "opus")
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "tiff", "heic", "heif")

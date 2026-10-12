@@ -71,6 +71,26 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun acceptsOpaqueBinaryWhenSourcePathClearlyIdentifiesVideoFile() = kotlinx.coroutines.test.runTest {
+        val url = "https://storage.googleapis.com/sample-bucket/Bunny.mp4"
+        val result = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "application/octet-stream",
+                    contentLengthBytes = 4096L,
+                    finalUrl = url,
+                ),
+            ),
+        ).validate(candidate(MediaKind.Video).copy(sourceUrl = url))
+
+        val valid = assertIs<CandidateValidationResult.Valid>(result)
+        assertEquals(4096L, valid.candidate.validatedContentLengthBytes)
+        assertEquals(url, valid.finalUrl)
+    }
+
+
+    @Test
     fun acceptsOpaqueBinaryVideoFromSnapchatMediaCdn() = kotlinx.coroutines.test.runTest {
         val candidate = candidate(MediaKind.Video).copy(
             sourceUrl = "https://bolt-gcdn.sc-cdn.net/opaque-spotlight-id",
