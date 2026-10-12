@@ -350,6 +350,31 @@ class StreamingDownloadEngineTest {
     }
 
     @Test
+    fun rejectsBodyLongerThanItsDeclaredContentRange() = runTest {
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 206,
+                    contentLengthBytes = null,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("hello".encodeToByteArray()),
+                    totalBytes = 5,
+                    rangeStartBytes = 0,
+                    rangeEndBytes = 2,
+                ),
+            ),
+            sink = sink,
+        ).download(task().copy(expectedBytes = 5), states::add)
+
+        assertEquals(DownloadFailure.InvalidResponse, assertIs<DownloadState.Failed>(states.last()).reason)
+        assertFalse(sink.committed)
+        assertTrue(sink.discardCount >= 1)
+        assertEquals("", sink.committedData())
+    }
+
+    @Test
     fun discardsExistingPartialWhenResponseTotalConflictsWithValidatedSize() = runTest {
         val sink = FakeSink()
         sink.seed("old".encodeToByteArray())
