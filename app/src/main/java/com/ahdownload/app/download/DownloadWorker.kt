@@ -706,6 +706,7 @@ class DownloadWorker(
         val streamingManifest = inputData.getBoolean(KEY_STREAMING_MANIFEST, false)
         val companionAudioStreamingManifest =
             inputData.getBoolean(KEY_COMPANION_AUDIO_STREAMING_MANIFEST, false)
+        val expectedBytes = inputData.getLong(KEY_EXPECTED_BYTES, -1L).takeIf { it > 0L }
         val companionAudioRequestHeaders = buildMap {
             inputData.getString(KEY_COMPANION_AUDIO_USER_AGENT)?.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
             inputData.getString(KEY_COMPANION_AUDIO_REFERER)?.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
