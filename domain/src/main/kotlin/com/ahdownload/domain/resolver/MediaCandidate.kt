@@ -35,4 +35,9 @@ data class MediaCandidate(
     val streamingManifest: Boolean = false,
     /** True when the paired audio URL itself is an HLS/DASH manifest. */
     val companionAudioStreamingManifest: Boolean = false,
+    /**
+     * Exact total byte count returned by validating the current source URL.
+     * Separate from platform format metadata, which may contain an estimate.
+     */
+    val validatedContentLengthBytes: Long? = null,
 )
