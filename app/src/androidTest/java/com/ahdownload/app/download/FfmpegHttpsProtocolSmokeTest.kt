@@ -142,7 +142,7 @@ class FfmpegHttpsProtocolSmokeTest {
             Fixture(
                 id = "akamai_dash",
                 type = "DASH",
-                url = "https://dash.akamaized.net/akamai/test/caption_test/ElephantsDream/elephants_dream_480p_heaac5_1_https.mpd",
+                url = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
             ),
             Fixture(
                 id = "mozilla_mp4",
