@@ -741,7 +741,7 @@ class WebVideoPageResolver(
     private companion object {
         const val MAX_HTML_BYTES = 1_048_576
         const val MAX_CANDIDATES = 12
-        const val MAX_REDIRECTS = 5
+        const val MAX_REDIRECTS = 8
         const val USER_AGENT = "AHDownload/1.0 (Android)"
         val HTML_MIME_TYPES = setOf("text/html", "application/xhtml+xml")
         val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi")
