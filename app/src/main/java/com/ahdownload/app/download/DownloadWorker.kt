@@ -1385,6 +1385,8 @@ class DownloadWorker(
     }
 
     companion object {
+        private const val MAX_INCOMPLETE_RESPONSE_RETRIES = 2
+
         const val KEY_TASK_ID = "task_id"
         const val KEY_SOURCE_URL = "source_url"
         const val KEY_DESTINATION_PATH = "destination_path"
