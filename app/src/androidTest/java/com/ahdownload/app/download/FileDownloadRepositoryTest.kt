@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.ahdownload.domain.download.DownloadRecordMapper
 import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadTemporaryFiles
 import com.ahdownload.domain.download.DownloadTask
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -81,6 +82,34 @@ class FileDownloadRepositoryTest {
         requireNotNull(persisted)
         assertEquals(DownloadStatus.QUEUED, persisted.status)
         assertTrue(persisted.updatedAtEpochMs == 2000L)
+    }
+
+    @Test
+    fun recoveryUsesTheCurrentTaskScopedPartialNotAnotherTasksBytes() = runTest {
+        val task = task()
+        val ownPartial = DownloadTemporaryFiles.temporaryFile(task.destinationPath, task.id).apply {
+            parentFile?.mkdirs()
+            writeBytes(ByteArray(123))
+        }
+        val unrelatedPartial = DownloadTemporaryFiles.temporaryFile(task.destinationPath, "unrelated-task").apply {
+            writeBytes(ByteArray(999))
+        }
+        val repository = FileDownloadRepository(context)
+        val queued = DownloadRecordMapper.queued(task, 1000)
+        repository.upsert(queued)
+        repository.upsert(
+            DownloadRecordMapper.fromState(
+                queued,
+                DownloadState.Downloading(123, 2048),
+                1100,
+            ),
+        )
+
+        val recovered = repository.recoverInterrupted(2000)
+
+        assertEquals(123L, recovered.single().bytesDownloaded)
+        assertTrue(ownPartial.exists())
+        assertTrue(unrelatedPartial.exists())
     }
 
     private fun task() = DownloadTask(

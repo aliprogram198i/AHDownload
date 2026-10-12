@@ -33,6 +33,7 @@ import com.ahdownload.domain.download.DownloadState
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
+import com.ahdownload.domain.download.DownloadTemporaryFiles
 import com.ahdownload.domain.download.LocalAtomicFileSink
 import com.ahdownload.domain.download.OkHttpDownloadByteStream
 import com.ahdownload.domain.download.PersistentDownloadQueue
@@ -222,6 +223,36 @@ class DownloadWorker(
                     ),
                 )
             }
+            if (refreshed.sourceUrl != sourceTask.sourceUrl) {
+                try {
+                    LocalAtomicFileSink().discard(sourceTask.destinationPath, task.id)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Throwable) {
+                    diagnostics.log(
+                        DiagnosticLevel.ERROR,
+                        "YOUTUBE_RETRY_PARTIAL_RESET_FAILED",
+                        "تعذر التخلص من الجزء غير المكتمل قبل تغيير مصدر التنزيل",
+                        "download.refresh",
+                        mapOf("task_id" to task.id),
+                        null,
+                    )
+                    return Result.failure(
+                        workDataOf(
+                            KEY_FAILURE_CODE to "partial_reset_failed",
+                            KEY_FAILURE_DETAIL to "تعذر إعادة تهيئة الملف الجزئي لمصدر YouTube الجديد.",
+                        ),
+                    )
+                }
+                diagnostics.log(
+                    DiagnosticLevel.INFO,
+                    "YOUTUBE_RETRY_PARTIAL_RESET",
+                    "تم التخلص من الملف الجزئي قبل استخدام مصدر YouTube جديد",
+                    "download.refresh",
+                    mapOf("task_id" to task.id),
+                    null,
+                )
+            }
             sourceTask = refreshed.copy(
                 destinationPath = sourceTask.destinationPath,
                 processingMode = DownloadProcessingMode.Direct,
@@ -331,6 +362,7 @@ class DownloadWorker(
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            var shouldCleanCancelledArtifacts = false
             // Snapshot the explicit user intent and its generation. A later action may reuse
             // the same intent value (pause -> resume -> pause), so value-only checks are unsafe.
             val intentAtCancellation = controlStore.snapshot(task.id)
@@ -345,23 +377,34 @@ class DownloadWorker(
                     ) {
                         val latest = repository.get(task.id)
                         if (
-                            latest != null &&
-                            latest.status != DownloadStatus.COMPLETED &&
-                            latest.status != DownloadStatus.FAILED &&
+                            latest?.status != DownloadStatus.COMPLETED &&
                             controlStore.isCurrent(task.id, intentAtCancellation)
                         ) {
-                            repository.upsert(
-                                latest.copy(
-                                    status = requestedStatus,
-                                    failureCode = null,
-                                    failureDetail = null,
-                                    updatedAtEpochMs = System.currentTimeMillis(),
-                                ),
-                            )
+                            if (latest != null && latest.status != DownloadStatus.FAILED) {
+                                repository.upsert(
+                                    latest.copy(
+                                        status = requestedStatus,
+                                        failureCode = null,
+                                        failureDetail = null,
+                                        updatedAtEpochMs = System.currentTimeMillis(),
+                                    ),
+                                )
+                            }
+                            shouldCleanCancelledArtifacts = requestedStatus == DownloadStatus.CANCELLED
                         }
                     }
                 } catch (_: Exception) {
                     // Keep cancellation semantics even if persistence itself fails.
+                }
+
+                // Pause and system interruptions preserve resumable bytes; explicit user Cancel does not.
+                if (shouldCleanCancelledArtifacts) {
+                    cleanupCancelledTemporaryArtifacts(
+                        task = task,
+                        sourceTask = sourceTask,
+                        companionAudioTask = companionAudioTask,
+                        diagnostics = diagnostics,
+                    )
                 }
             }
             diagnostics.log(
@@ -624,6 +667,74 @@ class DownloadWorker(
                 workDataOf(KEY_FAILURE_CODE to "non_terminal_state"),
             )
         }
+    }
+
+    private suspend fun cleanupCancelledTemporaryArtifacts(
+        task: DownloadTask,
+        sourceTask: DownloadTask,
+        companionAudioTask: DownloadTask?,
+        diagnostics: DiagnosticLogger,
+    ) {
+        val sink = LocalAtomicFileSink()
+        val transferPaths = buildList {
+            add(sourceTask.destinationPath to task.id)
+            companionAudioTask?.let { add(it.destinationPath to it.id) }
+        }
+        var removedPartialCount = 0
+        var cleanupFailureCount = 0
+        for ((path, transferId) in transferPaths) {
+            try {
+                val before = DownloadTemporaryFiles.temporaryFile(path, transferId).exists() ||
+                    DownloadTemporaryFiles.legacyTemporaryFile(path).exists()
+                sink.discard(path, transferId)
+                if (before) removedPartialCount++
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                cleanupFailureCount++
+            }
+        }
+
+        val intermediateFiles = buildList {
+            if (task.processingMode == DownloadProcessingMode.ExtractAudio &&
+                sourceTask.destinationPath != task.destinationPath
+            ) {
+                add(java.io.File(sourceTask.destinationPath))
+            }
+            if (task.processingMode == DownloadProcessingMode.MuxVideoAudio) {
+                add(java.io.File(sourceTask.destinationPath))
+                companionAudioTask?.let { add(java.io.File(it.destinationPath)) }
+                add(muxTemporaryOutputFile(java.io.File(task.destinationPath)))
+            }
+            listOfNotNull(sourceTask, companionAudioTask)
+                .filter { it.streamingManifest }
+                .forEach { staged ->
+                    val output = java.io.File(staged.destinationPath)
+                    add(java.io.File(output.parentFile, ".${output.name}.manifesting.mkv"))
+                }
+        }.distinctBy { it.absolutePath }
+
+        var removedIntermediateCount = 0
+        for (file in intermediateFiles) {
+            if (file.isFile) {
+                if (file.delete()) removedIntermediateCount++ else cleanupFailureCount++
+            }
+        }
+
+        diagnostics.log(
+            if (cleanupFailureCount == 0) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+            "DOWNLOAD_CANCEL_ARTIFACT_CLEANUP",
+            if (cleanupFailureCount == 0) "تم تنظيف الملفات الجزئية الخاصة بالمهمة الملغاة"
+            else "أُلغيت المهمة مع تعذر تنظيف بعض الملفات الجزئية",
+            "download.cleanup",
+            mapOf(
+                "task_id" to task.id,
+                "partial_files_removed" to removedPartialCount.toString(),
+                "intermediate_files_removed" to removedIntermediateCount.toString(),
+                "cleanup_failures" to cleanupFailureCount.toString(),
+            ),
+            null,
+        )
     }
 
     private suspend fun persistDestinationFailure(

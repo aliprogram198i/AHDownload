@@ -5,6 +5,7 @@ import androidx.core.util.AtomicFile
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
+import com.ahdownload.domain.download.DownloadTemporaryFiles
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,15 +88,10 @@ class FileDownloadRepository(
                     .filter { it.status in INTERRUPTED_STATUSES }
                     .map {
                         run {
-                            val partialPath = when (it.task.processingMode) {
-                                com.ahdownload.domain.download.DownloadProcessingMode.MuxVideoAudio ->
-                                    it.task.destinationPath + ".video." + it.task.id.take(8) + ".part"
-                                else ->
-                                    it.task.destinationPath + ".part"
-                            }
-                            val partialSize = runCatching {
-                                File(partialPath).takeIf { file -> file.isFile }?.length() ?: 0L
-                            }.getOrDefault(0L).coerceAtLeast(0L)
+                            val partialSize = DownloadTemporaryFiles.recoverableTemporaryFiles(it.task)
+                                .firstOrNull { file -> file.isFile }
+                                ?.let { file -> runCatching { file.length() }.getOrDefault(0L) }
+                                .orZero()
                             it.copy(
                                 status = DownloadStatus.QUEUED,
                                 bytesDownloaded = partialSize,
@@ -120,6 +116,8 @@ class FileDownloadRepository(
                 recovered
             }
         }
+
+    private fun Long?.orZero(): Long = this?.coerceAtLeast(0L) ?: 0L
 
     private fun readLocked(): List<DownloadRecord> {
         if (!store.baseFile.exists()) return emptyList()

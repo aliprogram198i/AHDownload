@@ -22,45 +22,82 @@ class StreamingDownloadEngine(
         onState(DownloadState.Queued)
         onState(DownloadState.Preparing)
 
-        var partialBytes = runCatching { sink.temporarySize(task.destinationPath) }
-            .getOrElse {
-                onState(DownloadState.Failed(DownloadFailure.StorageError))
-                return
-            }
+        var partialBytes = try {
+            sink.temporarySize(task.destinationPath, task.id).coerceAtLeast(0L)
+        } catch (cancelled: CancellationException) {
+            onState(DownloadState.Cancelled)
+            throw cancelled
+        } catch (_: Throwable) {
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            return
+        }
 
-        var response = try {
-            source.open(task.sourceUrl, partialBytes, task.requestHeaders)
+        suspend fun openResponse(rangeStart: Long): DownloadResponse? = try {
+            source.open(task.sourceUrl, rangeStart, task.requestHeaders)
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
         } catch (_: IOException) {
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
-            return
+            null
         } catch (_: Throwable) {
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
-            return
+            null
         }
 
+        suspend fun discardPartial(): Boolean = try {
+            sink.discard(task.destinationPath, task.id)
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            false
+        }
+
+        var response = openResponse(partialBytes) ?: return
+
+        // A 200 response to a Range request is a full representation; replace the stale part,
+        // but reuse this response body instead of issuing a redundant second request.
         if (partialBytes > 0L && response.statusCode == 200) {
-            response.body.close()
-            partialBytes = 0L
-            response = try {
-                source.open(task.sourceUrl, 0L, task.requestHeaders)
-            } catch (cancelled: CancellationException) {
-                onState(DownloadState.Cancelled)
-                throw cancelled
-            } catch (_: IOException) {
-                onState(DownloadState.Failed(DownloadFailure.NetworkError))
-                return
-            } catch (_: Throwable) {
-                onState(DownloadState.Failed(DownloadFailure.NetworkError))
+            if (!discardPartial()) {
+                response.body.close()
                 return
             }
+            partialBytes = 0L
+        } else if (
+            partialBytes > 0L &&
+            (response.statusCode == 416 ||
+                (response.statusCode == 206 && !hasValidContentRange(response, partialBytes)))
+        ) {
+            response.body.close()
+            if (!discardPartial()) return
+            partialBytes = 0L
+            response = openResponse(0L) ?: return
         }
 
         if (response.statusCode !in 200..299) {
             response.body.close()
             onState(DownloadState.Failed(DownloadFailure.HttpError(response.statusCode)))
+            return
+        }
+
+        if (response.statusCode == 206 && !hasValidContentRange(response, partialBytes)) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
+            return
+        }
+
+        val expectedBytes = task.expectedBytes?.takeIf { it > 0L }
+        val declaredResponseTotal = when (response.statusCode) {
+            206 -> response.totalBytes ?: response.rangeEndBytes
+                ?.takeIf { it < Long.MAX_VALUE }
+                ?.plus(1L)
+            else -> response.contentLengthBytes
+        }
+        if (expectedBytes != null && declaredResponseTotal != null && expectedBytes != declaredResponseTotal) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
         }
 
@@ -78,19 +115,16 @@ class StreamingDownloadEngine(
 
         val append = partialBytes > 0L && response.statusCode == 206
         val responseTotalBytes = when {
-            response.totalBytes != null -> response.totalBytes
-            response.statusCode == 206 && append && response.contentLengthBytes != null ->
-                response.contentLengthBytes + partialBytes
-            response.statusCode == 206 -> null
+            response.statusCode == 206 -> response.totalBytes ?: response.rangeEndBytes
+                ?.takeIf { it < Long.MAX_VALUE }
+                ?.plus(1L)
             response.contentLengthBytes != null -> response.contentLengthBytes
             else -> null
         }
-        // A size measured during candidate validation is authoritative for this source URL.
-        // Server headers remain the fallback for sources whose total size is unknown at probe time.
-        val totalBytes = task.expectedBytes?.takeIf { it > 0L } ?: responseTotalBytes
+        val totalBytes = expectedBytes ?: responseTotalBytes
 
         val output = try {
-            sink.openTemporary(task.destinationPath, append = append)
+            sink.openTemporary(task.destinationPath, append = append, transferId = task.id)
         } catch (cancelled: CancellationException) {
             response.body.close()
             onState(DownloadState.Cancelled)
@@ -162,21 +196,32 @@ class StreamingDownloadEngine(
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
             return
         } catch (_: StorageWriteException) {
-            sink.discard(task.destinationPath)
+            sink.discard(task.destinationPath, task.id)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         } catch (_: IOException) {
-            sink.discard(task.destinationPath)
+            sink.discard(task.destinationPath, task.id)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         } catch (_: Throwable) {
-            sink.discard(task.destinationPath)
+            sink.discard(task.destinationPath, task.id)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         }
 
+        val completedTempBytes = try {
+            sink.temporarySize(task.destinationPath, task.id)
+        } catch (_: Throwable) {
+            0L
+        }
+        if (completedTempBytes <= 0L) {
+            runCatching { sink.discard(task.destinationPath, task.id) }
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
+            return
+        }
+
         try {
-            sink.commit(task.destinationPath)
+            sink.commit(task.destinationPath, task.id)
             onState(DownloadState.Completed)
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
@@ -184,6 +229,20 @@ class StreamingDownloadEngine(
         } catch (_: Throwable) {
             onState(DownloadState.Failed(DownloadFailure.StorageError))
         }
+    }
+
+    private fun hasValidContentRange(response: DownloadResponse, requestedStart: Long): Boolean {
+        if (response.statusCode != 206) return true
+        val start = response.rangeStartBytes ?: return false
+        val end = response.rangeEndBytes ?: return false
+        if (start != requestedStart || end < start) return false
+        if (response.contentLengthBytes != null) {
+            val rangeLength = end - start + 1L
+            if (rangeLength <= 0L || response.contentLengthBytes != rangeLength) return false
+        }
+        val total = response.totalBytes
+        if (total != null && (total <= end || end != total - 1L)) return false
+        return true
     }
 
     private class IncompleteDownloadException(
