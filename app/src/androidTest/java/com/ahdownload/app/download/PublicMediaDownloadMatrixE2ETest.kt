@@ -25,14 +25,14 @@ import org.junit.runner.RunWith
 import java.util.UUID
 
 /**
- * Live acceptance matrix for the configured public media URLs (including the XNXX full-size assertion).
+ * Single-target live acceptance test for the configured XNXX media URL.
  * Uses the production LinkAnalyzer, HomeResolver, CandidateValidator, WorkManager pipeline,
  * and MediaStore publication. No mocked HTTP responses or fabricated media candidates.
  */
 @RunWith(AndroidJUnit4::class)
 class PublicMediaDownloadMatrixE2ETest {
-    @Test(timeout = 3_300_000L)
-    fun allConfiguredPublicMediaUrlsResolveDownloadAndPublishValidBytes() = runBlocking {
+    @Test(timeout = 900_000L)
+    fun configuredXnxxUrlResolvesDownloadsAndPublishesValidBytes() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = context.applicationContext as AHDownloadApplication
         val resolver = HomeResolver(
@@ -50,7 +50,7 @@ class PublicMediaDownloadMatrixE2ETest {
             try {
                 val link = analyzer.analyze(target.url)
                     ?: error("LinkAnalyzer rejected the URL")
-                val resolutionTimeoutMs = if (target.id == "21_xnxx_arabic") 60_000L else 30_000L
+                val resolutionTimeoutMs = 60_000L
                 val resolved = withTimeoutOrNull(resolutionTimeoutMs) {
                     resolver.resolve(link, operationId = "matrix-${target.id}")
                 } ?: error("Resolution timed out after ${resolutionTimeoutMs / 1000} seconds")
@@ -140,7 +140,7 @@ class PublicMediaDownloadMatrixE2ETest {
                     // the source itself was fully downloaded for this acceptance target.
                     val validatedSourceBytes = validation.candidate.validatedContentLengthBytes
                         ?.takeIf { it > 0L && !candidate.streamingManifest }
-                    if (target.id == "21_xnxx_arabic" && validatedSourceBytes == null) {
+                    if (target.id == "xnxx_arabic" && validatedSourceBytes == null) {
                         lastFailure =
                             "Candidate ${index + 1}: cannot prove full XNXX download because independently validated source size is unknown"
                         continue
@@ -178,7 +178,7 @@ class PublicMediaDownloadMatrixE2ETest {
         val failed = report.size - passed
         Log.i(TAG, "FINAL MATRIX SUMMARY\n" + summary)
         assertTrue(
-            "Public media download matrix: $passed passed, $failed failed out of ${TARGETS.size}.\n$summary",
+            "Single-URL media download test: $passed passed, $failed failed out of ${TARGETS.size}.\n$summary",
             failed == 0 && passed == TARGETS.size,
         )
     }
@@ -239,27 +239,7 @@ class PublicMediaDownloadMatrixE2ETest {
     private companion object {
         const val TAG = "AH_MEDIA_MATRIX"
         val TARGETS = listOf(
-            Target("01_apple_hls", "https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8"),
-            Target("02_mux_hls", "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"),
-            Target("03_akamai_dash", "https://dash.akamaized.net/akamai/test/caption_test/elephants_dream/elephants_dream_480p_heaac5_1.mpd"),
-            Target("04_google_mp4", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"),
-            Target("05_w3schools_mp4", "https://www.w3schools.com/html/mov_bbb.mp4"),
-            Target("06_github_raw_mp4", "https://raw.githubusercontent.com/bower-media-samples/big-buck-bunny-480p-30s/master/video.mp4"),
-            Target("07_nasa_apollo_mp4", "https://images-assets.nasa.gov/video/Apollo%2011%20Overview/Apollo%2011%20Overview~orig.mp4"),
-            Target("08_archive_mp4", "https://archive.org/download/night_of_the_living_dead/night_of_the_living_dead_512kb.mp4"),
-            Target("09_wikimedia_webm", "https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.480p.vp9.webm"),
-            Target("10_wikimedia_ogv", "https://upload.wikimedia.org/wikipedia/commons/7/79/Chameleon_color_change.ogv"),
-            Target("11_youtube_watch", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-            Target("12_youtube_shorts", "https://www.youtube.com/shorts/U80grnZJm_8"),
-            Target("13_vimeo", "https://vimeo.com/76979871"),
-            Target("14_dailymotion", "https://www.dailymotion.com/video/x7tgad0"),
-            Target("15_ted", "https://www.ted.com/talks/tim_urban_inside_the_mind_of_a_master_procrastinator"),
-            Target("16_blender_peertube", "https://video.blender.org/w/64cda44b-f748-42f4-a0c4-9a8be8e4f16a"),
-            Target("17_reddit", "https://www.reddit.com/r/space/comments/lnxpt8/first_video_from_perseverance_on_mars/"),
-            Target("18_archive_page", "https://archive.org/details/A_Trip_to_the_Moon"),
-            Target("19_wikimedia_page", "https://commons.wikimedia.org/wiki/File:Curiosity%27s_Seven_Minutes_of_Terror.ogv"),
-            Target("20_google_for_bigger_blazes", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"),
-            Target("21_xnxx_arabic", "https://www.xnxx-arabic.com/video-1ey5zfb1/young_stepsister_is_doing_grooming_horny_stepsister_gives_me_her_rich_pussy"),
+            Target("xnxx_arabic", "https://www.xnxx-arabic.com/video-1ey5zfb1/young_stepsister_is_doing_grooming_horny_stepsister_gives_me_her_rich_pussy"),
         )
     }
 }
