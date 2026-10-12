@@ -74,15 +74,40 @@ jobs:
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data"
           script: |
             bash -c 'set -o pipefail;
+              validate_instrumentation_results() {
+                label="$1";
+                report="$(find app/build/outputs/androidTest-results/connected -name test-result.textproto -print -quit)";
+                if [ -z "$report" ] || [ ! -s "$report" ]; then
+                  echo "Instrumentation report missing for $label; execution is not verified." >&2;
+                  return 1;
+                fi;
+                if ! grep -q "^test_status: PASSED$" "$report"; then
+                  echo "Instrumentation report did not pass for $label." >&2;
+                  cat "$report";
+                  return 1;
+                fi;
+                scheduled_count="$(sed -n "s/^  scheduled_test_case_count: \\([0-9][0-9]*\\)$/\\1/p" "$report" | head -n 1)";
+                test_count="$(grep -c "^  test_case {" "$report" || true)";
+                passed_count="$(grep -c "^  test_status: PASSED$" "$report" || true)";
+                failed_count="$(grep -c "^  test_status: FAILED$" "$report" || true)";
+                echo "$label test counts: scheduled=$scheduled_count; executed=$test_count; passed=$passed_count; failed=$failed_count";
+                if [ -z "$scheduled_count" ] || [ "$scheduled_count" -le 0 ] || [ "$test_count" -ne "$scheduled_count" ] || [ "$passed_count" -ne "$test_count" ] || [ "$failed_count" -ne 0 ]; then
+                  echo "Every scheduled instrumentation test must execute and pass." >&2;
+                  return 1;
+                fi;
+              };
               gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest 2>&1 | tee ffmpeg-https-matrix.log;
               protocol_status=$?;
               adb logcat -d -v threadtime -s AH_FFMPEG_HTTPS_MATRIX:I AndroidRuntime:E > ffmpeg-https-matrix-logcat.txt || true;
               if [ "$protocol_status" -ne 0 ]; then exit "$protocol_status"; fi;
+              validate_instrumentation_results "FFmpeg HTTPS matrix" || exit 1;
+              rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected;
               gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee single-url-download.log;
               download_status=$?;
               adb logcat -d -v threadtime -s AH_MEDIA_MATRIX:I AndroidRuntime:E > single-url-download-logcat.txt || true;
-              exit "$download_status"'
-
+              if [ "$download_status" -ne 0 ]; then exit "$download_status"; fi;
+              validate_instrumentation_results "requested XNXX end-to-end test" || exit 1;
+              exit 0'
       - name: Upload media acceptance logs and reports
         if: always()
         uses: actions/upload-artifact@v4
