@@ -172,11 +172,10 @@ class CandidateValidator(
         ValidationFailure.ContentTypeMismatch -> "CONTENT_TYPE_MISMATCH"
     }
 
-    private fun isHttpsUrl(value: String): Boolean =
-        runCatching { java.net.URI(value.trim()) }
-            .getOrNull()
-            ?.let { it.scheme.equals("https", ignoreCase = true) && !it.host.isNullOrBlank() }
-            == true
+    private fun isHttpsUrl(value: String): Boolean {
+        val uri = runCatching { java.net.URI(value.trim()) }.getOrNull() ?: return false
+        return uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
+    }
 
     private fun isSnapchatMediaCdn(url: String): Boolean {
         val host = hostOf(url)
