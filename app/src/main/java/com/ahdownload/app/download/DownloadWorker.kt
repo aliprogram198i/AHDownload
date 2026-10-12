@@ -1399,6 +1399,7 @@ class DownloadWorker(
         const val KEY_COMPANION_AUDIO_SOURCE_URL = "companion_audio_source_url"
         const val KEY_COMPANION_AUDIO_SESSION_COOKIE_HOST = "companion_audio_session_cookie_host"
         const val KEY_COMPANION_AUDIO_STREAMING_MANIFEST = "companion_audio_streaming_manifest"
+        const val KEY_EXPECTED_BYTES = "expected_bytes"
         const val KEY_STREAMING_MANIFEST = "streaming_manifest"
         const val KEY_COMPANION_AUDIO_USER_AGENT = "companion_audio_user_agent"
         const val KEY_COMPANION_AUDIO_REFERER = "companion_audio_referer"
