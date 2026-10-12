@@ -35,6 +35,33 @@ class FfmpegHttpsProtocolSmokeTest {
         )
     }
 
+    @Test
+    fun bundledFfmpegRetainsRequiredAudioEncoders() {
+        val session = FFmpegKit.executeWithArguments(
+            arrayOf("-hide_banner", "-encoders"),
+        )
+        val output = buildString {
+            append(runCatching { session.allLogsAsString }.getOrDefault(""))
+            append('\n')
+            append(session.output.orEmpty())
+        }
+        val encoderRows = output.lineSequence()
+            .map(String::trim)
+            .filter { line ->
+                val columns = line.split(Regex("\\s+"))
+                columns.size >= 2 && columns[0].matches(Regex("[A-Z.]{6}"))
+            }
+            .map { it.split(Regex("\\s+"))[1] }
+            .toSet()
+        val missing = REQUIRED_AUDIO_ENCODERS.filterNot(encoderRows::contains)
+
+        assertTrue(
+            "Bundled FFmpeg is missing required audio encoders: ${missing.joinToString()}; " +
+                "exit=${session.returnCode}; output=${sanitize(output).take(1800)}",
+            ReturnCode.isSuccess(session.returnCode) && missing.isEmpty(),
+        )
+    }
+
     @Test(timeout = 240_000L)
     fun bundledFfmpegCanReadRealHttpsMediaFixtures() {
         val failures = mutableListOf<String>()
@@ -99,6 +126,7 @@ class FfmpegHttpsProtocolSmokeTest {
 
     private companion object {
         const val TAG = "AH_FFMPEG_HTTPS_MATRIX"
+        val REQUIRED_AUDIO_ENCODERS = listOf("aac", "flac", "libmp3lame", "libopus", "libvorbis")
 
         val FIXTURES = listOf(
             Fixture(
