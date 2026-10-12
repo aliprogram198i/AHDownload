@@ -300,6 +300,79 @@ class StreamingDownloadEngineTest {
     }
 
     @Test
+    fun resumesBoundedPartialResponsesWithoutAppendingDuplicateBytes() = runTest {
+        val sink = FakeSink()
+        val firstStates = mutableListOf<DownloadState>()
+        StreamingDownloadEngine(
+            source = SequenceSource(
+                listOf(
+                    DownloadResponse(
+                        statusCode = 206,
+                        contentLengthBytes = 3,
+                        contentType = "video/mp4",
+                        body = ByteArrayInputStream("hel".encodeToByteArray()),
+                        totalBytes = 5,
+                        rangeStartBytes = 0,
+                        rangeEndBytes = 2,
+                    ),
+                ),
+            ),
+            sink = sink,
+        ).download(task().copy(expectedBytes = 5), firstStates::add)
+
+        assertEquals(
+            DownloadFailure.IncompleteResponse(expectedBytes = 5, receivedBytes = 3),
+            assertIs<DownloadState.Failed>(firstStates.last()).reason,
+        )
+        assertFalse(sink.committed)
+        assertEquals("hel", sink.committedData())
+
+        val secondStates = mutableListOf<DownloadState>()
+        val secondSource = SequenceSource(
+            listOf(
+                DownloadResponse(
+                    statusCode = 206,
+                    contentLengthBytes = 2,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("lo".encodeToByteArray()),
+                    totalBytes = 5,
+                    rangeStartBytes = 3,
+                    rangeEndBytes = 4,
+                ),
+            ),
+        )
+        StreamingDownloadEngine(source = secondSource, sink = sink)
+            .download(task().copy(expectedBytes = 5), secondStates::add)
+
+        assertEquals(listOf(3L), secondSource.requestedRanges)
+        assertEquals("hello", sink.committedData())
+        assertIs<DownloadState.Completed>(secondStates.last())
+    }
+
+    @Test
+    fun rejectsPartialResponseWithUnknownTotalWhenNoValidatedSizeExists() = runTest {
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 206,
+                    contentLengthBytes = 3,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("hel".encodeToByteArray()),
+                    rangeStartBytes = 0,
+                    rangeEndBytes = 2,
+                ),
+            ),
+            sink = sink,
+        ).download(task(), states::add)
+
+        assertEquals(DownloadFailure.InvalidResponse, assertIs<DownloadState.Failed>(states.last()).reason)
+        assertFalse(sink.tempOpened)
+        assertFalse(sink.committed)
+    }
+
+    @Test
     fun rejects206WithoutValidContentRange() = runTest {
         val sink = FakeSink()
         val states = mutableListOf<DownloadState>()
