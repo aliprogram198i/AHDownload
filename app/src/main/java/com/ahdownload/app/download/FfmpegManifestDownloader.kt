@@ -8,6 +8,42 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
+ * Removes URLs and credential-like values before FFmpeg output is included in
+ * diagnostics. Keep protocol error codes/messages so failures remain actionable.
+ */
+internal fun sanitizeFfmpegDiagnostic(rawOutput: String): String {
+    if (rawOutput.isBlank()) return "no FFmpeg diagnostic output"
+
+    val lines = rawOutput.lineSequence()
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .map { line ->
+            line
+                .replace(
+                    Regex("(?i)\\b(cookie|set-cookie|authorization|proxy-authorization)\\b\\s*[:=]\\s*[^\\r\\n]*"),
+                    "$1=[redacted]",
+                )
+                .replace(
+                    Regex("(?i)\\b(token|po_token|access_token|refresh_token|signature|sig|visitor_data|key|expires|credential|policy|jwt)\\b(\\s*[:=]\\s*)[^\\s&;,]+"),
+                    "$1$2[redacted]",
+                )
+                .replace(
+                    Regex("(?i)([?&](?:token|po_token|access_token|refresh_token|signature|sig|key|expires|credential|policy|jwt)=)[^&\\s]+"),
+                    "$1[redacted]",
+                )
+                .replace(
+                    Regex("(?i)https?://[^\\s\\"'<>]+"),
+                    "[url redacted]",
+                )
+        }
+        .takeLast(8)
+        .map { it.take(240) }
+        .toList()
+
+    return lines.joinToString(" | ").take(1000).ifBlank { "no FFmpeg diagnostic output" }
+}
+
+/**
  * Acquires VOD HLS/DASH sources by letting FFmpeg resolve the manifest and
  * assemble the available streams into a codec-safe Matroska container.
  *
@@ -87,19 +123,44 @@ class FfmpegManifestDownloader {
             temp.absolutePath,
         )
 
-        fun execute(arguments: List<String>): Boolean =
-            runCatching {
-                val session = FFmpegKit.executeWithArguments(arguments.toTypedArray())
-                ReturnCode.isSuccess(session.returnCode) &&
-                    temp.isFile &&
-                    temp.length() > 0L
-            }.getOrDefault(false)
+        data class AttemptResult(
+            val success: Boolean,
+            val returnCode: String,
+            val diagnostic: String,
+        )
 
-        var success = execute(base)
+        fun execute(arguments: List<String>): AttemptResult =
+            try {
+                val session = FFmpegKit.executeWithArguments(arguments.toTypedArray())
+                val logs = runCatching { session.allLogsAsString }
+                    .getOrElse { session.output.orEmpty() }
+                val returnCode = session.returnCode?.toString() ?: "unknown"
+                val commandSucceeded = ReturnCode.isSuccess(session.returnCode)
+                val hasOutput = temp.isFile && temp.length() > 0L
+                val diagnostic = when {
+                    !commandSucceeded -> sanitizeFfmpegDiagnostic(logs)
+                    !hasOutput -> "FFmpeg completed without producing a non-empty output file."
+                    else -> sanitizeFfmpegDiagnostic(logs)
+                }
+                AttemptResult(
+                    success = commandSucceeded && hasOutput,
+                    returnCode = returnCode,
+                    diagnostic = diagnostic,
+                )
+            } catch (error: Exception) {
+                AttemptResult(
+                    success = false,
+                    returnCode = "execution_exception",
+                    diagnostic = sanitizeFfmpegDiagnostic(error.message.orEmpty()),
+                )
+            }
+
+        val copyAttempt = execute(base)
+        var finalAttempt = copyAttempt
 
         // Retry without touching video when a source audio codec cannot be copied
         // cleanly into the selected Matroska output by the bundled FFmpeg build.
-        if (!success) {
+        if (!copyAttempt.success) {
             temp.delete()
             val fallback = base.toMutableList().also { args ->
                 val audioCodecIndex = args.indexOf("-c:a")
@@ -109,14 +170,16 @@ class FfmpegManifestDownloader {
                     args.add(audioCodecIndex + 3, "192k")
                 }
             }
-            success = execute(fallback)
+            finalAttempt = execute(fallback)
         }
 
-        if (!success) {
+        if (!finalAttempt.success) {
             temp.delete()
+            val copyDetail = "copy exit=${copyAttempt.returnCode}: ${copyAttempt.diagnostic}"
+            val retryDetail = "AAC-retry exit=${finalAttempt.returnCode}: ${finalAttempt.diagnostic}"
             return@withContext Result.failure(
                 IllegalStateException(
-                    "FFmpeg could not acquire the HLS/DASH media source",
+                    "FFmpeg manifest acquisition failed; $copyDetail; $retryDetail".take(1800),
                 ),
             )
         }
