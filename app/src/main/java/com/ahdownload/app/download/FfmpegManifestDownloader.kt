@@ -36,6 +36,7 @@ internal fun sanitizeFfmpegDiagnostic(rawOutput: String): String {
                     "[url redacted]",
                 )
         }
+        .toList()
         .takeLast(8)
         .map { it.take(240) }
         .toList()
