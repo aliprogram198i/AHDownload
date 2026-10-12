@@ -72,6 +72,9 @@ class DownloadLauncher(
                 companionAudioSessionCookieHost = candidate.companionAudioSessionCookieHost,
                 streamingManifest = candidate.streamingManifest,
                 companionAudioStreamingManifest = candidate.companionAudioStreamingManifest,
+                expectedBytes = candidate.validatedContentLengthBytes?.takeIf {
+                    it > 0L && !candidate.streamingManifest
+                },
                 requestHeaders = candidate.requestHeaders.filterKeys { key ->
                     !key.equals("Cookie", ignoreCase = true) &&
                         (key.equals("User-Agent", ignoreCase = true) ||
