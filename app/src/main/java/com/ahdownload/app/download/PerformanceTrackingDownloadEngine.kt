@@ -42,6 +42,7 @@ class PerformanceTrackingDownloadEngine(
 
     private fun DownloadState.Failed.toPerformanceOutcome(): String = when (val failure = reason) {
         is DownloadFailure.HttpError -> "FAILED_HTTP_${failure.code}"
+        is DownloadFailure.IncompleteResponse -> "FAILED_INCOMPLETE_RESPONSE"
         DownloadFailure.InvalidResponse -> "FAILED_INVALID_RESPONSE"
         DownloadFailure.StorageError -> "FAILED_STORAGE"
         DownloadFailure.NetworkError -> "FAILED_NETWORK"
