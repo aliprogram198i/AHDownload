@@ -6,12 +6,49 @@ import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class YouTubeResolverTest {
+
+    @Test
+    fun propagatesCancellationFromYouTubePlayerApiInsteadOfFallingBackAsResolverUnavailable() = runBlocking {
+        var postCalls = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                {"INNERTUBE_API_KEY":"test-key","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"1"}}}
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String): String {
+                postCalls++
+                throw CancellationException("analysis cancelled")
+            }
+        }
+        val resolver = YouTubeResolver(client)
+        var propagatedCancellation = false
+
+        try {
+            resolver.resolve(
+                ResolverRequest(
+                    link = MediaLink(
+                        originalUrl = "https://youtu.be/cancel-test",
+                        normalizedUrl = "https://youtu.be/cancel-test",
+                        platform = MediaPlatform.YouTube,
+                        kind = MediaKind.Unknown,
+                    ),
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            propagatedCancellation = cancelled.message == "analysis cancelled"
+        }
+
+        assertTrue("Resolver must rethrow cancellation to its caller", propagatedCancellation)
+        assertEquals("No secondary client fallback should run after cancellation", 1, postCalls)
+    }
+
     @Test
     fun resolvesVideoUsingInjectedClientAndFiltersRequestedKind() = runBlocking {
         val client = object : HttpTextClient {
