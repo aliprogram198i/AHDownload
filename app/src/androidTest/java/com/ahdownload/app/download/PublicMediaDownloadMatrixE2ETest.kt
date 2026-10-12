@@ -127,7 +127,11 @@ class PublicMediaDownloadMatrixE2ETest {
 
                     val signature = prefix.toByteArray(Charsets.ISO_8859_1)
                         .take(12).joinToString("") { "%02x".format(it) }
-                    lastFailure = "downloadedBytes=$bytes; signature=$signature"
+                    val knownTotal = record.totalBytes?.toString() ?: "unknown"
+                    val validatedExpected = validation.candidate.validatedContentLengthBytes
+                        ?.toString() ?: "unknown"
+                    lastFailure = "downloadedBytes=$bytes; downloadTotalBytes=$knownTotal; " +
+                        "validatedExpectedBytes=$validatedExpected; signature=$signature"
                     runCatching { context.contentResolver.delete(uri, null, null) }
                     passed = true
                     break
@@ -212,6 +216,7 @@ class PublicMediaDownloadMatrixE2ETest {
             Target("18_archive_page", "https://archive.org/details/A_Trip_to_the_Moon"),
             Target("19_wikimedia_page", "https://commons.wikimedia.org/wiki/File:Curiosity%27s_Seven_Minutes_of_Terror.ogv"),
             Target("20_google_for_bigger_blazes", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"),
+            Target("21_xnxx_arabic", "https://www.xnxx-arabic.com/video-1ey5zfb1/young_stepsister_is_doing_grooming_horny_stepsister_gives_me_her_rich_pussy"),
         )
     }
 }
