@@ -18,6 +18,8 @@ import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.CandidateValidator
 import com.ahdownload.domain.validation.OkHttpMediaProbe
 import com.ahdownload.domain.resolver.web.WebVideoPageResolver
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 class HomeResolver(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
@@ -37,7 +39,12 @@ class HomeResolver(
         logger = logger,
         browserMediaSessionProvider = browserMediaSessionProvider,
     ),
+    private val resolveTimeoutMs: Long = DEFAULT_RESOLVE_TIMEOUT_MS,
 ) {
+    init {
+        require(resolveTimeoutMs > 0L) { "resolveTimeoutMs must be positive" }
+    }
+
     suspend fun resolve(
         link: MediaLink,
         operationId: String? = null,
@@ -65,30 +72,51 @@ class HomeResolver(
             )
         }
 
-        val result = when (link.platform) {
-            MediaPlatform.Web -> webVideoPageResolver.resolve(
-                ResolverRequest(link, operationId = operationId),
-            )
-            MediaPlatform.YouTube -> {
-                val request = ResolverRequest(link, operationId = operationId)
-                if (forceYouTubeFallbacks) {
-                    youtubeResolver.resolveWithFallbacks(request)
-                } else {
-                    youtubeResolver.resolve(request)
+        val result = try {
+            withTimeout(resolveTimeoutMs) {
+                when (link.platform) {
+                    MediaPlatform.Web -> webVideoPageResolver.resolve(
+                        ResolverRequest(link, operationId = operationId),
+                    )
+                    MediaPlatform.YouTube -> {
+                        val request = ResolverRequest(link, operationId = operationId)
+                        if (forceYouTubeFallbacks) {
+                            youtubeResolver.resolveWithFallbacks(request)
+                        } else {
+                            youtubeResolver.resolve(request)
+                        }
+                    }
+                    MediaPlatform.Instagram,
+                    MediaPlatform.Facebook,
+                    MediaPlatform.TikTok,
+                    MediaPlatform.X,
+                    MediaPlatform.Snapchat,
+                    MediaPlatform.Pinterest,
+                    MediaPlatform.Reddit,
+                    MediaPlatform.Twitch,
+                    MediaPlatform.Vimeo -> resolveSocial(link, operationId)
+                    else -> ResolverResult.Failure(
+                        com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
+                        "المنصة غير مدعومة في المحرك الحالي.",
+                    )
                 }
             }
-            MediaPlatform.Instagram,
-            MediaPlatform.Facebook,
-            MediaPlatform.TikTok,
-            MediaPlatform.X,
-            MediaPlatform.Snapchat,
-            MediaPlatform.Pinterest,
-            MediaPlatform.Reddit,
-            MediaPlatform.Twitch,
-            MediaPlatform.Vimeo -> resolveSocial(link, operationId)
-            else -> ResolverResult.Failure(
-                com.ahdownload.domain.resolver.FailureCode.UnsupportedPlatform,
-                "المنصة غير مدعومة في المحرك الحالي.",
+        } catch (timeout: TimeoutCancellationException) {
+            logger.log(
+                com.ahdownload.core.common.DiagnosticLevel.WARNING,
+                "RESOLUTION_TIMEOUT",
+                "انتهت مهلة تحليل الرابط",
+                "home.resolve",
+                mapOf(
+                    "platform" to link.platform.name,
+                    "operation_id" to (operationId ?: "none"),
+                    "timeout_ms" to resolveTimeoutMs.toString(),
+                ),
+                timeout,
+            )
+            return ResolverResult.Failure(
+                com.ahdownload.domain.resolver.FailureCode.ResolverTimeout,
+                RESOLUTION_TIMEOUT_MESSAGE,
             )
         }
 
@@ -154,4 +182,10 @@ class HomeResolver(
     private fun extensionOf(url: String): String =
         runCatching { java.net.URI(url).path.orEmpty().substringAfterLast('.', "").lowercase() }
             .getOrDefault("")
+
+    private companion object {
+        const val DEFAULT_RESOLVE_TIMEOUT_MS = 60_000L
+        const val RESOLUTION_TIMEOUT_MESSAGE =
+            "استغرق تحليل الرابط وقتًا أطول من المسموح. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+    }
 }
