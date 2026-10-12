@@ -463,7 +463,7 @@ class DownloadWorker(
         } else {
             null
         }
-        if (stagedAudioSource != null) {
+        if (audioExtractionRequested && (record.status == DownloadStatus.COMPLETED || stagedAudioSource != null)) {
             // The source transfer is complete, but the user-visible audio output is not.
             // Do not expose this task as completed while extraction is still running.
             completedRecord = record.copy(
