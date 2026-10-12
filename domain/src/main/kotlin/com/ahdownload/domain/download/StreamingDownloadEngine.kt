@@ -89,13 +89,19 @@ class StreamingDownloadEngine(
         }
 
         val expectedBytes = task.expectedBytes?.takeIf { it > 0L }
-        val declaredResponseTotal = when (response.statusCode) {
-            206 -> response.totalBytes ?: response.rangeEndBytes
-                ?.takeIf { it < Long.MAX_VALUE }
-                ?.plus(1L)
-            else -> response.contentLengthBytes
+        // Content-Length on a 206 response describes only that response's range, not
+        // the complete media object. A range end is not proof of total length when total='*'.
+        val declaredResponseTotal = if (response.statusCode == 206) {
+            response.totalBytes
+        } else {
+            response.contentLengthBytes
         }
         if (expectedBytes != null && declaredResponseTotal != null && expectedBytes != declaredResponseTotal) {
+            response.body.close()
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
+            return
+        }
+        if (response.statusCode == 206 && declaredResponseTotal == null && expectedBytes == null) {
             response.body.close()
             onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
@@ -114,12 +120,10 @@ class StreamingDownloadEngine(
         }
 
         val append = partialBytes > 0L && response.statusCode == 206
-        val responseTotalBytes = when {
-            response.statusCode == 206 -> response.totalBytes ?: response.rangeEndBytes
-                ?.takeIf { it < Long.MAX_VALUE }
-                ?.plus(1L)
-            response.contentLengthBytes != null -> response.contentLengthBytes
-            else -> null
+        val responseTotalBytes = if (response.statusCode == 206) {
+            response.totalBytes
+        } else {
+            response.contentLengthBytes
         }
         val totalBytes = expectedBytes ?: responseTotalBytes
 
@@ -196,26 +200,32 @@ class StreamingDownloadEngine(
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
             return
         } catch (_: StorageWriteException) {
-            sink.discard(task.destinationPath, task.id)
+            discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         } catch (_: IOException) {
-            sink.discard(task.destinationPath, task.id)
+            discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
+        } catch (cancelled: CancellationException) {
+            onState(DownloadState.Cancelled)
+            throw cancelled
         } catch (_: Throwable) {
-            sink.discard(task.destinationPath, task.id)
+            discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         }
 
         val completedTempBytes = try {
             sink.temporarySize(task.destinationPath, task.id)
+        } catch (cancelled: CancellationException) {
+            onState(DownloadState.Cancelled)
+            throw cancelled
         } catch (_: Throwable) {
             0L
         }
         if (completedTempBytes <= 0L) {
-            runCatching { sink.discard(task.destinationPath, task.id) }
+            discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
             return
         }
@@ -228,6 +238,20 @@ class StreamingDownloadEngine(
             throw cancelled
         } catch (_: Throwable) {
             onState(DownloadState.Failed(DownloadFailure.StorageError))
+        }
+    }
+
+    private suspend fun discardPartialBestEffort(
+        task: DownloadTask,
+        onState: suspend (DownloadState) -> Unit,
+    ) {
+        try {
+            sink.discard(task.destinationPath, task.id)
+        } catch (cancelled: CancellationException) {
+            onState(DownloadState.Cancelled)
+            throw cancelled
+        } catch (_: Throwable) {
+            // Preserve the primary failure reason; cleanup issues are surfaced in task diagnostics.
         }
     }
 
