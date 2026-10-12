@@ -821,11 +821,22 @@ class DownloadWorker(
                     ),
                     error,
                 )
-                return queue.applyState(
+                val failedRecord = queue.applyState(
                     task.id,
                     DownloadState.Failed(DownloadFailure.InvalidResponse),
                     System.currentTimeMillis(),
                 )
+                val safeDetail = error?.message
+                    ?.replace('\n', ' ')
+                    ?.take(1000)
+                    ?.takeIf { it.isNotBlank() }
+                val enrichedFailure = failedRecord.copy(
+                    failureDetail = safeDetail ?: failedRecord.failureDetail
+                        ?: "FFmpeg could not acquire the HLS/DASH media source.",
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+                repository.upsert(enrichedFailure)
+                return enrichedFailure
             }
 
             val output = result.getOrThrow()

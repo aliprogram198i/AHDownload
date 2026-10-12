@@ -217,7 +217,7 @@ class PublicMediaDownloadMatrixE2ETest {
         detail.orEmpty()
             .replace(Regex("""https?://[^\s]+"""), "[url-redacted]")
             .replace(Regex("""(?i)(token|sig|signature|auth|cookie|key)=?[^&\s]+"""), "[value-redacted]")
-            .take(180)
+            .take(360)
 
 
     private fun inspectPublishedFile(context: Context, uri: Uri): Pair<Long, String> {
