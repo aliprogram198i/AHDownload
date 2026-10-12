@@ -38,8 +38,8 @@ class YouTubePlayerClientTest {
         )
 
         assertEquals(http.response, response)
-        assertTrue(http.body!!.contains(""clientName":"WEB_EMBEDDED_PLAYER""))
-        assertTrue(http.body!!.contains(""thirdParty":{"embedUrl":"https://www.youtube.com/"}"))
+        assertTrue(http.body!!.contains("\"clientName\":\"WEB_EMBEDDED_PLAYER\""))
+        assertTrue(http.body!!.contains("\"thirdParty\":{\"embedUrl\":\"https://www.youtube.com/\"}"))
         assertEquals("56", http.headers["X-YouTube-Client-Name"])
         assertEquals("2.20260708.00.00", http.headers["X-YouTube-Client-Version"])
         assertEquals("visitor-token", http.headers["X-Goog-Visitor-Id"])
