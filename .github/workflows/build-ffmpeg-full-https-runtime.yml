@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: ffmpegkit-maintained/ffmpeg
-          ref: "469e560b89a9ba4cab357d2c306c676b0c611745"
+          ref: "c72e151c1ba5bd6ce602a1dfd5eae402095bae86"
           path: ffmpeg-source
           submodules: recursive
 
