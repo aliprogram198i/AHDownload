@@ -205,7 +205,40 @@ class OkHttpMediaProbe(
             ),
             throwable = null,
         )
-        if (head.code in 200..299) return head.toResult("HEAD", null)
+        if (head.code in 200..299) {
+            val headResult = head.toResult("HEAD", null)
+            if (headResult.contentLengthBytes != null) return headResult
+
+            // Some CDNs omit Content-Length on HEAD but disclose the complete object size
+            // in Content-Range for a one-byte probe. Use the probe only when it yields a
+            // valid result; otherwise preserve the successful HEAD validation result.
+            val range = "bytes=0-0"
+            val rangeStarted = TimeSource.Monotonic.markNow()
+            val response = execute(url, "GET", headers, range)
+            logger.log(
+                level = if (response.code in 200..299) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_ATTEMPT",
+                reason = "head_size_unknown_range_probe",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    range,
+                    response.code,
+                    response.header("Content-Type"),
+                    rangeStarted.elapsedNow().inWholeMilliseconds,
+                    headers,
+                    operationId,
+                ),
+                throwable = null,
+            )
+            val rangedResult = response.toResult("GET", range)
+            return if (rangedResult.statusCode in 200..299 && rangedResult.contentLengthBytes != null) {
+                rangedResult
+            } else {
+                headResult
+            }
+        }
 
         if (head.code in RETRY_HEAD_CODES) {
             head.close()
@@ -277,10 +310,16 @@ class OkHttpMediaProbe(
 
     private fun okhttp3.Response.toResult(method: String, range: String?): MediaProbeResult {
         use {
-            val totalSize = header("Content-Range")
+            val rangeTotalSize = header("Content-Range")
                 ?.substringAfterLast('/', "")
                 ?.toLongOrNull()
-                ?: body.contentLength().takeIf { it >= 0L }
+            val totalSize = when {
+                rangeTotalSize != null -> rangeTotalSize
+                // For 206 responses the body length may only describe the returned range,
+                // not the complete media resource.
+                code == 206 -> null
+                else -> body.contentLength().takeIf { it >= 0L }
+            }
 
             return MediaProbeResult(
                 statusCode = code,
