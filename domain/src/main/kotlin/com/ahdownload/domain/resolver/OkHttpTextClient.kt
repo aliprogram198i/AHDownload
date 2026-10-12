@@ -9,9 +9,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 class OkHttpTextClient(
-    private val client: OkHttpClient = OkHttpClient(),
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .callTimeout(DEFAULT_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        .build(),
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
 ) : HttpTextClient {
     override suspend fun get(url: String): String = get(url, emptyMap(), emptyMap())
@@ -118,6 +121,7 @@ class OkHttpTextClient(
     }
 
     private companion object {
+        const val DEFAULT_CALL_TIMEOUT_MS = 20L * 1000L
         val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 " +
