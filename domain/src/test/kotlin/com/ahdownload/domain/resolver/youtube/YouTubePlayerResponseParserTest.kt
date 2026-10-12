@@ -170,7 +170,7 @@ class YouTubePlayerResponseParserTest {
     @Test
     fun parsesQuotedPlayerResponseMarker() {
         val json = """{"videoDetails":{"title":"Quoted"},"playabilityStatus":{"status":"OK"},"streamingData":{"formats":[{"itag":"18","mimeType":"video/mp4","url":"https://cdn.example.com/quoted"}]}}"""
-        val html = ""player_response":"" + json.replace(""", "\\"") + """
+        val html = "\"player_response\":\"" + json.replace("\"", "\\\"") + "\""
 
         val result = parser.parse(html)
 
