@@ -93,6 +93,11 @@ class PersistentDownloadQueueTest {
             historyFlow.value = records.values.sortedByDescending { it.updatedAtEpochMs }
         }
 
+        override suspend fun delete(taskId: String) {
+            records.remove(taskId)
+            historyFlow.value = records.values.sortedByDescending { it.updatedAtEpochMs }
+        }
+
         override fun observeHistory(): Flow<List<DownloadRecord>> = historyFlow.asStateFlow()
 
         override suspend fun get(taskId: String): DownloadRecord? =
