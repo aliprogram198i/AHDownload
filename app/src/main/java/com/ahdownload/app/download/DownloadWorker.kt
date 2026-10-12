@@ -317,7 +317,38 @@ class DownloadWorker(
         )
 
         val record = try {
-            if (sourceTask.streamingManifest && !muxRequested) {
+            val reusableAudioSource = if (audioExtractionRequested) {
+                java.io.File(sourceTask.destinationPath).takeIf { it.isFile && it.length() > 0L }
+            } else {
+                null
+            }
+            if (reusableAudioSource != null) {
+                val size = reusableAudioSource.length()
+                val existing = queue.enqueue(sourceTask, System.currentTimeMillis())
+                val reused = existing.copy(
+                    task = sourceTask,
+                    status = DownloadStatus.COMPLETED,
+                    bytesDownloaded = size,
+                    totalBytes = size,
+                    failureCode = null,
+                    failureDetail = null,
+                    destinationUri = null,
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                )
+                repository.upsert(reused)
+                diagnostics.log(
+                    DiagnosticLevel.INFO,
+                    "AUDIO_SOURCE_REUSED",
+                    "تمت إعادة استخدام المصدر المحلي المكتمل بدل تنزيله مرة أخرى",
+                    "download.audio_extraction",
+                    mapOf(
+                        "task_id" to task.id,
+                        "source_bytes" to size.toString(),
+                    ),
+                    null,
+                )
+                reused
+            } else if (sourceTask.streamingManifest && !muxRequested) {
                 executeStreamingManifest(
                     task = task,
                     sourceTask = sourceTask,
@@ -428,6 +459,19 @@ class DownloadWorker(
 
         var completedRecord = record
         if (record.status == DownloadStatus.COMPLETED && audioExtractionRequested) {
+            // The source transfer is complete, but the user-visible audio output is not.
+            // Do not expose this task as completed while extraction is still running.
+            completedRecord = record.copy(
+                task = task,
+                status = DownloadStatus.PREPARING,
+                bytesDownloaded = 0L,
+                totalBytes = null,
+                failureCode = null,
+                failureDetail = null,
+                destinationUri = null,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
+            repository.upsert(completedRecord)
             setForeground(createForegroundInfo(DownloadState.Preparing))
             val audioOutputFormat = task.audioOutputFormat ?: AudioOutputFormat.M4a
             diagnostics.log(
@@ -445,14 +489,86 @@ class DownloadWorker(
             )
 
             val outputFile = java.io.File(task.destinationPath)
-            val extraction = AudioTranscoder()
-                .transcode(
-                    inputFile = java.io.File(sourceTask.destinationPath),
-                    outputFile = outputFile,
-                    outputFormat = audioOutputFormat,
+            val fastCopyFile = java.io.File(outputFile.parentFile, ".${outputFile.name}.fastcopy")
+            val extraction = try {
+                AudioTranscoder()
+                    .transcode(
+                        inputFile = java.io.File(sourceTask.destinationPath),
+                        outputFile = outputFile,
+                        outputFormat = audioOutputFormat,
+                    )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                var shouldCleanCancelledArtifacts = false
+                val intentAtCancellation = controlStore.snapshot(task.id)
+                val requestedStatus = downloadStatusForControlIntent(intentAtCancellation?.intent)
+                withContext(NonCancellable + Dispatchers.IO) {
+                    try {
+                        if (
+                            requestedStatus != null &&
+                            intentAtCancellation != null &&
+                            controlStore.isCurrent(task.id, intentAtCancellation)
+                        ) {
+                            val latest = repository.get(task.id)
+                            if (
+                                latest != null &&
+                                latest.status != DownloadStatus.COMPLETED &&
+                                latest.status != DownloadStatus.FAILED &&
+                                controlStore.isCurrent(task.id, intentAtCancellation)
+                            ) {
+                                repository.upsert(
+                                    latest.copy(
+                                        status = requestedStatus,
+                                        bytesDownloaded = 0L,
+                                        totalBytes = null,
+                                        failureCode = null,
+                                        failureDetail = null,
+                                        updatedAtEpochMs = System.currentTimeMillis(),
+                                    ),
+                                )
+                                shouldCleanCancelledArtifacts = requestedStatus == DownloadStatus.CANCELLED
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Preserve cancellation even if durable state cannot be updated.
+                    }
+
+                    // The staged source is reusable after pause/system interruption; output
+                    // generated by an interrupted FFmpeg session is never treated as complete.
+                    outputFile.delete()
+                    fastCopyFile.delete()
+                    if (shouldCleanCancelledArtifacts) {
+                        cleanupCancelledTemporaryArtifacts(
+                            task = task,
+                            sourceTask = sourceTask,
+                            companionAudioTask = companionAudioTask,
+                            diagnostics = diagnostics,
+                        )
+                    }
+                }
+                diagnostics.log(
+                    DiagnosticLevel.INFO,
+                    "AUDIO_EXTRACTION_CANCELLED",
+                    when (requestedStatus) {
+                        DownloadStatus.PAUSED -> "تم إيقاف استخراج الصوت مؤقتًا"
+                        DownloadStatus.CANCELLED -> "تم إلغاء استخراج الصوت"
+                        else -> "توقف استخراج الصوت بسبب دورة حياة العامل"
+                    },
+                    "download.audio_extraction",
+                    mapOf(
+                        "task_id" to task.id,
+                        "control_intent" to (intentAtCancellation?.intent ?: "UNSPECIFIED"),
+                        "persisted_status" to (requestedStatus?.name ?: "UNCHANGED"),
+                    ),
+                    cancelled,
                 )
+                throw cancelled
+            } catch (error: Throwable) {
+                Result.failure(error)
+            }
 
             if (extraction.isFailure) {
+                outputFile.delete()
+                fastCopyFile.delete()
                 val error = extraction.exceptionOrNull()
                 val detail = error?.message?.takeIf { it.isNotBlank() } ?: "تعذر استخراج مسار صوت صالح من المصدر."
                 diagnostics.log(
@@ -486,8 +602,15 @@ class DownloadWorker(
             }
 
             runCatching { java.io.File(sourceTask.destinationPath).delete() }
+            val finalAudioBytes = outputFile.length().coerceAtLeast(0L)
             completedRecord = record.copy(
                 task = task,
+                status = DownloadStatus.COMPLETED,
+                bytesDownloaded = finalAudioBytes,
+                totalBytes = finalAudioBytes,
+                failureCode = null,
+                failureDetail = null,
+                destinationUri = null,
                 updatedAtEpochMs = System.currentTimeMillis(),
             )
             diagnostics.log(
