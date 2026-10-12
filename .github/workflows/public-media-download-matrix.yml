@@ -1,4 +1,4 @@
-name: Internal Public Media Download Matrix
+name: Single-URL XNXX Media Download Test
 
 on:
   pull_request:
@@ -34,9 +34,9 @@ jobs:
           retention-days: 14
 
   production-download-matrix:
-    name: Resolve, download, and verify 21 URLs on Android emulator
+    name: Resolve, download, and verify the single XNXX URL on Android emulator
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -61,7 +61,7 @@ jobs:
           test -e /dev/kvm
           sudo chmod a+rw /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
-      - name: Run production pipeline for all 21 URLs
+      - name: Run production pipeline for the single XNXX URL
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -73,15 +73,15 @@ jobs:
           emulator-boot-timeout: 600
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data"
           script: |
-            bash -c 'set -o pipefail; gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee public-media-matrix.log; status=$?; adb logcat -d -v threadtime -s AH_MEDIA_MATRIX:I AndroidRuntime:E > public-media-matrix-logcat.txt || true; exit "$status"'
+            bash -c 'set -o pipefail; gradle --no-daemon --max-workers=2 connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest 2>&1 | tee single-url-download.log; status=$?; adb logcat -d -v threadtime -s AH_MEDIA_MATRIX:I AndroidRuntime:E > single-url-download-logcat.txt || true; exit "$status"'
       - name: Upload matrix report and device logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ahdownload-public-media-matrix-${{ github.run_id }}
+          name: ahdownload-single-url-download-test-${{ github.run_id }}
           path: |
-            public-media-matrix.log
-            public-media-matrix-logcat.txt
+            single-url-download.log
+            single-url-download-logcat.txt
             app/build/outputs/androidTest-results/connected/
             app/build/reports/androidTests/connected/
           if-no-files-found: warn
