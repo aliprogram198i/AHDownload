@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.CookieManager
+import android.webkit.ConsoleMessage
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -81,6 +82,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.net.URI
 import java.util.UUID
+import org.json.JSONObject
+import org.json.JSONTokener
 
 @SuppressLint("SetJavaScriptEnabled")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,24 +118,61 @@ fun BrowserRoute(
     var candidates by remember { mutableStateOf<List<MediaCandidate>>(emptyList()) }
     var inspectMessage by remember { mutableStateOf<String?>(null) }
     var pageLoadError by remember { mutableStateOf<String?>(null) }
+    var currentPageTitle by remember { mutableStateOf("") }
+    var pageRenderStatus by remember { mutableStateOf("NOT_CHECKED") }
+    var currentNavigationId by remember { mutableStateOf("") }
+    var navigationStartedAtMs by remember { mutableStateOf(0L) }
+    var nextNavigationSource by remember { mutableStateOf("browser_entry") }
+    var lastProgressBucket by remember { mutableStateOf(0) }
+    var resourceHttpErrorCount by remember { mutableStateOf(0) }
+    var consoleErrorCount by remember { mutableStateOf(0) }
     var showResults by remember { mutableStateOf(false) }
     var selectedAudioCandidateId by remember { mutableStateOf<String?>(null) }
     var selectedAudioFormat by remember { mutableStateOf<AudioOutputFormat?>(null) }
     var actionInProgress by remember { mutableStateOf(false) }
 
-    fun recordError(type: String, message: String, stage: String, url: String?, code: String? = null) {
-        errorStore.record(type, message, stage, url, code)
+    fun recordBrowserEvent(
+        type: String,
+        message: String,
+        stage: String,
+        url: String?,
+        code: String? = null,
+        severity: String = "INFO",
+        details: Map<String, String> = emptyMap(),
+        pageTitle: String? = currentPageTitle.takeIf { it.isNotBlank() },
+    ) {
+        val enrichedDetails = buildMap {
+            putAll(details)
+            currentNavigationId.takeIf { it.isNotBlank() }?.let { put("navigation_id", it) }
+            pageRenderStatus.takeIf { it != "NOT_CHECKED" }?.let { put("page_render_status_at_event", it) }
+        }
+        errorStore.record(
+            type = type,
+            message = message,
+            stage = stage,
+            url = url,
+            code = code,
+            severity = severity,
+            pageTitle = pageTitle,
+            details = enrichedDetails,
+        )
         logger.log(
-            DiagnosticLevel.WARNING,
+            if (severity == "ERROR" || severity == "WARNING") DiagnosticLevel.WARNING else DiagnosticLevel.INFO,
             "BROWSER_$type",
             message,
             "browser.$stage",
             buildMap {
                 put("host", safeHost(url))
-                code?.let { put("code", it.take(40)) }
+                put("severity", severity)
+                code?.let { put("code", it.take(60)) }
+                currentNavigationId.takeIf { it.isNotBlank() }?.let { put("navigation_id", it) }
             },
             null,
         )
+    }
+
+    fun recordError(type: String, message: String, stage: String, url: String?, code: String? = null) {
+        recordBrowserEvent(type, message, stage, url, code, severity = "ERROR")
     }
 
     fun loadAddress() {
@@ -142,6 +182,7 @@ fun BrowserRoute(
             recordError("INVALID_ADDRESS", "عنوان الموقع غير صالح", "navigation", address)
             return
         }
+        nextNavigationSource = "address_bar"
         address = normalized
         inspectMessage = null
         pageLoadError = null
@@ -155,6 +196,7 @@ fun BrowserRoute(
         if (showResults) {
             showResults = false
         } else if (canGoBack) {
+            nextNavigationSource = "system_back"
             webView?.goBack()
         } else {
             onBack()
@@ -184,6 +226,7 @@ fun BrowserRoute(
                 },
                 actions = {
                     IconButton(onClick = {
+                        nextNavigationSource = "home_button"
                         val homeUrl = "https://www.google.com"
                         address = homeUrl
                         currentUrl = homeUrl
@@ -314,13 +357,13 @@ fun BrowserRoute(
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(enabled = canGoBack, onClick = { webView?.goBack() }) {
+                IconButton(enabled = canGoBack, onClick = { nextNavigationSource = "back_button"; webView?.goBack() }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "السابق")
                 }
-                IconButton(enabled = canGoForward, onClick = { webView?.goForward() }) {
+                IconButton(enabled = canGoForward, onClick = { nextNavigationSource = "forward_button"; webView?.goForward() }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "التالي")
                 }
-                IconButton(onClick = { webView?.reload() }) {
+                IconButton(onClick = { nextNavigationSource = "reload_button"; pageLoadError = null; isLoading = true; pageProgress = 0; webView?.reload() }) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                 }
                 IconButton(onClick = { showResults = false }) {
@@ -357,6 +400,21 @@ fun BrowserRoute(
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                 val scheme = request.url.scheme?.lowercase()
+                                if (request.isForMainFrame && (scheme == "https" || scheme == "http")) {
+                                    recordBrowserEvent(
+                                        if (request.isRedirect) "NAVIGATION_REDIRECT_REQUEST" else "NAVIGATION_LINK_REQUEST",
+                                        if (request.isRedirect) "طلب الموقع الانتقال إلى عنوان آخر" else "طلب المتصفح فتح رابط",
+                                        "navigation",
+                                        request.url.toString(),
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "is_redirect" to request.isRedirect.toString(),
+                                            "http_method" to request.method,
+                                            "initiator" to "page_navigation",
+                                        ),
+                                    )
+                                    return false
+                                }
                                 if (scheme == "https" || scheme == "http") return false
                                 recordError("BLOCKED_SCHEME", "تم منع مخطط عنوان غير مدعوم", "navigation", request.url.toString(), scheme)
                                 return true
@@ -369,15 +427,163 @@ fun BrowserRoute(
                                 pageProgress = 0
                                 pageLoadError = null
                                 inspectMessage = null
+                                currentPageTitle = ""
+                                currentNavigationId = UUID.randomUUID().toString()
+                                navigationStartedAtMs = System.currentTimeMillis()
+                                lastProgressBucket = 0
+                                resourceHttpErrorCount = 0
+                                consoleErrorCount = 0
+                                pageRenderStatus = "LOADING"
+                                recordBrowserEvent(
+                                    "NAVIGATION_STARTED",
+                                    "بدأ تحميل الصفحة داخل المتصفح",
+                                    "navigation",
+                                    url,
+                                    severity = "INFO",
+                                    details = mapOf(
+                                        "navigation_source" to nextNavigationSource,
+                                        "progress_percent" to "0",
+                                    ),
+                                    pageTitle = null,
+                                )
+                                nextNavigationSource = "page_navigation"
+                            }
+
+                            override fun onPageCommitVisible(view: WebView, url: String) {
+                                recordBrowserEvent(
+                                    "PAGE_COMMITTED_VISIBLE",
+                                    "بدأ WebView بإظهار محتوى الصفحة",
+                                    "render",
+                                    url,
+                                    severity = "SUCCESS",
+                                    details = mapOf("progress_percent" to view.progress.toString()),
+                                )
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
                                 currentUrl = url
                                 address = url
+                                currentPageTitle = view.title.orEmpty().take(160)
                                 pageProgress = 100
                                 isLoading = false
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
+                                recordBrowserEvent(
+                                    "PAGE_LOAD_FINISHED",
+                                    "انتهت callbacks تحميل الصفحة؛ سيجري فحص DOM لتقدير ظهور المحتوى",
+                                    "navigation",
+                                    url,
+                                    code = "100",
+                                    severity = "INFO",
+                                    details = mapOf(
+                                        "progress_percent" to "100",
+                                        "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                        "http_resource_errors" to resourceHttpErrorCount.toString(),
+                                    ),
+                                    pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                )
+                                view.evaluateJavascript(
+                                    """
+                                    (function() {
+                                      try {
+                                        const d=document, b=d.body, e=d.documentElement;
+                                        const text=(b&&b.innerText?b.innerText:'').trim();
+                                        const title=d.title||'';
+                                        const visibleImages=[...d.images].filter(i=>i.complete&&i.naturalWidth>0&&i.getBoundingClientRect().width>0).length;
+                                        const challenge=/verify you are human|checking your browser|just a moment|access denied|captcha|unusual traffic|confirm you are not a robot|enable javascript and cookies/i
+                                          .test((title+' '+text.slice(0,5000)).toLowerCase());
+                                        return JSON.stringify({
+                                          readyState:d.readyState||'unknown',
+                                          title:title,
+                                          bodyTextChars:text.length,
+                                          bodyChildCount:b?b.children.length:0,
+                                          documentHeight:e?e.scrollHeight:0,
+                                          viewportWidth:window.innerWidth||0,
+                                          viewportHeight:window.innerHeight||0,
+                                          videoCount:d.querySelectorAll('video').length,
+                                          audioCount:d.querySelectorAll('audio').length,
+                                          iframeCount:d.querySelectorAll('iframe').length,
+                                          imageCount:d.images.length,
+                                          visibleImageCount:visibleImages,
+                                          backgroundColor:b?getComputedStyle(b).backgroundColor:'unknown',
+                                          challengeDetected:challenge
+                                        });
+                                      } catch(e) {
+                                        return JSON.stringify({diagnosticError:'dom_snapshot_failed'});
+                                      }
+                                    })();
+                                    """.trimIndent(),
+                                ) { raw ->
+                                    val decoded = runCatching {
+                                        JSONTokener(raw.orEmpty()).nextValue() as? String
+                                    }.getOrNull()
+                                    val snapshot = decoded?.let { runCatching { JSONObject(it) }.getOrNull() }
+                                    if (snapshot == null) {
+                                        pageRenderStatus = "DOM_DIAGNOSTIC_FAILED"
+                                        recordBrowserEvent(
+                                            "PAGE_RENDER_DIAGNOSTIC_FAILED",
+                                            "اكتمل تحميل الصفحة لكن تعذر قراءة مؤشرات DOM",
+                                            "render",
+                                            url,
+                                            severity = "WARNING",
+                                            details = mapOf(
+                                                "progress_percent" to "100",
+                                                "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                            ),
+                                        )
+                                        return@evaluateJavascript
+                                    }
+                                    currentPageTitle = snapshot.optString("title", view.title.orEmpty()).take(160)
+                                    val readyState = snapshot.optString("readyState", "unknown")
+                                    val bodyTextChars = snapshot.optInt("bodyTextChars", 0).coerceAtLeast(0)
+                                    val bodyChildCount = snapshot.optInt("bodyChildCount", 0).coerceAtLeast(0)
+                                    val documentHeight = snapshot.optInt("documentHeight", 0).coerceAtLeast(0)
+                                    val videoCount = snapshot.optInt("videoCount", 0).coerceAtLeast(0)
+                                    val audioCount = snapshot.optInt("audioCount", 0).coerceAtLeast(0)
+                                    val imageCount = snapshot.optInt("imageCount", 0).coerceAtLeast(0)
+                                    val visibleImageCount = snapshot.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                    val iframeCount = snapshot.optInt("iframeCount", 0).coerceAtLeast(0)
+                                    val challengeDetected = snapshot.optBoolean("challengeDetected", false)
+                                    val hasContentSignals = bodyTextChars >= 12 || videoCount > 0 || audioCount > 0 ||
+                                        visibleImageCount > 0 || (bodyChildCount > 0 && documentHeight > 120)
+                                    pageRenderStatus = when {
+                                        challengeDetected -> "POSSIBLE_ACCESS_CHALLENGE"
+                                        hasContentSignals -> "CONTENT_SIGNALS_DETECTED"
+                                        readyState == "complete" -> "POSSIBLY_EMPTY_PAGE"
+                                        else -> "DOM_NOT_READY"
+                                    }
+                                    val renderMessage = when (pageRenderStatus) {
+                                        "POSSIBLE_ACCESS_CHALLENGE" -> "اكتمل التحميل تقنيًا، لكن ظهرت مؤشرات تحقق أو حظر محتملة"
+                                        "CONTENT_SIGNALS_DETECTED" -> "اكتمل التحميل ورُصد محتوى في DOM؛ هذا لا يضمن وحده صحة العرض المرئي"
+                                        "POSSIBLY_EMPTY_PAGE" -> "اكتمل التحميل لكن لم تُرصد مؤشرات محتوى كافية؛ قد تكون الصفحة فارغة أو محجوبة"
+                                        else -> "لم تصل مؤشرات DOM إلى حالة جاهزة"
+                                    }
+                                    recordBrowserEvent(
+                                        "PAGE_RENDER_CHECK",
+                                        renderMessage,
+                                        "render",
+                                        url,
+                                        severity = if (pageRenderStatus == "CONTENT_SIGNALS_DETECTED") "SUCCESS" else "WARNING",
+                                        details = mapOf(
+                                            "render_status" to pageRenderStatus,
+                                            "ready_state" to readyState,
+                                            "body_text_chars" to bodyTextChars.toString(),
+                                            "body_child_count" to bodyChildCount.toString(),
+                                            "document_height" to documentHeight.toString(),
+                                            "viewport" to ""${snapshot.optInt("viewportWidth", 0)}x${snapshot.optInt("viewportHeight", 0)}"",
+                                            "video_count" to videoCount.toString(),
+                                            "audio_count" to audioCount.toString(),
+                                            "image_count" to imageCount.toString(),
+                                            "visible_image_count" to visibleImageCount.toString(),
+                                            "iframe_count" to iframeCount.toString(),
+                                            "background_color" to snapshot.optString("backgroundColor", "unknown"),
+                                            "challenge_detected" to challengeDetected.toString(),
+                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                            "http_resource_errors" to resourceHttpErrorCount.toString(),
+                                        ),
+                                        pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                    )
+                                }
                             }
 
                             override fun onReceivedError(
@@ -417,16 +623,29 @@ fun BrowserRoute(
                                 request: WebResourceRequest,
                                 errorResponse: android.webkit.WebResourceResponse,
                             ) {
-                                if (request.isForMainFrame && errorResponse.statusCode >= 400) {
-                                    inspectMessage = "استجابة HTTP ${errorResponse.statusCode} من الموقع. قد يكون المحتوى مقيدًا أو يتطلب جلسة صالحة."
-                                    recordError(
-                                        "HTTP_ERROR",
-                                        "أعاد الموقع استجابة HTTP ${errorResponse.statusCode}",
-                                        "navigation",
-                                        request.url.toString(),
-                                        errorResponse.statusCode.toString(),
-                                    )
+                                val status = errorResponse.statusCode
+                                if (status < 400) return
+                                val mainFrame = request.isForMainFrame
+                                if (mainFrame) {
+                                    inspectMessage = "استجابة HTTP $status من الموقع. قد يكون المحتوى مقيدًا أو يتطلب جلسة صالحة."
+                                } else {
+                                    resourceHttpErrorCount++
+                                    if (resourceHttpErrorCount > 8) return
                                 }
+                                recordBrowserEvent(
+                                    if (mainFrame) "MAIN_FRAME_HTTP_ERROR" else "RESOURCE_HTTP_ERROR",
+                                    if (mainFrame) "أعاد الموقع استجابة HTTP غير ناجحة" else "أعاد مورد فرعي استجابة HTTP غير ناجحة",
+                                    if (mainFrame) "navigation" else "resource",
+                                    request.url.toString(),
+                                    code = status.toString(),
+                                    severity = "WARNING",
+                                    details = mapOf(
+                                        "http_status" to status.toString(),
+                                        "is_main_frame" to mainFrame.toString(),
+                                        "request_method" to request.method,
+                                        "resource_error_index" to resourceHttpErrorCount.toString(),
+                                    ),
+                                )
                             }
 
                             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
@@ -442,9 +661,55 @@ fun BrowserRoute(
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 pageProgress = newProgress
                                 isLoading = pageLoadError == null && newProgress < 100
+                                val bucket = newProgress.coerceIn(0, 100) / 25
+                                if (bucket > lastProgressBucket && bucket > 0) {
+                                    lastProgressBucket = bucket
+                                    recordBrowserEvent(
+                                        "PAGE_PROGRESS",
+                                        "تقدم تحميل الصفحة",
+                                        "navigation",
+                                        view.url ?: currentUrl,
+                                        code = newProgress.toString(),
+                                        severity = "INFO",
+                                        details = mapOf("progress_percent" to newProgress.toString()),
+                                    )
+                                }
                             }
 
-                        }
+                            override fun onReceivedTitle(view: WebView, title: String?) {
+                                val value = title.orEmpty().take(160)
+                                if (value.isNotBlank() && value != currentPageTitle) {
+                                    currentPageTitle = value
+                                    recordBrowserEvent(
+                                        "PAGE_TITLE_UPDATED",
+                                        "استقبل المتصفح عنوان الصفحة",
+                                        "render",
+                                        view.url ?: currentUrl,
+                                        severity = "INFO",
+                                        pageTitle = value,
+                                    )
+                                }
+                            }
+
+                            override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR && consoleErrorCount < 8) {
+                                    consoleErrorCount++
+                                    recordBrowserEvent(
+                                        "PAGE_CONSOLE_ERROR",
+                                        "سجل JavaScript خطأ أثناء عرض الصفحة",
+                                        "javascript",
+                                        viewUrlOrCurrent(webView?.url, currentUrl),
+                                        code = consoleMessage.lineNumber().toString(),
+                                        severity = "WARNING",
+                                        details = mapOf(
+                                            "console_line" to consoleMessage.lineNumber().toString(),
+                                            "console_source_host" to safeHost(consoleMessage.sourceId()),
+                                            "console_error_index" to consoleErrorCount.toString(),
+                                        ),
+                                    )
+                                }
+                                return false
+                            }
                         webView = this
                         if (currentUrl.isNotBlank()) loadUrl(currentUrl)
                     }
@@ -666,6 +931,8 @@ private fun normalizeBrowserUrl(raw: String): String? {
     if (scheme !in setOf("http", "https") || uri.host.isNullOrBlank() || uri.userInfo != null) return null
     return uri.toASCIIString()
 }
+
+private fun viewUrlOrCurrent(viewUrl: String?, fallback: String): String = viewUrl?.takeIf { it.isNotBlank() } ?: fallback
 
 private fun safeHost(url: String?): String =
     runCatching { URI(url.orEmpty()).host?.lowercase() }.getOrNull()?.take(120) ?: "unknown"
