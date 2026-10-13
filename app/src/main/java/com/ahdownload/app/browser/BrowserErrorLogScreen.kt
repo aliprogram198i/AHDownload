@@ -150,9 +150,18 @@ fun BrowserErrorLogRoute(
                                 Text("المضيف: ${entry.host}", style = MaterialTheme.typography.bodyMedium)
                                 entry.safeUrl?.let { Text("الرابط بعد التنقيح: $it", style = MaterialTheme.typography.bodySmall) }
                                 entry.pageTitle?.let { Text("عنوان الصفحة: $it", style = MaterialTheme.typography.bodySmall) }
-                                entry.details.toSortedMap().forEach { (key, value) ->
-                                    Text("${diagnosticLabel(key)}: $value", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
+                                entry.details.toSortedMap()
+                                    .filterNot { (key, _) ->
+                                        (key == "document_height" && entry.details.containsKey("document_height_css_px")) ||
+                                            (key == "viewport" && entry.details.containsKey("viewport_css_px"))
+                                    }
+                                    .forEach { (key, value) ->
+                                        Text(
+                                            "${diagnosticLabel(key)}: ${diagnosticValue(key, value)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 entry.code?.let { Text("رمز الخطأ: $it", style = MaterialTheme.typography.bodyMedium) }
                                 Text(
                                     DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
@@ -235,11 +244,23 @@ private fun diagnosticLabel(key: String): String = when (key) {
     "body_text_chars" -> "عدد أحرف النص"
     "body_child_count" -> "عدد عناصر الصفحة"
     "document_height" -> "ارتفاع المستند"
+    "document_height_css_px" -> "ارتفاع المستند (CSS px)"
     "viewport" -> "حجم نافذة العرض"
+    "viewport_css_px" -> "أبعاد نافذة العرض (CSS px)"
+    "device_pixel_ratio" -> "نسبة كثافة العرض"
+    "webview_width_px" -> "عرض WebView الفعلي (px)"
+    "webview_height_px" -> "ارتفاع WebView الفعلي (px)"
     "video_count" -> "عدد عناصر الفيديو"
     "audio_count" -> "عدد عناصر الصوت"
     "image_count" -> "عدد الصور"
     "visible_image_count" -> "الصور الظاهرة"
+    "visible_text_chars" -> "أحرف النص الظاهرة"
+    "visible_media_element_count" -> "عناصر الوسائط المرئية"
+    "visible_content_element_count" -> "الحاويات الدلالية/الوسائط المرئية"
+    "has_visible_content_signals" -> "رُصدت إشارات محتوى مرئية"
+    "visible_content_signal_sources" -> "مصادر الإشارات المرئية"
+    "visible_content_element_scope" -> "نطاق عدّ عناصر المحتوى"
+    "content_visibility_basis" -> "أساس تقدير الظهور"
     "iframe_count" -> "عدد الإطارات"
     "background_color" -> "لون خلفية الصفحة"
     "challenge_detected" -> "مؤشرات تحقق أو حظر"
@@ -256,6 +277,8 @@ private fun diagnosticLabel(key: String): String = when (key) {
     "result" -> "نتيجة الفحص"
     "console_line" -> "سطر JavaScript"
     "console_source_host" -> "مضيف مصدر JavaScript"
+    "console_message_level" -> "مستوى رسالة JavaScript"
+    "console_message" -> "تفاصيل خطأ JavaScript"
     "page_progress_percent" -> "تقدم الصفحة عند الفحص"
     "page_title_known" -> "عنوان الصفحة متوفر"
     "resource_error_index" -> "رقم خطأ المورد"
@@ -268,4 +291,22 @@ private fun diagnosticLabel(key: String): String = when (key) {
     "enqueue_outcome" -> "نتيجة إدراج التنزيل"
     "output_format" -> "صيغة الصوت"
     else -> key
+}
+
+private fun diagnosticValue(key: String, value: String): String = when (key) {
+    "visible_content_signal_sources" -> value.split(",")
+        .filter { it.isNotBlank() }
+        .joinToString("، ") {
+            when (it) {
+                "visible_text" -> "نص مرئي"
+                "visible_images" -> "صور مرئية"
+                "visible_media" -> "وسائط مرئية"
+                else -> it
+            }
+        }.ifBlank { "لا توجد إشارات" }
+    "visible_content_element_scope" ->
+        "يحصي الحاويات الدلالية والوسائط القابلة للرسم فقط؛ ولا يحصي النصوص المنفردة أو الصور وحدها"
+    "content_visibility_basis" ->
+        "تقاطع العنصر مع نافذة العرض وفحص أنماط الظهور"
+    else -> value
 }
