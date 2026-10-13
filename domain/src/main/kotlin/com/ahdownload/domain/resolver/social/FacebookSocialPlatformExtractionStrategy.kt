@@ -117,8 +117,9 @@ internal class FacebookSocialPlatformExtractionStrategy :
 
     private fun isFacebookPageUrl(pageUrl: String): Boolean {
         val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return false
+        val host = uri.host?.lowercase() ?: return false
         return uri.scheme?.lowercase() in setOf("http", "https") &&
-            uri.host?.lowercase() in FACEBOOK_PAGE_HOSTS
+            host in FACEBOOK_PAGE_HOSTS
     }
 
     private fun requestHeaders(): Map<String, String> = mapOf(
