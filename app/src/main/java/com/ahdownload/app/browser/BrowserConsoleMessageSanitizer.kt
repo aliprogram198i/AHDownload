@@ -7,10 +7,10 @@ package com.ahdownload.app.browser
 internal object BrowserConsoleMessageSanitizer {
     private const val MAX_MESSAGE_LENGTH = 220
 
-    private val urlPattern = Regex("""(?i)https?://[^\\s<>"']+""")
-    private val authorizationSchemePattern = Regex("""(?i)\\b(Bearer|Basic)\\s+[A-Za-z0-9._~+/=-]{8,}""")
+    private val urlPattern = Regex("""(?i)https?://[^\s<>"']+""")
+    private val authorizationSchemePattern = Regex("""(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}""")
     private val secretAssignmentPattern = Regex(
-        """(?i)\\b(cookie|set-cookie|authorization|proxy-authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|passwd|secret|session(?:id)?|csrf(?:token)?|signature|sig|jwt)\\b\\s*[:=]\\s*(?:(?:bearer|basic)\\s+)?(?:"[^"]*"|'[^']*'|[^\\s,;&]+)""",
+        """(?i)\b(cookie|set-cookie|authorization|proxy-authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|passwd|secret|session(?:id)?|csrf(?:token)?|signature|sig|jwt)\b\s*[:=]\s*(?:(?:bearer|basic)\s+)?(?:"[^"]*"|'[^']*'|[^\s,;&]+)""",
     )
 
     fun sanitize(rawMessage: String): String {
@@ -22,8 +22,8 @@ internal object BrowserConsoleMessageSanitizer {
             .replace(secretAssignmentPattern) { match ->
                 "${match.groupValues[1]}=[redacted]"
             }
-            .filter { it == '\\n' || it == '\\t' || it >= ' ' }
-            .replace(Regex("""\\s+"""), " ")
+            .filter { it == '\n' || it == '\t' || it >= ' ' }
+            .replace(Regex("""\s+"""), " ")
             .trim()
             .take(MAX_MESSAGE_LENGTH)
 
