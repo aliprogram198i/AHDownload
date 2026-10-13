@@ -156,7 +156,7 @@ fun BrowserRoute(
         }
     }
 
-    DisposableEffect(webView) {
+    DisposableEffect(Unit) {
         onDispose {
             webView?.let { view ->
                 runCatching { view.stopLoading() }
