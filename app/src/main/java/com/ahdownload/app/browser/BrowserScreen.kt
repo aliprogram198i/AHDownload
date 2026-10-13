@@ -268,7 +268,18 @@ fun BrowserRoute(
                             val link = analyzer.analyze(target)
                             if (link == null) {
                                 inspectMessage = "تعذر تحليل العنوان. استخدم رابط HTTP أو HTTPS صالحًا بعد اكتمال تحميل الصفحة."
-                                recordError("ANALYSIS_REJECTED", "تعذر تحليل عنوان الصفحة", "inspection", target)
+                                recordBrowserEvent(
+                                    "OPTIONS_INSPECTION_REJECTED",
+                                    "رفض محلل الروابط عنوان الصفحة قبل بدء اكتشاف الوسائط",
+                                    "inspection",
+                                    target,
+                                    severity = "ERROR",
+                                    details = mapOf(
+                                        "reason" to "unsupported_scheme_or_invalid_url",
+                                        "page_progress_percent" to pageProgress.toString(),
+                                        "page_render_status" to pageRenderStatus,
+                                    ),
+                                )
                             } else {
                                 inspecting = true
                                 inspectMessage = null
@@ -277,6 +288,20 @@ fun BrowserRoute(
                                 selectedAudioFormat = null
                                 showResults = false
                                 val operationId = "browser-" + UUID.randomUUID().toString()
+                                val inspectionStartedAtMs = System.currentTimeMillis()
+                                recordBrowserEvent(
+                                    "OPTIONS_INSPECTION_STARTED",
+                                    "بدأ فحص خيارات التنزيل للصفحة الحالية",
+                                    "inspection",
+                                    target,
+                                    severity = "INFO",
+                                    details = mapOf(
+                                        "operation_id" to operationId,
+                                        "page_progress_percent" to pageProgress.toString(),
+                                        "page_render_status" to pageRenderStatus,
+                                        "page_title_known" to currentPageTitle.isNotBlank().toString(),
+                                    ),
+                                )
                                 scope.launch {
                                     try {
                                         when (val result = resolver.resolve(link, operationId)) {
@@ -286,25 +311,102 @@ fun BrowserRoute(
                                                 resultThumbnail = result.thumbnailUrl
                                                 resultSourceUrl = target
                                                 showResults = result.candidates.isNotEmpty()
+                                                val videoOptionCount = result.candidates.count {
+                                                    it.format.kind == MediaKind.Video && it.format.hasVideo
+                                                }
+                                                val audioSourceCount = result.candidates.count {
+                                                    it.format.hasAudio || it.format.kind == MediaKind.Audio
+                                                }
+                                                val elapsedMs = (System.currentTimeMillis() - inspectionStartedAtMs).coerceAtLeast(0)
+                                                recordBrowserEvent(
+                                                    "OPTIONS_INSPECTION_COMPLETED",
+                                                    if (result.candidates.isEmpty()) "اكتمل الفحص دون اكتشاف خيارات تنزيل صالحة" else "اكتمل فحص خيارات التنزيل",
+                                                    "inspection",
+                                                    target,
+                                                    code = "candidates_${result.candidates.size}",
+                                                    severity = if (result.candidates.isEmpty()) "WARNING" else "SUCCESS",
+                                                    details = mapOf(
+                                                        "operation_id" to operationId,
+                                                        "result" to if (result.candidates.isEmpty()) "no_candidates" else "candidates_found",
+                                                        "candidate_count" to result.candidates.size.toString(),
+                                                        "video_option_count" to videoOptionCount.toString(),
+                                                        "audio_source_count" to audioSourceCount.toString(),
+                                                        "elapsed_ms" to elapsedMs.toString(),
+                                                        "resolver_outcome" to "success",
+                                                    ),
+                                                    pageTitle = result.title ?: currentPageTitle,
+                                                )
+                                                if (result.candidates.isEmpty()) {
+                                                    recordBrowserEvent(
+                                                        "OPTIONS_RESULTS_EMPTY",
+                                                        "لم تظهر بطاقة نتائج لأن الفحص لم يُرجع أي مصدر",
+                                                        "inspection_results",
+                                                        target,
+                                                        severity = "WARNING",
+                                                        details = mapOf(
+                                                            "candidate_count" to "0",
+                                                            "reason" to "resolver_returned_no_candidates",
+                                                            "operation_id" to operationId,
+                                                        ),
+                                                        pageTitle = result.title ?: currentPageTitle,
+                                                    )
+                                                } else {
+                                                    recordBrowserEvent(
+                                                        "OPTIONS_RESULTS_DISPLAYED",
+                                                        "أُظهرت قائمة خيارات التنزيل للمستخدم",
+                                                        "inspection_results",
+                                                        target,
+                                                        severity = "SUCCESS",
+                                                        details = mapOf(
+                                                            "candidate_count" to result.candidates.size.toString(),
+                                                            "video_option_count" to videoOptionCount.toString(),
+                                                            "audio_source_count" to audioSourceCount.toString(),
+                                                            "operation_id" to operationId,
+                                                        ),
+                                                        pageTitle = result.title ?: currentPageTitle,
+                                                    )
+                                                }
                                                 inspectMessage = if (result.candidates.isEmpty()) {
                                                     "لم يُعثر على مصدر وسائط صالح. قد يكون المشغّل غير مدعوم أو يتطلب الموقع جلسة صالحة."
                                                 } else {
                                                     "تم العثور على ${result.candidates.size} خيارًا."
                                                 }
-                                                if (result.candidates.isEmpty()) {
-                                                    recordError("NO_CANDIDATES", "لم يعثر المحرك على مصادر وسائط", "inspection", target)
-                                                }
                                             }
                                             is ResolverResult.Failure -> {
                                                 inspectMessage = result.message ?: "تعذر فحص هذه الصفحة."
-                                                recordError(result.code.name, inspectMessage.orEmpty(), "inspection", target)
+                                                recordBrowserEvent(
+                                                    "OPTIONS_INSPECTION_FAILED",
+                                                    inspectMessage.orEmpty(),
+                                                    "inspection",
+                                                    target,
+                                                    code = result.code.name,
+                                                    severity = "ERROR",
+                                                    details = mapOf(
+                                                        "operation_id" to operationId,
+                                                        "resolver_outcome" to "failure",
+                                                        "failure_code" to result.code.name,
+                                                        "elapsed_ms" to (System.currentTimeMillis() - inspectionStartedAtMs).coerceAtLeast(0).toString(),
+                                                    ),
+                                                )
                                             }
                                         }
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (error: Exception) {
                                         inspectMessage = "حدث خطأ أثناء فحص الصفحة."
-                                        recordError("INSPECTION_EXCEPTION", "حدث استثناء أثناء فحص الصفحة", "inspection", target, error.javaClass.simpleName)
+                                        recordBrowserEvent(
+                                            "OPTIONS_INSPECTION_EXCEPTION",
+                                            "وقع استثناء أثناء فحص الخيارات",
+                                            "inspection",
+                                            target,
+                                            code = error.javaClass.simpleName,
+                                            severity = "ERROR",
+                                            details = mapOf(
+                                                "operation_id" to operationId,
+                                                "exception_type" to error.javaClass.simpleName,
+                                                "elapsed_ms" to (System.currentTimeMillis() - inspectionStartedAtMs).coerceAtLeast(0).toString(),
+                                            ),
+                                        )
                                     } finally {
                                         inspecting = false
                                     }
@@ -782,20 +884,50 @@ fun BrowserRoute(
                                                     DownloadEnqueueResult.STORAGE_UNAVAILABLE -> "مساحة التخزين أو المجلد غير متاح."
                                                     DownloadEnqueueResult.REJECTED -> "لم يقبل التطبيق طلب التنزيل."
                                                 }
-                                                if (outcome != DownloadEnqueueResult.QUEUED) {
-                                                    recordError("DOWNLOAD_ENQUEUE_FAILED", inspectMessage.orEmpty(), "download", resultSourceUrl, outcome.name)
-                                                }
+                                                recordBrowserEvent(
+                                                    if (outcome == DownloadEnqueueResult.QUEUED) "VIDEO_DOWNLOAD_QUEUED" else "VIDEO_DOWNLOAD_NOT_QUEUED",
+                                                    inspectMessage.orEmpty(),
+                                                    "download",
+                                                    resultSourceUrl,
+                                                    code = outcome.name,
+                                                    severity = if (outcome == DownloadEnqueueResult.QUEUED) "SUCCESS" else "WARNING",
+                                                    details = mapOf(
+                                                        "candidate_id" to validation.candidate.id,
+                                                        "format" to validation.candidate.format.container.name,
+                                                        "has_audio" to validation.candidate.format.hasAudio.toString(),
+                                                        "has_video" to validation.candidate.format.hasVideo.toString(),
+                                                        "enqueue_outcome" to outcome.name,
+                                                    ),
+                                                )
                                             }
                                             is CandidateValidationResult.Invalid -> {
                                                 inspectMessage = validation.failure.toBrowserMessage()
-                                                recordError("MEDIA_VALIDATION_FAILED", inspectMessage.orEmpty(), "validation", candidate.sourceUrl)
+                                                recordBrowserEvent(
+                                                    "VIDEO_CANDIDATE_VALIDATION_FAILED",
+                                                    inspectMessage.orEmpty(),
+                                                    "validation",
+                                                    candidate.sourceUrl,
+                                                    severity = "ERROR",
+                                                    details = mapOf(
+                                                        "candidate_id" to candidate.id,
+                                                        "validation_failure" to validation.failure.javaClass.simpleName,
+                                                    ),
+                                                )
                                             }
                                         }
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (error: Exception) {
                                         inspectMessage = "تعذر بدء التنزيل."
-                                        recordError("DOWNLOAD_EXCEPTION", "حدث خطأ أثناء تجهيز التنزيل", "download", resultSourceUrl, error.javaClass.simpleName)
+                                        recordBrowserEvent(
+                                            "VIDEO_DOWNLOAD_EXCEPTION",
+                                            "حدث استثناء أثناء تجهيز تنزيل الفيديو",
+                                            "download",
+                                            resultSourceUrl,
+                                            code = error.javaClass.simpleName,
+                                            severity = "ERROR",
+                                            details = mapOf("exception_type" to error.javaClass.simpleName),
+                                        )
                                     } finally {
                                         actionInProgress = false
                                     }
@@ -853,20 +985,48 @@ fun BrowserRoute(
                                                 } else {
                                                     "تعذر إضافة استخراج الصوت: ${outcome.name}."
                                                 }
-                                                if (outcome != DownloadEnqueueResult.QUEUED) {
-                                                    recordError("AUDIO_ENQUEUE_FAILED", inspectMessage.orEmpty(), "audio", resultSourceUrl, outcome.name)
-                                                }
+                                                recordBrowserEvent(
+                                                    if (outcome == DownloadEnqueueResult.QUEUED) "AUDIO_EXTRACTION_QUEUED" else "AUDIO_EXTRACTION_NOT_QUEUED",
+                                                    inspectMessage.orEmpty(),
+                                                    "audio",
+                                                    resultSourceUrl,
+                                                    code = outcome.name,
+                                                    severity = if (outcome == DownloadEnqueueResult.QUEUED) "SUCCESS" else "WARNING",
+                                                    details = mapOf(
+                                                        "candidate_id" to validation.candidate.id,
+                                                        "output_format" to format.name,
+                                                        "enqueue_outcome" to outcome.name,
+                                                    ),
+                                                )
                                             }
                                             is CandidateValidationResult.Invalid -> {
                                                 inspectMessage = validation.failure.toBrowserMessage()
-                                                recordError("AUDIO_VALIDATION_FAILED", inspectMessage.orEmpty(), "validation", candidate.sourceUrl)
+                                                recordBrowserEvent(
+                                                    "AUDIO_CANDIDATE_VALIDATION_FAILED",
+                                                    inspectMessage.orEmpty(),
+                                                    "validation",
+                                                    candidate.sourceUrl,
+                                                    severity = "ERROR",
+                                                    details = mapOf(
+                                                        "candidate_id" to candidate.id,
+                                                        "validation_failure" to validation.failure.javaClass.simpleName,
+                                                    ),
+                                                )
                                             }
                                         }
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (error: Exception) {
                                         inspectMessage = "تعذر تجهيز استخراج الصوت."
-                                        recordError("AUDIO_EXCEPTION", "حدث خطأ أثناء تجهيز استخراج الصوت", "audio", resultSourceUrl, error.javaClass.simpleName)
+                                        recordBrowserEvent(
+                                            "AUDIO_EXTRACTION_EXCEPTION",
+                                            "حدث استثناء أثناء تجهيز استخراج الصوت",
+                                            "audio",
+                                            resultSourceUrl,
+                                            code = error.javaClass.simpleName,
+                                            severity = "ERROR",
+                                            details = mapOf("exception_type" to error.javaClass.simpleName),
+                                        )
                                     } finally {
                                         actionInProgress = false
                                     }
