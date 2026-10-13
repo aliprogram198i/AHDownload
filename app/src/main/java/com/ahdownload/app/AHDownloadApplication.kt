@@ -8,6 +8,7 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.app.download.DownloadWorkScheduler
 import com.ahdownload.app.download.FileDownloadRepository
 import com.ahdownload.app.performance.PerformanceLogStore
+import com.ahdownload.app.browser.BrowserErrorLogStore
 
 class AHDownloadApplication : Application() {
     val diagnosticEventStore: DiagnosticEventStore by lazy {
@@ -28,6 +29,10 @@ class AHDownloadApplication : Application() {
 
     val performanceLogStore: PerformanceLogStore by lazy {
         PerformanceLogStore(this)
+    }
+
+    val browserErrorLogStore: BrowserErrorLogStore by lazy {
+        BrowserErrorLogStore(this)
     }
 
     val downloadWorkScheduler: DownloadWorkScheduler by lazy {

@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.ahdownload.app.BuildConfig
+import com.ahdownload.app.browser.BrowserErrorLogStore
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.app.performance.PerformanceMetrics
@@ -80,6 +81,9 @@ fun SettingsRoute(
     store: DownloadLocationStore,
     diagnosticLogger: PersistentDiagnosticLogger,
     performanceLogStore: PerformanceLogStore,
+    browserErrorLogStore: BrowserErrorLogStore,
+    onOpenBrowser: () -> Unit,
+    onOpenBrowserErrors: () -> Unit,
     onOpenPerformanceLog: () -> Unit,
     themeMode: AHThemeMode,
     onPickDownloadFolder: () -> Unit,
@@ -517,6 +521,44 @@ fun SettingsRoute(
                     }, modifier = Modifier.fillMaxWidth()) {
                         Text("فتح سجل الأداء")
                     }
+                }
+            }
+
+            item { SettingsSectionTitle("المتصفح الذكي") }
+
+            item {
+                val browserErrorCount = remember(browserErrorLogStore) { browserErrorLogStore.list().size }
+                SettingsCard {
+                    Text(
+                        "تصفح المواقع داخل AHDownload وافحص مصادر الوسائط عبر محرك التحليل الحالي.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = {
+                            uiTraceLogger.interaction("SETTINGS", "browser_open_button", "open_browser")
+                            onOpenBrowser()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("فتح المتصفح الذكي")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            uiTraceLogger.interaction("SETTINGS", "browser_error_log_button", "open_browser_error_log")
+                            onOpenBrowserErrors()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.ErrorOutline, contentDescription = null)
+                        Text("سجل أخطاء المتصفح")
+                        if (browserErrorCount > 0) Text(" · $browserErrorCount")
+                    }
+                    Text(
+                        "السجل منفصل عن سجل أخطاء التطبيق، ولا يحفظ عنوان الصفحة الكامل أو ملفات تعريف الارتباط أو رموز الجلسات.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
