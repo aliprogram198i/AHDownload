@@ -11,6 +11,8 @@ import com.ahdownload.core.designsystem.DiagnosticFilterChip
 import androidx.activity.compose.BackHandler
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -112,6 +115,7 @@ import com.ahdownload.domain.resolver.MediaPresentationModel
 import com.ahdownload.domain.resolver.MediaResultRecommendation
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.search.ContentSearchItem
+import com.ahdownload.domain.search.ContentSearchKind
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -179,6 +183,7 @@ fun HomeRoute(
         onDownloadAudio = viewModel::downloadAudio,
         onModeChanged = viewModel::setMode,
         onSearchQueryChanged = viewModel::onSearchQueryChanged,
+        onSearchFilterChanged = viewModel::setSearchFilter,
         onSearch = viewModel::searchContent,
         onSearchResultSelected = viewModel::openSearchResult,
         onSearchSelectionToggle = viewModel::toggleSearchSelection,
@@ -232,6 +237,7 @@ private fun HomeScreen(
     onDownloadAudio: (String?) -> Unit,
     onModeChanged: (HomeMode) -> Unit,
     onSearchQueryChanged: (String) -> Unit,
+    onSearchFilterChanged: (YouTubeSearchFilter) -> Unit,
     onSearch: () -> Unit,
     onSearchResultSelected: (ContentSearchItem) -> Unit,
     onSearchSelectionToggle: (String) -> Unit,
@@ -251,6 +257,16 @@ private fun HomeScreen(
     val mode = state.mode
     var showResultsScreen by remember { mutableStateOf(false) }
     val androidContext = LocalContext.current
+    val visibleSearchResults = remember(state.searchResults, state.searchFilter) {
+        state.searchResults.filter { item ->
+            when (state.searchFilter) {
+                YouTubeSearchFilter.All -> true
+                YouTubeSearchFilter.Videos -> item.kind == ContentSearchKind.VIDEO
+                YouTubeSearchFilter.Shorts -> item.kind == ContentSearchKind.SHORT
+                YouTubeSearchFilter.Channels -> item.kind == ContentSearchKind.CHANNEL
+            }
+        }
+    }
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
     val resultKind = state.result?.kind ?: MediaKind.Unknown
@@ -326,6 +342,8 @@ private fun HomeScreen(
         state.searchQuery.length,
         state.searching,
         state.searchResults.size,
+        state.searchFilter,
+        visibleSearchResults.size,
         state.searchError,
         state.selectedSearchIds.size,
         state.batchDownloading,
@@ -385,6 +403,8 @@ private fun HomeScreen(
                 ";search_query_length=" + state.searchQuery.length +
                 ";searching=" + state.searching +
                 ";search_results=" + state.searchResults.size +
+                ";search_filter=" + state.searchFilter.name +
+                ";search_visible_results=" + visibleSearchResults.size +
                 ";search_selected=" + state.selectedSearchIds.size +
                 ";batch_downloading=" + state.batchDownloading +
                 ";batch=" + state.batchIndex + "/" + state.batchTotal +
@@ -711,7 +731,7 @@ private fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             Text(
-                                "ابحث عن فيديو",
+                                "ابحث عن فيديو أو قناة",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -735,7 +755,7 @@ private fun HomeScreen(
                                     }
                                 },
                                 label = { Text("ابحث في YouTube") },
-                                placeholder = { Text("مثال: football highlights") },
+                                placeholder = { Text("عنوان فيديو أو اسم قناة...") },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                             )
                             DiagnosticButton(
@@ -829,6 +849,78 @@ private fun HomeScreen(
                             }
                         }
                     }
+                    item {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            item {
+                                DiagnosticFilterChip(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.search_filter.all",
+                                    trackingLabel = "كل النتائج",
+                                    disabledReason = "search_results_are_empty",
+                                    selected = state.searchFilter == YouTubeSearchFilter.All,
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_filter", "all")
+                                        onSearchFilterChanged(YouTubeSearchFilter.All)
+                                    },
+                                    label = { Text("الكل") },
+                                )
+                            }
+                            item {
+                                DiagnosticFilterChip(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.search_filter.videos",
+                                    trackingLabel = "الفيديوهات",
+                                    disabledReason = "search_results_are_empty",
+                                    selected = state.searchFilter == YouTubeSearchFilter.Videos,
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_filter", "videos")
+                                        onSearchFilterChanged(YouTubeSearchFilter.Videos)
+                                    },
+                                    label = { Text("الفيديوهات") },
+                                )
+                            }
+                            item {
+                                DiagnosticFilterChip(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.search_filter.shorts",
+                                    trackingLabel = "Shorts",
+                                    disabledReason = "search_results_are_empty",
+                                    selected = state.searchFilter == YouTubeSearchFilter.Shorts,
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_filter", "shorts")
+                                        onSearchFilterChanged(YouTubeSearchFilter.Shorts)
+                                    },
+                                    label = { Text("Shorts") },
+                                )
+                            }
+                            item {
+                                DiagnosticFilterChip(
+                                    trackingScreen = "HOME",
+                                    trackingId = "HOME.search_filter.channels",
+                                    trackingLabel = "القنوات",
+                                    disabledReason = "search_results_are_empty",
+                                    selected = state.searchFilter == YouTubeSearchFilter.Channels,
+                                    onClick = {
+                                        uiTraceLogger.interaction("HOME", "search_filter", "channels")
+                                        onSearchFilterChanged(YouTubeSearchFilter.Channels)
+                                    },
+                                    label = { Text("القنوات") },
+                                )
+                            }
+                        }
+                    }
+                    if (visibleSearchResults.isEmpty() && !state.searching) {
+                        item {
+                            Text(
+                                "لا توجد نتائج ضمن هذا التصنيف. جرّب «الكل» أو غيّر عبارة البحث.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 12.dp),
+                            )
+                        }
+                    }
                     if (state.selectedSearchIds.isNotEmpty() || state.batchDownloading || state.batchError != null) {
                         item {
                             Card(
@@ -873,7 +965,7 @@ private fun HomeScreen(
                                                     "start_batch_download",
                                                     mapOf("selected_count" to state.selectedSearchIds.size.toString()),
                                                 )
-                                                onBatchDownload(state.searchResults)
+                                                onBatchDownload(visibleSearchResults)
                                             },
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
@@ -887,21 +979,45 @@ private fun HomeScreen(
                         }
                     }
                     items(
-                        state.searchResults,
-                        key = { "search-" + it.id },
+                        visibleSearchResults,
+                        key = { "search-" + it.kind.name + "-" + it.id },
                     ) { item ->
                         SearchResultCard(
                             item = item,
-                            selected = item.id in state.selectedSearchIds,
+                            canSelect = item.kind != ContentSearchKind.CHANNEL,
+                            selected = item.kind != ContentSearchKind.CHANNEL &&
+                                item.id in state.selectedSearchIds,
                             onToggleSelection = {
                                 uiTraceLogger.interaction("HOME", "search_result_selection", "toggle")
                                 onSearchSelectionToggle(item.id)
                             },
                             onClick = {
-                                uiTraceLogger.interaction("HOME", "search_result", "open_video")
-                                onNavigateHome()
-                                onModeChanged(HomeMode.Link)
-                                onSearchResultSelected(item)
+                                if (item.kind == ContentSearchKind.CHANNEL) {
+                                    uiTraceLogger.interaction("HOME", "search_result", "open_channel")
+                                    runCatching {
+                                        androidContext.startActivity(
+                                            Intent(Intent.ACTION_VIEW, Uri.parse(item.url)),
+                                        )
+                                    }.onFailure { error ->
+                                        logger.log(
+                                            DiagnosticLevel.WARNING,
+                                            "SEARCH_CHANNEL_OPEN_FAILED",
+                                            "تعذر فتح صفحة القناة",
+                                            "home.search.channel",
+                                            mapOf("channel_id" to item.id),
+                                            error,
+                                        )
+                                    }
+                                } else {
+                                    uiTraceLogger.interaction(
+                                        "HOME",
+                                        "search_result",
+                                        if (item.kind == ContentSearchKind.SHORT) "open_short" else "open_video",
+                                    )
+                                    onNavigateHome()
+                                    onModeChanged(HomeMode.Link)
+                                    onSearchResultSelected(item)
+                                }
                             },
                         )
                     }
@@ -1167,17 +1283,37 @@ private fun HomeScreen(
 @Composable
 private fun SearchResultCard(
     item: ContentSearchItem,
+    canSelect: Boolean,
     selected: Boolean,
     onToggleSelection: () -> Unit,
     onClick: () -> Unit,
 ) {
+    val thumbnailModifier = when (item.kind) {
+        ContentSearchKind.VIDEO -> Modifier
+            .size(width = 112.dp, height = 70.dp)
+            .clip(RoundedCornerShape(12.dp))
+        ContentSearchKind.SHORT -> Modifier
+            .size(width = 76.dp, height = 112.dp)
+            .clip(RoundedCornerShape(12.dp))
+        ContentSearchKind.CHANNEL -> Modifier
+            .size(60.dp)
+            .clip(CircleShape)
+    }
+    val typeLabel = when (item.kind) {
+        ContentSearchKind.VIDEO -> "فيديو"
+        ContentSearchKind.SHORT -> "Shorts"
+        ContentSearchKind.CHANNEL -> "قناة"
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .tracedClickable(
                 trackingScreen = "HOME",
                 trackingId = "HOME.clickable.01",
-                trackingLabel = "search_result_card",onClick = onClick),
+                trackingLabel = "search_result_card",
+                onClick = onClick,
+            ),
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -1187,9 +1323,7 @@ private fun SearchResultCard(
             MediaThumbnail(
                 url = item.thumbnailUrl,
                 contentDescription = "الصورة المصغرة: " + item.title,
-                modifier = Modifier
-                    .size(width = 112.dp, height = 70.dp)
-                    .clip(RoundedCornerShape(12.dp)),
+                modifier = thumbnailModifier,
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -1201,7 +1335,27 @@ private fun SearchResultCard(
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.SemiBold,
                 )
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        typeLabel,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
                 item.channelLabel?.let {
+                    Text(
+                        it,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item.subtitle?.let {
                     Text(
                         it,
                         maxLines = 1,
@@ -1218,15 +1372,23 @@ private fun SearchResultCard(
                     )
                 }
             }
-            DiagnosticFilterChip(
-                trackingScreen = "HOME",
-                trackingId = "HOME.filterchip.03",
-                trackingLabel = "محدد",
-                disabledReason = "callsite_precondition_not_explicit",
-                selected = selected,
-                onClick = onToggleSelection,
-                label = { Text(if (selected) "محدد" else "تحديد") },
-            )
+            if (canSelect) {
+                DiagnosticFilterChip(
+                    trackingScreen = "HOME",
+                    trackingId = "HOME.filterchip.03",
+                    trackingLabel = "محدد",
+                    disabledReason = "callsite_precondition_not_explicit",
+                    selected = selected,
+                    onClick = onToggleSelection,
+                    label = { Text(if (selected) "محدد" else "تحديد") },
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.Link,
+                    contentDescription = "فتح القناة على YouTube",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
