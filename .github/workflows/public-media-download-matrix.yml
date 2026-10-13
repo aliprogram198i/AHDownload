@@ -83,8 +83,6 @@ jobs:
             ffmpeg-https-matrix-logcat.txt
             single-url-download.log
             single-url-download-logcat.txt
-            browser-sites-acceptance.log
-            browser-sites-acceptance-logcat.txt
             app/build/outputs/androidTest-results/connected/
             app/build/reports/androidTests/connected/
           if-no-files-found: warn
