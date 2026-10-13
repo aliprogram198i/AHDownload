@@ -73,12 +73,12 @@ class BrowserErrorLogStore(context: Context) {
 
     fun exportEntryText(entry: BrowserErrorEntry): String = buildString {
         appendLine("AHDownload Browser Error Detail")
-        appendLine("time_epoch_ms=\${entry.timestampEpochMs}")
-        appendLine("type=\${entry.type}")
-        appendLine("stage=\${entry.stage}")
-        appendLine("host=\${entry.host}")
-        entry.code?.let { appendLine("code=\$it") }
-        appendLine("message=\${entry.message}")
+        appendLine("time_epoch_ms=${entry.timestampEpochMs}")
+        appendLine("type=${entry.type}")
+        appendLine("stage=${entry.stage}")
+        appendLine("host=${entry.host}")
+        entry.code?.let { appendLine("code=$it") }
+        appendLine("message=${entry.message}")
         appendLine("sensitive_values=redacted")
     }.take(MAX_EXPORT_CHARS)
 
@@ -92,7 +92,7 @@ class BrowserErrorLogStore(context: Context) {
             appendLine("entries=" + entries.size)
             entries.forEachIndexed { index, item ->
                 appendLine()
-                appendLine("#\${index + 1}")
+                appendLine("#${index + 1}")
                 append(exportEntryText(item))
             }
         }.take(MAX_EXPORT_CHARS)

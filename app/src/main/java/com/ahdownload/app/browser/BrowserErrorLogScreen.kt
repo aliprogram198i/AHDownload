@@ -141,9 +141,9 @@ fun BrowserErrorLogRoute(
                                 Text("آخر خطأ بالتفصيل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(entry.type, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                 Text(entry.message, style = MaterialTheme.typography.bodyMedium)
-                                Text("المرحلة: \${entry.stage}", style = MaterialTheme.typography.bodyMedium)
-                                Text("الموقع: \${entry.host}", style = MaterialTheme.typography.bodyMedium)
-                                entry.code?.let { Text("رمز الخطأ: \$it", style = MaterialTheme.typography.bodyMedium) }
+                                Text("المرحلة: ${entry.stage}", style = MaterialTheme.typography.bodyMedium)
+                                Text("الموقع: ${entry.host}", style = MaterialTheme.typography.bodyMedium)
+                                entry.code?.let { Text("رمز الخطأ: $it", style = MaterialTheme.typography.bodyMedium) }
                                 Text(
                                     DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
                                     style = MaterialTheme.typography.labelSmall,
@@ -158,7 +158,7 @@ fun BrowserErrorLogRoute(
                 }
                 if (entries.size > 1) {
                     item {
-                        Text("الأحداث السابقة (\${entries.size - 1})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text("الأحداث السابقة (${entries.size - 1})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     }
                     items(entries.drop(1)) { entry ->
                         Card(
@@ -172,7 +172,7 @@ fun BrowserErrorLogRoute(
                                 Text(entry.type, fontWeight = FontWeight.SemiBold)
                                 Text(entry.message, style = MaterialTheme.typography.bodySmall)
                                 Text(
-                                    "\${entry.stage} • \${entry.host}" + (entry.code?.let { " • \$it" } ?: ""),
+                                    "${entry.stage} • ${entry.host}" + (entry.code?.let { " • $it" } ?: ""),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
