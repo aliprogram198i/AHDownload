@@ -589,8 +589,6 @@ fun BrowserRoute(
                                             "http_resource_errors" to resourceHttpErrorCount.toString(),
                                         ),
                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
-                                    ),
-                                        pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                     )
                                 }
                                 view.evaluateJavascript(
