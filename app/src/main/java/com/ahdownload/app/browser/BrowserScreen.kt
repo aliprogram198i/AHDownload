@@ -591,10 +591,51 @@ fun BrowserRoute(
                                         const d=document, b=d.body, e=d.documentElement;
                                         const text=(b&&b.innerText?b.innerText:'').trim();
                                         const title=d.title||'';
-                                        const visibleImages=[...d.images].filter(i=>i.complete&&i.naturalWidth>0&&i.getBoundingClientRect().width>0).length;
+                                        const viewportWidth=window.innerWidth||0, viewportHeight=window.innerHeight||0;
+                                        const intersectsViewport=r=>r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<viewportWidth&&r.top<viewportHeight;
+                                        const hasVisibleStyle=(i,r)=>{
+                                          const c=getComputedStyle(i);
+                                          if(c.display==='none'||c.visibility==='hidden'||Number(c.opacity||1)<=0||!intersectsViewport(r)) return false;
+                                          for(let p=i.parentElement;p;p=p.parentElement){
+                                            if(Number(getComputedStyle(p).opacity||1)<=0) return false;
+                                          }
+                                          return true;
+                                        };
+                                        const visibleImages=[...d.images].filter(i=>{
+                                          const r=i.getBoundingClientRect();
+                                          return i.complete&&i.naturalWidth>0&&hasVisibleStyle(i,r);
+                                        }).length;
+                                        let visibleTextChars=0, scannedTextNodes=0;
+                                        if(b){
+                                          const walker=d.createTreeWalker(b,NodeFilter.SHOW_TEXT);
+                                          let node;
+                                          while((node=walker.nextNode())&&scannedTextNodes<1500&&visibleTextChars<10000){
+                                            scannedTextNodes++;
+                                            const value=(node.nodeValue||'').replace(/\s+/g,' ').trim();
+                                            if(!value) continue;
+                                            const parent=node.parentElement;
+                                            if(!parent) continue;
+                                            const parentRect=parent.getBoundingClientRect();
+                                            if(!hasVisibleStyle(parent,parentRect)) continue;
+                                            const range=d.createRange();
+                                            range.selectNodeContents(node);
+                                            const visibleText=Array.from(range.getClientRects()).some(r=>intersectsViewport(r));
+                                            if(visibleText) visibleTextChars=Math.min(10000,visibleTextChars+value.length);
+                                          }
+                                        }
+                                        const visibleMediaElementCount=[...d.querySelectorAll('video,canvas,iframe')].filter(i=>{
+                                          const r=i.getBoundingClientRect();
+                                          if(!hasVisibleStyle(i,r)||r.width<32||r.height<18) return false;
+                                          if(i.tagName==='VIDEO') return i.videoWidth>0&&i.videoHeight>0&&i.readyState>=2;
+                                          if(i.tagName==='CANVAS') return i.width>0&&i.height>0;
+                                          return true;
+                                        }).length;
                                         const visibleContentElements=[...d.querySelectorAll('main,article,video,audio,canvas,iframe,[role="main"]')].filter(i=>{
-                                          const r=i.getBoundingClientRect(), c=getComputedStyle(i);
-                                          return r.width>0&&r.height>0&&c.display!=='none'&&c.visibility!=='hidden';
+                                          const r=i.getBoundingClientRect();
+                                          if(!hasVisibleStyle(i,r)) return false;
+                                          if(['VIDEO','CANVAS','IFRAME'].includes(i.tagName)) return visibleMediaElementCount>0;
+                                          if(i.tagName==='AUDIO') return false;
+                                          return visibleTextChars>=12;
                                         }).length;
                                         const challenge=/verify you are human|checking your browser|just a moment|access denied|captcha|unusual traffic|confirm you are not a robot|enable javascript and cookies/i
                                           .test((title+' '+text.slice(0,5000)).toLowerCase());
@@ -604,8 +645,10 @@ fun BrowserRoute(
                                           bodyTextChars:text.length,
                                           bodyChildCount:b?b.children.length:0,
                                           documentHeight:e?e.scrollHeight:0,
-                                          viewportWidth:window.innerWidth||0,
-                                          viewportHeight:window.innerHeight||0,
+                                          viewportWidth:viewportWidth,
+                                          viewportHeight:viewportHeight,
+                                          visibleTextChars:visibleTextChars,
+                                          visibleMediaElementCount:visibleMediaElementCount,
                                           videoCount:d.querySelectorAll('video').length,
                                           audioCount:d.querySelectorAll('audio').length,
                                           iframeCount:d.querySelectorAll('iframe').length,
@@ -649,20 +692,25 @@ fun BrowserRoute(
                                     val audioCount = snapshot.optInt("audioCount", 0).coerceAtLeast(0)
                                     val imageCount = snapshot.optInt("imageCount", 0).coerceAtLeast(0)
                                     val visibleImageCount = snapshot.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                    val visibleTextChars = snapshot.optInt("visibleTextChars", 0).coerceAtLeast(0)
+                                    val visibleMediaElementCount = snapshot.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
                                     val visibleContentElementCount = snapshot.optInt("visibleContentElementCount", 0).coerceAtLeast(0)
                                     val iframeCount = snapshot.optInt("iframeCount", 0).coerceAtLeast(0)
                                     val challengeDetected = snapshot.optBoolean("challengeDetected", false)
-                                    val hasContentSignals = bodyTextChars >= 12 || videoCount > 0 || audioCount > 0 ||
-                                        visibleImageCount > 0 || visibleContentElementCount > 0
-                                    pageRenderStatus = when {
-                                        challengeDetected -> "POSSIBLE_ACCESS_CHALLENGE"
-                                        hasContentSignals -> "CONTENT_SIGNALS_DETECTED"
-                                        readyState == "complete" -> "POSSIBLY_EMPTY_PAGE"
-                                        else -> "DOM_NOT_READY"
-                                    }
+                                    val hasVisibleContentSignals = visibleTextChars >= 12 ||
+                                        visibleImageCount > 0 || visibleMediaElementCount > 0
+                                    val hasAnyDomContentSignals = bodyTextChars >= 12 ||
+                                        videoCount > 0 || audioCount > 0 || imageCount > 0 || bodyChildCount > 0
+                                    pageRenderStatus = BrowserRenderStatusClassifier.classify(
+                                        challengeDetected = challengeDetected,
+                                        readyState = readyState,
+                                        hasVisibleContentSignals = hasVisibleContentSignals,
+                                        hasAnyDomContentSignals = hasAnyDomContentSignals,
+                                    )
                                     val renderMessage = when (pageRenderStatus) {
                                         "POSSIBLE_ACCESS_CHALLENGE" -> "اكتمل التحميل تقنيًا، لكن ظهرت مؤشرات تحقق أو حظر محتملة"
-                                        "CONTENT_SIGNALS_DETECTED" -> "اكتمل التحميل ورُصد محتوى في DOM؛ هذا لا يضمن وحده صحة العرض المرئي"
+                                        "CONTENT_SIGNALS_DETECTED" -> "اكتمل التحميل ورُصد نص أو محتوى مرئي داخل نافذة العرض؛ هذا مؤشر أولي وليس تأكيدًا لصحة العرض بالكامل"
+                                        "CONTENT_NOT_VISIBLE_IN_VIEWPORT" -> "اكتمل المستند، لكن لم يتأكد ظهور محتوى داخل نافذة العرض؛ قد يكون المحتوى مخفيًا أو خارجها"
                                         "POSSIBLY_EMPTY_PAGE" -> "اكتمل التحميل لكن لم تُرصد مؤشرات محتوى كافية؛ قد تكون الصفحة فارغة أو محجوبة"
                                         else -> "لم تصل مؤشرات DOM إلى حالة جاهزة"
                                     }
@@ -671,7 +719,7 @@ fun BrowserRoute(
                                         renderMessage,
                                         "render",
                                         url,
-                                        severity = if (pageRenderStatus == "CONTENT_SIGNALS_DETECTED") "SUCCESS" else "WARNING",
+                                        severity = if (pageRenderStatus == "CONTENT_SIGNALS_DETECTED") "INFO" else "WARNING",
                                         details = mapOf(
                                             "render_status" to pageRenderStatus,
                                             "ready_state" to readyState,
@@ -683,7 +731,10 @@ fun BrowserRoute(
                                             "audio_count" to audioCount.toString(),
                                             "image_count" to imageCount.toString(),
                                             "visible_image_count" to visibleImageCount.toString(),
+                                            "visible_text_chars" to visibleTextChars.toString(),
+                                            "visible_media_element_count" to visibleMediaElementCount.toString(),
                                             "visible_content_element_count" to visibleContentElementCount.toString(),
+                                            "content_visibility_basis" to "viewport_intersection_visible_style",
                                             "iframe_count" to iframeCount.toString(),
                                             "background_color" to snapshot.optString("backgroundColor", "unknown"),
                                             "challenge_detected" to challengeDetected.toString(),
@@ -692,9 +743,52 @@ fun BrowserRoute(
                                         ),
                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                     )
+                                    val visualStateNavigationId = currentNavigationId
+                                    val visualStateRequestId = System.currentTimeMillis().coerceAtLeast(1L)
+                                    runCatching {
+                                        view.postVisualStateCallback(
+                                            visualStateRequestId,
+                                            object : WebView.VisualStateCallback() {
+                                                override fun onComplete(requestId: Long) {
+                                                    if (currentNavigationId == visualStateNavigationId) {
+                                                        recordBrowserEvent(
+                                                            "PAGE_VISUAL_STATE_READY",
+                                                            "أصبح تحديث الرسم الحالي جاهزًا للعرض؛ لا يؤكد ذلك وحده صحة جميع العناصر بصريًا",
+                                                            "render",
+                                                            url,
+                                                            severity = "INFO",
+                                                            details = mapOf(
+                                                                "visual_state_ready" to "true",
+                                                                "visual_state_request_id" to requestId.toString(),
+                                                                "webview_width_px" to view.width.toString(),
+                                                                "webview_height_px" to view.height.toString(),
+                                                                "navigation_elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                                            ),
+                                                            pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                        )
+                                    }.onFailure { error ->
+                                        recordBrowserEvent(
+                                            "PAGE_VISUAL_STATE_CALLBACK_FAILED",
+                                            "تعذر تأكيد جاهزية حالة الرسم في WebView",
+                                            "render",
+                                            url,
+                                            code = error.javaClass.simpleName,
+                                            severity = "WARNING",
+                                            details = mapOf(
+                                                "webview_width_px" to view.width.toString(),
+                                                "webview_height_px" to view.height.toString(),
+                                            ),
+                                        )
+                                    }
                                     inspectMessage = when (pageRenderStatus) {
                                         "POSSIBLE_ACCESS_CHALLENGE" ->
                                             "قد يعرض الموقع صفحة تحقق أو حظر. أكمل أي تحقق يدويًا داخل الصفحة ثم أعد الفحص."
+                                        "CONTENT_NOT_VISIBLE_IN_VIEWPORT" ->
+                                            "لم يتأكد وجود محتوى مرئي داخل نافذة العرض. راجع أبعاد WebView ومؤشرات سجل أحداث المتصفح."
                                         "POSSIBLY_EMPTY_PAGE" ->
                                             "انتهى تحميل الصفحة لكن لم يُرصد محتوى كافٍ. افتح سجل أحداث المتصفح لمعرفة مؤشرات العرض والأخطاء."
                                         "DOM_NOT_READY", "DOM_DIAGNOSTIC_FAILED" ->

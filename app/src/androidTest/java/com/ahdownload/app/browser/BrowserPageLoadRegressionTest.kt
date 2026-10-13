@@ -70,6 +70,14 @@ class BrowserPageLoadRegressionTest {
         assertEquals("CONTENT_SIGNALS_DETECTED", renderEvent.details["render_status"])
         assertEquals("complete", renderEvent.details["ready_state"])
         assertTrue((renderEvent.details["body_text_chars"]?.toIntOrNull() ?: 0) > 0)
+        assertTrue(
+            "The diagnostic must count text actually intersecting the viewport",
+            (renderEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) > 0,
+        )
+        assertEquals(
+            "viewport_intersection_visible_style",
+            renderEvent.details["content_visibility_basis"],
+        )
 
         composeRule.onNodeWithText("فحص الخيارات").performClick()
         composeRule.waitUntil(timeoutMillis = 40_000) {
