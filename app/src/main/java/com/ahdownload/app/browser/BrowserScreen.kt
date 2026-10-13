@@ -607,7 +607,7 @@ fun BrowserRoute(
                                           let node;
                                           while((node=walker.nextNode())&&scannedTextNodes<1500&&visibleTextChars<10000){
                                             scannedTextNodes++;
-                                            const value=(node.nodeValue||'').replace(/\\s+/g,' ').trim();
+                                            const value=(node.nodeValue||'').replace(/\s+/g,' ').trim();
                                             if(!value) continue;
                                             const parent=node.parentElement;
                                             if(!parent) continue;
