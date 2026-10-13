@@ -274,7 +274,13 @@ fun BrowserRoute(
                         } else {
                             Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
-                        Text("فحص الخيارات")
+                        Text(
+                            when {
+                                inspecting -> "جارٍ فحص الخيارات..."
+                                isLoading -> "جارٍ تحميل الصفحة..."
+                                else -> "فحص الخيارات"
+                            },
+                        )
                     }
                 }
             }
@@ -332,7 +338,7 @@ fun BrowserRoute(
             ) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
-                factory = { viewContext ->
+                    factory = { viewContext ->
                     WebView(viewContext).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
@@ -398,7 +404,7 @@ fun BrowserRoute(
                                     pageProgress = 0
                                     recordError(
                                         "PAGE_LOAD_FAILED",
-                                        "تعذر تحميل الصفحة داخل المتصفح",
+                                        loadErrorMessage,
                                         "navigation",
                                         request.url.toString(),
                                         error.errorCode.toString(),
@@ -415,7 +421,7 @@ fun BrowserRoute(
                                     inspectMessage = "استجابة HTTP ${errorResponse.statusCode} من الموقع. قد يكون المحتوى مقيدًا أو يتطلب جلسة صالحة."
                                     recordError(
                                         "HTTP_ERROR",
-                                        "أعاد الموقع استجابة HTTP غير ناجحة",
+                                        "أعاد الموقع استجابة HTTP ${errorResponse.statusCode}",
                                         "navigation",
                                         request.url.toString(),
                                         errorResponse.statusCode.toString(),
@@ -429,7 +435,7 @@ fun BrowserRoute(
                                 pageProgress = 0
                                 pageLoadError = "تم إيقاف الصفحة بسبب مشكلة في شهادة الأمان. لم يتم تجاوز تحذير الشهادة."
                                 inspectMessage = pageLoadError
-                                recordError("TLS_CERTIFICATE_ERROR", "تم إيقاف صفحة بسبب خطأ في شهادة TLS", "security", error.url, error.primaryError.toString())
+                                recordError("TLS_CERTIFICATE_ERROR", "تعذر التحقق من شهادة أمان الصفحة؛ أُوقف التحميل حفاظًا على الأمان", "security", error.url, error.primaryError.toString())
                             }
                         }
                         webChromeClient = object : WebChromeClient() {
@@ -442,7 +448,7 @@ fun BrowserRoute(
                         webView = this
                         if (currentUrl.isNotBlank()) loadUrl(currentUrl)
                     }
-                },
+                    },
                     update = { },
                 )
                 pageLoadError?.let { message ->
