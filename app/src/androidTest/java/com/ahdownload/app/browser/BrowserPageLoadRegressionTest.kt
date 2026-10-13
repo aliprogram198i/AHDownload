@@ -75,8 +75,8 @@ class BrowserPageLoadRegressionTest {
             (renderEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) > 0,
         )
         assertEquals(
-            "viewport_intersection_visible_style",
-            renderEvent.details["content_visibility_basis"].substringBefore("_contrast_and_hit_test"),
+            "viewport_intersection_visible_style_contrast_and_hit_test",
+            renderEvent.details["content_visibility_basis"],
         )
 
         composeRule.waitUntil(timeoutMillis = 15_000) {
