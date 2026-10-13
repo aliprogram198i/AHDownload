@@ -223,6 +223,8 @@ fun BrowserRoute(
                                 inspecting = true
                                 inspectMessage = null
                                 candidates = emptyList()
+                                selectedAudioCandidateId = null
+                                selectedAudioFormat = null
                                 showResults = false
                                 val operationId = "browser-" + UUID.randomUUID().toString()
                                 scope.launch {
