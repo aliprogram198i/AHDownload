@@ -72,7 +72,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.runOnUiThread {
             val view = findWebView(composeRule.activity.window.decorView)
             webViewRef.set(view)
-            view?.loadDataWithBaseURL(baseUrl, fixtureHtml, "text/html", "UTF-8", null)
+            view?.loadDataWithBaseURL(baseUrl, fixtureHtml, "text/html", "UTF-8", baseUrl)
         }
         assertNotNull("Browser must retain a WebView instance", webViewRef.get())
 
