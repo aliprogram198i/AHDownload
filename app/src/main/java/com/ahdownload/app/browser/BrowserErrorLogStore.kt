@@ -94,7 +94,7 @@ class BrowserErrorLogStore(context: Context) {
 
     private fun safe(value: String, maxLength: Int): String =
         value.replace(Regex("""https?://\S+""", RegexOption.IGNORE_CASE), "[url]")
-            .replace(Regex("""(?i)(cookie|authorization|token|password|secret)\s*[:=]\s*[^\s,;]+"""), "$1=[redacted]")
+            .replace(Regex("""(?i)(cookie|authorization|token|password|secret)\s*[:=]\s*[^\s,;]+"""), "\$1=[redacted]")
             .filter { it == '\n' || it == '\t' || it >= ' ' }
             .trim()
             .take(maxLength)
