@@ -13,9 +13,11 @@ internal object BrowserRenderStatusClassifier {
         readyState: String,
         hasVisibleContentSignals: Boolean,
         hasAnyDomContentSignals: Boolean,
+        hasPrimaryVisibleContent: Boolean = hasVisibleContentSignals,
     ): String = when {
         challengeDetected -> "POSSIBLE_ACCESS_CHALLENGE"
-        hasVisibleContentSignals -> "CONTENT_SIGNALS_DETECTED"
+        hasPrimaryVisibleContent -> "CONTENT_SIGNALS_DETECTED"
+        hasVisibleContentSignals -> "CONTENT_VISIBILITY_UNCONFIRMED"
         readyState == "complete" && hasAnyDomContentSignals -> "CONTENT_NOT_VISIBLE_IN_VIEWPORT"
         readyState == "complete" -> "POSSIBLY_EMPTY_PAGE"
         else -> "DOM_NOT_READY"
