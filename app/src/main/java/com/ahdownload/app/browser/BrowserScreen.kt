@@ -101,8 +101,8 @@ fun BrowserRoute(
             browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
         )
     }
-    var address by remember { mutableStateOf("https://") }
-    var currentUrl by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("https://www.google.com") }
+    var currentUrl by remember { mutableStateOf("https://www.google.com") }
     var pageTitle by remember { mutableStateOf("") }
     var pageProgress by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
@@ -187,7 +187,7 @@ fun BrowserRoute(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { address = "https://"; webView?.loadUrl("https://www.google.com") }) {
+                    IconButton(onClick = { address = "https://www.google.com"; currentUrl = address; webView?.loadUrl(address) }) {
                         Icon(Icons.Rounded.Home, contentDescription = "الصفحة الرئيسية")
                     }
                 },
@@ -591,6 +591,9 @@ private fun CandidateOption(
 private fun normalizeBrowserUrl(raw: String): String? {
     val trimmed = raw.trim()
     if (trimmed.isBlank()) return null
+    if ("://" !in trimmed && (trimmed.any(Char::isWhitespace) || '.' !in trimmed)) {
+        return "https://www.google.com/search?q=" + Uri.encode(trimmed)
+    }
     val candidate = if ("://" in trimmed) trimmed else "https://$trimmed"
     val uri = runCatching { URI(candidate) }.getOrNull() ?: return null
     val scheme = uri.scheme?.lowercase()
