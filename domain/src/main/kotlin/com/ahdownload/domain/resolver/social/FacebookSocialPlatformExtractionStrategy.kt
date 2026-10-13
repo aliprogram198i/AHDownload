@@ -17,7 +17,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal class FacebookSocialPlatformExtractionStrategy :
     StandardSocialPlatformExtractionStrategy(MediaPlatform.Facebook) {
 
-    override val additionalMediaMetricName: String = "facebook_mobile_fallback_media_count"
+    override val additionalMediaMetricName: String = "facebook_host_fallback_media_count"
 
     override fun pageRequestHeaders(pageUrl: String): Map<String, String> =
         if (isFacebookPageUrl(pageUrl)) requestHeaders() else emptyMap()
