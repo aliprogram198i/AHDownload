@@ -59,8 +59,8 @@ run_instrumented_class() {
   validate_instrumentation_results "$label"
 }
 
-# Run both suites even if one fails so diagnostics always include the independent
-# source-matrix result and the requested full-download result. Aggregate failures last.
+# Run every acceptance suite even if one fails so diagnostics include the source matrix,
+# requested full download, and target-site browser viewport/menu probe. Aggregate failures last.
 set +e
 run_instrumented_class \
   "com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest" \
