@@ -746,25 +746,30 @@ fun BrowserRoute(
                                     val visualStateNavigationId = currentNavigationId
                                     val visualStateRequestId = System.currentTimeMillis().coerceAtLeast(1L)
                                     runCatching {
-                                        view.postVisualStateCallback(visualStateRequestId) {
-                                            if (currentNavigationId == visualStateNavigationId) {
-                                                recordBrowserEvent(
-                                                    "PAGE_VISUAL_STATE_READY",
-                                                    "أصبح تحديث الرسم الحالي جاهزًا للعرض؛ لا يؤكد ذلك وحده صحة جميع العناصر بصريًا",
-                                                    "render",
-                                                    url,
-                                                    severity = "INFO",
-                                                    details = mapOf(
-                                                        "visual_state_ready" to "true",
-                                                        "visual_state_request_id" to visualStateRequestId.toString(),
-                                                        "webview_width_px" to view.width.toString(),
-                                                        "webview_height_px" to view.height.toString(),
-                                                        "navigation_elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
-                                                    ),
-                                                    pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
-                                                )
-                                            }
-                                        }
+                                        view.postVisualStateCallback(
+                                            visualStateRequestId,
+                                            object : WebView.VisualStateCallback() {
+                                                override fun onComplete(requestId: Long) {
+                                                    if (currentNavigationId == visualStateNavigationId) {
+                                                        recordBrowserEvent(
+                                                            "PAGE_VISUAL_STATE_READY",
+                                                            "أصبح تحديث الرسم الحالي جاهزًا للعرض؛ لا يؤكد ذلك وحده صحة جميع العناصر بصريًا",
+                                                            "render",
+                                                            url,
+                                                            severity = "INFO",
+                                                            details = mapOf(
+                                                                "visual_state_ready" to "true",
+                                                                "visual_state_request_id" to requestId.toString(),
+                                                                "webview_width_px" to view.width.toString(),
+                                                                "webview_height_px" to view.height.toString(),
+                                                                "navigation_elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                                            ),
+                                                            pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                        )
                                     }.onFailure { error ->
                                         recordBrowserEvent(
                                             "PAGE_VISUAL_STATE_CALLBACK_FAILED",
