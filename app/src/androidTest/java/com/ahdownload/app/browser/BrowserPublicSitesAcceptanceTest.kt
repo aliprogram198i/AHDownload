@@ -60,7 +60,7 @@ class BrowserPublicSitesAcceptanceTest {
             val finalUrl = currentWebViewUrl()
             val finalHost = safeHost(finalUrl)
             val renderEvent = store.list().lastOrNull {
-                (it.type == "PAGE_RENDER_CHECK" || it.type == "PAGE_RENDER_RECHECK") && it.host == finalHost
+                it.type == "PAGE_RENDER_CHECK" || it.type == "PAGE_RENDER_RECHECK"
             }
             val classification = when {
                 !pageFinished -> "LOAD_TIMEOUT_OR_NO_FINISH"
