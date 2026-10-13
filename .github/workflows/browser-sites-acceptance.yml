@@ -1,0 +1,116 @@
+name: Browser Target-Site Acceptance
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-sites:
+    name: Verify Google, Shahid4u and XNXX Arabic in Android WebView
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools emulator"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install project SDK components
+        run: |
+          set -euo pipefail
+          sdkmanager "platforms;android-35" "platforms;android-37.1" "build-tools;36.1.0" "system-images;android-35;google_apis;x86_64"
+
+      - name: Compile app and tests
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --no-parallel --max-workers=2 --stacktrace testDebugUnitTest assembleDebug :app:assembleDebugAndroidTest
+
+      - name: Enable KVM
+        run: |
+          set -euo pipefail
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          test -r /dev/kvm
+          test -w /dev/kvm
+
+      - name: Open target sites and inspect visible content/menu controls
+        timeout-minutes: 15
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          disable-linux-hw-accel: false
+          emulator-boot-timeout: 600
+          emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data"
+          script: |
+            set -uo pipefail
+            mkdir -p browser-sites-results
+            set +e
+            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest" 2>&1 | tee browser-sites-acceptance.log
+            test_exit_code=$?
+            adb logcat -d -v threadtime -s AH_BROWSER_SITE_ACCEPTANCE:I AndroidRuntime:E > browser-sites-acceptance-logcat.txt 2>&1 || echo "Filtered logcat collection failed" >> browser-sites-acceptance-logcat.txt
+            printf '%s\n' "$test_exit_code" > browser-sites-results/instrumentation-exit-code.txt
+            exit "$test_exit_code"
+
+      - name: Validate Android site acceptance results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$(find app/build/outputs/androidTest-results/connected -name test-result.textproto -print -quit)"
+          if [[ -z "$report" || ! -s "$report" ]]; then
+            echo "Browser site instrumentation report missing; site rendering is not verified." >&2
+            exit 1
+          fi
+          grep -q '^test_status: PASSED$' "$report"
+          scheduled_count="$(sed -n 's/^  scheduled_test_case_count: \([0-9][0-9]*\)$/\1/p' "$report" | head -n 1)"
+          test_count="$(grep -c '^  test_case {' "$report" || true)"
+          passed_count="$(grep -c '^  test_status: PASSED$' "$report" || true)"
+          failed_count="$(grep -c '^  test_status: FAILED$' "$report" || true)"
+          echo "Browser site test counts: scheduled=$scheduled_count; executed=$test_count; passed=$passed_count; failed=$failed_count"
+          if [[ -z "$scheduled_count" || "$scheduled_count" -le 0 ||
+                "$test_count" -ne "$scheduled_count" ||
+                "$passed_count" -ne "$test_count" ||
+                "$failed_count" -ne 0 ]]; then
+            echo "Every scheduled browser target-site test must pass; inspect the per-site count-only logs." >&2
+            exit 1
+          fi
+
+      - name: Upload per-site results and instrumentation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ahdownload-browser-site-acceptance-${{ github.run_id }}
+          path: |
+            browser-sites-acceptance.log
+            browser-sites-acceptance-logcat.txt
+            browser-sites-results/
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: warn
+          retention-days: 14
