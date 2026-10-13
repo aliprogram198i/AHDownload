@@ -595,7 +595,11 @@ fun BrowserRoute(
                                         const intersectsViewport=r=>r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<viewportWidth&&r.top<viewportHeight;
                                         const hasVisibleStyle=(i,r)=>{
                                           const c=getComputedStyle(i);
-                                          return c.display!=='none'&&c.visibility!=='hidden'&&Number(c.opacity||1)>0&&intersectsViewport(r);
+                                          if(c.display==='none'||c.visibility==='hidden'||Number(c.opacity||1)<=0||!intersectsViewport(r)) return false;
+                                          for(let p=i.parentElement;p;p=p.parentElement){
+                                            if(Number(getComputedStyle(p).opacity||1)<=0) return false;
+                                          }
+                                          return true;
                                         };
                                         const visibleImages=[...d.images].filter(i=>{
                                           const r=i.getBoundingClientRect();
