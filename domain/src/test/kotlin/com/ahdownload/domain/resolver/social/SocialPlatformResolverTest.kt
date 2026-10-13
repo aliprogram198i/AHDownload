@@ -251,6 +251,40 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun facebookShareRedirectUsesResolvedPostUrlForPageFallback() = runTest {
+        val shareUrl = "https://www.facebook.com/share/v/1EtHTEuQ7b/"
+        val resolvedPostUrl = "https://www.facebook.com/groups/1051745715563434/posts/2450148282389830/"
+        val mediaUrl = "https://video.xx.fbcdn.net/v/t42/AQExampleVideo.mp4?token=opaque"
+        val fetchedUrls = mutableListOf<String>()
+        val html = """<html><head><meta property="og:video" content="$mediaUrl"></head></html>"""
+        val resolver = FacebookResolverAdapter(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Facebook,
+                    pageUrl = shareUrl,
+                    finalUrl = resolvedPostUrl,
+                ),
+            ),
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    fetchedUrls += url
+                    return if (url == resolvedPostUrl) html else ""
+                }
+            },
+        )
+
+        val requestLink = link(MediaPlatform.Facebook).copy(
+            originalUrl = shareUrl,
+            normalizedUrl = shareUrl,
+        )
+        val result = resolver.resolve(ResolverRequest(link = requestLink))
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(listOf(resolvedPostUrl), fetchedUrls)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
+    }
+
+    @Test
     fun customSchemeFinalUrlFallsBackToValidHttpSessionPageUrl() = runTest {
         val pageUrl = "https://www.instagram.com/reel/ABC123/"
         val mediaUrl = "https://cdn.example.com/video.mp4"

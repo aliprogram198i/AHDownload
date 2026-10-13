@@ -82,7 +82,15 @@ class AndroidBrowserMediaSessionProvider(
             var title: String? = null
             var thumbnail: String? = null
             var durationMs: Long? = null
-            var finalUrl: String? = null
+            var finalUrl: String? = url
+
+            fun isHttpPageUrl(value: String?): Boolean {
+                if (value.isNullOrBlank()) return false
+                return runCatching {
+                    val uri = URI(value)
+                    uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()
+                }.getOrDefault(false)
+            }
 
             fun normalizeMediaUrl(raw: String): String =
                 raw.trim()
@@ -183,7 +191,9 @@ class AndroidBrowserMediaSessionProvider(
                 finished = true
                 timeout?.let(main::removeCallbacks)
                 settleFinish?.let(main::removeCallbacks)
-                finalUrl = webView?.url ?: url
+                finalUrl = webView?.url?.toString()?.takeIf(::isHttpPageUrl)
+                    ?: finalUrl?.takeIf(::isHttpPageUrl)
+                    ?: url.takeIf(::isHttpPageUrl)
                 if (platform == MediaPlatform.Instagram && instagramApiStatus == null) {
                     instagramApiStatus = when {
                         inspectionAttemptCount == 0 -> "page_not_inspected"
@@ -676,12 +686,26 @@ class AndroidBrowserMediaSessionProvider(
                     setAcceptThirdPartyCookies(view, true)
                 }
                 view.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(
+                        view: WebView,
+                        request: WebResourceRequest,
+                    ): Boolean {
+                        val scheme = request.url.scheme?.lowercase()
+                        if (scheme == "http" || scheme == "https") {
+                            if (request.isForMainFrame) finalUrl = request.url.toString()
+                            return false
+                        }
+                        // Do not let an app deep-link replace the last usable HTTP page URL.
+                        return true
+                    }
+
                     override fun onPageStarted(
                         view: WebView,
                         pageUrl: String?,
                         favicon: android.graphics.Bitmap?,
                     ) {
                         super.onPageStarted(view, pageUrl, favicon)
+                        if (isHttpPageUrl(pageUrl)) finalUrl = pageUrl
                         when (platform) {
                         MediaPlatform.Instagram -> {
                             // Keep polling bounded. If the normal permalink does not expose a
@@ -731,7 +755,7 @@ class AndroidBrowserMediaSessionProvider(
                     }
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
-                        finalUrl = pageUrl
+                        if (isHttpPageUrl(pageUrl)) finalUrl = pageUrl
                         scheduleInspection(view, 350L)
                         scheduleInspection(view, 1400L)
                         scheduleInspection(view, 3000L)

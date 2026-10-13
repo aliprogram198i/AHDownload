@@ -86,7 +86,29 @@ class SocialPlatformResolverEngine(
                 // custom-scheme handoff. Start with the user's HTTP(S) request URL instead:
                 // OkHttp follows ordinary redirects itself, while this avoids extracting from
                 // a login page that replaced the original public post in the WebView.
-                val pageUrlCandidate = listOf(
+                // Facebook share links may redirect in WebView to the actual post URL,
+                // while direct HTTP requests to the opaque /share/... route return HTTP 400.
+                // Prefer that resolved post URL only for share-link inputs, and never use a
+                // login/checkpoint URL as the public-page fallback.
+                val requestedHttpUrl = listOf(
+                    request.link.normalizedUrl,
+                    request.link.originalUrl,
+                ).firstOrNull(::isHttpPageUrl)
+                val resolvedFacebookPageCandidate =
+                    if (platform == MediaPlatform.Facebook && isFacebookShareUrl(requestedHttpUrl)) {
+                        listOf(
+                            "final_url" to session.finalUrl,
+                            "session_page_url" to session.pageUrl,
+                        ).firstOrNull { (_, candidate) ->
+                            isHttpPageUrl(candidate) &&
+                                isFacebookPageUrl(candidate) &&
+                                !isFacebookShareUrl(candidate) &&
+                                !isFacebookLoginOrGateUrl(candidate)
+                        }
+                    } else {
+                        null
+                    }
+                val pageUrlCandidate = resolvedFacebookPageCandidate ?: listOf(
                     "normalized_request_url" to request.link.normalizedUrl,
                     "original_request_url" to request.link.originalUrl,
                     "session_page_url" to session.pageUrl,
@@ -444,6 +466,31 @@ class SocialPlatformResolverEngine(
             sourceContext = sourceContext,
             streamingManifest = streamingManifest,
         )
+    }
+
+    private fun isFacebookPageUrl(value: String?): Boolean {
+        if (!isHttpPageUrl(value)) return false
+        val host = runCatching { URI(value!!).host?.lowercase()?.removePrefix("www.") }
+            .getOrNull()
+            ?: return false
+        return host == "facebook.com" || host.endsWith(".facebook.com")
+    }
+
+    private fun isFacebookShareUrl(value: String?): Boolean {
+        if (!isFacebookPageUrl(value)) return false
+        val path = runCatching { URI(value!!).rawPath.orEmpty().lowercase() }
+            .getOrDefault("")
+        return path == "/share" || path.startsWith("/share/")
+    }
+
+    private fun isFacebookLoginOrGateUrl(value: String?): Boolean {
+        if (!isFacebookPageUrl(value)) return true
+        val path = runCatching { URI(value!!).path.orEmpty().lowercase() }
+            .getOrDefault("")
+        return path.startsWith("/login") ||
+            path.startsWith("/checkpoint") ||
+            path.startsWith("/recover") ||
+            path.startsWith("/privacy/consent")
     }
 
     private fun isHttpPageUrl(value: String?): Boolean {
