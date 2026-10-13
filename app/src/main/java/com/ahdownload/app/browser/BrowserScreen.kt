@@ -638,8 +638,10 @@ fun BrowserRoute(
                                           return (Math.max(a,z)+0.05)/(Math.min(a,z)+0.05)>=1.4;
                                         };
                                         const unobscuredAt = (element,rect) => {
-                                          const x=Math.max(0,Math.min(viewportWidth-1,(rect.left+rect.right)/2));
-                                          const y=Math.max(0,Math.min(viewportHeight-1,(rect.top+rect.bottom)/2));
+                                          const left=Math.max(0,rect.left), right=Math.min(viewportWidth,rect.right);
+                                          const topEdge=Math.max(0,rect.top), bottomEdge=Math.min(viewportHeight,rect.bottom);
+                                          if(right<=left||bottomEdge<=topEdge) return false;
+                                          const x=(left+right)/2, y=(topEdge+bottomEdge)/2;
                                           const top=d.elementFromPoint(x,y);
                                           if(!top) return true;
                                           for(let p=top;p;p=p.parentElement) if(p===element) return true;
@@ -973,6 +975,19 @@ fun BrowserRoute(
                                                             "navigation_id" to renderRecheckNavigationId,
                                                         ),
                                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                                    )
+                                                } else if (currentNavigationId == renderRecheckNavigationId && view.url == url) {
+                                                    recordBrowserEvent(
+                                                        "PAGE_RENDER_RECHECK_FAILED",
+                                                        "تعذر قراءة مؤشرات DOM أثناء الفحص المؤجل",
+                                                        "render",
+                                                        url,
+                                                        code = "snapshot_unavailable",
+                                                        severity = "WARNING",
+                                                        details = mapOf(
+                                                            "navigation_id" to renderRecheckNavigationId,
+                                                            "recheck_delay_ms" to "1400",
+                                                        ),
                                                     )
                                                 }
                                             }
@@ -1455,7 +1470,9 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       return (Math.max(a,z)+0.05)/(Math.min(a,z)+0.05)>=1.4;
     };
     const unobscured=(el,r)=>{
-      const top=d.elementFromPoint(Math.max(0,Math.min(vw-1,(r.left+r.right)/2)),Math.max(0,Math.min(vh-1,(r.top+r.bottom)/2)));
+      const left=Math.max(0,r.left),right=Math.min(vw,r.right),topEdge=Math.max(0,r.top),bottomEdge=Math.min(vh,r.bottom);
+      if(right<=left||bottomEdge<=topEdge) return false;
+      const top=d.elementFromPoint((left+right)/2,(topEdge+bottomEdge)/2);
       if(!top) return true;
       for(let p=top;p;p=p.parentElement) if(p===el) return true;
       return false;
