@@ -269,6 +269,37 @@ class AndroidBrowserMediaSessionProvider(
                       const instagramShortcode=__IG_SHORTCODE__;
                       // Keep credentials in WebView. Try the lightweight endpoint first,
                       // then the current GraphQL path used by the Instagram web extractor.
+                      // Platform-neutral scan for embedded JSON media keys. Keep this outside the
+                      // Instagram-only API block so Facebook and other pages can inspect data-sjs too.
+                      const collectStructuredMedia=payload=>{
+                        const found=[];
+                        const visit=(node,depth)=>{
+                          if(!node||depth>32)return;
+                          if(Array.isArray(node)){
+                            node.slice(0,150).forEach(item=>visit(item,depth+1));
+                            return;
+                          }
+                          if(typeof node!=='object')return;
+                          Object.entries(node).forEach(([key,value])=>{
+                            const lower=key.toLowerCase();
+                            if(typeof value==='string'&&
+                               ['video_url','playback_url','content_url','browser_native_hd_url',
+                                'browser_native_sd_url','playable_url','playable_url_quality_hd',
+                                'playable_url_quality_sd','hls_manifest_url','dash_manifest_url'].includes(lower)&&
+                               (value.startsWith('https://')||value.startsWith('http://'))){
+                              found.push(value);
+                            }
+                            if(Array.isArray(value)&&lower==='video_versions'){
+                              value.forEach(item=>{
+                                if(item&&typeof item.url==='string')found.push(item.url);
+                              });
+                            }
+                            if(value&&typeof value==='object')visit(value,depth+1);
+                          });
+                        };
+                        visit(payload,0);
+                        return found;
+                      };
                       if(instagramShortcode && !window.__ahInstagramApiRequestStarted){
                         window.__ahInstagramApiRequestStarted=true;
                         window.__ahInstagramApiStatus='pending';
@@ -514,12 +545,10 @@ class AndroidBrowserMediaSessionProvider(
                         // below xig_polaris_media and need JSON-aware traversal, not a shallow regex.
                         const structuredMedia=[];
                         const dataSjs=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
-                        if(typeof collectMedia==='function'){
-                          dataSjs.forEach(script=>{
-                            try{structuredMedia.push(...collectMedia(JSON.parse(script.textContent||'')));}
-                            catch(_){}
-                          });
-                        }
+                        dataSjs.forEach(script=>{
+                          try{structuredMedia.push(...collectStructuredMedia(JSON.parse(script.textContent||'')));}
+                          catch(_){}
+                        });
                         embedded.push(...structuredMedia);
                         const clean=scripts
                           .replace(/\\u002f/gi,'/')
