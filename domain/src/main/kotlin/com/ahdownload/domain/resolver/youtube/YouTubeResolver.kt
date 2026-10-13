@@ -313,6 +313,32 @@ class YouTubeResolver(
             )
         }
 
+        // An explicit sign-in/age-gate result must not be overridden by a separate
+        // metadata response. Require directly observed session-bound media to continue.
+        val capturedCandidates = sessionCandidates(snapshot)
+        if (
+            lastFailure?.code == FailureCode.AuthenticationRequired &&
+            capturedCandidates.isEmpty()
+        ) {
+            logger.log(
+                DiagnosticLevel.WARNING,
+                type = "youtube.authentication_required",
+                reason = "age_restricted_or_sign_in_required_without_usable_media_candidates",
+                operation = "youtube.resolve",
+                context = diagnosticContext(videoId, request.operationId) + mapOf(
+                    "authenticated_cookie_hint" to snapshot.authenticated.toString(),
+                    "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
+                    "candidate_count" to capturedCandidates.size.toString(),
+                ),
+                throwable = null,
+            )
+            return failure(
+                FailureCode.AuthenticationRequired,
+                lastFailure?.message ?: "يتطلب هذا الفيديو تسجيل الدخول إلى YouTube وتأكيد أهلية العمر.",
+                context = diagnosticContext(videoId, request.operationId),
+            )
+        }
+
         snapshot.playerResponse?.takeIf { it.isNotBlank() }?.let { response ->
             logger.log(
                 DiagnosticLevel.INFO,
@@ -365,30 +391,6 @@ class YouTubeResolver(
             }
             lastFailure = preferFailure(lastFailure, webResult as? ResolverResult.Failure)
             logPlayerFailure(videoId, webResult, "webview_player_response", request.operationId)
-        }
-
-        val capturedCandidates = sessionCandidates(snapshot)
-        if (
-            lastFailure?.code == FailureCode.AuthenticationRequired &&
-            capturedCandidates.isEmpty()
-        ) {
-            logger.log(
-                DiagnosticLevel.WARNING,
-                type = "youtube.authentication_required",
-                reason = "age_restricted_or_sign_in_required_without_usable_media_candidates",
-                operation = "youtube.resolve",
-                context = diagnosticContext(videoId, request.operationId) + mapOf(
-                    "authenticated_cookie_hint" to snapshot.authenticated.toString(),
-                    "browser_media_observed" to snapshot.browserMediaObservedCount.toString(),
-                    "candidate_count" to capturedCandidates.size.toString(),
-                ),
-                throwable = null,
-            )
-            return failure(
-                FailureCode.AuthenticationRequired,
-                lastFailure?.message ?: "يتطلب هذا الفيديو تسجيل الدخول إلى YouTube وتأكيد أهلية العمر.",
-                context = diagnosticContext(videoId, request.operationId),
-            )
         }
 
         val headers = buildMap {

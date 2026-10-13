@@ -217,7 +217,7 @@ class OkHttpMediaProbeTest {
     }
 
     @Test
-    fun retriesYouTube403WithoutSessionHeadersForGenericSessionContext() = runTest {
+    fun retriesYouTube403WithoutSessionHeadersOnlyWhenTokenOrRangeCanBeRetested() = runTest {
         val requestHeaders = mutableListOf<Map<String, String>>()
         val client = OkHttpClient.Builder()
             .addInterceptor(Interceptor { chain ->
@@ -254,7 +254,7 @@ class OkHttpMediaProbeTest {
             .build()
 
         val result = OkHttpMediaProbe(client).probe(
-            "https://example.googlevideo.com/videoplayback?mime=audio%2Fmp4",
+            "https://example.googlevideo.com/videoplayback?mime=audio%2Fmp4&pot=test-token",
             mapOf(
                 "Cookie" to "SID=redacted",
                 "Origin" to "https://www.youtube.com",
@@ -271,6 +271,36 @@ class OkHttpMediaProbeTest {
         assertTrue(requestHeaders[1].keys.none { it.equals("Cookie", ignoreCase = true) })
         assertEquals("https://www.youtube.com/", requestHeaders[1]["Referer"])
         assertTrue(requestHeaders[1].keys.none { it.equals("Origin", ignoreCase = true) })
+    }
+
+    @Test
+    fun doesNotRepeatTokenlessYouTube403WhenThereIsNoRangeToCorrect() = runTest {
+        var requestCount = 0
+        val client = OkHttpClient.Builder()
+            .addInterceptor(Interceptor { chain ->
+                requestCount++
+                Response.Builder()
+                    .request(chain.request())
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(403)
+                    .message("Forbidden")
+                    .body(byteArrayOf().toResponseBody(null))
+                    .build()
+            })
+            .build()
+
+        val result = OkHttpMediaProbe(client).probe(
+            "https://rr1.googlevideo.com/videoplayback?itag=136&mime=video%2Fmp4",
+            headers = mapOf(
+                "Cookie" to "SID=redacted",
+                "Origin" to "https://www.youtube.com",
+                "Referer" to "https://www.youtube.com/",
+            ),
+            operationId = "op-youtube-403-no-po-token",
+        )
+
+        assertEquals(403, result.statusCode)
+        assertEquals(1, requestCount, "A tokenless 403 with no Range must not trigger a blind retry")
     }
 
     @Test

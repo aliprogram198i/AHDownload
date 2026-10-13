@@ -111,7 +111,13 @@ class OkHttpMediaProbe(
             )
         }
 
-        if (response.code == 403 && !browserContext) {
+        if (
+            response.code == 403 &&
+            !browserContext &&
+            (explicitRange != null || hasYouTubePoToken(url, headers))
+        ) {
+            // Retry only when a request-context variable can be tested. Stripping
+            // session headers cannot repair a tokenless, no-range media URL.
             response.close()
             val retryHeaders = headers.filterKeys {
                 !it.equals("Cookie", ignoreCase = true) &&
@@ -136,7 +142,30 @@ class OkHttpMediaProbe(
                     operationId,
                 ) + mapOf(
                     "validation_mode" to "YOUTUBE_403_HEADER_SANITIZED_NO_RANGE_RETRY",
-                    "removed_session_headers" to "Cookie,Origin",
+                    "removed_session_headers" to "Cookie,Origin,Referer",
+                    "po_token_present" to hasYouTubePoToken(url, headers).toString(),
+                ),
+                throwable = null,
+            )
+        } else if (response.code == 403 && !browserContext) {
+            logger.log(
+                level = DiagnosticLevel.WARNING,
+                type = "MEDIA_PROBE_RETRY_SKIPPED",
+                reason = "youtube_403_without_po_token_or_range_no_context_retry",
+                operation = "download.validate",
+                context = probeContext(
+                    url,
+                    "GET",
+                    null,
+                    response.code,
+                    response.header("Content-Type"),
+                    started.elapsedNow().inWholeMilliseconds,
+                    headers,
+                    operationId,
+                ) + mapOf(
+                    "validation_mode" to "YOUTUBE_403_RETRY_SKIPPED",
+                    "po_token_present" to "false",
+                    "explicit_range_present" to "false",
                 ),
                 throwable = null,
             )
@@ -368,6 +397,22 @@ class OkHttpMediaProbe(
 
     private fun userAgentFor(url: String): String =
         if (isYouTubeMediaHost(url)) YOUTUBE_USER_AGENT else DEFAULT_USER_AGENT
+
+    private fun hasYouTubePoToken(url: String, headers: Map<String, String>): Boolean {
+        val tokenKeys = setOf("pot", "potc", "po_token", "po-token")
+        val queryHasToken = runCatching {
+            URI(url).rawQuery.orEmpty().split('&').any { pair ->
+                pair.substringBefore('=').lowercase() in tokenKeys &&
+                    pair.contains('=') && pair.substringAfter('=', "").isNotBlank()
+            }
+        }.getOrDefault(false)
+        val headerHasToken = headers.any { (name, value) ->
+            (name.equals("X-YouTube-PO-Token", ignoreCase = true) ||
+                name.equals("X-Goog-PO-Token", ignoreCase = true) ||
+                name.contains("po-token", ignoreCase = true)) && value.isNotBlank()
+        }
+        return queryHasToken || headerHasToken
+    }
 
     private fun isYouTubeMediaHost(url: String): Boolean {
         val host = hostOf(url)
