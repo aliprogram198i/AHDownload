@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateListOf
+import com.ahdownload.app.browser.BrowserErrorLogRoute
+import com.ahdownload.app.browser.BrowserRoute
 import com.ahdownload.app.diagnostics.DiagnosticsRoute
 import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
@@ -63,6 +65,8 @@ private enum class RootDestination {
     Studio,
     UiDiagnostics,
     Performance,
+    Browser,
+    BrowserErrors,
 }
 
 class MainActivity : ComponentActivity() {
@@ -106,6 +110,7 @@ class MainActivity : ComponentActivity() {
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
                     performanceLogStore = applicationServices.performanceLogStore,
+                    browserErrorLogStore = applicationServices.browserErrorLogStore,
                     onDownloadRequested = { candidate, title, sourcePageUrl, thumbnailUrl ->
                         requestNotificationPermissionIfNeeded()
                         downloadLauncher.enqueue(candidate, title, sourcePageUrl, thumbnailUrl)
@@ -358,6 +363,7 @@ private fun AHRoot(
     initialUrl: String?,
     logger: PersistentDiagnosticLogger,
     performanceLogStore: PerformanceLogStore,
+    browserErrorLogStore: com.ahdownload.app.browser.BrowserErrorLogStore,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
@@ -531,6 +537,9 @@ private fun AHRoot(
             store = downloadLocationStore,
             diagnosticLogger = logger,
             performanceLogStore = performanceLogStore,
+            browserErrorLogStore = browserErrorLogStore,
+            onOpenBrowser = { push(RootDestination.Browser) },
+            onOpenBrowserErrors = { push(RootDestination.BrowserErrors) },
             onOpenPerformanceLog = { push(RootDestination.Performance) },
             themeMode = themeMode,
             onPickDownloadFolder = onPickDownloadFolder,
@@ -541,6 +550,17 @@ private fun AHRoot(
             onNavigateDownloads = { root(RootDestination.Downloads) },
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
+        )
+        RootDestination.Browser -> BrowserRoute(
+            logger = logger,
+            errorStore = browserErrorLogStore,
+            onBack = ::popOrHome,
+            onDownloadRequested = onDownloadRequested,
+            onAudioOnlyRequested = onAudioOnlyRequested,
+        )
+        RootDestination.BrowserErrors -> BrowserErrorLogRoute(
+            store = browserErrorLogStore,
+            onBack = ::popOrHome,
         )
         RootDestination.Performance -> PerformanceLogRoute(
             store = performanceLogStore,
