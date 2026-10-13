@@ -37,7 +37,7 @@ class BrowserErrorLogStore(context: Context) {
                             val key = names.optString(detailIndex)
                             if (key.isBlank()) continue
                             val value = rawDetails.optString(key).takeIf { it.isNotBlank() && it != "null" } ?: continue
-                            put(safeKey(key), safe(value, 220))
+                            put(safeKey(key), safeDetail(key, value))
                         }
                     }
                 }
@@ -81,7 +81,7 @@ class BrowserErrorLogStore(context: Context) {
             pageTitle = pageTitle?.let { safe(it, 160) },
             details = details.entries
                 .take(MAX_DETAILS)
-                .associate { safeKey(it.key) to safe(it.value, 220) },
+                .associate { safeKey(it.key) to safeDetail(it.key, it.value) },
         )
         synchronized(lock) {
             val all = (list() + entry).sortedByDescending { it.timestampEpochMs }.take(MAX_ENTRIES)
@@ -166,6 +166,11 @@ class BrowserErrorLogStore(context: Context) {
         }
         "$scheme://$host$safePath".take(200)
     }.getOrNull()
+
+    private fun safeDetail(key: String, value: String): String =
+        if (Regex("""(?i)(cookie|authorization|token|password|passwd|secret|session|csrf|signature|jwt)""")
+                .containsMatchIn(key)
+        ) "[redacted]" else safe(value, 220)
 
     private fun normalizeSeverity(raw: String): String =
         raw.uppercase(Locale.ROOT).takeIf { it in SEVERITIES } ?: "ERROR"
