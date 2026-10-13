@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -191,7 +192,7 @@ fun BrowserRoute(
         },
         bottomBar = {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Row(
@@ -357,6 +358,18 @@ fun BrowserRoute(
                             ) {
                                 if (request.isForMainFrame) {
                                     isLoading = false
+                                    inspectMessage = when (error.errorCode) {
+                                        android.webkit.WebViewClient.ERROR_HOST_LOOKUP ->
+                                            "تعذر الوصول إلى الموقع. تحقق من اتصال الإنترنت أو إعدادات DNS."
+                                        android.webkit.WebViewClient.ERROR_CONNECT,
+                                        android.webkit.WebViewClient.ERROR_TIMEOUT ->
+                                            "انتهت مهلة الاتصال بالموقع. حاول التحديث."
+                                        android.webkit.WebViewClient.ERROR_FAILED_SSL_HANDSHAKE ->
+                                            "تعذر إنشاء اتصال آمن بالموقع."
+                                        android.webkit.WebViewClient.ERROR_UNSUPPORTED_SCHEME ->
+                                            "عنوان الموقع يستخدم بروتوكولًا غير مدعوم."
+                                        else -> "لم يتم تحميل الصفحة (رمز الخطأ " + error.errorCode + "). حاول التحديث أو فتح موقع آخر."
+                                    }
                                     recordError(
                                         "PAGE_LOAD_FAILED",
                                         "تعذر تحميل الصفحة داخل المتصفح",
