@@ -15,6 +15,7 @@ import com.ahdownload.app.MainActivity
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,6 +34,8 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
+        val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
+        browserStore.clear()
 
         composeRule.onNode(hasSetTextAction()).performTextReplacement(targetUrl)
         composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
@@ -59,6 +62,31 @@ class BrowserPageLoadRegressionTest {
             targetUrl to expectedTitle,
             finalState.get(),
         )
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any { it.type == "PAGE_RENDER_CHECK" && it.host == "example.com" }
+        }
+        val renderEvent = browserStore.list().first { it.type == "PAGE_RENDER_CHECK" && it.host == "example.com" }
+        assertEquals("CONTENT_SIGNALS_DETECTED", renderEvent.details["render_status"])
+        assertEquals("complete", renderEvent.details["ready_state"])
+        assertTrue((renderEvent.details["body_text_chars"]?.toIntOrNull() ?: 0) > 0)
+
+        composeRule.onNodeWithText("فحص الخيارات").performClick()
+        composeRule.waitUntil(timeoutMillis = 40_000) {
+            browserStore.list().any {
+                it.type == "OPTIONS_INSPECTION_COMPLETED" ||
+                    it.type == "OPTIONS_INSPECTION_FAILED" ||
+                    it.type == "OPTIONS_INSPECTION_EXCEPTION"
+            }
+        }
+        val inspectionEvent = browserStore.list().first {
+            it.type == "OPTIONS_INSPECTION_COMPLETED" ||
+                it.type == "OPTIONS_INSPECTION_FAILED" ||
+                it.type == "OPTIONS_INSPECTION_EXCEPTION"
+        }
+        assertEquals("example.com", inspectionEvent.host)
+        assertTrue(inspectionEvent.details["operation_id"]?.startsWith("browser-") == true)
+
     }
 
     @Test(timeout = 30_000)
@@ -75,6 +103,29 @@ class BrowserPageLoadRegressionTest {
             loadedUrl.get()?.startsWith("https://") == true
         }
         assertNotNull("Browser must initiate its configured home navigation on entry", loadedUrl.get())
+    }
+
+
+    @Test(timeout = 30_000)
+    fun browserErrorLogRedactsQueryStringsAndCredentialLikeValues() {
+        val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
+        browserStore.clear()
+        browserStore.record(
+            type = "REDACTION_TEST",
+            message = "Request failed with access_token=sample_secret",
+            stage = "test",
+            url = "https://example.com/path?token=sample_secret#private",
+            severity = "WARNING",
+            pageTitle = "Sample page",
+            details = mapOf("authorization" to "Bearer sample_secret", "result" to "failure"),
+        )
+        val entry = browserStore.list().first()
+        assertEquals("https://example.com/path", entry.safeUrl)
+        val export = browserStore.exportText()
+        assertTrue(export.contains("authorization=[redacted]"))
+        assertTrue(!export.contains("sample_secret"))
+        assertTrue(!export.contains("?token="))
+        browserStore.clear()
     }
 
     private fun findWebView(view: View): WebView? {
