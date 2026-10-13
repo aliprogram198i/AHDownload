@@ -13,6 +13,8 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ahdownload.app.MainActivity
 import java.util.concurrent.atomic.AtomicReference
+import org.json.JSONObject
+import org.json.JSONTokener
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -88,6 +90,14 @@ class BrowserPageLoadRegressionTest {
         assertEquals("CONTENT_SIGNALS_DETECTED", recheckEvent.details["render_status"])
         assertEquals("1400", recheckEvent.details["recheck_delay_ms"])
         assertTrue((recheckEvent.details["readable_visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
+        val recheckEvents = browserStore.list().filter {
+            it.type == "PAGE_RENDER_RECHECK" && it.host == "example.com"
+        }
+        assertTrue(
+            "Each navigation may emit at most one delayed render recheck",
+            recheckEvents.groupBy { it.details["navigation_id"] }
+                .values.all { eventsForNavigation -> eventsForNavigation.size == 1 },
+        )
 
         composeRule.onNodeWithText("فحص الخيارات").performClick()
         composeRule.waitUntil(timeoutMillis = 40_000) {
@@ -105,6 +115,69 @@ class BrowserPageLoadRegressionTest {
         assertEquals("example.com", inspectionEvent.host)
         assertTrue(inspectionEvent.details["operation_id"]?.startsWith("browser-") == true)
 
+    }
+
+    @Test(timeout = 45_000)
+    fun hitTestAcceptsTheAncestorWrappingAnImageWhenChildIsNotHitTarget() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
+
+        val targetUrl = "https://example.com/"
+        composeRule.onNode(hasSetTextAction()).performTextReplacement(targetUrl)
+        composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
+
+        val pageLoaded = AtomicReference(false)
+        composeRule.waitUntil(timeoutMillis = 30_000) {
+            composeRule.runOnUiThread {
+                val view = findWebView(composeRule.activity.window.decorView)
+                pageLoaded.set(view?.url?.startsWith("https://example.com") == true &&
+                    view?.title == "Example Domain")
+            }
+            pageLoaded.get()
+        }
+
+        val result = AtomicReference<String?>(null)
+        val script = """
+            (function() {
+              const anchor = document.createElement('a');
+              anchor.href = '#hit-test-fixture';
+              anchor.style.cssText = 'position:fixed;left:8px;top:8px;width:80px;height:60px;display:block;z-index:2147483647;pointer-events:auto;background:transparent;';
+              const image = document.createElement('img');
+              image.alt = 'hit-test-fixture';
+              image.style.cssText = 'display:block;width:80px;height:60px;pointer-events:none;background:#f00;';
+              anchor.appendChild(image);
+              document.body.appendChild(anchor);
+              const rect = image.getBoundingClientRect();
+              const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+              let legacyMatched = false;
+              for (let p = top; p; p = p.parentElement) if (p === image) legacyMatched = true;
+              let ancestorMatched = false;
+              for (let p = image; p; p = p.parentElement) if (p === top) ancestorMatched = true;
+              anchor.remove();
+              return JSON.stringify({
+                hitTargetIsWrapper: top === anchor,
+                legacyMatched: legacyMatched,
+                ancestorMatched: ancestorMatched,
+                correctedMatched: legacyMatched || ancestorMatched
+              });
+            })()
+        """.trimIndent()
+
+        composeRule.runOnUiThread {
+            findWebView(composeRule.activity.window.decorView)?.evaluateJavascript(script) { raw ->
+                val decoded = runCatching {
+                    JSONTokener(raw.orEmpty()).nextValue() as? String
+                }.getOrNull()
+                result.set(decoded)
+            }
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) { result.get() != null }
+        val snapshot = JSONObject(result.get().orEmpty())
+        assertTrue("Fixture must make the wrapper the hit target", snapshot.optBoolean("hitTargetIsWrapper"))
+        assertTrue("Legacy target-to-hit walk misses an ancestor wrapper", !snapshot.optBoolean("legacyMatched"))
+        assertTrue("Reverse ancestor walk must accept the wrapper", snapshot.optBoolean("ancestorMatched"))
+        assertTrue(snapshot.optBoolean("correctedMatched"))
     }
 
     @Test(timeout = 30_000)

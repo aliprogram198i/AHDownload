@@ -46,6 +46,36 @@ class BrowserRenderStatusClassifierTest {
     }
 
     @Test
+    fun viewportElementsRejectedByHitTestingGetDedicatedDiagnosticState() {
+        assertEquals(
+            "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH",
+            BrowserRenderStatusClassifier.classify(
+                challengeDetected = false,
+                readyState = "complete",
+                hasVisibleContentSignals = false,
+                hasAnyDomContentSignals = true,
+                hasPrimaryVisibleContent = false,
+                hasOccludedViewportContent = true,
+            ),
+        )
+    }
+
+    @Test
+    fun accessChallengeStillTakesPrecedenceOverHitTestSignals() {
+        assertEquals(
+            "POSSIBLE_ACCESS_CHALLENGE",
+            BrowserRenderStatusClassifier.classify(
+                challengeDetected = true,
+                readyState = "complete",
+                hasVisibleContentSignals = false,
+                hasAnyDomContentSignals = true,
+                hasPrimaryVisibleContent = false,
+                hasOccludedViewportContent = true,
+            ),
+        )
+    }
+
+    @Test
     fun hiddenOrOffscreenDomIsNotMisreportedAsVisibleContent() {
         assertEquals(
             "CONTENT_NOT_VISIBLE_IN_VIEWPORT",
