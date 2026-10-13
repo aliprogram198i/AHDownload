@@ -1422,7 +1422,7 @@ private fun formatBytes(value: Long): String = when {
     else -> "$value B"
 }
 
-private const val PAGE_RENDER_RECHECK_SCRIPT = """
+private val PAGE_RENDER_RECHECK_SCRIPT = """
 (function() {
   try {
     const d=document,b=d.body,e=d.documentElement;
