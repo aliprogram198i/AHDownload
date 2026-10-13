@@ -18,6 +18,16 @@ class YouTubeValidationRecoveryPolicyTest {
     }
 
     @Test
+    fun refreshesFacebookSourceOnlyAfterHttp403() {
+        assertTrue(ValidationFailure.HttpStatus(403).shouldRefreshFacebookAfterValidation())
+        assertFalse(ValidationFailure.HttpStatus(404).shouldRefreshFacebookAfterValidation())
+        assertFalse(ValidationFailure.ContentTypeMismatch.shouldRefreshFacebookAfterValidation())
+        assertFalse(ValidationFailure.InvalidUrl.shouldRefreshFacebookAfterValidation())
+        assertFalse(ValidationFailure.ProbeFailed.shouldRefreshFacebookAfterValidation())
+        assertFalse(ValidationFailure.HtmlResponse.shouldRefreshFacebookAfterValidation())
+    }
+
+    @Test
     fun doesNotRefreshForUnrelatedValidationFailures() {
         assertFalse(ValidationFailure.HttpStatus(404).shouldRefreshYouTubeAfterValidation())
         assertFalse(ValidationFailure.InvalidUrl.shouldRefreshYouTubeAfterValidation())

@@ -890,6 +890,153 @@ class HomeViewModel(
                     }
                 }
 
+
+                // Facebook CDN URLs may expire between WebView extraction and validation.
+                // Re-resolve the page once after HTTP 403, then validate only fresh sources
+                // of the same media kind; never bypass content/status validation.
+                var facebookRefreshAttempted = false
+                var facebookFallbackCandidatesChecked = 0
+                val facebookValidationFailure =
+                    (validation as? CandidateValidationResult.Invalid)?.failure
+                val facebookLink = state.result?.takeIf {
+                    it.platform == com.ahdownload.domain.model.MediaPlatform.Facebook
+                }
+                if (
+                    facebookValidationFailure?.shouldRefreshFacebookAfterValidation() == true &&
+                    facebookLink != null &&
+                    candidate.format.kind in setOf(MediaKind.Video, MediaKind.Audio)
+                ) {
+                    facebookRefreshAttempted = true
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "FACEBOOK_CANDIDATE_REFRESH_STARTED",
+                        "رُفض مصدر Facebook برمز 403؛ ستتم إعادة استخراج المصادر مرة واحدة",
+                        "download.refresh",
+                        mapOf(
+                            "candidate_id" to candidate.id,
+                            "candidate_format_id" to candidate.format.id,
+                            "operation_id" to validationOperationId,
+                            "platform" to "Facebook",
+                            "refresh_trigger" to "http_403",
+                        ),
+                        null,
+                    )
+                    when (val refreshed = resolver.resolve(facebookLink, validationOperationId)) {
+                        is ResolverResult.Success -> {
+                            val refreshedCandidates = refreshed.candidates
+                                .asSequence()
+                                .filter {
+                                    it.format.kind == candidate.format.kind &&
+                                        when (it.format.kind) {
+                                            MediaKind.Video -> it.format.hasVideo
+                                            MediaKind.Audio -> it.format.hasAudio
+                                            else -> false
+                                        }
+                                }
+                                // A re-resolution which returns the same denied URL is not recovery.
+                                .filterNot { it.sourceUrl == candidate.sourceUrl }
+                                .distinctBy { it.sourceUrl to it.format.kind }
+                                .sortedWith(
+                                    compareBy<MediaCandidate> {
+                                        it.format.container != candidate.format.container
+                                    }.thenBy {
+                                        if (candidate.format.kind == MediaKind.Video) {
+                                            kotlin.math.abs(
+                                                (it.format.height ?: 0) - (candidate.format.height ?: 0),
+                                            )
+                                        } else {
+                                            kotlin.math.abs(
+                                                (it.format.bitrateKbps ?: 0) -
+                                                    (candidate.format.bitrateKbps ?: 0),
+                                            )
+                                        }
+                                    }.thenByDescending { it.format.hasAudio }
+                                        .thenByDescending { it.format.height ?: 0 }
+                                        .thenByDescending { it.format.bitrateKbps ?: 0 },
+                                )
+                                .take(4)
+                                .toList()
+
+                            logger.log(
+                                DiagnosticLevel.INFO,
+                                "FACEBOOK_CANDIDATE_REFRESH_RESULT",
+                                "اكتملت إعادة استخراج مصادر Facebook",
+                                "download.refresh",
+                                mapOf(
+                                    "old_candidate_id" to candidate.id,
+                                    "new_candidate_count" to refreshedCandidates.size.toString(),
+                                    "operation_id" to validationOperationId,
+                                ),
+                                null,
+                            )
+
+                            for (refreshedCandidate in refreshedCandidates) {
+                                candidateToValidate = refreshedCandidate
+                                facebookFallbackCandidatesChecked++
+                                validation = resolver.validate(refreshedCandidate, validationOperationId)
+                                logger.log(
+                                    if (validation is CandidateValidationResult.Valid) {
+                                        DiagnosticLevel.INFO
+                                    } else {
+                                        DiagnosticLevel.WARNING
+                                    },
+                                    "FACEBOOK_FALLBACK_CANDIDATE_VALIDATION",
+                                    if (validation is CandidateValidationResult.Valid) {
+                                        "تم قبول مصدر Facebook البديل بعد التحقق"
+                                    } else {
+                                        "رُفض مصدر Facebook البديل بعد التحقق"
+                                    },
+                                    "download.refresh.validation",
+                                    mapOf(
+                                        "candidate_id" to refreshedCandidate.id,
+                                        "candidate_format_id" to refreshedCandidate.format.id,
+                                        "candidate_kind" to refreshedCandidate.format.kind.name,
+                                        "height" to (refreshedCandidate.format.height?.toString() ?: "unknown"),
+                                        "validation_result" to if (validation is CandidateValidationResult.Valid) {
+                                            "valid"
+                                        } else {
+                                            "invalid"
+                                        },
+                                        "operation_id" to validationOperationId,
+                                    ),
+                                    null,
+                                )
+                                if (validation is CandidateValidationResult.Valid) {
+                                    if (
+                                        !extractAudio &&
+                                        refreshedCandidate.format.kind == MediaKind.Video &&
+                                        refreshedCandidate.format.hasVideo &&
+                                        !refreshedCandidate.format.hasAudio
+                                    ) {
+                                        companionAudioCandidatesToTry = rankedCompanionAudioCandidates(
+                                            refreshed.candidates,
+                                        )
+                                    }
+                                    break
+                                }
+                                val failure =
+                                    (validation as CandidateValidationResult.Invalid).failure
+                                if (!failure.shouldRefreshFacebookAfterValidation()) break
+                            }
+                        }
+
+                        is ResolverResult.Failure -> {
+                            logger.log(
+                                DiagnosticLevel.WARNING,
+                                "FACEBOOK_CANDIDATE_REFRESH_FAILED",
+                                refreshed.message ?: refreshed.code.name,
+                                "download.refresh",
+                                mapOf(
+                                    "candidate_id" to candidate.id,
+                                    "operation_id" to validationOperationId,
+                                    "failure_code" to refreshed.code.name,
+                                ),
+                                null,
+                            )
+                        }
+                    }
+                }
+
                 when (validation) {
                     is CandidateValidationResult.Valid -> {
                         var enqueueCandidate = validation.candidate.copy(sourceUrl = validation.finalUrl)
@@ -1041,6 +1188,8 @@ class HomeViewModel(
                                 "operation_id" to validationOperationId,
                                 "youtube_refresh_attempted" to youtubeRefreshAttempted.toString(),
                                 "youtube_fallback_candidates_checked" to youtubeFallbackCandidatesChecked.toString(),
+                                "facebook_refresh_attempted" to facebookRefreshAttempted.toString(),
+                                "facebook_fallback_candidates_checked" to facebookFallbackCandidatesChecked.toString(),
                             ),
                             null,
                         )
@@ -1336,3 +1485,8 @@ internal fun ValidationFailure.shouldRefreshYouTubeAfterValidation(): Boolean = 
     ValidationFailure.ProbeFailed,
     ValidationFailure.HtmlResponse -> false
 }
+
+
+/** Facebook media URLs are refreshed only for a denied (403) source. */
+internal fun ValidationFailure.shouldRefreshFacebookAfterValidation(): Boolean =
+    this is ValidationFailure.HttpStatus && code == 403
