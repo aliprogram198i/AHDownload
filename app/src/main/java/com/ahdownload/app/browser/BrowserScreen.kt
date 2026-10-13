@@ -28,14 +28,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -49,7 +47,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -103,7 +100,6 @@ fun BrowserRoute(
     }
     var address by remember { mutableStateOf("https://www.google.com") }
     var currentUrl by remember { mutableStateOf("https://www.google.com") }
-    var pageTitle by remember { mutableStateOf("") }
     var pageProgress by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -349,7 +345,6 @@ fun BrowserRoute(
                             override fun onPageFinished(view: WebView, url: String) {
                                 currentUrl = url
                                 address = url
-                                pageTitle = view.title.orEmpty()
                                 isLoading = false
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
@@ -401,7 +396,6 @@ fun BrowserRoute(
                             }
 
                             override fun onReceivedTitle(view: WebView, title: String?) {
-                                pageTitle = title.orEmpty()
                             }
                         }
                         webView = this
