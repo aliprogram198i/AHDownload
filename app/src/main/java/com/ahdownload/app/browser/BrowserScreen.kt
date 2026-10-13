@@ -395,8 +395,6 @@ fun BrowserRoute(
                                 isLoading = newProgress < 100
                             }
 
-                            override fun onReceivedTitle(view: WebView, title: String?) {
-                            }
                         }
                         webView = this
                         if (currentUrl.isNotBlank()) loadUrl(currentUrl)
