@@ -68,10 +68,10 @@ jobs:
           emulator-boot-timeout: 600
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data"
           script: |
-            set -uo pipefail
+            set -eu
             mkdir -p browser-sites-results
             set +e
-            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest" 2>&1 | tee browser-sites-acceptance.log
+            bash -o pipefail -c 'gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest" 2>&1 | tee browser-sites-acceptance.log'
             test_exit_code=$?
             adb logcat -d -v threadtime -s AH_BROWSER_SITE_ACCEPTANCE:I AndroidRuntime:E > browser-sites-acceptance-logcat.txt 2>&1 || echo "Filtered logcat collection failed" >> browser-sites-acceptance-logcat.txt
             printf '%s\n' "$test_exit_code" > browser-sites-results/instrumentation-exit-code.txt
