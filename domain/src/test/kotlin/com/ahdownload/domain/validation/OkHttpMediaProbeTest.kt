@@ -300,7 +300,7 @@ class OkHttpMediaProbeTest {
         )
 
         assertEquals(403, result.statusCode)
-        assertEquals("A tokenless 403 with no Range must not trigger a blind retry", 1, requestCount)
+        assertEquals(1, requestCount, "A tokenless 403 with no Range must not trigger a blind retry")
     }
 
     @Test
