@@ -77,10 +77,19 @@ run_instrumented_class \
   "single-url-download.log" \
   "AH_MEDIA_MATRIX"
 download_status=$?
+
+rm -rf app/build/outputs/androidTest-results/connected app/build/reports/androidTests/connected
+
+run_instrumented_class \
+  "com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest" \
+  "Google, Shahid4u and XNXX Arabic browser rendering/menu probe" \
+  "browser-sites-acceptance.log" \
+  "AH_BROWSER_SITE_ACCEPTANCE"
+browser_sites_status=$?
 set -e
 
-printf 'Acceptance summary: https_matrix=%s requested_download=%s\n' "$https_status" "$download_status"
-if [[ "$https_status" -ne 0 || "$download_status" -ne 0 ]]; then
-  echo "Media acceptance failed; inspect both per-suite logs and instrumentation reports." >&2
+printf 'Acceptance summary: https_matrix=%s requested_download=%s browser_sites=%s\n' "$https_status" "$download_status" "$browser_sites_status"
+if [[ "$https_status" -ne 0 || "$download_status" -ne 0 || "$browser_sites_status" -ne 0 ]]; then
+  echo "Acceptance failed; inspect HTTPS media, XNXX download, and browser site probe logs." >&2
   exit 1
 fi
