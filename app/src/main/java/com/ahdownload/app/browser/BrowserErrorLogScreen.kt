@@ -127,7 +127,7 @@ fun BrowserErrorLogRoute(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                items(entries, key = { "${it.timestampEpochMs}-${it.type}-${it.stage}" }) { entry ->
+                items(entries) { entry ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
