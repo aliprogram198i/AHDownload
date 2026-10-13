@@ -6,6 +6,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -197,7 +198,6 @@ class BrowserPublicSitesAcceptanceTest {
         menuPanelCount = s.optInt("menuPanelCount", 0).coerceAtLeast(0),
         visibleMenuTriggerCount = s.optInt("visibleMenuTriggerCount", 0).coerceAtLeast(0),
         expandedControlCount = s.optInt("expandedControlCount", 0).coerceAtLeast(0),
-        visibleMediaCount = s.optInt("visibleMediaElementCount", 0).coerceAtLeast(0),
         challengeDetected = s.optBoolean("challengeDetected", false),
     )
 
@@ -292,7 +292,6 @@ class BrowserPublicSitesAcceptanceTest {
             const shown=(el,r)=>{if(!el||!r||r.width<=0||r.height<=0||!intersects(r))return false;
               const s=getComputedStyle(el);if(s.display==='none'||s.visibility==='hidden'||Number(s.opacity||1)<=0.05)return false;
               for(let p=el.parentElement;p;p=p.parentElement){const q=getComputedStyle(p);if(q.display==='none'||q.visibility==='hidden'||Number(q.opacity||1)<=0.05)return false;}return true;};
-            const hit=(el,r)=>{const l=Math.max(0,r.left),rr=Math.min(vw,r.right,t=0);};
             const unobscured=(el,r)=>{const l=Math.max(0,r.left),rr=Math.min(vw,r.right),t=Math.max(0,r.top),bb=Math.min(vh,r.bottom);
               if(rr<=l||bb<=t)return false;const top=d.elementFromPoint((l+rr)/2,(t+bb)/2);if(!top)return true;
               for(let p=top;p;p=p.parentElement)if(p===el)return true;
@@ -314,7 +313,11 @@ class BrowserPublicSitesAcceptanceTest {
               viewportImages++;if(!unobscured(img,r)){rejectedImages++;return;}visibleImages++;imageArea+=w*h;});
             const count=s=>Array.from(d.querySelectorAll(s)).filter(x=>shown(x,x.getBoundingClientRect())).length;
             const panels=count('nav,[role="navigation"],[role="menu"],[role="menubar"],[aria-expanded="true"],[class*="menu" i],[id*="menu" i],[class*="dropdown" i],[id*="dropdown" i]');
-            const toggles=count('button[aria-expanded],button[aria-controls],[role="button"][aria-expanded],[role="button"][aria-controls]');
+            const toggles=Array.from(d.querySelectorAll('button,[role="button"],[aria-expanded],[aria-controls]')).filter(x=>{
+              if(!shown(x,x.getBoundingClientRect()))return false;
+              const label=[x.getAttribute('aria-label'),x.getAttribute('title'),x.id,typeof x.className==='string'?x.className:'',x.getAttribute('data-testid')].join(' ').toLowerCase();
+              return /menu|navigation|hamburger|nav-toggle|toggle-menu|open-menu|القائمة|المنيو|التنقل/.test(label)||x.hasAttribute('aria-expanded')||x.hasAttribute('aria-controls');
+            }).length;
             const controls=s=>Array.from(d.querySelectorAll(s)).filter(x=>shown(x,x.getBoundingClientRect())&&unobscured(x,x.getBoundingClientRect())).length;
             const media=Array.from(d.querySelectorAll('video,canvas,iframe')).filter(x=>{const r=x.getBoundingClientRect();if(!shown(x,r)||r.width<32||r.height<18||!unobscured(x,r))return false;
               if(x.tagName==='VIDEO')return x.videoWidth>0&&x.videoHeight>0&&x.readyState>=2;if(x.tagName==='CANVAS')return x.width>0&&x.height>0;return true;}).length;
