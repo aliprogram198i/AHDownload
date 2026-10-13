@@ -84,9 +84,22 @@ class BrowserPageLoadRegressionTest {
             composeRule.onNode(hasSetTextAction()).performTextReplacement(targetUrl)
             composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
 
+            val observedUrl = AtomicReference<String?>(null)
+            composeRule.waitUntil(timeoutMillis = 5_000) {
+                composeRule.runOnUiThread {
+                    observedUrl.set(findWebView(composeRule.activity.window.decorView)?.url)
+                }
+                observedUrl.get() == targetUrl
+            }
+            assertEquals(
+                "The open-address action did not pass the typed URL to WebView",
+                targetUrl,
+                observedUrl.get(),
+            )
+
             assertTrue(
-                "The browser did not request the local HTTP page",
-                responseServed.await(20, TimeUnit.SECONDS),
+                "WebView accepted the URL but did not request the local HTTP page",
+                responseServed.await(10, TimeUnit.SECONDS),
             )
             assertEquals("The local endpoint should return a successful response", null, serverFailure.get())
 
