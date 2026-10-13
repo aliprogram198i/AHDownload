@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
 import org.json.JSONTokener
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -109,10 +108,11 @@ class BrowserPublicSitesAcceptanceTest {
                 "Inspect count-only SITE_ACCEPTANCE log lines.",
             provenVisibilityFailures.isEmpty(),
         )
-        assertNotNull(
-            "The browser route must remain mounted after the three target checks",
-            findWebView(composeRule.activity.window.decorView),
-        )
+        val browserStillMounted = AtomicReference(false)
+        composeRule.runOnUiThread {
+            browserStillMounted.set(findWebView(composeRule.activity.window.decorView) != null)
+        }
+        assertTrue("The browser route must remain mounted after all target checks", browserStillMounted.get())
     }
 
     private fun openBrowser() {
