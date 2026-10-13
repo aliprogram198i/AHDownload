@@ -101,7 +101,11 @@ class BrowserPublicSitesAcceptanceTest {
                 result.summary.bodyTextChars >= 80 &&
                 result.summary.visibleTextChars == 0 &&
                 result.summary.visibleImageCount == 0 &&
-                result.summary.visibleMediaCount == 0
+                result.summary.visibleMediaCount == 0 &&
+                result.summary.visibleLinkCount == 0 &&
+                result.summary.visibleButtonCount == 0 &&
+                result.summary.visibleInputCount == 0 &&
+                result.summary.visibleNavigationCount == 0
         }
         assertTrue(
             "A completed non-challenge site has substantial DOM and viewport geometry but no confirmed visible content. " +
