@@ -21,7 +21,7 @@ class SocialPlatformResolverEngine(
     private val platform: MediaPlatform,
     private val logger: DiagnosticLogger = defaultSocialDiagnosticLogger(),
     private val resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
-    private val pageClient: HttpTextClient = defaultSocialPageClient(),
+    private val pageClient: HttpTextClient = defaultSocialPageClient(logger),
     private val strategy: SocialPlatformExtractionStrategy = socialPlatformExtractionStrategy(platform),
 ) : PlatformAdapter {
 
@@ -479,11 +479,12 @@ private const val SOCIAL_PAGE_FETCH_TIMEOUT_MS = 8_000L
 internal fun defaultSocialDiagnosticLogger(): DiagnosticLogger =
     DiagnosticLogger { _, _, _, _, _, _ -> }
 
-internal fun defaultSocialPageClient(): HttpTextClient =
+internal fun defaultSocialPageClient(logger: DiagnosticLogger = defaultSocialDiagnosticLogger()): HttpTextClient =
     OkHttpTextClient(
         client = OkHttpClient.Builder()
             .callTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .connectTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .readTimeout(SOCIAL_PAGE_FETCH_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .build(),
+        logger = logger,
     )
