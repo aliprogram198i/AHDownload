@@ -1,5 +1,6 @@
 package com.ahdownload.feature.home
 
+import android.webkit.CookieManager
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaLink
@@ -152,7 +153,40 @@ class HomeResolver(
     }
 
     suspend fun validate(candidate: MediaCandidate, operationId: String? = null): CandidateValidationResult =
-        candidateValidator.validate(candidate, operationId)
+        candidateValidator.validate(
+            candidate = candidate,
+            operationId = operationId,
+            transientRequestHeaders = sessionCookieHeaderForValidation(candidate),
+        )
+
+    /**
+     * Match the downloader's same-host CookieManager behavior during validation.
+     * Cookies remain in memory and are passed only to the validation probe.
+     */
+    private fun sessionCookieHeaderForValidation(candidate: MediaCandidate): Map<String, String> {
+        val sessionHost = candidate.sessionCookieHost
+            ?.trim()
+            ?.lowercase()
+            ?.removePrefix("www.")
+            ?.trimEnd('.')
+            ?.takeIf { it.isNotBlank() && it.none { ch -> ch.isWhitespace() || ch in "/?#@" } }
+            ?: return emptyMap()
+        val sourceHost = runCatching {
+            java.net.URI(candidate.sourceUrl).host
+                ?.lowercase()
+                ?.removePrefix("www.")
+                ?.trimEnd('.')
+        }.getOrNull() ?: return emptyMap()
+
+        // Never attach a cookie obtained for one host to an unrelated media URL.
+        if (sourceHost != sessionHost && !sourceHost.endsWith(".$sessionHost")) return emptyMap()
+
+        val cookie = runCatching {
+            CookieManager.getInstance().getCookie("https://$sessionHost/")
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: return emptyMap()
+
+        return mapOf("Cookie" to cookie)
+    }
 
     private fun containerFor(kind: MediaKind, url: String): MediaContainer {
         val extension = extensionOf(url)

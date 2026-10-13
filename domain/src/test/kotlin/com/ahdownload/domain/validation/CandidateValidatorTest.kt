@@ -33,6 +33,49 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun usesTransientSessionHeadersForProbeWithoutPersistingThemOnCandidate() =
+        kotlinx.coroutines.test.runTest {
+            var observedHeaders: Map<String, String> = emptyMap()
+            val probe = object : MediaProbe {
+                override suspend fun probe(
+                    url: String,
+                    headers: Map<String, String>,
+                    operationId: String?,
+                    sourceContext: MediaSourceContext,
+                ): MediaProbeResult {
+                    observedHeaders = headers.toMap()
+                    return MediaProbeResult(
+                        statusCode = 206,
+                        contentType = "video/mp4",
+                        contentLengthBytes = 512L,
+                        finalUrl = url,
+                        method = "GET",
+                        range = "bytes=0-0",
+                    )
+                }
+            }
+            val original = candidate(MediaKind.Video).copy(
+                sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+                requestHeaders = mapOf("Referer" to "https://www.facebook.com/"),
+            )
+
+            val result = CandidateValidator(probe).validate(
+                candidate = original,
+                operationId = "op-transient-session-context",
+                transientRequestHeaders = mapOf("Cookie" to "validation_probe=ephemeral"),
+            )
+
+            val valid = assertIs<CandidateValidationResult.Valid>(result)
+            assertEquals("validation_probe=ephemeral", observedHeaders["Cookie"])
+            assertEquals("https://www.facebook.com/", observedHeaders["Referer"])
+            assertEquals(
+                false,
+                valid.candidate.requestHeaders.keys.any { it.equals("Cookie", ignoreCase = true) },
+                "Transient cookies must not be persisted in the returned media candidate",
+            )
+        }
+
+    @Test
     fun rejectsHtmlResponse() = kotlinx.coroutines.test.runTest {
         val result = CandidateValidator(
             FakeProbe(

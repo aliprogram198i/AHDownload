@@ -10,7 +10,11 @@ class CandidateValidator(
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
 ) {
 
-    suspend fun validate(candidate: MediaCandidate, operationId: String? = null): CandidateValidationResult {
+    suspend fun validate(
+        candidate: MediaCandidate,
+        operationId: String? = null,
+        transientRequestHeaders: Map<String, String> = emptyMap(),
+    ): CandidateValidationResult {
         fun reject(failure: ValidationFailure): CandidateValidationResult.Invalid {
             logger.log(
                 DiagnosticLevel.WARNING,
@@ -36,6 +40,9 @@ class CandidateValidator(
             return reject(ValidationFailure.InvalidUrl)
         }
 
+        // Session headers are used for this probe only. Keep the candidate secret-free.
+        val probeHeaders = mergeHeaders(candidate.requestHeaders, transientRequestHeaders)
+
         logger.log(
             DiagnosticLevel.INFO,
             "MEDIA_VALIDATION_STARTED",
@@ -45,8 +52,8 @@ class CandidateValidator(
                 put("candidate_id", candidate.id)
                 put("host", hostOf(url))
                 put("requested_kind", candidate.format.kind.name)
-                put("request_header_names", candidate.requestHeaders.keys.sorted().joinToString(",").ifBlank { "none" })
-                put("cookie_present", candidate.requestHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString())
+                put("request_header_names", probeHeaders.keys.sorted().joinToString(",").ifBlank { "none" })
+                put("cookie_present", probeHeaders.keys.any { it.equals("Cookie", ignoreCase = true) }.toString())
                 put("stage", "MEDIA_VALIDATION")
                 operationId?.let { put("operation_id", it) }
             },
@@ -56,7 +63,7 @@ class CandidateValidator(
         val probeResult = runCatching {
             probe.probe(
                 url = url,
-                headers = candidate.requestHeaders,
+                headers = probeHeaders,
                 operationId = operationId,
                 sourceContext = candidate.sourceContext,
             )
@@ -162,6 +169,17 @@ class CandidateValidator(
             candidate = updated,
             finalUrl = probeResult.finalUrl,
         )
+    }
+
+    private fun mergeHeaders(
+        original: Map<String, String>,
+        transient: Map<String, String>,
+    ): Map<String, String> = buildMap {
+        putAll(original)
+        transient.forEach { (name, value) ->
+            val existingName = keys.firstOrNull { it.equals(name, ignoreCase = true) }
+            if (existingName != null) put(existingName, value) else put(name, value)
+        }
     }
 
     private fun failureCode(failure: ValidationFailure): String = when (failure) {
