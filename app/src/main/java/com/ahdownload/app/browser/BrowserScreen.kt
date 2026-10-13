@@ -5,6 +5,7 @@ import android.net.Uri
 import android.view.ViewGroup
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -168,14 +170,7 @@ fun BrowserRoute(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("AHDownload Browser")
-                        Text(
-                            "تصفح واسع مع فحص الوسائط",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text("AHDownload Browser")
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -191,19 +186,20 @@ fun BrowserRoute(
         },
         bottomBar = {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = if (inspectMessage == null) Arrangement.End else Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (inspectMessage != null) {
                         Text(
-                            inspectMessage ?: if (inspecting) "جارٍ فحص مصادر الوسائط…" else "يمكن فحص الصفحة الحالية",
+                            inspectMessage.orEmpty(),
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (inspectMessage != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.error,
                             maxLines = 2,
                         )
                     }
@@ -271,10 +267,10 @@ fun BrowserRoute(
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -322,6 +318,13 @@ fun BrowserRoute(
                     WebView(viewContext).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        settings.loadsImagesAutomatically = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.setSupportZoom(true)
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        CookieManager.getInstance().setAcceptCookie(true)
+                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                         settings.allowFileAccess = false
                         settings.allowContentAccess = false
                         settings.javaScriptCanOpenWindowsAutomatically = false
@@ -357,6 +360,18 @@ fun BrowserRoute(
                             ) {
                                 if (request.isForMainFrame) {
                                     isLoading = false
+                                    inspectMessage = when (error.errorCode) {
+                                        android.webkit.WebViewClient.ERROR_HOST_LOOKUP ->
+                                            "تعذر الوصول إلى الموقع. تحقق من اتصال الإنترنت أو إعدادات DNS."
+                                        android.webkit.WebViewClient.ERROR_CONNECT,
+                                        android.webkit.WebViewClient.ERROR_TIMEOUT ->
+                                            "انتهت مهلة الاتصال بالموقع. حاول التحديث."
+                                        android.webkit.WebViewClient.ERROR_FAILED_SSL_HANDSHAKE ->
+                                            "تعذر إنشاء اتصال آمن بالموقع."
+                                        android.webkit.WebViewClient.ERROR_UNSUPPORTED_SCHEME ->
+                                            "عنوان الموقع يستخدم بروتوكولًا غير مدعوم."
+                                        else -> "لم يتم تحميل الصفحة (رمز الخطأ " + error.errorCode + "). حاول التحديث أو فتح موقع آخر."
+                                    }
                                     recordError(
                                         "PAGE_LOAD_FAILED",
                                         "تعذر تحميل الصفحة داخل المتصفح",
