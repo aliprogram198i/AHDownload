@@ -19,6 +19,9 @@ interface SocialPlatformExtractionStrategy {
     fun effectiveTimeoutMillis(configuredTimeoutMs: Long): Long = configuredTimeoutMs
     fun sessionInspectionStatus(session: BrowserMediaSession): String = "not_applicable"
 
+    /** Headers for the shared HTML-page fetch; platform strategies may override these. */
+    fun pageRequestHeaders(pageUrl: String): Map<String, String> = emptyMap()
+
     suspend fun extractAdditionalMedia(
         pageUrl: String?,
         browserMediaCount: Int,
