@@ -2,6 +2,7 @@ package com.ahdownload.domain.resolver.youtube
 
 import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.search.ContentSearchItem
+import com.ahdownload.domain.search.ContentSearchKind
 import com.ahdownload.domain.search.ContentSearchProvider
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -28,10 +29,30 @@ class YouTubeSearchProvider(
 
         val root = extractInitialData(html)
             ?: throw IllegalStateException("YouTube search payload unavailable")
+        val resultLimit = limit.coerceIn(1, 24)
 
-        val results = mutableListOf<ContentSearchItem>()
-        collectVideoRenderers(root, results, limit.coerceIn(1, 24))
-        return results.distinctBy { it.id }.take(limit.coerceIn(1, 24))
+        // Collect each kind independently so that early video results do not prevent Shorts
+        // or channel renderers farther down the page from being discovered.
+        val videos = mutableListOf<ContentSearchItem>()
+        val shorts = mutableListOf<ContentSearchItem>()
+        val channels = mutableListOf<ContentSearchItem>()
+        collectRenderers(root, "videoRenderer", videos, resultLimit, ::parseVideoRenderer)
+        collectRenderers(root, "reelItemRenderer", shorts, resultLimit, ::parseReelRenderer)
+        collectRenderers(root, "shortsLockupViewModel", shorts, resultLimit, ::parseShortsLockup)
+        collectRenderers(root, "channelRenderer", channels, resultLimit, ::parseChannelRenderer)
+
+        val interleaved = interleaveResults(
+            videos.distinctBy { it.id },
+            shorts.distinctBy { it.id },
+            channels.distinctBy { it.id },
+        )
+        // If YouTube exposes a Short through both a video renderer and a Shorts renderer,
+        // retain the Shorts identity while keeping the result's original position.
+        val shortsById = shorts.distinctBy { it.id }.associateBy { it.id }
+        return interleaved
+            .map { item -> shortsById[item.id] ?: item }
+            .distinctBy { it.id }
+            .take(resultLimit)
     }
 
     private fun extractInitialData(html: String): JsonObject? {
@@ -74,64 +95,146 @@ class YouTubeSearchProvider(
         return null
     }
 
-    private fun collectVideoRenderers(
+    private fun collectRenderers(
         value: JsonElement,
+        rendererKey: String,
         results: MutableList<ContentSearchItem>,
         limit: Int,
+        parse: (JsonObject) -> ContentSearchItem?,
     ) {
         if (results.size >= limit) return
 
         when {
             value.isJsonObject -> {
-                val jsonObject = value.asJsonObject
-                for ((key, child) in jsonObject.entrySet()) {
+                for ((key, child) in value.asJsonObject.entrySet()) {
                     if (results.size >= limit) break
-                    if (key == "videoRenderer" && child.isJsonObject) {
-                        parseRenderer(child.asJsonObject)?.let(results::add)
+                    if (key == rendererKey && child.isJsonObject) {
+                        parse(child.asJsonObject)?.let(results::add)
                     } else {
-                        collectVideoRenderers(child, results, limit)
+                        collectRenderers(child, rendererKey, results, limit, parse)
                     }
                 }
             }
             value.isJsonArray -> {
                 value.asJsonArray.forEach { child ->
                     if (results.size < limit) {
-                        collectVideoRenderers(child, results, limit)
+                        collectRenderers(child, rendererKey, results, limit, parse)
                     }
                 }
             }
         }
     }
 
-    private fun parseRenderer(renderer: JsonObject): ContentSearchItem? {
+    private fun parseVideoRenderer(renderer: JsonObject): ContentSearchItem? {
         val id = renderer.getAsJsonPrimitive("videoId")?.asString
             ?.takeIf { it.isNotBlank() }
             ?: return null
-
         val title = firstText(renderer.getAsJsonObject("title")) ?: return null
-        val thumbnailUrl = renderer
-            .getAsJsonObject("thumbnail")
-            ?.getAsJsonArray("thumbnails")
-            ?.lastOrNull()
-            ?.asJsonObject
-            ?.getAsJsonPrimitive("url")
-            ?.asString
-            ?.takeIf { it.isNotBlank() }
 
         return ContentSearchItem(
             id = id,
             title = title,
             url = "https://www.youtube.com/watch?v=$id",
-            thumbnailUrl = thumbnailUrl,
+            thumbnailUrl = thumbnailUrl(renderer),
             durationLabel = firstText(renderer.getAsJsonObject("lengthText")),
-            channelLabel = firstText(renderer.getAsJsonObject("ownerText")),
+            channelLabel = firstText(renderer.getAsJsonObject("ownerText"))
+                ?: firstText(renderer.getAsJsonObject("longBylineText")),
+            kind = ContentSearchKind.VIDEO,
         )
+    }
+
+    private fun parseReelRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("headline"))
+            ?: firstText(renderer.getAsJsonObject("title"))
+            ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/shorts/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            channelLabel = firstText(renderer.getAsJsonObject("shortBylineText"))
+                ?: firstText(renderer.getAsJsonObject("ownerText")),
+            kind = ContentSearchKind.SHORT,
+        )
+    }
+
+    private fun parseShortsLockup(renderer: JsonObject): ContentSearchItem? {
+        val commandId = renderer.getAsJsonObject("onTap")
+            ?.getAsJsonObject("innertubeCommand")
+            ?.getAsJsonObject("reelWatchEndpoint")
+            ?.getAsJsonPrimitive("videoId")
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
+        val entityId = renderer.getAsJsonPrimitive("entityId")?.asString
+        val id = commandId ?: entityId
+            ?.takeIf { it.startsWith("shorts-shelf-item-") }
+            ?.removePrefix("shorts-shelf-item-")
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(
+            renderer.getAsJsonObject("overlayMetadata")?.getAsJsonObject("primaryText"),
+        ) ?: firstText(renderer.getAsJsonObject("headline")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/shorts/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            kind = ContentSearchKind.SHORT,
+        )
+    }
+
+    private fun parseChannelRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("channelId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.getAsJsonObject("navigationEndpoint")
+                ?.getAsJsonObject("browseEndpoint")
+                ?.getAsJsonPrimitive("browseId")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("title")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/channel/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            subtitle = firstText(renderer.getAsJsonObject("subscriberCountText"))
+                ?: firstText(renderer.getAsJsonObject("videoCountText")),
+            kind = ContentSearchKind.CHANNEL,
+        )
+    }
+
+    private fun thumbnailUrl(renderer: JsonObject): String? {
+        val thumbnail = renderer.getAsJsonObject("thumbnail") ?: return null
+        val url = thumbnail.getAsJsonArray("thumbnails")?.lastOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.getAsJsonPrimitive("url")
+            ?.asString
+            ?: thumbnail.getAsJsonArray("sources")?.lastOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?.getAsJsonPrimitive("url")
+                ?.asString
+            ?: return null
+
+        return url.takeIf { it.isNotBlank() }?.let {
+            if (it.startsWith("//")) "https:$it" else it
+        }
     }
 
     private fun firstText(node: JsonObject?): String? {
         if (node == null) return null
-        node.getAsJsonPrimitive("simpleText")
-            ?.asString
+        node.getAsJsonPrimitive("simpleText")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        node.getAsJsonPrimitive("content")?.asString
             ?.takeIf { it.isNotBlank() }
             ?.let { return it }
 
@@ -146,5 +249,19 @@ class YouTubeSearchProvider(
             }
             .joinToString("")
             .takeIf { it.isNotBlank() }
+    }
+
+    private fun interleaveResults(
+        vararg groups: List<ContentSearchItem>,
+    ): List<ContentSearchItem> {
+        val output = mutableListOf<ContentSearchItem>()
+        var index = 0
+        while (groups.any { index < it.size }) {
+            groups.forEach { group ->
+                group.getOrNull(index)?.let(output::add)
+            }
+            index++
+        }
+        return output
     }
 }
