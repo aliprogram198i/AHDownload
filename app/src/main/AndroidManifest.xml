@@ -11,7 +11,7 @@
     <application
         android:name=".AHDownloadApplication"
         android:allowBackup="false"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
         android:label="AHDownload"
         android:icon="@mipmap/ic_ahdownload"
         android:roundIcon="@mipmap/ic_ahdownload"
