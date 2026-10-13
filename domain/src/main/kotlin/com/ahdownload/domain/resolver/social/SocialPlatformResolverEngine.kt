@@ -152,7 +152,7 @@ class SocialPlatformResolverEngine(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
-                        val httpStatus = Regex("""(?i)\\bHTTP\\s+(\\d{3})\\b""")
+                        val httpStatus = Regex("""(?i)\bHTTP\s+(\d{3})\b""")
                             .find(error.message.orEmpty())?.groupValues?.getOrNull(1)
                         logger.log(
                             DiagnosticLevel.WARNING,
