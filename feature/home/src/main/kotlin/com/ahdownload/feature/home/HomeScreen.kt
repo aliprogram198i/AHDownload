@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
@@ -136,7 +137,8 @@ fun HomeRoute(
     initialMode: HomeMode = HomeMode.Link,
     onNavigateHome: () -> Unit = {},
     onOpenYouTubeSearch: () -> Unit = {},
-) {
+    onOpenBrowser: () -> Unit = {},
+)
     val context = LocalContext.current
     val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
     val favoriteScope = rememberCoroutineScope()
@@ -193,6 +195,7 @@ fun HomeRoute(
         onOpenDownloads = onOpenDownloads,
         onNavigateHome = onNavigateHome,
         onOpenYouTubeSearch = onOpenYouTubeSearch,
+        onOpenBrowser = onOpenBrowser,
         uiTraceLogger = uiTraceLogger,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
@@ -247,6 +250,7 @@ private fun HomeScreen(
     onOpenDownloads: () -> Unit,
     onNavigateHome: () -> Unit,
     onOpenYouTubeSearch: () -> Unit,
+    onOpenBrowser: () -> Unit,
     uiTraceLogger: UiTraceLogger,
     activeDownloads: Int = 0,
     favoriteItems: List<FavoriteItem> = emptyList(),
@@ -520,6 +524,18 @@ private fun HomeScreen(
                     }
                 },
                 actions = {
+                    DiagnosticIconButton(
+                        trackingScreen = "HOME",
+                        trackingId = "HOME.browser_button",
+                        trackingLabel = "فتح المتصفح الذكي",
+                        disabledReason = "لا يوجد",
+                        onClick = {
+                            uiTraceLogger.interaction("HOME", "browser_button", "open_browser")
+                            onOpenBrowser()
+                        },
+                    ) {
+                        Icon(Icons.Rounded.Public, contentDescription = "المتصفح الذكي")
+                    }
                     DiagnosticIconButton(
                         trackingScreen = "HOME",
                         trackingId = "HOME.iconbutton.02",
