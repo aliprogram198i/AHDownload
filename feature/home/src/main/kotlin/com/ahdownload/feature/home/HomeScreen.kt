@@ -138,7 +138,7 @@ fun HomeRoute(
     onNavigateHome: () -> Unit = {},
     onOpenYouTubeSearch: () -> Unit = {},
     onOpenBrowser: () -> Unit = {},
-)
+) {
     val context = LocalContext.current
     val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
     val favoriteScope = rememberCoroutineScope()
