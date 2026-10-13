@@ -128,6 +128,7 @@ fun BrowserRoute(
     var consoleErrorCount by remember { mutableStateOf(0) }
     var lastPageFinishedEventKey by remember { mutableStateOf("") }
     var lastRenderSnapshotFingerprint by remember { mutableStateOf("") }
+    var lastRenderRecheckScheduledNavigationId by remember { mutableStateOf("") }
     var lastVisualStateReadyNavigationId by remember { mutableStateOf("") }
     var showResults by remember { mutableStateOf(false) }
     var selectedAudioCandidateId by remember { mutableStateOf<String?>(null) }
@@ -644,16 +645,25 @@ fun BrowserRoute(
                                           const x=(left+right)/2, y=(topEdge+bottomEdge)/2;
                                           const top=d.elementFromPoint(x,y);
                                           if(!top) return true;
+                                          // The hit target may be the actual element, a descendant, or an
+                                          // ancestor such as an <a> wrapping an image with pointer-events:none.
                                           for(let p=top;p;p=p.parentElement) if(p===element) return true;
+                                          for(let p=element;p;p=p.parentElement) if(p===top) return true;
                                           return false;
                                         };
                                         let visibleImageCount=0, visibleImageArea=0, visibleLargeImageCount=0;
+                                        let viewportIntersectingImageCount=0, hitTestRejectedImageCount=0;
                                         [...d.images].forEach(i=>{
                                           const r=i.getBoundingClientRect();
                                           if(!i.complete||i.naturalWidth<=0||!hasVisibleStyle(i,r)) return;
                                           const width=Math.max(0,Math.min(viewportWidth,r.right)-Math.max(0,r.left));
                                           const height=Math.max(0,Math.min(viewportHeight,r.bottom)-Math.max(0,r.top));
-                                          if(width<=0||height<=0||!unobscuredAt(i,r)) return;
+                                          if(width<=0||height<=0) return;
+                                          viewportIntersectingImageCount++;
+                                          if(!unobscuredAt(i,r)) {
+                                            hitTestRejectedImageCount++;
+                                            return;
+                                          }
                                           visibleImageCount++;
                                           visibleImageArea+=width*height;
                                           if(width>=48&&height>=36) visibleLargeImageCount++;
@@ -661,6 +671,7 @@ fun BrowserRoute(
                                         const visibleImageAreaRatio=viewportWidth>0&&viewportHeight>0
                                           ? Math.min(1,visibleImageArea/(viewportWidth*viewportHeight)) : 0;
                                         let visibleTextChars=0, readableVisibleTextChars=0, scannedTextNodes=0;
+                                        let viewportIntersectingTextNodeCount=0, hitTestRejectedTextNodeCount=0;
                                         if(b){
                                           const walker=d.createTreeWalker(b,NodeFilter.SHOW_TEXT);
                                           let node;
@@ -674,11 +685,16 @@ fun BrowserRoute(
                                             if(!hasVisibleStyle(parent,parentRect)) continue;
                                             const range=d.createRange();
                                             range.selectNodeContents(node);
-                                            const visibleText=Array.from(range.getClientRects()).some(r=>intersectsViewport(r)&&unobscuredAt(parent,r));
-                                            if(visibleText){
-                                              visibleTextChars=Math.min(10000,visibleTextChars+value.length);
-                                              if(hasReadableContrast(parent)) readableVisibleTextChars=Math.min(10000,readableVisibleTextChars+value.length);
+                                            const viewportRects=Array.from(range.getClientRects()).filter(r=>intersectsViewport(r));
+                                            if(viewportRects.length===0) continue;
+                                            viewportIntersectingTextNodeCount++;
+                                            const visibleText=viewportRects.some(r=>unobscuredAt(parent,r));
+                                            if(!visibleText) {
+                                              hitTestRejectedTextNodeCount++;
+                                              continue;
                                             }
+                                            visibleTextChars=Math.min(10000,visibleTextChars+value.length);
+                                            if(hasReadableContrast(parent)) readableVisibleTextChars=Math.min(10000,readableVisibleTextChars+value.length);
                                           }
                                         }
                                         const visibleMediaElementCount=[...d.querySelectorAll('video,canvas,iframe')].filter(i=>{
@@ -713,8 +729,12 @@ fun BrowserRoute(
                                           iframeCount:d.querySelectorAll('iframe').length,
                                           imageCount:d.images.length,
                                           visibleImageCount:visibleImageCount,
+                                          viewportIntersectingImageCount:viewportIntersectingImageCount,
+                                          hitTestRejectedImageCount:hitTestRejectedImageCount,
                                           visibleImageAreaRatio:visibleImageAreaRatio,
                                           visibleLargeImageCount:visibleLargeImageCount,
+                                          visibleTextNodeCount:viewportIntersectingTextNodeCount,
+                                          hitTestRejectedTextNodeCount:hitTestRejectedTextNodeCount,
                                           readableVisibleTextChars:readableVisibleTextChars,
                                           visibleContentElementCount:visibleContentElements,
                                           backgroundColor:b?getComputedStyle(b).backgroundColor:'unknown',
@@ -754,9 +774,13 @@ fun BrowserRoute(
                                     val audioCount = snapshot.optInt("audioCount", 0).coerceAtLeast(0)
                                     val imageCount = snapshot.optInt("imageCount", 0).coerceAtLeast(0)
                                     val visibleImageCount = snapshot.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                    val viewportIntersectingImageCount = snapshot.optInt("viewportIntersectingImageCount", 0).coerceAtLeast(0)
+                                    val hitTestRejectedImageCount = snapshot.optInt("hitTestRejectedImageCount", 0).coerceAtLeast(0)
                                     val visibleImageAreaRatio = snapshot.optDouble("visibleImageAreaRatio", 0.0).coerceIn(0.0, 1.0)
                                     val visibleLargeImageCount = snapshot.optInt("visibleLargeImageCount", 0).coerceAtLeast(0)
                                     val visibleTextChars = snapshot.optInt("visibleTextChars", 0).coerceAtLeast(0)
+                                    val viewportIntersectingTextNodeCount = snapshot.optInt("visibleTextNodeCount", 0).coerceAtLeast(0)
+                                    val hitTestRejectedTextNodeCount = snapshot.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
                                     val readableVisibleTextChars = snapshot.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                     val visibleMediaElementCount = snapshot.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
                                     val visibleContentElementCount = snapshot.optInt("visibleContentElementCount", 0).coerceAtLeast(0)
@@ -766,6 +790,11 @@ fun BrowserRoute(
                                         visibleImageCount > 0 || visibleMediaElementCount > 0
                                     val hasPrimaryVisibleContent = readableVisibleTextChars >= 12 ||
                                         visibleImageAreaRatio >= 0.025 || visibleMediaElementCount > 0
+                                    val hasHitTestRejectedContent = (
+                                        viewportIntersectingTextNodeCount > 0 && hitTestRejectedTextNodeCount == viewportIntersectingTextNodeCount
+                                    ) || (
+                                        viewportIntersectingImageCount > 0 && hitTestRejectedImageCount == viewportIntersectingImageCount
+                                    )
                                     val hasAnyDomContentSignals = bodyTextChars >= 12 ||
                                         videoCount > 0 || audioCount > 0 || imageCount > 0 || bodyChildCount > 0
                                     pageRenderStatus = BrowserRenderStatusClassifier.classify(
@@ -774,11 +803,13 @@ fun BrowserRoute(
                                         hasVisibleContentSignals = hasVisibleContentSignals,
                                         hasAnyDomContentSignals = hasAnyDomContentSignals,
                                         hasPrimaryVisibleContent = hasPrimaryVisibleContent,
+                                        hasOccludedViewportContent = hasHitTestRejectedContent,
                                     )
                                     val renderMessage = when (pageRenderStatus) {
                                         "POSSIBLE_ACCESS_CHALLENGE" -> "اكتمل التحميل تقنيًا، لكن ظهرت مؤشرات تحقق أو حظر محتملة"
                                         "CONTENT_SIGNALS_DETECTED" -> "اكتمل التحميل وتأكد وجود نص مقروء أو محتوى أساسي ظاهر داخل نافذة العرض"
                                         "CONTENT_VISIBILITY_UNCONFIRMED" -> "اكتُشفت إشارات سطحية، لكن لم يتأكد ظهور المحتوى الأساسي"
+                                        "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH" -> "عُثر على عناصر داخل نافذة العرض لكن اختبار الطبقة العلوية لم يؤكد ظهورها؛ قد توجد طبقة تغطي المحتوى أو اختلاف في hit-test"
                                         "CONTENT_NOT_VISIBLE_IN_VIEWPORT" -> "اكتمل المستند، لكن لم يتأكد ظهور محتوى داخل نافذة العرض؛ قد يكون المحتوى مخفيًا أو خارجها"
                                         "POSSIBLY_EMPTY_PAGE" -> "اكتمل التحميل لكن لم تُرصد مؤشرات محتوى كافية؛ قد تكون الصفحة فارغة أو محجوبة"
                                         else -> "لم تصل مؤشرات DOM إلى حالة جاهزة"
@@ -808,9 +839,13 @@ fun BrowserRoute(
                                                 "audio_count" to audioCount.toString(),
                                                 "image_count" to imageCount.toString(),
                                                 "visible_image_count" to visibleImageCount.toString(),
+                                                "viewport_intersecting_image_count" to viewportIntersectingImageCount.toString(),
+                                                "hit_test_rejected_image_count" to hitTestRejectedImageCount.toString(),
                                                 "visible_large_image_count" to visibleLargeImageCount.toString(),
                                                 "visible_image_area_ratio" to "%.4f".format(java.util.Locale.ROOT, visibleImageAreaRatio),
                                                 "visible_text_chars" to visibleTextChars.toString(),
+                                                "viewport_intersecting_text_node_count" to viewportIntersectingTextNodeCount.toString(),
+                                                "hit_test_rejected_text_node_count" to hitTestRejectedTextNodeCount.toString(),
                                                 "readable_visible_text_chars" to readableVisibleTextChars.toString(),
                                                 "visible_media_element_count" to visibleMediaElementCount.toString(),
                                                 "visible_content_element_count" to visibleContentElementCount.toString(),
