@@ -4,6 +4,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -17,7 +18,6 @@ import java.net.ServerSocket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,7 +43,7 @@ class BrowserPageLoadRegressionTest {
                         InputStreamReader(socket.getInputStream(), StandardCharsets.US_ASCII),
                     ).use { reader ->
                         var line = reader.readLine()
-                        while (!line.isNullOrEmpty()) line = reader.readLine()
+                        while (line != null && line.isNotEmpty()) line = reader.readLine()
                     }
                     val headers = (
                         "HTTP/1.1 200 OK\\r\\n" +
@@ -71,11 +71,10 @@ class BrowserPageLoadRegressionTest {
         try {
             composeRule.onNodeWithText("ابدأ الآن").performClick()
             composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
-            composeRule.onNodeWithText("عنوان الموقع").performClick()
-            composeRule.onNodeWithText("عنوان الموقع").performTextReplacement(
+            composeRule.onNode(hasSetTextAction()).performTextReplacement(
                 "http://127.0.0.1:${server.localPort}/page",
             )
-            composeRule.onNodeWithText("عنوان الموقع").performImeAction()
+            composeRule.onNode(hasSetTextAction()).performImeAction()
 
             composeRule.waitUntil(timeoutMillis = 25_000) {
                 val observedTitle = AtomicReference<String?>(null)
