@@ -613,11 +613,52 @@ fun BrowserRoute(
                                           }
                                           return true;
                                         };
-                                        const visibleImages=[...d.images].filter(i=>{
+                                        const parseRgb = value => {
+                                          const m=String(value||'').match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+                                          if(!m) return null;
+                                          return {r:Number(m[1]),g:Number(m[2]),b:Number(m[3]),a:m[4]===undefined?1:Number(m[4])};
+                                        };
+                                        const luminance = color => {
+                                          const channel=v=>{v=v/255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+                                          return 0.2126*channel(color.r)+0.7152*channel(color.g)+0.0722*channel(color.b);
+                                        };
+                                        const hasReadableContrast = element => {
+                                          const foreground=parseRgb(getComputedStyle(element).color);
+                                          if(!foreground || foreground.a<=0.05) return false;
+                                          if(foreground.a<0.98) return true;
+                                          let background=null;
+                                          for(let p=element;p;p=p.parentElement){
+                                            const style=getComputedStyle(p);
+                                            if(style.backgroundImage&&style.backgroundImage!=='none') return true;
+                                            const candidate=parseRgb(style.backgroundColor);
+                                            if(candidate&&candidate.a>=0.95){background=candidate;break;}
+                                          }
+                                          if(!background) background={r:255,g:255,b:255,a:1};
+                                          const a=luminance(foreground), z=luminance(background);
+                                          return (Math.max(a,z)+0.05)/(Math.min(a,z)+0.05)>=1.4;
+                                        };
+                                        const unobscuredAt = (element,rect) => {
+                                          const x=Math.max(0,Math.min(viewportWidth-1,(rect.left+rect.right)/2));
+                                          const y=Math.max(0,Math.min(viewportHeight-1,(rect.top+rect.bottom)/2));
+                                          const top=d.elementFromPoint(x,y);
+                                          if(!top) return true;
+                                          for(let p=top;p;p=p.parentElement) if(p===element) return true;
+                                          return false;
+                                        };
+                                        let visibleImageCount=0, visibleImageArea=0, visibleLargeImageCount=0;
+                                        [...d.images].forEach(i=>{
                                           const r=i.getBoundingClientRect();
-                                          return i.complete&&i.naturalWidth>0&&hasVisibleStyle(i,r);
-                                        }).length;
-                                        let visibleTextChars=0, scannedTextNodes=0;
+                                          if(!i.complete||i.naturalWidth<=0||!hasVisibleStyle(i,r)) return;
+                                          const width=Math.max(0,Math.min(viewportWidth,r.right)-Math.max(0,r.left));
+                                          const height=Math.max(0,Math.min(viewportHeight,r.bottom)-Math.max(0,r.top));
+                                          if(width<=0||height<=0||!unobscuredAt(i,r)) return;
+                                          visibleImageCount++;
+                                          visibleImageArea+=width*height;
+                                          if(width>=48&&height>=36) visibleLargeImageCount++;
+                                        });
+                                        const visibleImageAreaRatio=viewportWidth>0&&viewportHeight>0
+                                          ? Math.min(1,visibleImageArea/(viewportWidth*viewportHeight)) : 0;
+                                        let visibleTextChars=0, readableVisibleTextChars=0, scannedTextNodes=0;
                                         if(b){
                                           const walker=d.createTreeWalker(b,NodeFilter.SHOW_TEXT);
                                           let node;
@@ -631,8 +672,11 @@ fun BrowserRoute(
                                             if(!hasVisibleStyle(parent,parentRect)) continue;
                                             const range=d.createRange();
                                             range.selectNodeContents(node);
-                                            const visibleText=Array.from(range.getClientRects()).some(r=>intersectsViewport(r));
-                                            if(visibleText) visibleTextChars=Math.min(10000,visibleTextChars+value.length);
+                                            const visibleText=Array.from(range.getClientRects()).some(r=>intersectsViewport(r)&&unobscuredAt(parent,r));
+                                            if(visibleText){
+                                              visibleTextChars=Math.min(10000,visibleTextChars+value.length);
+                                              if(hasReadableContrast(parent)) readableVisibleTextChars=Math.min(10000,readableVisibleTextChars+value.length);
+                                            }
                                           }
                                         }
                                         const visibleMediaElementCount=[...d.querySelectorAll('video,canvas,iframe')].filter(i=>{
@@ -647,7 +691,7 @@ fun BrowserRoute(
                                           if(!hasVisibleStyle(i,r)) return false;
                                           if(['VIDEO','CANVAS','IFRAME'].includes(i.tagName)) return visibleMediaElementCount>0;
                                           if(i.tagName==='AUDIO') return false;
-                                          return visibleTextChars>=12;
+                                          return readableVisibleTextChars>=12;
                                         }).length;
                                         const challenge=/verify you are human|checking your browser|just a moment|access denied|captcha|unusual traffic|confirm you are not a robot|enable javascript and cookies/i
                                           .test((title+' '+text.slice(0,5000)).toLowerCase());
@@ -666,7 +710,10 @@ fun BrowserRoute(
                                           audioCount:d.querySelectorAll('audio').length,
                                           iframeCount:d.querySelectorAll('iframe').length,
                                           imageCount:d.images.length,
-                                          visibleImageCount:visibleImages,
+                                          visibleImageCount:visibleImageCount,
+                                          visibleImageAreaRatio:visibleImageAreaRatio,
+                                          visibleLargeImageCount:visibleLargeImageCount,
+                                          readableVisibleTextChars:readableVisibleTextChars,
                                           visibleContentElementCount:visibleContentElements,
                                           backgroundColor:b?getComputedStyle(b).backgroundColor:'unknown',
                                           challengeDetected:challenge
@@ -705,13 +752,18 @@ fun BrowserRoute(
                                     val audioCount = snapshot.optInt("audioCount", 0).coerceAtLeast(0)
                                     val imageCount = snapshot.optInt("imageCount", 0).coerceAtLeast(0)
                                     val visibleImageCount = snapshot.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                    val visibleImageAreaRatio = snapshot.optDouble("visibleImageAreaRatio", 0.0).coerceIn(0.0, 1.0)
+                                    val visibleLargeImageCount = snapshot.optInt("visibleLargeImageCount", 0).coerceAtLeast(0)
                                     val visibleTextChars = snapshot.optInt("visibleTextChars", 0).coerceAtLeast(0)
+                                    val readableVisibleTextChars = snapshot.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                     val visibleMediaElementCount = snapshot.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
                                     val visibleContentElementCount = snapshot.optInt("visibleContentElementCount", 0).coerceAtLeast(0)
                                     val iframeCount = snapshot.optInt("iframeCount", 0).coerceAtLeast(0)
                                     val challengeDetected = snapshot.optBoolean("challengeDetected", false)
                                     val hasVisibleContentSignals = visibleTextChars >= 12 ||
                                         visibleImageCount > 0 || visibleMediaElementCount > 0
+                                    val hasPrimaryVisibleContent = readableVisibleTextChars >= 12 ||
+                                        visibleImageAreaRatio >= 0.025 || visibleMediaElementCount > 0
                                     val hasAnyDomContentSignals = bodyTextChars >= 12 ||
                                         videoCount > 0 || audioCount > 0 || imageCount > 0 || bodyChildCount > 0
                                     pageRenderStatus = BrowserRenderStatusClassifier.classify(
@@ -719,10 +771,12 @@ fun BrowserRoute(
                                         readyState = readyState,
                                         hasVisibleContentSignals = hasVisibleContentSignals,
                                         hasAnyDomContentSignals = hasAnyDomContentSignals,
+                                        hasPrimaryVisibleContent = hasPrimaryVisibleContent,
                                     )
                                     val renderMessage = when (pageRenderStatus) {
                                         "POSSIBLE_ACCESS_CHALLENGE" -> "اكتمل التحميل تقنيًا، لكن ظهرت مؤشرات تحقق أو حظر محتملة"
-                                        "CONTENT_SIGNALS_DETECTED" -> "اكتمل التحميل ورُصد نص أو محتوى مرئي داخل نافذة العرض؛ هذا مؤشر أولي وليس تأكيدًا لصحة العرض بالكامل"
+                                        "CONTENT_SIGNALS_DETECTED" -> "اكتمل التحميل وتأكد وجود نص مقروء أو محتوى أساسي ظاهر داخل نافذة العرض"
+                                        "CONTENT_VISIBILITY_UNCONFIRMED" -> "اكتُشفت إشارات سطحية، لكن لم يتأكد ظهور المحتوى الأساسي"
                                         "CONTENT_NOT_VISIBLE_IN_VIEWPORT" -> "اكتمل المستند، لكن لم يتأكد ظهور محتوى داخل نافذة العرض؛ قد يكون المحتوى مخفيًا أو خارجها"
                                         "POSSIBLY_EMPTY_PAGE" -> "اكتمل التحميل لكن لم تُرصد مؤشرات محتوى كافية؛ قد تكون الصفحة فارغة أو محجوبة"
                                         else -> "لم تصل مؤشرات DOM إلى حالة جاهزة"
@@ -752,7 +806,10 @@ fun BrowserRoute(
                                                 "audio_count" to audioCount.toString(),
                                                 "image_count" to imageCount.toString(),
                                                 "visible_image_count" to visibleImageCount.toString(),
+                                                "visible_large_image_count" to visibleLargeImageCount.toString(),
+                                                "visible_image_area_ratio" to "%.4f".format(java.util.Locale.ROOT, visibleImageAreaRatio),
                                                 "visible_text_chars" to visibleTextChars.toString(),
+                                                "readable_visible_text_chars" to readableVisibleTextChars.toString(),
                                                 "visible_media_element_count" to visibleMediaElementCount.toString(),
                                                 "visible_content_element_count" to visibleContentElementCount.toString(),
                                                 "has_visible_content_signals" to hasVisibleContentSignals.toString(),
@@ -762,7 +819,7 @@ fun BrowserRoute(
                                                     "visible_media".takeIf { visibleMediaElementCount > 0 },
                                                 ).joinToString(",").ifBlank { "none" },
                                                 "visible_content_element_scope" to "visible_semantic_containers_and_renderable_media_only",
-                                                "content_visibility_basis" to "viewport_intersection_visible_style",
+                                                "content_visibility_basis" to "viewport_intersection_visible_style_contrast_and_hit_test",
                                                 "iframe_count" to iframeCount.toString(),
                                                 "background_color" to snapshot.optString("backgroundColor", "unknown"),
                                                 "challenge_detected" to challengeDetected.toString(),
@@ -819,6 +876,8 @@ fun BrowserRoute(
                                     inspectMessage = when (pageRenderStatus) {
                                         "POSSIBLE_ACCESS_CHALLENGE" ->
                                             "قد يعرض الموقع صفحة تحقق أو حظر. أكمل أي تحقق يدويًا داخل الصفحة ثم أعد الفحص."
+                                        "CONTENT_VISIBILITY_UNCONFIRMED" ->
+                                            "اكتُشفت إشارات للصفحة، لكن لم يتأكد ظهور محتواها الأساسي. سيعيد المتصفح فحصها بعد استقرار العرض."
                                         "CONTENT_NOT_VISIBLE_IN_VIEWPORT" ->
                                             "لم يتأكد وجود محتوى مرئي داخل نافذة العرض. راجع أبعاد WebView ومؤشرات سجل أحداث المتصفح."
                                         "POSSIBLY_EMPTY_PAGE" ->
