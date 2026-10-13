@@ -733,7 +733,7 @@ fun BrowserRoute(
                                           hitTestRejectedImageCount:hitTestRejectedImageCount,
                                           visibleImageAreaRatio:visibleImageAreaRatio,
                                           visibleLargeImageCount:visibleLargeImageCount,
-                                          visibleTextNodeCount:viewportIntersectingTextNodeCount,
+                                          viewportIntersectingTextNodeCount:viewportIntersectingTextNodeCount,
                                           hitTestRejectedTextNodeCount:hitTestRejectedTextNodeCount,
                                           readableVisibleTextChars:readableVisibleTextChars,
                                           visibleContentElementCount:visibleContentElements,
@@ -779,7 +779,7 @@ fun BrowserRoute(
                                     val visibleImageAreaRatio = snapshot.optDouble("visibleImageAreaRatio", 0.0).coerceIn(0.0, 1.0)
                                     val visibleLargeImageCount = snapshot.optInt("visibleLargeImageCount", 0).coerceAtLeast(0)
                                     val visibleTextChars = snapshot.optInt("visibleTextChars", 0).coerceAtLeast(0)
-                                    val viewportIntersectingTextNodeCount = snapshot.optInt("visibleTextNodeCount", 0).coerceAtLeast(0)
+                                    val viewportIntersectingTextNodeCount = snapshot.optInt("viewportIntersectingTextNodeCount", 0).coerceAtLeast(0)
                                     val hitTestRejectedTextNodeCount = snapshot.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
                                     val readableVisibleTextChars = snapshot.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                     val visibleMediaElementCount = snapshot.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
