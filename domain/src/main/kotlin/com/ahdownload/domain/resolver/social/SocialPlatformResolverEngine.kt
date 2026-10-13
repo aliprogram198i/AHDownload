@@ -82,7 +82,7 @@ class SocialPlatformResolverEngine(
                     null,
                 )
 
-                // The final WebView URL may be a redirect to Instagram's login page or a
+                // The final WebView URL may be a redirect to a platform login page or a
                 // custom-scheme handoff. Start with the user's HTTP(S) request URL instead:
                 // OkHttp follows ordinary redirects itself, while this avoids extracting from
                 // a login page that replaced the original public post in the WebView.
@@ -125,8 +125,17 @@ class SocialPlatformResolverEngine(
                         null,
                     )
                     try {
-                        fallback = pageClient.get(pageUrl)
-                            .let { WebPageMediaParser.parse(it, pageUrl) }
+                        fallback = pageClient.get(
+                            pageUrl,
+                            strategy.pageRequestHeaders(pageUrl),
+                            mapOf(
+                                "platform" to platform.name,
+                                "operation_id" to (request.operationId ?: "none"),
+                                "stage" to "RESOLUTION",
+                                "diagnostic_operation" to "social.resolve.page_fetch",
+                                "request_role" to "primary_page_html",
+                            ),
+                        ).let { WebPageMediaParser.parse(it, pageUrl) }
                         logger.log(
                             DiagnosticLevel.INFO,
                             "SOCIAL_PAGE_FETCH_RESULT",
@@ -143,17 +152,20 @@ class SocialPlatformResolverEngine(
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Throwable) {
+                        val httpStatus = Regex("""(?i)\\bHTTP\\s+(\\d{3})\\b""")
+                            .find(error.message.orEmpty())?.groupValues?.getOrNull(1)
                         logger.log(
                             DiagnosticLevel.WARNING,
                             "SOCIAL_PAGE_FETCH_FAILED",
                             error.message ?: error::class.simpleName.orEmpty(),
                             "social.resolve.page_fetch",
-                            mapOf(
-                                "platform" to platform.name,
-                                "operation_id" to (request.operationId ?: "none"),
-                                "page_url_source" to pageUrlSource,
-                                "exception_type" to error::class.java.simpleName,
-                            ),
+                            buildMap {
+                                put("platform", platform.name)
+                                put("operation_id", request.operationId ?: "none")
+                                put("page_url_source", pageUrlSource)
+                                put("exception_type", error::class.java.simpleName)
+                                httpStatus?.let { put("http_status", it) }
+                            },
                             error,
                         )
                     }
