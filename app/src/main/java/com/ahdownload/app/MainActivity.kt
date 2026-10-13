@@ -480,6 +480,7 @@ private fun AHRoot(
             onOpenYouTubeSearch = {
                 if (backStack.lastOrNull() != RootDestination.YouTubeSearch) root(RootDestination.YouTubeSearch)
             },
+            onOpenBrowser = { push(RootDestination.Browser) },
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
