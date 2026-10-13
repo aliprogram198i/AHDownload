@@ -85,6 +85,9 @@ class BrowserPublicSitesAcceptanceTest {
                 menuPanelsBefore = menuAttempt.optInt("menuPanelCountBefore", firstSummary.menuPanelCount),
                 menuPanelsAfter = summary.menuPanelCount,
                 menuToggleAttempted = menuAttempt.optBoolean("attempted", false),
+                menuOpened = menuAttempt.optBoolean("attempted", false) &&
+                    (summary.menuPanelCount > menuAttempt.optInt("menuPanelCountBefore", firstSummary.menuPanelCount) ||
+                        summary.expandedControlCount > menuAttempt.optInt("expandedControlCountBefore", firstSummary.expandedControlCount)),
                 expandedBefore = menuAttempt.optInt("expandedControlCountBefore", firstSummary.expandedControlCount),
                 expandedAfter = summary.expandedControlCount,
                 renderEventStatus = renderEvent?.details?.get("render_status").orEmpty(),
@@ -266,6 +269,7 @@ class BrowserPublicSitesAcceptanceTest {
         val menuPanelsBefore: Int,
         val menuPanelsAfter: Int,
         val menuToggleAttempted: Boolean,
+        val menuOpened: Boolean,
         val expandedBefore: Int,
         val expandedAfter: Int,
         val renderEventStatus: String,
@@ -281,7 +285,7 @@ class BrowserPublicSitesAcceptanceTest {
                 "viewport_text_nodes=${summary.viewportIntersectingTextNodes}|rejected_text_nodes=${summary.hitTestRejectedTextNodes}|" +
                 "links=${summary.visibleLinkCount}|buttons=${summary.visibleButtonCount}|inputs=${summary.visibleInputCount}|" +
                 "nav_regions=${summary.visibleNavigationCount}|menu_panels_before=$menuPanelsBefore|menu_panels_after=$menuPanelsAfter|" +
-                "menu_toggle_candidates=${summary.visibleMenuTriggerCount}|menu_toggle_attempted=$menuToggleAttempted|" +
+                "menu_toggle_candidates=${summary.visibleMenuTriggerCount}|menu_toggle_attempted=$menuToggleAttempted|menu_opened=$menuOpened|" +
                 "expanded_before=$expandedBefore|expanded_after=$expandedAfter|media=${summary.visibleMediaCount}|" +
                 "challenge=${summary.challengeDetected}|render_event=${renderEventStatus.ifBlank { "unknown" }}|elapsed_ms=$elapsedMs"
     }
@@ -351,9 +355,17 @@ class BrowserPublicSitesAcceptanceTest {
             const expanded=()=>d.querySelectorAll('[aria-expanded="true"]').length;
             const candidates=Array.from(d.querySelectorAll('button,[role="button"],[aria-expanded],[aria-controls]')).filter(shown).map(el=>{
               const s=[el.getAttribute('aria-label'),el.getAttribute('title'),el.id,typeof el.className==='string'?el.className:'',el.getAttribute('data-testid')].join(' ').toLowerCase();
-              let score=/menu|navigation|hamburger|nav-toggle|toggle-menu|open-menu|القائمة|المنيو|التنقل/.test(s)?5:0;
-              if(el.hasAttribute('aria-controls'))score+=3;if(el.hasAttribute('aria-expanded'))score+=4;if(/close|dismiss|cookie|consent|advert/.test(s))score-=8;return {el,score};})
-              .filter(x=>x.score>=5).sort((a,b)=>b.score-a.score);
+              const controlId=(el.getAttribute('aria-controls')||'').trim();
+              const controlled=controlId?d.getElementById(controlId):null;
+              const targetLabel=controlled?[controlled.id,typeof controlled.className==='string'?controlled.className:'',controlled.getAttribute('role')||'',controlled.tagName].join(' ').toLowerCase():'';
+              const explicitMenu=/menu|navigation|hamburger|nav-toggle|toggle-menu|open-menu|القائمة|المنيو|التنقل/.test(s);
+              const explicitTarget=/menu|navigation|dropdown|nav|القائمة|المنيو|التنقل/.test(targetLabel);
+              let score=explicitMenu?10:(explicitTarget?6:0);
+              if(controlled&&['NAV','MENU'].includes(controlled.tagName))score=Math.max(score,7);
+              if(el.hasAttribute('aria-expanded'))score+=1;
+              if(/close|dismiss|cookie|consent|advert/.test(s))score-=20;
+              return {el,score};
+            }).filter(x=>x.score>=6).sort((a,b)=>b.score-a.score);
             const p=panels(),e=expanded();if(!candidates.length)return JSON.stringify({attempted:false,menuPanelCountBefore:p,expandedControlCountBefore:e});
             candidates[0].el.click();return JSON.stringify({attempted:true,menuPanelCountBefore:p,expandedControlCountBefore:e});
           }catch(e){return JSON.stringify({attempted:false,probeError:true});}})()
