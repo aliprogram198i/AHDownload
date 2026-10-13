@@ -103,6 +103,23 @@ class WebPageMediaParserTest {
     }
 
     @Test
+    fun extractsFacebookNativePlaybackUrlFromEscapedPlayerState() {
+        val html = """<script type="application/json">
+            {"browser_native_hd_url":"https:\\/\\/video.xx.fbcdn.net\\/v\\/t42\\/AQExampleVideo.mp4?token=opaque"}
+        </script>"""
+
+        val result = WebPageMediaParser.parse(
+            html = html,
+            baseUrl = "https://www.facebook.com/watch/?v=123456789",
+        )
+
+        assertEquals(
+            listOf("https://video.xx.fbcdn.net/v/t42/AQExampleVideo.mp4?token=opaque"),
+            result.mediaUrls,
+        )
+    }
+
+    @Test
     fun extractsInstagramPlaybackUrlWithoutOpenGraphTag() {
         val html = """
             <script type="application/json">
