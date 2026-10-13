@@ -99,7 +99,7 @@ class BrowserPublicSitesAcceptanceTest {
         val provenVisibilityFailures = results.filter { result ->
             result.pageFinished &&
                 !result.summary.challengeDetected &&
-                result.classification == "DOM_PRESENT_BUT_NOT_CONFIRMED_VISIBLE" &&
+                result.summary.bodyTextChars >= 80 &&
                 result.summary.visibleTextChars == 0 &&
                 result.summary.visibleImageCount == 0 &&
                 result.summary.visibleMediaCount == 0
