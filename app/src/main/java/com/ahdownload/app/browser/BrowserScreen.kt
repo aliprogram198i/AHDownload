@@ -886,6 +886,98 @@ fun BrowserRoute(
                                             "تعذر تأكيد ظهور محتوى الصفحة. راجع سجل أحداث المتصفح للتفاصيل."
                                         else -> null
                                     }
+                                    val renderRecheckNavigationId = currentNavigationId
+                                    view.postDelayed({
+                                        if (currentNavigationId == renderRecheckNavigationId &&
+                                            view.url == url &&
+                                            !isLoading
+                                        ) {
+                                            view.evaluateJavascript(PAGE_RENDER_RECHECK_SCRIPT) { recheckRaw ->
+                                                val recheckJson = runCatching {
+                                                    JSONTokener(recheckRaw.orEmpty()).nextValue() as? String
+                                                }.getOrNull()?.let { runCatching { JSONObject(it) }.getOrNull() }
+                                                if (recheckJson != null &&
+                                                    currentNavigationId == renderRecheckNavigationId &&
+                                                    view.url == url
+                                                ) {
+                                                    val recheckReadyState = recheckJson.optString("readyState", "unknown")
+                                                    val recheckBodyChars = recheckJson.optInt("bodyTextChars", 0).coerceAtLeast(0)
+                                                    val recheckChildCount = recheckJson.optInt("bodyChildCount", 0).coerceAtLeast(0)
+                                                    val recheckHeight = recheckJson.optInt("documentHeight", 0).coerceAtLeast(0)
+                                                    val recheckVideoCount = recheckJson.optInt("videoCount", 0).coerceAtLeast(0)
+                                                    val recheckAudioCount = recheckJson.optInt("audioCount", 0).coerceAtLeast(0)
+                                                    val recheckImageCount = recheckJson.optInt("imageCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleImages = recheckJson.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleImageArea = recheckJson.optDouble("visibleImageAreaRatio", 0.0).coerceIn(0.0, 1.0)
+                                                    val recheckVisibleText = recheckJson.optInt("visibleTextChars", 0).coerceAtLeast(0)
+                                                    val recheckReadableText = recheckJson.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
+                                                    val recheckVisibleMedia = recheckJson.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleSignals = recheckVisibleText >= 12 ||
+                                                        recheckVisibleImages > 0 || recheckVisibleMedia > 0
+                                                    val recheckPrimaryContent = recheckReadableText >= 12 ||
+                                                        recheckVisibleImageArea >= 0.025 || recheckVisibleMedia > 0
+                                                    val recheckAnyDom = recheckBodyChars >= 12 ||
+                                                        recheckVideoCount > 0 || recheckAudioCount > 0 ||
+                                                        recheckImageCount > 0 || recheckChildCount > 0
+                                                    val recheckStatus = BrowserRenderStatusClassifier.classify(
+                                                        challengeDetected = recheckJson.optBoolean("challengeDetected", false),
+                                                        readyState = recheckReadyState,
+                                                        hasVisibleContentSignals = recheckVisibleSignals,
+                                                        hasAnyDomContentSignals = recheckAnyDom,
+                                                        hasPrimaryVisibleContent = recheckPrimaryContent,
+                                                    )
+                                                    pageRenderStatus = recheckStatus
+                                                    if (!inspecting && !showResults && !actionInProgress && pageLoadError == null) {
+                                                        inspectMessage = when (recheckStatus) {
+                                                            "POSSIBLE_ACCESS_CHALLENGE" ->
+                                                                "قد يعرض الموقع صفحة تحقق أو حظر. أكمل التحقق يدويًا ثم أعد الفحص."
+                                                            "CONTENT_VISIBILITY_UNCONFIRMED" ->
+                                                                "ظهرت إشارات محدودة فقط؛ لم يتأكد عرض المحتوى الأساسي. جرّب تحديث الصفحة."
+                                                            "CONTENT_NOT_VISIBLE_IN_VIEWPORT" ->
+                                                                "اكتمل المستند لكن المحتوى غير ظاهر داخل نافذة العرض. راجع سجل المتصفح."
+                                                            "POSSIBLY_EMPTY_PAGE" ->
+                                                                "انتهى التحميل دون محتوى كافٍ. راجع سجل أحداث المتصفح."
+                                                            "DOM_NOT_READY", "DOM_DIAGNOSTIC_FAILED" ->
+                                                                "تعذر تأكيد ظهور المحتوى. راجع سجل أحداث المتصفح."
+                                                            else -> null
+                                                        }
+                                                    }
+                                                    recordBrowserEvent(
+                                                        "PAGE_RENDER_RECHECK",
+                                                        when (recheckStatus) {
+                                                            "CONTENT_SIGNALS_DETECTED" -> "أكد الفحص المؤجل وجود نص مقروء أو محتوى أساسي ظاهر"
+                                                            "CONTENT_VISIBILITY_UNCONFIRMED" -> "ظل ظهور المحتوى الأساسي غير مؤكد بعد مهلة الاستقرار"
+                                                            "CONTENT_NOT_VISIBLE_IN_VIEWPORT" -> "ما زالت إشارات DOM غير ظاهرة داخل نافذة العرض"
+                                                            "POSSIBLE_ACCESS_CHALLENGE" -> "ظهرت مؤشرات تحقق أو حظر أثناء إعادة الفحص"
+                                                            "POSSIBLY_EMPTY_PAGE" -> "لم يُرصد محتوى كافٍ بعد إعادة الفحص"
+                                                            else -> "لم تكتمل مؤشرات ظهور المحتوى بعد إعادة الفحص"
+                                                        },
+                                                        "render",
+                                                        url,
+                                                        severity = if (recheckStatus == "CONTENT_SIGNALS_DETECTED") "INFO" else "WARNING",
+                                                        details = mapOf(
+                                                            "render_status" to recheckStatus,
+                                                            "recheck_delay_ms" to "1400",
+                                                            "ready_state" to recheckReadyState,
+                                                            "body_text_chars" to recheckBodyChars.toString(),
+                                                            "body_child_count" to recheckChildCount.toString(),
+                                                            "document_height_css_px" to recheckHeight.toString(),
+                                                            "video_count" to recheckVideoCount.toString(),
+                                                            "audio_count" to recheckAudioCount.toString(),
+                                                            "image_count" to recheckImageCount.toString(),
+                                                            "visible_image_count" to recheckVisibleImages.toString(),
+                                                            "visible_image_area_ratio" to "%.4f".format(java.util.Locale.ROOT, recheckVisibleImageArea),
+                                                            "visible_text_chars" to recheckVisibleText.toString(),
+                                                            "readable_visible_text_chars" to recheckReadableText.toString(),
+                                                            "visible_media_element_count" to recheckVisibleMedia.toString(),
+                                                            "navigation_id" to renderRecheckNavigationId,
+                                                        ),
+                                                        pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }, 1400L)
                                 }
                             }
 
@@ -1329,3 +1421,91 @@ private fun formatBytes(value: Long): String = when {
     value >= 1024L -> "%.0f KB".format(value / 1024.0)
     else -> "$value B"
 }
+
+private const val PAGE_RENDER_RECHECK_SCRIPT = """
+(function() {
+  try {
+    const d=document,b=d.body,e=d.documentElement;
+    const vw=window.innerWidth||0,vh=window.innerHeight||0;
+    const intersects=r=>r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<vw&&r.top<vh;
+    const visible=(el,r)=>{
+      const style=getComputedStyle(el);
+      if(style.display==='none'||style.visibility==='hidden'||Number(style.opacity||1)<=0||!intersects(r)) return false;
+      for(let p=el.parentElement;p;p=p.parentElement) if(Number(getComputedStyle(p).opacity||1)<=0) return false;
+      return true;
+    };
+    const rgb=value=>{
+      const m=String(value||'').match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+      return m?{r:Number(m[1]),g:Number(m[2]),b:Number(m[3]),a:m[4]===undefined?1:Number(m[4])}:null;
+    };
+    const lum=c=>{const f=v=>{v=v/255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4);};return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b);};
+    const readable=el=>{
+      const fg=rgb(getComputedStyle(el).color);
+      if(!fg||fg.a<=0.05) return false;
+      if(fg.a<0.98) return true;
+      let bg=null;
+      for(let p=el;p;p=p.parentElement){
+        const s=getComputedStyle(p);
+        if(s.backgroundImage&&s.backgroundImage!=='none') return true;
+        const c=rgb(s.backgroundColor);
+        if(c&&c.a>=0.95){bg=c;break;}
+      }
+      if(!bg) bg={r:255,g:255,b:255,a:1};
+      const a=lum(fg),z=lum(bg);
+      return (Math.max(a,z)+0.05)/(Math.min(a,z)+0.05)>=1.4;
+    };
+    const unobscured=(el,r)=>{
+      const top=d.elementFromPoint(Math.max(0,Math.min(vw-1,(r.left+r.right)/2)),Math.max(0,Math.min(vh-1,(r.top+r.bottom)/2)));
+      if(!top) return true;
+      for(let p=top;p;p=p.parentElement) if(p===el) return true;
+      return false;
+    };
+    let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
+    const images=[...d.images];
+    images.forEach(i=>{
+      const r=i.getBoundingClientRect();
+      if(!i.complete||i.naturalWidth<=0||!visible(i,r)||!unobscured(i,r)) return;
+      const w=Math.max(0,Math.min(vw,r.right)-Math.max(0,r.left));
+      const h=Math.max(0,Math.min(vh,r.bottom)-Math.max(0,r.top));
+      if(w<=0||h<=0) return;
+      imageCount++;imageArea+=w*h;
+    });
+    if(b){
+      const walker=d.createTreeWalker(b,NodeFilter.SHOW_TEXT);
+      let n;
+      while((n=walker.nextNode())&&nodes<1000&&visibleText<10000){
+        nodes++;
+        const value=(n.nodeValue||'').replace(/\s+/g,' ').trim();
+        const el=n.parentElement;
+        if(!value||!el||!visible(el,el.getBoundingClientRect())) continue;
+        const range=d.createRange();range.selectNodeContents(n);
+        const rects=[...range.getClientRects()];
+        if(rects.some(r=>intersects(r)&&unobscured(el,r))){
+          visibleText=Math.min(10000,visibleText+value.length);
+          if(readable(el)) readableText=Math.min(10000,readableText+value.length);
+        }
+      }
+    }
+    const visibleMedia=[...d.querySelectorAll('video,canvas,iframe')].filter(el=>{
+      const r=el.getBoundingClientRect();
+      if(!visible(el,r)||r.width<32||r.height<18||!unobscured(el,r)) return false;
+      if(el.tagName==='VIDEO') return el.videoWidth>0&&el.videoHeight>0&&el.readyState>=2;
+      if(el.tagName==='CANVAS') return el.width>0&&el.height>0;
+      return true;
+    }).length;
+    const videoCount=d.querySelectorAll('video').length;
+    const audioCount=d.querySelectorAll('audio').length;
+    const bodyTextChars=(b&&b.innerText?b.innerText:'').trim().length;
+    const imageAreaRatio=vw>0&&vh>0?Math.min(1,imageArea/(vw*vh)):0;
+    const text=(d.title+' '+(b&&b.innerText?b.innerText:'').slice(0,5000)).toLowerCase();
+    const challenge=/verify you are human|checking your browser|just a moment|access denied|captcha|unusual traffic|confirm you are not a robot|enable javascript and cookies/i.test(text);
+    return JSON.stringify({
+      readyState:d.readyState||'unknown',bodyTextChars:bodyTextChars,bodyChildCount:b?b.children.length:0,
+      documentHeight:e?e.scrollHeight:0,videoCount:videoCount,audioCount:audioCount,imageCount:images.length,
+      visibleImageCount:imageCount,visibleImageAreaRatio:imageAreaRatio,visibleTextChars:visibleText,
+      readableVisibleTextChars:readableText,visibleMediaElementCount:visibleMedia,challengeDetected:challenge
+    });
+  } catch(e) { return JSON.stringify({diagnosticError:'recheck_failed'}); }
+})()
+""".trimIndent()
+
