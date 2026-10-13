@@ -160,7 +160,7 @@ internal class FacebookSocialPlatformExtractionStrategy :
             "mbasic.facebook.com",
             "web.facebook.com",
         )
-        val HTTP_STATUS_PATTERN = Regex("""(?i)\\bHTTP\\s+(\\d{3})\\b""")
+        val HTTP_STATUS_PATTERN = Regex("""(?i)\bHTTP\s+(\d{3})\b""")
         const val FACEBOOK_MOBILE_FETCH_TIMEOUT_MS = 3_500L
         const val MAX_MARKER_SCAN_CHARS = 500_000
         const val FACEBOOK_REFERER = "https://www.facebook.com/"
