@@ -890,7 +890,8 @@ fun BrowserRoute(
                                     }
                                     val renderRecheckNavigationId = currentNavigationId
                                     view.postDelayed({
-                                        if (currentNavigationId == renderRecheckNavigationId &&
+                                        if (view.isAttachedToWindow &&
+                                            currentNavigationId == renderRecheckNavigationId &&
                                             view.url == url &&
                                             !isLoading
                                         ) {
@@ -899,6 +900,8 @@ fun BrowserRoute(
                                                     JSONTokener(recheckRaw.orEmpty()).nextValue() as? String
                                                 }.getOrNull()?.let { runCatching { JSONObject(it) }.getOrNull() }
                                                 if (recheckJson != null &&
+                                                    !recheckJson.has("diagnosticError") &&
+                                                    view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
                                                     view.url == url
                                                 ) {
@@ -976,7 +979,10 @@ fun BrowserRoute(
                                                         ),
                                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                                     )
-                                                } else if (currentNavigationId == renderRecheckNavigationId && view.url == url) {
+                                                } else if (view.isAttachedToWindow &&
+                                                    currentNavigationId == renderRecheckNavigationId &&
+                                                    view.url == url
+                                                ) {
                                                     recordBrowserEvent(
                                                         "PAGE_RENDER_RECHECK_FAILED",
                                                         "تعذر قراءة مؤشرات DOM أثناء الفحص المؤجل",
