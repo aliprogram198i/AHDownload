@@ -126,6 +126,9 @@ fun BrowserRoute(
     var lastProgressBucket by remember { mutableStateOf(0) }
     var resourceHttpErrorCount by remember { mutableStateOf(0) }
     var consoleErrorCount by remember { mutableStateOf(0) }
+    var lastPageFinishedEventKey by remember { mutableStateOf("") }
+    var lastRenderSnapshotFingerprint by remember { mutableStateOf("") }
+    var lastVisualStateReadyNavigationId by remember { mutableStateOf("") }
     var showResults by remember { mutableStateOf(false) }
     var selectedAudioCandidateId by remember { mutableStateOf<String?>(null) }
     var selectedAudioFormat by remember { mutableStateOf<AudioOutputFormat?>(null) }
@@ -570,20 +573,24 @@ fun BrowserRoute(
                                 isLoading = false
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
-                                recordBrowserEvent(
-                                    "PAGE_LOAD_FINISHED",
-                                    "انتهت callbacks تحميل الصفحة؛ سيجري فحص DOM لتقدير ظهور المحتوى",
-                                    "navigation",
-                                    url,
-                                    code = "100",
-                                    severity = "INFO",
-                                    details = mapOf(
-                                        "progress_percent" to "100",
-                                        "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
-                                        "http_resource_errors" to resourceHttpErrorCount.toString(),
-                                    ),
-                                    pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
-                                )
+                                val pageFinishedEventKey = "$currentNavigationId|$url"
+                                if (lastPageFinishedEventKey != pageFinishedEventKey) {
+                                    lastPageFinishedEventKey = pageFinishedEventKey
+                                    recordBrowserEvent(
+                                        "PAGE_LOAD_FINISHED",
+                                        "انتهت callbacks تحميل الصفحة؛ سيجري فحص DOM لتقدير ظهور المحتوى",
+                                        "navigation",
+                                        url,
+                                        code = "100",
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "progress_percent" to "100",
+                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                            "http_resource_errors" to resourceHttpErrorCount.toString(),
+                                        ),
+                                        pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                    )
+                                }
                                 view.evaluateJavascript(
                                     """
                                     (function() {
@@ -592,6 +599,7 @@ fun BrowserRoute(
                                         const text=(b&&b.innerText?b.innerText:'').trim();
                                         const title=d.title||'';
                                         const viewportWidth=window.innerWidth||0, viewportHeight=window.innerHeight||0;
+                                        const devicePixelRatio=window.devicePixelRatio||1;
                                         const intersectsViewport=r=>r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<viewportWidth&&r.top<viewportHeight;
                                         const hasVisibleStyle=(i,r)=>{
                                           const c=getComputedStyle(i);
@@ -647,6 +655,7 @@ fun BrowserRoute(
                                           documentHeight:e?e.scrollHeight:0,
                                           viewportWidth:viewportWidth,
                                           viewportHeight:viewportHeight,
+                                          devicePixelRatio:devicePixelRatio,
                                           visibleTextChars:visibleTextChars,
                                           visibleMediaElementCount:visibleMediaElementCount,
                                           videoCount:d.querySelectorAll('video').length,
@@ -714,35 +723,51 @@ fun BrowserRoute(
                                         "POSSIBLY_EMPTY_PAGE" -> "اكتمل التحميل لكن لم تُرصد مؤشرات محتوى كافية؛ قد تكون الصفحة فارغة أو محجوبة"
                                         else -> "لم تصل مؤشرات DOM إلى حالة جاهزة"
                                     }
-                                    recordBrowserEvent(
-                                        "PAGE_RENDER_CHECK",
-                                        renderMessage,
-                                        "render",
-                                        url,
-                                        severity = if (pageRenderStatus == "CONTENT_SIGNALS_DETECTED") "INFO" else "WARNING",
-                                        details = mapOf(
-                                            "render_status" to pageRenderStatus,
-                                            "ready_state" to readyState,
-                                            "body_text_chars" to bodyTextChars.toString(),
-                                            "body_child_count" to bodyChildCount.toString(),
-                                            "document_height" to documentHeight.toString(),
-                                            "viewport" to "${snapshot.optInt("viewportWidth", 0)}x${snapshot.optInt("viewportHeight", 0)}",
-                                            "video_count" to videoCount.toString(),
-                                            "audio_count" to audioCount.toString(),
-                                            "image_count" to imageCount.toString(),
-                                            "visible_image_count" to visibleImageCount.toString(),
-                                            "visible_text_chars" to visibleTextChars.toString(),
-                                            "visible_media_element_count" to visibleMediaElementCount.toString(),
-                                            "visible_content_element_count" to visibleContentElementCount.toString(),
-                                            "content_visibility_basis" to "viewport_intersection_visible_style",
-                                            "iframe_count" to iframeCount.toString(),
-                                            "background_color" to snapshot.optString("backgroundColor", "unknown"),
-                                            "challenge_detected" to challengeDetected.toString(),
-                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
-                                            "http_resource_errors" to resourceHttpErrorCount.toString(),
-                                        ),
-                                        pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
-                                    )
+                                    val renderSnapshotFingerprint = "$currentNavigationId|$url|${snapshot}"
+                                    if (lastRenderSnapshotFingerprint != renderSnapshotFingerprint) {
+                                        lastRenderSnapshotFingerprint = renderSnapshotFingerprint
+                                        recordBrowserEvent(
+                                            "PAGE_RENDER_CHECK",
+                                            renderMessage,
+                                            "render",
+                                            url,
+                                            severity = if (pageRenderStatus == "CONTENT_SIGNALS_DETECTED") "INFO" else "WARNING",
+                                            details = mapOf(
+                                                "render_status" to pageRenderStatus,
+                                                "ready_state" to readyState,
+                                                "body_text_chars" to bodyTextChars.toString(),
+                                                "body_child_count" to bodyChildCount.toString(),
+                                                "document_height" to documentHeight.toString(),
+                                                "document_height_css_px" to documentHeight.toString(),
+                                                "viewport" to "${snapshot.optInt("viewportWidth", 0)}x${snapshot.optInt("viewportHeight", 0)}",
+                                                "viewport_css_px" to "${snapshot.optInt("viewportWidth", 0)}x${snapshot.optInt("viewportHeight", 0)}",
+                                                "device_pixel_ratio" to snapshot.optDouble("devicePixelRatio", 1.0).toString(),
+                                                "webview_width_px" to view.width.toString(),
+                                                "webview_height_px" to view.height.toString(),
+                                                "video_count" to videoCount.toString(),
+                                                "audio_count" to audioCount.toString(),
+                                                "image_count" to imageCount.toString(),
+                                                "visible_image_count" to visibleImageCount.toString(),
+                                                "visible_text_chars" to visibleTextChars.toString(),
+                                                "visible_media_element_count" to visibleMediaElementCount.toString(),
+                                                "visible_content_element_count" to visibleContentElementCount.toString(),
+                                                "has_visible_content_signals" to hasVisibleContentSignals.toString(),
+                                                "visible_content_signal_sources" to listOfNotNull(
+                                                    "visible_text".takeIf { visibleTextChars >= 12 },
+                                                    "visible_images".takeIf { visibleImageCount > 0 },
+                                                    "visible_media".takeIf { visibleMediaElementCount > 0 },
+                                                ).joinToString(",").ifBlank { "none" },
+                                                "visible_content_element_scope" to "visible_semantic_containers_and_renderable_media_only",
+                                                "content_visibility_basis" to "viewport_intersection_visible_style",
+                                                "iframe_count" to iframeCount.toString(),
+                                                "background_color" to snapshot.optString("backgroundColor", "unknown"),
+                                                "challenge_detected" to challengeDetected.toString(),
+                                                "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                                "http_resource_errors" to resourceHttpErrorCount.toString(),
+                                            ),
+                                            pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
+                                        )
+                                    }
                                     val visualStateNavigationId = currentNavigationId
                                     val visualStateRequestId = System.currentTimeMillis().coerceAtLeast(1L)
                                     runCatching {
@@ -750,7 +775,10 @@ fun BrowserRoute(
                                             visualStateRequestId,
                                             object : WebView.VisualStateCallback() {
                                                 override fun onComplete(requestId: Long) {
-                                                    if (currentNavigationId == visualStateNavigationId) {
+                                                    if (currentNavigationId == visualStateNavigationId &&
+                                                        lastVisualStateReadyNavigationId != visualStateNavigationId
+                                                    ) {
+                                                        lastVisualStateReadyNavigationId = visualStateNavigationId
                                                         recordBrowserEvent(
                                                             "PAGE_VISUAL_STATE_READY",
                                                             "أصبح تحديث الرسم الحالي جاهزًا للعرض؛ لا يؤكد ذلك وحده صحة جميع العناصر بصريًا",
@@ -930,6 +958,8 @@ fun BrowserRoute(
                                         details = mapOf(
                                             "console_line" to consoleMessage.lineNumber().toString(),
                                             "console_source_host" to safeHost(consoleMessage.sourceId()),
+                                            "console_message_level" to consoleMessage.messageLevel().name,
+                                            "console_message" to BrowserConsoleMessageSanitizer.sanitize(consoleMessage.message()),
                                             "console_error_index" to consoleErrorCount.toString(),
                                         ),
                                     )
