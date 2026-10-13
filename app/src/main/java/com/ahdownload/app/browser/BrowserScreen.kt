@@ -14,6 +14,7 @@ import android.net.http.SslError
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -100,10 +101,10 @@ fun BrowserRoute(
             browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
         )
     }
-    var address by remember { mutableStateOf("") }
-    var currentUrl by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("https://www.google.com") }
+    var currentUrl by remember { mutableStateOf("https://www.google.com") }
     var pageProgress by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -113,6 +114,7 @@ fun BrowserRoute(
     var resultSourceUrl by remember { mutableStateOf<String?>(null) }
     var candidates by remember { mutableStateOf<List<MediaCandidate>>(emptyList()) }
     var inspectMessage by remember { mutableStateOf<String?>(null) }
+    var pageLoadError by remember { mutableStateOf<String?>(null) }
     var showResults by remember { mutableStateOf(false) }
     var selectedAudioCandidateId by remember { mutableStateOf<String?>(null) }
     var selectedAudioFormat by remember { mutableStateOf<AudioOutputFormat?>(null) }
@@ -142,6 +144,9 @@ fun BrowserRoute(
         }
         address = normalized
         inspectMessage = null
+        pageLoadError = null
+        pageProgress = 0
+        isLoading = true
         showResults = false
         webView?.loadUrl(normalized)
     }
@@ -178,7 +183,17 @@ fun BrowserRoute(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { address = "https://www.google.com"; currentUrl = address; webView?.loadUrl(address) }) {
+                    IconButton(onClick = {
+                        val homeUrl = "https://www.google.com"
+                        address = homeUrl
+                        currentUrl = homeUrl
+                        pageLoadError = null
+                        inspectMessage = null
+                        pageProgress = 0
+                        isLoading = true
+                        showResults = false
+                        webView?.loadUrl(homeUrl)
+                    }) {
                         Icon(Icons.Rounded.Home, contentDescription = "الصفحة الرئيسية")
                     }
                 },
@@ -204,12 +219,12 @@ fun BrowserRoute(
                         )
                     }
                     Button(
-                        enabled = !inspecting && currentUrl.isNotBlank(),
+                        enabled = !inspecting && !isLoading && pageLoadError == null && currentUrl.isNotBlank(),
                         onClick = {
                             val target = webView?.url ?: currentUrl
                             val link = analyzer.analyze(target)
                             if (link == null) {
-                                inspectMessage = "تعذر تحليل الرابط. تأكد من أن الصفحة تستخدم HTTPS."
+                                inspectMessage = "تعذر تحليل العنوان. استخدم رابط HTTP أو HTTPS صالحًا بعد اكتمال تحميل الصفحة."
                                 recordError("ANALYSIS_REJECTED", "تعذر تحليل عنوان الصفحة", "inspection", target)
                             } else {
                                 inspecting = true
@@ -229,7 +244,7 @@ fun BrowserRoute(
                                                 resultSourceUrl = target
                                                 showResults = result.candidates.isNotEmpty()
                                                 inspectMessage = if (result.candidates.isEmpty()) {
-                                                    "لم يُعثر على مصدر وسائط صالح."
+                                                    "لم يُعثر على مصدر وسائط صالح. قد يكون المشغّل غير مدعوم أو يتطلب الموقع جلسة صالحة."
                                                 } else {
                                                     "تم العثور على ${result.candidates.size} خيارًا."
                                                 }
@@ -259,7 +274,13 @@ fun BrowserRoute(
                         } else {
                             Icon(Icons.Rounded.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                         }
-                        Text("فحص الخيارات")
+                        Text(
+                            when {
+                                inspecting -> "جارٍ فحص الخيارات..."
+                                isLoading -> "جارٍ تحميل الصفحة..."
+                                else -> "فحص الخيارات"
+                            },
+                        )
                     }
                 }
             }
@@ -312,9 +333,12 @@ fun BrowserRoute(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            AndroidView(
+            Box(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                factory = { viewContext ->
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
                     WebView(viewContext).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
@@ -342,12 +366,15 @@ fun BrowserRoute(
                                 currentUrl = url
                                 address = url
                                 isLoading = true
+                                pageProgress = 0
+                                pageLoadError = null
                                 inspectMessage = null
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
                                 currentUrl = url
                                 address = url
+                                pageProgress = 100
                                 isLoading = false
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
@@ -360,7 +387,7 @@ fun BrowserRoute(
                             ) {
                                 if (request.isForMainFrame) {
                                     isLoading = false
-                                    inspectMessage = when (error.errorCode) {
+                                    val loadErrorMessage = when (error.errorCode) {
                                         android.webkit.WebViewClient.ERROR_HOST_LOOKUP ->
                                             "تعذر الوصول إلى الموقع. تحقق من اتصال الإنترنت أو إعدادات DNS."
                                         android.webkit.WebViewClient.ERROR_CONNECT,
@@ -372,9 +399,12 @@ fun BrowserRoute(
                                             "عنوان الموقع يستخدم بروتوكولًا غير مدعوم."
                                         else -> "لم يتم تحميل الصفحة (رمز الخطأ " + error.errorCode + "). حاول التحديث أو فتح موقع آخر."
                                     }
+                                    inspectMessage = loadErrorMessage
+                                    pageLoadError = loadErrorMessage
+                                    pageProgress = 0
                                     recordError(
                                         "PAGE_LOAD_FAILED",
-                                        "تعذر تحميل الصفحة داخل المتصفح",
+                                        loadErrorMessage,
                                         "navigation",
                                         request.url.toString(),
                                         error.errorCode.toString(),
@@ -388,9 +418,10 @@ fun BrowserRoute(
                                 errorResponse: android.webkit.WebResourceResponse,
                             ) {
                                 if (request.isForMainFrame && errorResponse.statusCode >= 400) {
+                                    inspectMessage = "استجابة HTTP ${errorResponse.statusCode} من الموقع. قد يكون المحتوى مقيدًا أو يتطلب جلسة صالحة."
                                     recordError(
                                         "HTTP_ERROR",
-                                        "أعاد الموقع استجابة HTTP غير ناجحة",
+                                        "أعاد الموقع استجابة HTTP ${errorResponse.statusCode}",
                                         "navigation",
                                         request.url.toString(),
                                         errorResponse.statusCode.toString(),
@@ -401,22 +432,48 @@ fun BrowserRoute(
                             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                                 handler.cancel()
                                 isLoading = false
-                                recordError("TLS_CERTIFICATE_ERROR", "تم إيقاف صفحة بسبب خطأ في شهادة TLS", "security", error.url, error.primaryError.toString())
+                                pageProgress = 0
+                                pageLoadError = "تم إيقاف الصفحة بسبب مشكلة في شهادة الأمان. لم يتم تجاوز تحذير الشهادة."
+                                inspectMessage = pageLoadError
+                                recordError("TLS_CERTIFICATE_ERROR", "تعذر التحقق من شهادة أمان الصفحة؛ أُوقف التحميل حفاظًا على الأمان", "security", error.url, error.primaryError.toString())
                             }
                         }
                         webChromeClient = object : WebChromeClient() {
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 pageProgress = newProgress
-                                isLoading = newProgress < 100
+                                isLoading = pageLoadError == null && newProgress < 100
                             }
 
                         }
                         webView = this
                         if (currentUrl.isNotBlank()) loadUrl(currentUrl)
                     }
-                },
-                update = { },
-            )
+                    },
+                    update = { },
+                )
+                pageLoadError?.let { message ->
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text("تعذر تحميل الصفحة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Button(onClick = { loadAddress() }, enabled = !isLoading) {
+                                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text("إعادة المحاولة")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

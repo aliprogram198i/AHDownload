@@ -14,7 +14,7 @@ class LinkAnalyzer {
         val normalized = unwrapRedirect(extracted)
         val uri = runCatching { URI(normalized) }.getOrNull() ?: return null
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
-        if (scheme != "https") return null
+        if (scheme != "https" && scheme != "http") return null
 
         val host = normalizeHost(uri.host) ?: return null
         val kind = if (isSnapchatSpotlight(uri)) MediaKind.Video else detectMediaKind(uri)
@@ -44,6 +44,10 @@ class LinkAnalyzer {
             kind != MediaKind.Unknown -> MediaPlatform.DirectMedia
             else -> MediaPlatform.Web
         }
+
+        // Keep social-platform resolver routes HTTPS-only. HTTP remains available for
+        // regular pages and directly linked media, matching the in-app browser policy.
+        if (scheme == "http" && platform !in setOf(MediaPlatform.Web, MediaPlatform.DirectMedia)) return null
 
         return MediaLink(
             originalUrl = rawUrl,

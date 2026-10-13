@@ -48,6 +48,7 @@ fun BrowserErrorLogRoute(
     var entries by remember { mutableStateOf(store.list()) }
     var showClearConfirmation by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val latestEntry = entries.firstOrNull()
 
     Scaffold(
         topBar = {
@@ -68,12 +69,12 @@ fun BrowserErrorLogRoute(
                     DiagnosticIconButton(
                         trackingScreen = "BROWSER_ERRORS",
                         trackingId = "BROWSER_ERRORS.copy",
-                        trackingLabel = "نسخ سجل أخطاء المتصفح",
+                        trackingLabel = "نسخ سجل أخطاء المتصفح بالكامل",
                         disabledReason = "السجل فارغ",
                         enabled = entries.isNotEmpty(),
                         onClick = { clipboard.setText(AnnotatedString(store.exportText())) },
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل بالكامل")
                     }
                     DiagnosticIconButton(
                         trackingScreen = "BROWSER_ERRORS",
@@ -122,33 +123,65 @@ fun BrowserErrorLogRoute(
             ) {
                 item {
                     Text(
-                        "آخر ${entries.size} حدث كحد أقصى. لا يُحفظ عنوان الصفحة الكامل أو ملفات تعريف الارتباط أو رموز الجلسة.",
+                        "يعرض القسم الأول آخر حادثة بالتفصيل. تُحفظ حتى 50 حادثة، دون حفظ عنوان الصفحة الكامل أو ملفات تعريف الارتباط أو رموز الجلسة.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                items(entries) { entry ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp),
+                latestEntry?.let { entry ->
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         ) {
-                            Text(entry.type, fontWeight = FontWeight.Bold)
-                            Text(entry.message, style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                "المرحلة: ${entry.stage} • المضيف: ${entry.host}" +
-                                    (entry.code?.let { " • الرمز: $it" } ?: ""),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text("آخر خطأ بالتفصيل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(entry.type, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                Text(entry.message, style = MaterialTheme.typography.bodyMedium)
+                                Text("المرحلة: ${entry.stage}", style = MaterialTheme.typography.bodyMedium)
+                                Text("الموقع: ${entry.host}", style = MaterialTheme.typography.bodyMedium)
+                                entry.code?.let { Text("رمز الخطأ: $it", style = MaterialTheme.typography.bodyMedium) }
+                                Text(
+                                    DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(
+                                    onClick = { clipboard.setText(AnnotatedString(store.exportEntryText(entry))) },
+                                ) { Text("نسخ تفاصيل آخر خطأ") }
+                            }
+                        }
+                    }
+                }
+                if (entries.size > 1) {
+                    item {
+                        Text("الأحداث السابقة (${entries.size - 1})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    }
+                    items(entries.drop(1)) { entry ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(entry.type, fontWeight = FontWeight.SemiBold)
+                                Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    "${entry.stage} • ${entry.host}" + (entry.code?.let { " • $it" } ?: ""),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
