@@ -692,6 +692,15 @@ fun BrowserRoute(
                                         ),
                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                     )
+                                    inspectMessage = when (pageRenderStatus) {
+                                        "POSSIBLE_ACCESS_CHALLENGE" ->
+                                            "قد يعرض الموقع صفحة تحقق أو حظر. أكمل أي تحقق يدويًا داخل الصفحة ثم أعد الفحص."
+                                        "POSSIBLY_EMPTY_PAGE" ->
+                                            "انتهى تحميل الصفحة لكن لم يُرصد محتوى كافٍ. افتح سجل أحداث المتصفح لمعرفة مؤشرات العرض والأخطاء."
+                                        "DOM_NOT_READY", "DOM_DIAGNOSTIC_FAILED" ->
+                                            "تعذر تأكيد ظهور محتوى الصفحة. راجع سجل أحداث المتصفح للتفاصيل."
+                                        else -> null
+                                    }
                                 }
                             }
 
@@ -723,6 +732,20 @@ fun BrowserRoute(
                                         "navigation",
                                         request.url.toString(),
                                         error.errorCode.toString(),
+                                    )
+                                    recordBrowserEvent(
+                                        "PAGE_LOAD_ERROR_DETAIL",
+                                        "تعذر تحميل إطار الصفحة الرئيسي",
+                                        "navigation",
+                                        request.url.toString(),
+                                        code = error.errorCode.toString(),
+                                        severity = "ERROR",
+                                        details = mapOf(
+                                            "webview_error_description" to error.description.toString(),
+                                            "error_code" to error.errorCode.toString(),
+                                            "is_main_frame" to request.isForMainFrame.toString(),
+                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                        ),
                                     )
                                 }
                             }
