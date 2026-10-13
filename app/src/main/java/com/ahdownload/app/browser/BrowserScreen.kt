@@ -924,7 +924,9 @@ fun BrowserRoute(
                                         else -> null
                                     }
                                     val renderRecheckNavigationId = currentNavigationId
-                                    view.postDelayed({
+                                    if (lastRenderRecheckScheduledNavigationId != renderRecheckNavigationId) {
+                                        lastRenderRecheckScheduledNavigationId = renderRecheckNavigationId
+                                        view.postDelayed({
                                         if (view.isAttachedToWindow &&
                                             currentNavigationId == renderRecheckNavigationId &&
                                             view.url == url &&
@@ -948,14 +950,25 @@ fun BrowserRoute(
                                                     val recheckAudioCount = recheckJson.optInt("audioCount", 0).coerceAtLeast(0)
                                                     val recheckImageCount = recheckJson.optInt("imageCount", 0).coerceAtLeast(0)
                                                     val recheckVisibleImages = recheckJson.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                                    val recheckIntersectingImages = recheckJson.optInt("viewportIntersectingImageCount", 0).coerceAtLeast(0)
+                                                    val recheckRejectedImages = recheckJson.optInt("hitTestRejectedImageCount", 0).coerceAtLeast(0)
                                                     val recheckVisibleImageArea = recheckJson.optDouble("visibleImageAreaRatio", 0.0).coerceIn(0.0, 1.0)
                                                     val recheckVisibleText = recheckJson.optInt("visibleTextChars", 0).coerceAtLeast(0)
+                                                    val recheckIntersectingTextNodes = recheckJson.optInt("viewportIntersectingTextNodeCount", 0).coerceAtLeast(0)
+                                                    val recheckRejectedTextNodes = recheckJson.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
                                                     val recheckReadableText = recheckJson.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                                     val recheckVisibleMedia = recheckJson.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
                                                     val recheckVisibleSignals = recheckVisibleText >= 12 ||
                                                         recheckVisibleImages > 0 || recheckVisibleMedia > 0
                                                     val recheckPrimaryContent = recheckReadableText >= 12 ||
                                                         recheckVisibleImageArea >= 0.025 || recheckVisibleMedia > 0
+                                                    val recheckHasHitTestRejectedContent = (
+                                                        recheckIntersectingTextNodes > 0 &&
+                                                        recheckRejectedTextNodes == recheckIntersectingTextNodes
+                                                    ) || (
+                                                        recheckIntersectingImages > 0 &&
+                                                        recheckRejectedImages == recheckIntersectingImages
+                                                    )
                                                     val recheckAnyDom = recheckBodyChars >= 12 ||
                                                         recheckVideoCount > 0 || recheckAudioCount > 0 ||
                                                         recheckImageCount > 0 || recheckChildCount > 0
@@ -965,6 +978,7 @@ fun BrowserRoute(
                                                         hasVisibleContentSignals = recheckVisibleSignals,
                                                         hasAnyDomContentSignals = recheckAnyDom,
                                                         hasPrimaryVisibleContent = recheckPrimaryContent,
+                                                        hasOccludedViewportContent = recheckHasHitTestRejectedContent,
                                                     )
                                                     pageRenderStatus = recheckStatus
                                                     if (!inspecting && !showResults && !actionInProgress && pageLoadError == null) {
@@ -973,6 +987,8 @@ fun BrowserRoute(
                                                                 "قد يعرض الموقع صفحة تحقق أو حظر. أكمل التحقق يدويًا ثم أعد الفحص."
                                                             "CONTENT_VISIBILITY_UNCONFIRMED" ->
                                                                 "ظهرت إشارات محدودة فقط؛ لم يتأكد عرض المحتوى الأساسي. جرّب تحديث الصفحة."
+                                                            "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH" ->
+                                                                "توجد عناصر ضمن نافذة العرض لكن اختبار الرؤية لم يؤكدها؛ قد تكون مغطاة أو لم يُطابق الفاحص العنصر الصحيح."
                                                             "CONTENT_NOT_VISIBLE_IN_VIEWPORT" ->
                                                                 "اكتمل المستند لكن المحتوى غير ظاهر داخل نافذة العرض. راجع سجل المتصفح."
                                                             "POSSIBLY_EMPTY_PAGE" ->
@@ -988,6 +1004,7 @@ fun BrowserRoute(
                                                             "CONTENT_SIGNALS_DETECTED" -> "أكد الفحص المؤجل وجود نص مقروء أو محتوى أساسي ظاهر"
                                                             "CONTENT_VISIBILITY_UNCONFIRMED" -> "ظل ظهور المحتوى الأساسي غير مؤكد بعد مهلة الاستقرار"
                                                             "CONTENT_NOT_VISIBLE_IN_VIEWPORT" -> "ما زالت إشارات DOM غير ظاهرة داخل نافذة العرض"
+                                                            "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH" -> "رُصدت عناصر ضمن نافذة العرض لكن اختبار الطبقة العلوية لم يؤكدها"
                                                             "POSSIBLE_ACCESS_CHALLENGE" -> "ظهرت مؤشرات تحقق أو حظر أثناء إعادة الفحص"
                                                             "POSSIBLY_EMPTY_PAGE" -> "لم يُرصد محتوى كافٍ بعد إعادة الفحص"
                                                             else -> "لم تكتمل مؤشرات ظهور المحتوى بعد إعادة الفحص"
@@ -1006,8 +1023,12 @@ fun BrowserRoute(
                                                             "audio_count" to recheckAudioCount.toString(),
                                                             "image_count" to recheckImageCount.toString(),
                                                             "visible_image_count" to recheckVisibleImages.toString(),
+                                                            "viewport_intersecting_image_count" to recheckIntersectingImages.toString(),
+                                                            "hit_test_rejected_image_count" to recheckRejectedImages.toString(),
                                                             "visible_image_area_ratio" to "%.4f".format(java.util.Locale.ROOT, recheckVisibleImageArea),
                                                             "visible_text_chars" to recheckVisibleText.toString(),
+                                                            "viewport_intersecting_text_node_count" to recheckIntersectingTextNodes.toString(),
+                                                            "hit_test_rejected_text_node_count" to recheckRejectedTextNodes.toString(),
                                                             "readable_visible_text_chars" to recheckReadableText.toString(),
                                                             "visible_media_element_count" to recheckVisibleMedia.toString(),
                                                             "navigation_id" to renderRecheckNavigationId,
@@ -1033,7 +1054,8 @@ fun BrowserRoute(
                                                 }
                                             }
                                         }
-                                    }, 1400L)
+                                        }, 1400L)
+                                    }
                                 }
                             }
 
@@ -1515,17 +1537,23 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       if(right<=left||bottomEdge<=topEdge) return false;
       const top=d.elementFromPoint((left+right)/2,(topEdge+bottomEdge)/2);
       if(!top) return true;
+      // elementFromPoint can return a wrapper ancestor (for example <a> around
+      // an image with pointer-events disabled), not only the painted child.
       for(let p=top;p;p=p.parentElement) if(p===el) return true;
+      for(let p=el;p;p=p.parentElement) if(p===top) return true;
       return false;
     };
     let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
+    let intersectingImages=0,rejectedImages=0,intersectingTextNodes=0,rejectedTextNodes=0;
     const images=[...d.images];
     images.forEach(i=>{
       const r=i.getBoundingClientRect();
-      if(!i.complete||i.naturalWidth<=0||!visible(i,r)||!unobscured(i,r)) return;
+      if(!i.complete||i.naturalWidth<=0||!visible(i,r)) return;
       const w=Math.max(0,Math.min(vw,r.right)-Math.max(0,r.left));
       const h=Math.max(0,Math.min(vh,r.bottom)-Math.max(0,r.top));
       if(w<=0||h<=0) return;
+      intersectingImages++;
+      if(!unobscured(i,r)){rejectedImages++;return;}
       imageCount++;imageArea+=w*h;
     });
     if(b){
@@ -1537,11 +1565,12 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
         const el=n.parentElement;
         if(!value||!el||!visible(el,el.getBoundingClientRect())) continue;
         const range=d.createRange();range.selectNodeContents(n);
-        const rects=[...range.getClientRects()];
-        if(rects.some(r=>intersects(r)&&unobscured(el,r))){
-          visibleText=Math.min(10000,visibleText+value.length);
-          if(readable(el)) readableText=Math.min(10000,readableText+value.length);
-        }
+        const rects=[...range.getClientRects()].filter(r=>intersects(r));
+        if(rects.length===0) continue;
+        intersectingTextNodes++;
+        if(!rects.some(r=>unobscured(el,r))){rejectedTextNodes++;continue;}
+        visibleText=Math.min(10000,visibleText+value.length);
+        if(readable(el)) readableText=Math.min(10000,readableText+value.length);
       }
     }
     const visibleMedia=[...d.querySelectorAll('video,canvas,iframe')].filter(el=>{
@@ -1560,8 +1589,11 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
     return JSON.stringify({
       readyState:d.readyState||'unknown',bodyTextChars:bodyTextChars,bodyChildCount:b?b.children.length:0,
       documentHeight:e?e.scrollHeight:0,videoCount:videoCount,audioCount:audioCount,imageCount:images.length,
-      visibleImageCount:imageCount,visibleImageAreaRatio:imageAreaRatio,visibleTextChars:visibleText,
-      readableVisibleTextChars:readableText,visibleMediaElementCount:visibleMedia,challengeDetected:challenge
+      visibleImageCount:imageCount,viewportIntersectingImageCount:intersectingImages,
+      hitTestRejectedImageCount:rejectedImages,visibleImageAreaRatio:imageAreaRatio,
+      viewportIntersectingTextNodeCount:intersectingTextNodes,hitTestRejectedTextNodeCount:rejectedTextNodes,
+      visibleTextChars:visibleText,readableVisibleTextChars:readableText,
+      visibleMediaElementCount:visibleMedia,challengeDetected:challenge
     });
   } catch(e) { return JSON.stringify({diagnosticError:'recheck_failed'}); }
 })()
