@@ -607,9 +607,9 @@ fun BrowserRoute(
                                         const intersectsViewport=r=>r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<viewportWidth&&r.top<viewportHeight;
                                         const hasVisibleStyle=(i,r)=>{
                                           const c=getComputedStyle(i);
-                                          if(c.display==='none'||c.visibility==='hidden'||Number(c.opacity||1)<=0||!intersectsViewport(r)) return false;
+                                          if(c.display==='none'||c.visibility==='hidden'||Number(c.opacity||1)<=0.05||!intersectsViewport(r)) return false;
                                           for(let p=i.parentElement;p;p=p.parentElement){
-                                            if(Number(getComputedStyle(p).opacity||1)<=0) return false;
+                                            if(Number(getComputedStyle(p).opacity||1)<=0.05) return false;
                                           }
                                           return true;
                                         };
@@ -624,7 +624,7 @@ fun BrowserRoute(
                                         };
                                         const hasReadableContrast = element => {
                                           const foreground=parseRgb(getComputedStyle(element).color);
-                                          if(!foreground || foreground.a<=0.05) return false;
+                                          if(!foreground || foreground.a<0.35) return false;
                                           if(foreground.a<0.98) return true;
                                           let background=null;
                                           for(let p=element;p;p=p.parentElement){
@@ -681,7 +681,7 @@ fun BrowserRoute(
                                         }
                                         const visibleMediaElementCount=[...d.querySelectorAll('video,canvas,iframe')].filter(i=>{
                                           const r=i.getBoundingClientRect();
-                                          if(!hasVisibleStyle(i,r)||r.width<32||r.height<18) return false;
+                                          if(!hasVisibleStyle(i,r)||r.width<32||r.height<18||!unobscuredAt(i,r)) return false;
                                           if(i.tagName==='VIDEO') return i.videoWidth>0&&i.videoHeight>0&&i.readyState>=2;
                                           if(i.tagName==='CANVAS') return i.width>0&&i.height>0;
                                           return true;
@@ -1430,8 +1430,8 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
     const intersects=r=>r.width>0&&r.height>0&&r.right>0&&r.bottom>0&&r.left<vw&&r.top<vh;
     const visible=(el,r)=>{
       const style=getComputedStyle(el);
-      if(style.display==='none'||style.visibility==='hidden'||Number(style.opacity||1)<=0||!intersects(r)) return false;
-      for(let p=el.parentElement;p;p=p.parentElement) if(Number(getComputedStyle(p).opacity||1)<=0) return false;
+      if(style.display==='none'||style.visibility==='hidden'||Number(style.opacity||1)<=0.05||!intersects(r)) return false;
+      for(let p=el.parentElement;p;p=p.parentElement) if(Number(getComputedStyle(p).opacity||1)<=0.05) return false;
       return true;
     };
     const rgb=value=>{
@@ -1441,7 +1441,7 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
     const lum=c=>{const f=v=>{v=v/255;return v<=0.04045?v/12.92:Math.pow((v+0.055)/1.055,2.4);};return 0.2126*f(c.r)+0.7152*f(c.g)+0.0722*f(c.b);};
     const readable=el=>{
       const fg=rgb(getComputedStyle(el).color);
-      if(!fg||fg.a<=0.05) return false;
+      if(!fg||fg.a<0.35) return false;
       if(fg.a<0.98) return true;
       let bg=null;
       for(let p=el;p;p=p.parentElement){
