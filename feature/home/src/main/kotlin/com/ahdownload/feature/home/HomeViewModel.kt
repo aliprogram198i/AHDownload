@@ -22,6 +22,7 @@ import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
 import com.ahdownload.domain.search.ContentSearchItem
+import com.ahdownload.domain.search.ContentSearchKind
 import com.ahdownload.domain.search.ContentSearchProvider
 import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.ValidationFailure
@@ -36,6 +37,13 @@ import java.util.UUID
 enum class HomeMode {
     Link,
     Search,
+}
+
+enum class YouTubeSearchFilter {
+    All,
+    Videos,
+    Shorts,
+    Channels,
 }
 
 /**
@@ -78,6 +86,7 @@ data class HomeUiState(
     val searchQuery: String = "",
     val searching: Boolean = false,
     val searchResults: List<ContentSearchItem> = emptyList(),
+    val searchFilter: YouTubeSearchFilter = YouTubeSearchFilter.All,
     val searchError: String? = null,
     val mode: HomeMode = HomeMode.Link,
     val showAll: Boolean = false,
@@ -307,8 +316,19 @@ class HomeViewModel(
         )
     }
 
+    fun setSearchFilter(filter: YouTubeSearchFilter) {
+        if (_uiState.value.searchFilter == filter) return
+        _uiState.value = _uiState.value.copy(
+            searchFilter = filter,
+            selectedSearchIds = emptySet(),
+            batchError = null,
+        )
+    }
+
     fun toggleSearchSelection(id: String) {
         if (_uiState.value.batchDownloading) return
+        val item = _uiState.value.searchResults.firstOrNull { it.id == id } ?: return
+        if (item.kind == ContentSearchKind.CHANNEL) return
         val selected = _uiState.value.selectedSearchIds.toMutableSet()
         if (!selected.add(id)) selected.remove(id)
         _uiState.value = _uiState.value.copy(selectedSearchIds = selected)
@@ -320,7 +340,9 @@ class HomeViewModel(
 
     fun downloadSelectedSearchResults(items: List<ContentSearchItem>) {
         if (_uiState.value.batchDownloading) return
-        val selected = items.filter { it.id in _uiState.value.selectedSearchIds }.take(8)
+        val selected = items.filter {
+            it.kind != ContentSearchKind.CHANNEL && it.id in _uiState.value.selectedSearchIds
+        }.take(8)
         if (selected.isEmpty()) {
             _uiState.value = _uiState.value.copy(batchError = "حدد نتيجة واحدة على الأقل.")
             return
@@ -402,6 +424,7 @@ class HomeViewModel(
     }
 
     fun openSearchResult(item: ContentSearchItem) {
+        if (item.kind == ContentSearchKind.CHANNEL) return
         searchJob?.cancel()
         _uiState.value = _uiState.value.copy(searchQuery = item.title, mode = HomeMode.Link)
         setUrlAndAnalyze(item.url)
