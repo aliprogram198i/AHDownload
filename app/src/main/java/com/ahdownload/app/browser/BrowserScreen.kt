@@ -678,7 +678,7 @@ fun BrowserRoute(
                                             "body_text_chars" to bodyTextChars.toString(),
                                             "body_child_count" to bodyChildCount.toString(),
                                             "document_height" to documentHeight.toString(),
-                                            "viewport" to ""${snapshot.optInt("viewportWidth", 0)}x${snapshot.optInt("viewportHeight", 0)}"",
+                                            "viewport" to "${snapshot.optInt("viewportWidth", 0)}x${snapshot.optInt("viewportHeight", 0)}",
                                             "video_count" to videoCount.toString(),
                                             "audio_count" to audioCount.toString(),
                                             "image_count" to imageCount.toString(),
@@ -842,6 +842,7 @@ fun BrowserRoute(
                                 }
                                 return false
                             }
+                        }
                         webView = this
                         if (currentUrl.isNotBlank()) loadUrl(currentUrl)
                     }
