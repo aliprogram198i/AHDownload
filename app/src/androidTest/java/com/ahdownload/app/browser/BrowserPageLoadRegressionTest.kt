@@ -127,15 +127,14 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNode(hasSetTextAction()).performTextReplacement(targetUrl)
         composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
 
+        val pageLoaded = AtomicReference(false)
         composeRule.waitUntil(timeoutMillis = 30_000) {
             composeRule.runOnUiThread {
-                findWebView(composeRule.activity.window.decorView)?.let { view ->
-                    if (view.url?.startsWith("https://example.com") == true && view.title == "Example Domain") {
-                        return@runOnUiThread
-                    }
-                }
+                val view = findWebView(composeRule.activity.window.decorView)
+                pageLoaded.set(view?.url?.startsWith("https://example.com") == true &&
+                    view?.title == "Example Domain")
             }
-            true
+            pageLoaded.get()
         }
 
         val result = AtomicReference<String?>(null)
