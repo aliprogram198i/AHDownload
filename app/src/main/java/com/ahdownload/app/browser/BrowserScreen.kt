@@ -170,14 +170,7 @@ fun BrowserRoute(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text("AHDownload Browser")
-                        Text(
-                            "تصفح واسع مع فحص الوسائط",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text("AHDownload Browser")
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -198,14 +191,15 @@ fun BrowserRoute(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = if (inspectMessage == null) Arrangement.End else Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (inspectMessage != null) {
                         Text(
-                            inspectMessage ?: if (inspecting) "جارٍ فحص مصادر الوسائط…" else "يمكن فحص الصفحة الحالية",
+                            inspectMessage.orEmpty(),
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.labelSmall,
-                            color = if (inspectMessage != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.error,
                             maxLines = 2,
                         )
                     }
@@ -273,10 +267,10 @@ fun BrowserRoute(
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
