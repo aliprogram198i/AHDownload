@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
+import java.util.Locale
 
 data class BrowserErrorEntry(
     val timestampEpochMs: Long,
@@ -12,6 +13,10 @@ data class BrowserErrorEntry(
     val stage: String,
     val host: String,
     val code: String? = null,
+    val severity: String = "ERROR",
+    val safeUrl: String? = null,
+    val pageTitle: String? = null,
+    val details: Map<String, String> = emptyMap(),
 )
 
 class BrowserErrorLogStore(context: Context) {
@@ -24,33 +29,64 @@ class BrowserErrorLogStore(context: Context) {
         buildList {
             for (index in 0 until json.length()) {
                 val item = json.optJSONObject(index) ?: continue
+                val rawDetails = item.optJSONObject("details") ?: JSONObject()
+                val parsedDetails = buildMap {
+                    val names = rawDetails.names() ?: continue
+                    for (detailIndex in 0 until names.length()) {
+                        val key = names.optString(detailIndex)
+                        if (key.isBlank()) continue
+                        val value = rawDetails.optString(key).takeIf { it.isNotBlank() && it != "null" } ?: continue
+                        put(safeKey(key), safe(value, 220))
+                    }
+                }
                 add(
                     BrowserErrorEntry(
                         timestampEpochMs = item.optLong("time"),
                         type = safe(item.optString("type"), 80),
-                        message = safe(item.optString("message"), 240),
+                        message = safe(item.optString("message"), 300),
                         stage = safe(item.optString("stage"), 80),
-                        host = safe(item.optString("host"), 120),
-                        code = item.optString("code").takeIf { it.isNotBlank() && it != "null" }?.let { safe(it, 40) },
+                        host = hostOnly(item.optString("host").takeIf { it != "null" }),
+                        code = item.optString("code").takeIf { it.isNotBlank() && it != "null" }?.let { safe(it, 60) },
+                        severity = normalizeSeverity(item.optString("severity")),
+                        safeUrl = safeUrlOnly(item.optString("safe_url").takeIf { it.isNotBlank() && it != "null" }),
+                        pageTitle = item.optString("page_title").takeIf { it.isNotBlank() && it != "null" }?.let { safe(it, 160) },
+                        details = parsedDetails,
                     ),
                 )
             }
         }.sortedByDescending { it.timestampEpochMs }
     }
 
-    fun record(type: String, message: String, stage: String, url: String?, code: String? = null) {
+    fun record(
+        type: String,
+        message: String,
+        stage: String,
+        url: String?,
+        code: String? = null,
+        severity: String = "ERROR",
+        pageTitle: String? = null,
+        details: Map<String, String> = emptyMap(),
+    ) {
         val entry = BrowserErrorEntry(
             timestampEpochMs = System.currentTimeMillis(),
             type = safe(type, 80),
-            message = safe(message, 240),
+            message = safe(message, 300),
             stage = safe(stage, 80),
             host = hostOnly(url),
-            code = code?.let { safe(it, 40) },
+            code = code?.let { safe(it, 60) },
+            severity = normalizeSeverity(severity),
+            safeUrl = safeUrlOnly(url),
+            pageTitle = pageTitle?.let { safe(it, 160) },
+            details = details.entries
+                .take(MAX_DETAILS)
+                .associate { safeKey(it.key) to safe(it.value, 220) },
         )
         synchronized(lock) {
             val all = (list() + entry).sortedByDescending { it.timestampEpochMs }.take(MAX_ENTRIES)
             val json = JSONArray()
             all.forEach { item ->
+                val detailJson = JSONObject()
+                item.details.forEach { (key, value) -> detailJson.put(key, value) }
                 json.put(
                     JSONObject()
                         .put("time", item.timestampEpochMs)
@@ -58,7 +94,11 @@ class BrowserErrorLogStore(context: Context) {
                         .put("message", item.message)
                         .put("stage", item.stage)
                         .put("host", item.host)
-                        .put("code", item.code ?: ""),
+                        .put("code", item.code ?: "")
+                        .put("severity", item.severity)
+                        .put("safe_url", item.safeUrl ?: "")
+                        .put("page_title", item.pageTitle ?: "")
+                        .put("details", detailJson),
                 )
             }
             preferences.edit().putString(KEY_ENTRIES, json.toString()).apply()
@@ -72,24 +112,29 @@ class BrowserErrorLogStore(context: Context) {
     }
 
     fun exportEntryText(entry: BrowserErrorEntry): String = buildString {
-        appendLine("AHDownload Browser Error Detail")
+        appendLine("AHDownload Browser Event Detail")
         appendLine("time_epoch_ms=${entry.timestampEpochMs}")
+        appendLine("severity=${entry.severity}")
         appendLine("type=${entry.type}")
         appendLine("stage=${entry.stage}")
         appendLine("host=${entry.host}")
+        entry.safeUrl?.let { appendLine("safe_url=$it") }
+        entry.pageTitle?.let { appendLine("page_title=$it") }
         entry.code?.let { appendLine("code=$it") }
         appendLine("message=${entry.message}")
+        entry.details.toSortedMap().forEach { (key, value) -> appendLine("$key=$value") }
+        appendLine("query_and_fragment=not_saved")
         appendLine("sensitive_values=redacted")
     }.take(MAX_EXPORT_CHARS)
 
     fun exportLatestText(): String =
-        list().firstOrNull()?.let(::exportEntryText) ?: "AHDownload Browser Error Log\nentries=0"
+        list().firstOrNull()?.let(::exportEntryText) ?: "AHDownload Browser Event Log\nentries=0"
 
     fun exportText(): String {
         val entries = list()
         return buildString {
-            appendLine("AHDownload Browser Error Log")
-            appendLine("entries=" + entries.size)
+            appendLine("AHDownload Browser Event Log")
+            appendLine("entries=${entries.size}")
             entries.forEachIndexed { index, item ->
                 appendLine()
                 appendLine("#${index + 1}")
@@ -99,10 +144,34 @@ class BrowserErrorLogStore(context: Context) {
     }
 
     private fun hostOnly(url: String?): String =
-        runCatching { URI(url.orEmpty()).host?.lowercase()?.take(120) }
+        runCatching { URI(url.orEmpty()).host?.lowercase(Locale.ROOT)?.take(120) }
             .getOrNull()
             ?.takeIf { it.isNotBlank() }
             ?: "unknown"
+
+    /** Keep the origin and short path for route correlation, never query parameters or fragments. */
+    private fun safeUrlOnly(url: String?): String? = runCatching {
+        val uri = URI(url.orEmpty())
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)
+        val host = uri.host?.lowercase(Locale.ROOT)
+        if (scheme !in setOf("http", "https") || host.isNullOrBlank() || uri.userInfo != null) return@runCatching null
+        val safePath = uri.rawPath.orEmpty().split('/').joinToString("/") { segment ->
+            when {
+                segment.length > 48 -> "[path-segment]"
+                Regex("""[A-Za-z0-9_-]{32,}""").containsMatchIn(segment) -> "[path-segment]"
+                else -> segment.take(48)
+            }
+        }
+        "$scheme://$host$safePath".take(200)
+    }.getOrNull()
+
+    private fun normalizeSeverity(raw: String): String =
+        raw.uppercase(Locale.ROOT).takeIf { it in SEVERITIES } ?: "ERROR"
+
+    private fun safeKey(raw: String): String =
+        raw.filter { it.isLetterOrDigit() || it == '_' || it == '-' || it == '.' }
+            .take(48)
+            .ifBlank { "detail" }
 
     private fun safe(value: String, maxLength: Int): String {
         val withoutUrls = value.replace(
@@ -124,7 +193,9 @@ class BrowserErrorLogStore(context: Context) {
     private companion object {
         const val PREFERENCES = "ahdownload_browser_error_log"
         const val KEY_ENTRIES = "entries"
-        const val MAX_ENTRIES = 50
-        const val MAX_EXPORT_CHARS = 20_000
+        const val MAX_ENTRIES = 80
+        const val MAX_DETAILS = 30
+        const val MAX_EXPORT_CHARS = 30_000
+        val SEVERITIES = setOf("INFO", "SUCCESS", "WARNING", "ERROR")
     }
 }
