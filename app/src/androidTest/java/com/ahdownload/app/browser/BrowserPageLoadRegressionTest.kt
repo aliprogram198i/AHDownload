@@ -90,13 +90,13 @@ class BrowserPageLoadRegressionTest {
         assertEquals("CONTENT_SIGNALS_DETECTED", recheckEvent.details["render_status"])
         assertEquals("1400", recheckEvent.details["recheck_delay_ms"])
         assertTrue((recheckEvent.details["readable_visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
-        assertEquals(
-            "A navigation must schedule exactly one delayed render recheck",
-            1,
-            browserStore.list().count {
-                it.type == "PAGE_RENDER_RECHECK" &&
-                    it.details["navigation_id"] == renderEvent.details["navigation_id"]
-            },
+        val recheckEvents = browserStore.list().filter {
+            it.type == "PAGE_RENDER_RECHECK" && it.host == "example.com"
+        }
+        assertTrue(
+            "Each navigation may emit at most one delayed render recheck",
+            recheckEvents.groupBy { it.details["navigation_id"] }
+                .values.all { eventsForNavigation -> eventsForNavigation.size == 1 },
         )
 
         composeRule.onNodeWithText("فحص الخيارات").performClick()
