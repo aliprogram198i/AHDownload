@@ -75,9 +75,19 @@ class BrowserPageLoadRegressionTest {
             (renderEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) > 0,
         )
         assertEquals(
-            "viewport_intersection_visible_style",
+            "viewport_intersection_visible_style_contrast_and_hit_test",
             renderEvent.details["content_visibility_basis"],
         )
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any { it.type == "PAGE_RENDER_RECHECK" && it.host == "example.com" }
+        }
+        val recheckEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_RECHECK" && it.host == "example.com"
+        }
+        assertEquals("CONTENT_SIGNALS_DETECTED", recheckEvent.details["render_status"])
+        assertEquals("1400", recheckEvent.details["recheck_delay_ms"])
+        assertTrue((recheckEvent.details["readable_visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
 
         composeRule.onNodeWithText("فحص الخيارات").performClick()
         composeRule.waitUntil(timeoutMillis = 40_000) {

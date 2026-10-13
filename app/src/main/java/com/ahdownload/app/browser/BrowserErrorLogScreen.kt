@@ -254,7 +254,11 @@ private fun diagnosticLabel(key: String): String = when (key) {
     "audio_count" -> "عدد عناصر الصوت"
     "image_count" -> "عدد الصور"
     "visible_image_count" -> "الصور الظاهرة"
+    "visible_large_image_count" -> "الصور الكبيرة الظاهرة"
+    "visible_image_area_ratio" -> "نسبة مساحة الصور الظاهرة (من 0 إلى 1)"
     "visible_text_chars" -> "أحرف النص الظاهرة"
+    "readable_visible_text_chars" -> "أحرف النص المقروءة ذات التباين"
+    "recheck_delay_ms" -> "مهلة إعادة الفحص (مللي ثانية)"
     "visible_media_element_count" -> "عناصر الوسائط المرئية"
     "visible_content_element_count" -> "الحاويات الدلالية/الوسائط المرئية"
     "has_visible_content_signals" -> "رُصدت إشارات محتوى مرئية"
@@ -307,6 +311,6 @@ private fun diagnosticValue(key: String, value: String): String = when (key) {
     "visible_content_element_scope" ->
         "يحصي الحاويات الدلالية والوسائط القابلة للرسم فقط؛ ولا يحصي النصوص المنفردة أو الصور وحدها"
     "content_visibility_basis" ->
-        "تقاطع العنصر مع نافذة العرض وفحص أنماط الظهور"
+        "تقاطع العناصر مع نافذة العرض، وفحص تباين النص والتأكد من عدم حجب العناصر بعنصر آخر"
     else -> value
 }
