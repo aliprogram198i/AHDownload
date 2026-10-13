@@ -74,7 +74,7 @@ class FacebookSocialPlatformExtractionStrategyTest {
 
         val primaryFailure = events.single { it.first == "SOCIAL_PAGE_FETCH_FAILED" }
         assertEquals("400", primaryFailure.second["http_status"])
-        val fallbackEvent = events.single { it.first == "SOCIAL_FACEBOOK_MOBILE_FALLBACK_RESULT" }
+        val fallbackEvent = events.single { it.first == "SOCIAL_FACEBOOK_FALLBACK_RESULT" }
         assertEquals("media_found", fallbackEvent.second["fallback_status"])
         assertEquals("1", fallbackEvent.second["media_count"])
         assertEquals("facebook-mobile-fallback-test", fallbackEvent.second["operation_id"])
@@ -111,6 +111,55 @@ class FacebookSocialPlatformExtractionStrategyTest {
         assertTrue(result is ResolverResult.Failure)
         assertEquals(FailureCode.NoCandidates, (result as ResolverResult.Failure).code)
         assertEquals(listOf(pageUrl), fetchedUrls)
+    }
+
+    @Test
+    fun retriesMbasicHostWhenMobileHostAlsoReturnsHttp400() = runTest {
+        val pageUrl = "https://www.facebook.com/watch/?v=123456789"
+        val mobileUrl = "https://m.facebook.com/watch/?v=123456789"
+        val mbasicUrl = "https://mbasic.facebook.com/watch/?v=123456789"
+        val mediaUrl = "https://video.xx.fbcdn.net/v/t42/AQExampleVideo.mp4?token=opaque"
+        val html = """<html><head><meta property="og:video" content="$mediaUrl"></head><body></body></html>"""
+        val fetchedUrls = mutableListOf<String>()
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val pageClient = object : HttpTextClient {
+            override suspend fun get(url: String): String = respond(url)
+            override suspend fun get(url: String, headers: Map<String, String>): String = respond(url)
+            private fun respond(url: String): String {
+                fetchedUrls += url
+                return when (url) {
+                    pageUrl, mobileUrl -> throw IOException("HTTP 400")
+                    mbasicUrl -> html
+                    else -> error("Unexpected Facebook fallback URL")
+                }
+            }
+        }
+        val resolver = FacebookResolverAdapter(
+            provider = FacebookProvider(pageUrl),
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = pageClient,
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = pageUrl,
+                    normalizedUrl = pageUrl,
+                    platform = MediaPlatform.Facebook,
+                    kind = MediaKind.Video,
+                ),
+                operationId = "facebook-mbasic-fallback-test",
+            ),
+        )
+
+        assertTrue("mbasic fallback should resolve a public Facebook media URL", result is ResolverResult.Success)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
+        assertEquals(listOf(pageUrl, mobileUrl, mbasicUrl), fetchedUrls)
+        val fallbackEvent = events.single { it.first == "SOCIAL_FACEBOOK_FALLBACK_RESULT" && it.second["fallback_variant"] == "mbasic_host" }
+        assertEquals("mbasic_host", fallbackEvent.second["fallback_variant"])
+        assertEquals("media_found", fallbackEvent.second["fallback_status"])
     }
 
     private class FacebookProvider(

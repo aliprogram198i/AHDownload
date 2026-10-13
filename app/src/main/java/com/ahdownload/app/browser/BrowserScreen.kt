@@ -186,6 +186,10 @@ fun BrowserRoute(
             return
         }
         nextNavigationSource = "address_bar"
+        // Persist the requested destination before touching WebView. The AndroidView
+        // factory may not have assigned webView yet; in that case the factory must
+        // still receive this URL instead of silently losing the user's navigation.
+        currentUrl = normalized
         address = normalized
         inspectMessage = null
         pageLoadError = null

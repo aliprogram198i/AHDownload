@@ -17,7 +17,7 @@ abstract class FixedSocialPlatformAdapter(
     provider: BrowserMediaSessionProvider,
     logger: DiagnosticLogger = defaultSocialDiagnosticLogger(),
     resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
-    pageClient: HttpTextClient = defaultSocialPageClient(),
+    pageClient: HttpTextClient = defaultSocialPageClient(logger),
     strategy: SocialPlatformExtractionStrategy = socialPlatformExtractionStrategy(platform),
 ) : PlatformAdapter by SocialPlatformResolverEngine(
     provider = provider,
