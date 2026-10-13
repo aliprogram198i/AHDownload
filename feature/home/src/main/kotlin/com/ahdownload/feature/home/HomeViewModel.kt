@@ -1188,6 +1188,8 @@ class HomeViewModel(
                                 "operation_id" to validationOperationId,
                                 "youtube_refresh_attempted" to youtubeRefreshAttempted.toString(),
                                 "youtube_fallback_candidates_checked" to youtubeFallbackCandidatesChecked.toString(),
+                                "facebook_refresh_attempted" to facebookRefreshAttempted.toString(),
+                                "facebook_fallback_candidates_checked" to facebookFallbackCandidatesChecked.toString(),
                             ),
                             null,
                         )
