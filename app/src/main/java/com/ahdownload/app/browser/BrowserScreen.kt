@@ -592,6 +592,10 @@ fun BrowserRoute(
                                         const text=(b&&b.innerText?b.innerText:'').trim();
                                         const title=d.title||'';
                                         const visibleImages=[...d.images].filter(i=>i.complete&&i.naturalWidth>0&&i.getBoundingClientRect().width>0).length;
+                                        const visibleContentElements=[...d.querySelectorAll('main,article,video,audio,canvas,iframe,[role="main"]')].filter(i=>{
+                                          const r=i.getBoundingClientRect(), c=getComputedStyle(i);
+                                          return r.width>0&&r.height>0&&c.display!=='none'&&c.visibility!=='hidden';
+                                        }).length;
                                         const challenge=/verify you are human|checking your browser|just a moment|access denied|captcha|unusual traffic|confirm you are not a robot|enable javascript and cookies/i
                                           .test((title+' '+text.slice(0,5000)).toLowerCase());
                                         return JSON.stringify({
@@ -607,6 +611,7 @@ fun BrowserRoute(
                                           iframeCount:d.querySelectorAll('iframe').length,
                                           imageCount:d.images.length,
                                           visibleImageCount:visibleImages,
+                                          visibleContentElementCount:visibleContentElements,
                                           backgroundColor:b?getComputedStyle(b).backgroundColor:'unknown',
                                           challengeDetected:challenge
                                         });
@@ -644,10 +649,11 @@ fun BrowserRoute(
                                     val audioCount = snapshot.optInt("audioCount", 0).coerceAtLeast(0)
                                     val imageCount = snapshot.optInt("imageCount", 0).coerceAtLeast(0)
                                     val visibleImageCount = snapshot.optInt("visibleImageCount", 0).coerceAtLeast(0)
+                                    val visibleContentElementCount = snapshot.optInt("visibleContentElementCount", 0).coerceAtLeast(0)
                                     val iframeCount = snapshot.optInt("iframeCount", 0).coerceAtLeast(0)
                                     val challengeDetected = snapshot.optBoolean("challengeDetected", false)
                                     val hasContentSignals = bodyTextChars >= 12 || videoCount > 0 || audioCount > 0 ||
-                                        visibleImageCount > 0 || (bodyChildCount > 0 && documentHeight > 120)
+                                        visibleImageCount > 0 || visibleContentElementCount > 0
                                     pageRenderStatus = when {
                                         challengeDetected -> "POSSIBLE_ACCESS_CHALLENGE"
                                         hasContentSignals -> "CONTENT_SIGNALS_DETECTED"
@@ -677,6 +683,7 @@ fun BrowserRoute(
                                             "audio_count" to audioCount.toString(),
                                             "image_count" to imageCount.toString(),
                                             "visible_image_count" to visibleImageCount.toString(),
+                                            "visible_content_element_count" to visibleContentElementCount.toString(),
                                             "iframe_count" to iframeCount.toString(),
                                             "background_color" to snapshot.optString("backgroundColor", "unknown"),
                                             "challenge_detected" to challengeDetected.toString(),
