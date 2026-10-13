@@ -766,16 +766,6 @@ fun BrowserRoute(
                                                 "http_resource_errors" to resourceHttpErrorCount.toString(),
                                             ),
                                             pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
-                                        ).joinToString(",").ifBlank { "none" },
-                                            "visible_content_element_scope" to "visible_semantic_containers_and_renderable_media_only",
-                                            "content_visibility_basis" to "viewport_intersection_visible_style",
-                                            "iframe_count" to iframeCount.toString(),
-                                            "background_color" to snapshot.optString("backgroundColor", "unknown"),
-                                            "challenge_detected" to challengeDetected.toString(),
-                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
-                                            "http_resource_errors" to resourceHttpErrorCount.toString(),
-                                        ),
-                                            pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                         )
                                     }
                                     val visualStateNavigationId = currentNavigationId
