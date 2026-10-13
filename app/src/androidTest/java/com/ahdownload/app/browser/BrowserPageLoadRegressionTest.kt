@@ -4,7 +4,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -79,7 +79,7 @@ class BrowserPageLoadRegressionTest {
             val targetUrl = "http://127.0.0.1:${server.localPort}/page"
             composeRule.onNodeWithText("ابدأ الآن").performClick()
             composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
-            composeRule.onNodeWithText("AHDownload Browser").assertExists()
+            composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
             composeRule.onNodeWithText("عنوان الموقع").assertExists()
             composeRule.onNode(hasSetTextAction()).performTextReplacement(targetUrl)
             composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
