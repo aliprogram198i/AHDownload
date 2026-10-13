@@ -99,6 +99,59 @@ class YouTubeResolverTest {
     }
 
     @Test
+    fun doesNotExposePlayerResponseCandidatesAfterExplicitAuthenticationFailureWithoutObservedMedia() = runBlocking {
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = """
+                var ytInitialPlayerResponse = {
+                  "playabilityStatus": {
+                    "status": "LOGIN_REQUIRED",
+                    "reason": "Sign in to confirm you're not a bot"
+                  }
+                };
+            """.trimIndent()
+
+            override suspend fun postJson(url: String, body: String): String =
+                throw AssertionError("Player API fallback must not run after explicit authentication failure")
+        }
+        val session = object : YouTubeSessionProvider {
+            override suspend fun snapshot(url: String) = YouTubeSessionSnapshot(
+                cookies = null,
+                videoUrls = emptyList(),
+                audioUrls = emptyList(),
+                playerResponse = """
+                    {
+                      "playabilityStatus":{"status":"OK"},
+                      "videoDetails":{"title":"Metadata-only fallback"},
+                      "streamingData":{"formats":[
+                        {"itag":"18","mimeType":"video/mp4; codecs=\"avc1.42001E, mp4a.40.2\"","width":640,"height":360,
+                         "url":"https://rr1---sn.googlevideo.com/videoplayback?itag=18&mime=video%2Fmp4"}
+                      ]}
+                    }
+                """.trimIndent(),
+                authenticated = false,
+                browserMediaObservedCount = 0,
+            )
+        }
+
+        val result = YouTubeResolver(client, sessionProvider = session).resolve(
+            ResolverRequest(
+                link = MediaLink(
+                    originalUrl = "https://youtu.be/auth-gated-test",
+                    normalizedUrl = "https://youtu.be/auth-gated-test",
+                    platform = MediaPlatform.YouTube,
+                    kind = MediaKind.Unknown,
+                ),
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals(
+            com.ahdownload.domain.resolver.FailureCode.AuthenticationRequired,
+            (result as ResolverResult.Failure).code,
+        )
+    }
+
+    @Test
     fun rejectsNonYouTubeRequest() = runBlocking {
         val resolver = YouTubeResolver(object : HttpTextClient {
             override suspend fun get(url: String): String = ""
