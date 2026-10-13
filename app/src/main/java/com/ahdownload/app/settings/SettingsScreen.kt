@@ -82,7 +82,6 @@ fun SettingsRoute(
     performanceLogStore: PerformanceLogStore,
     onOpenPerformanceLog: () -> Unit,
     themeMode: AHThemeMode,
-    onThemeChanged: (AHThemeMode) -> Unit,
     onPickDownloadFolder: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onBack: () -> Unit,
@@ -413,158 +412,60 @@ fun SettingsRoute(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.Palette, contentDescription = null)
+                        Icon(
+                            Icons.Rounded.Palette,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
                         Column(
                             modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             Text(
-                                "الثيم",
+                                "Modern Indigo Light",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                themeMode.description,
+                                "الثيم الوحيد في التطبيق",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(AHThemeMode.entries) { mode ->
-                            DiagnosticFilterChip(
-                                trackingScreen = "SETTINGS",
-                                trackingId = "SETTINGS.filterchip.03",
-                                trackingLabel = "SETTINGS.filterchip.03",
-                                disabledReason = "callsite_precondition_not_explicit",
-                                selected = themeMode == mode,
-                                onClick = {
-                                    uiTraceLogger.interaction(
-                                        "SETTINGS",
-                                        "theme_" + mode.storageValue,
-                                        "set_theme",
-                                    )
-                                    onThemeChanged(mode)
-                                },
-                                label = { Text(mode.label) },
-                            )
-                        }
-                    }
 
-                    if (themeMode == AHThemeMode.LIGHT) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            Icon(
+                                Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
                             Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
                             ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        "Modern Indigo Light",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                    ) {
-                                        Text(
-                                            "الثيم مفعّل",
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        )
-                                    }
-                                }
                                 Text(
-                                    "خلفيات فاتحة، بطاقات بيضاء، وتباين نيلي واضح للأزرار والاختيارات وأشرطة التقدم.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    "مفعّل دائمًا",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
-                            }
-                        }
-                    } else if (themeMode == AHThemeMode.DARK) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        "Indigo Dark",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                    ) {
-                                        Text(
-                                            "وضع داكن",
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        )
-                                    }
-                                }
                                 Text(
-                                    "خلفيات داكنة، أسطح متدرجة بصريًا، ولمسات نيلية متناسقة مع Dark Tech.",
+                                    "خلفيات فاتحة، بطاقات بيضاء، ولمسات نيلية متوازنة عبر جميع الشاشات.",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    } else if (themeMode == AHThemeMode.DARK_TECH) {
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        "Dark Tech",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(50),
-                                        color = MaterialTheme.colorScheme.secondaryContainer,
-                                    ) {
-                                        Text(
-                                            "Engine Ready",
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        )
-                                    }
-                                }
-                                Text(
-                                    "فحمي عميق مع لمسات نيلية وسماوية وتباين مريح دون تشتيت.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 )
                             }
                         }

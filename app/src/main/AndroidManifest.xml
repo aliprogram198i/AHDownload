@@ -13,8 +13,8 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:label="AHDownload"
-        android:icon="@drawable/ic_ahdownload"
-        android:roundIcon="@drawable/ic_ahdownload"
+        android:icon="@mipmap/ic_ahdownload"
+        android:roundIcon="@mipmap/ic_ahdownload"
         android:supportsRtl="true"
         android:theme="@style/Theme.AHDownload">
 

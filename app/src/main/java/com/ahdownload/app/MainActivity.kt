@@ -10,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -93,13 +92,8 @@ class MainActivity : ComponentActivity() {
         openDownloadsOnStart = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
 
         setContent {
-            var themeMode by remember { mutableStateOf(themePreferenceStore.read()) }
-            val systemDark = isSystemInDarkTheme()
-            val useDarkSystemBars = when (themeMode) {
-                AHThemeMode.SYSTEM -> systemDark
-                AHThemeMode.LIGHT -> false
-                AHThemeMode.DARK, AHThemeMode.DARK_TECH -> true
-            }
+            val themeMode = remember { themePreferenceStore.read() }
+            val useDarkSystemBars = false
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !useDarkSystemBars
@@ -109,10 +103,6 @@ class MainActivity : ComponentActivity() {
             AHTheme(themeMode = themeMode) {
                 AHRoot(
                     themeMode = themeMode,
-                    onThemeChanged = { mode ->
-                        themePreferenceStore.set(mode)
-                        themeMode = mode
-                    },
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
                     performanceLogStore = applicationServices.performanceLogStore,
@@ -385,7 +375,6 @@ private fun AHRoot(
     downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
     favoriteRepository: com.ahdownload.domain.favorites.FavoriteRepository,
     themeMode: AHThemeMode,
-    onThemeChanged: (AHThemeMode) -> Unit,
     onExtractAudio: suspend (DownloadRecord) -> Boolean,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
@@ -544,7 +533,6 @@ private fun AHRoot(
             performanceLogStore = performanceLogStore,
             onOpenPerformanceLog = { push(RootDestination.Performance) },
             themeMode = themeMode,
-            onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
             onBack = ::popOrHome,

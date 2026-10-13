@@ -9,10 +9,14 @@ class ThemePreferenceStore(context: Context) {
         Context.MODE_PRIVATE,
     )
 
-    fun read(): AHThemeMode =
-        AHThemeMode.entries.firstOrNull { mode ->
-            mode.storageValue == preferences.getString(KEY_THEME, AHThemeMode.LIGHT.storageValue)
-        } ?: AHThemeMode.LIGHT
+    fun read(): AHThemeMode {
+        // Migrate previously stored System, Indigo Dark, and Dark Tech values.
+        // Modern Indigo Light is now the only supported theme.
+        if (preferences.getString(KEY_THEME, null) != AHThemeMode.LIGHT.storageValue) {
+            preferences.edit().putString(KEY_THEME, AHThemeMode.LIGHT.storageValue).apply()
+        }
+        return AHThemeMode.LIGHT
+    }
 
     fun set(mode: AHThemeMode) {
         preferences.edit().putString(KEY_THEME, mode.storageValue).apply()
