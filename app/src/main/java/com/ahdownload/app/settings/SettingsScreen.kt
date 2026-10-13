@@ -82,7 +82,6 @@ fun SettingsRoute(
     performanceLogStore: PerformanceLogStore,
     onOpenPerformanceLog: () -> Unit,
     themeMode: AHThemeMode,
-    onThemeChanged: (AHThemeMode) -> Unit,
     onPickDownloadFolder: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onBack: () -> Unit,

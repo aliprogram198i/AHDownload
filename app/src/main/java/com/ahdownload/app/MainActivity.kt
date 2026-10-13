@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         openDownloadsOnStart = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
 
         setContent {
-            var themeMode by remember { mutableStateOf(themePreferenceStore.read()) }
+            val themeMode = remember { themePreferenceStore.read() }
             val useDarkSystemBars = false
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -103,10 +103,6 @@ class MainActivity : ComponentActivity() {
             AHTheme(themeMode = themeMode) {
                 AHRoot(
                     themeMode = themeMode,
-                    onThemeChanged = { mode ->
-                        themePreferenceStore.set(mode)
-                        themeMode = mode
-                    },
                     initialUrl = pendingSharedUrl,
                     logger = diagnosticLogger,
                     performanceLogStore = applicationServices.performanceLogStore,
@@ -379,7 +375,6 @@ private fun AHRoot(
     downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
     favoriteRepository: com.ahdownload.domain.favorites.FavoriteRepository,
     themeMode: AHThemeMode,
-    onThemeChanged: (AHThemeMode) -> Unit,
     onExtractAudio: suspend (DownloadRecord) -> Boolean,
     onPickDownloadFolder: () -> Unit,
     openDownloadsOnStart: Boolean = false,
@@ -538,7 +533,6 @@ private fun AHRoot(
             performanceLogStore = performanceLogStore,
             onOpenPerformanceLog = { push(RootDestination.Performance) },
             themeMode = themeMode,
-            onThemeChanged = onThemeChanged,
             onPickDownloadFolder = onPickDownloadFolder,
             onOpenDiagnostics = { push(RootDestination.Diagnostics) },
             onBack = ::popOrHome,
