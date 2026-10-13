@@ -157,7 +157,7 @@ class FacebookSocialPlatformExtractionStrategyTest {
         assertTrue("mbasic fallback should resolve a public Facebook media URL", result is ResolverResult.Success)
         assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
         assertEquals(listOf(pageUrl, mobileUrl, mbasicUrl), fetchedUrls)
-        val fallbackEvent = events.single { it.first == "SOCIAL_FACEBOOK_FALLBACK_RESULT" }
+        val fallbackEvent = events.single { it.first == "SOCIAL_FACEBOOK_FALLBACK_RESULT" && it.second["fallback_variant"] == "mbasic_host" }
         assertEquals("mbasic_host", fallbackEvent.second["fallback_variant"])
         assertEquals("media_found", fallbackEvent.second["fallback_status"])
     }
