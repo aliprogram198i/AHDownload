@@ -100,8 +100,8 @@ fun BrowserRoute(
             browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
         )
     }
-    var address by remember { mutableStateOf("https://www.google.com") }
-    var currentUrl by remember { mutableStateOf("https://www.google.com") }
+    var address by remember { mutableStateOf("") }
+    var currentUrl by remember { mutableStateOf("") }
     var pageProgress by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
