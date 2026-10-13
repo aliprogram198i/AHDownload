@@ -95,6 +95,11 @@ class BrowserPublicSitesAcceptanceTest {
         }
 
         assertEquals("All three requested sites must produce a bounded probe result", SITES.size, results.size)
+        assertTrue(
+            "Every requested URL must finish navigation or report a detectable page failure. Results: " +
+                results.joinToString(" || ") { it.toSafeLogLine() },
+            results.all { it.pageFinished },
+        )
         val provenVisibilityFailures = results.filter { result ->
             result.pageFinished &&
                 !result.summary.challengeDetected &&
