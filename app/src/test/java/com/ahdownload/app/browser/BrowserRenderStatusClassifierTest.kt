@@ -18,6 +18,34 @@ class BrowserRenderStatusClassifierTest {
     }
 
     @Test
+    fun lowConfidenceTextOrTinyImagesDoNotCountAsConfirmedPrimaryContent() {
+        assertEquals(
+            "CONTENT_VISIBILITY_UNCONFIRMED",
+            BrowserRenderStatusClassifier.classify(
+                challengeDetected = false,
+                readyState = "complete",
+                hasVisibleContentSignals = true,
+                hasAnyDomContentSignals = true,
+                hasPrimaryVisibleContent = false,
+            ),
+        )
+    }
+
+    @Test
+    fun readableTextOrSubstantialMediaCanConfirmPrimaryContent() {
+        assertEquals(
+            "CONTENT_SIGNALS_DETECTED",
+            BrowserRenderStatusClassifier.classify(
+                challengeDetected = false,
+                readyState = "complete",
+                hasVisibleContentSignals = true,
+                hasAnyDomContentSignals = true,
+                hasPrimaryVisibleContent = true,
+            ),
+        )
+    }
+
+    @Test
     fun hiddenOrOffscreenDomIsNotMisreportedAsVisibleContent() {
         assertEquals(
             "CONTENT_NOT_VISIBLE_IN_VIEWPORT",
