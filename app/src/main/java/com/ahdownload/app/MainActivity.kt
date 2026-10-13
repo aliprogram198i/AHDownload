@@ -10,7 +10,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -94,12 +93,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var themeMode by remember { mutableStateOf(themePreferenceStore.read()) }
-            val systemDark = isSystemInDarkTheme()
-            val useDarkSystemBars = when (themeMode) {
-                AHThemeMode.SYSTEM -> systemDark
-                AHThemeMode.LIGHT -> false
-                AHThemeMode.DARK, AHThemeMode.DARK_TECH -> true
-            }
+            val useDarkSystemBars = false
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = !useDarkSystemBars
