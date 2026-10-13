@@ -61,6 +61,22 @@ class BrowserPageLoadRegressionTest {
         )
     }
 
+    @Test(timeout = 30_000)
+    fun browserStartsWithConfiguredHomeUrlInsteadOfBlankWebView() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
+
+        val loadedUrl = AtomicReference<String?>(null)
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.runOnUiThread {
+                loadedUrl.set(findWebView(composeRule.activity.window.decorView)?.url)
+            }
+            loadedUrl.get()?.startsWith("https://") == true
+        }
+        assertNotNull("Browser must initiate its configured home navigation on entry", loadedUrl.get())
+    }
+
     private fun findWebView(view: View): WebView? {
         if (view is WebView) return view
         if (view !is ViewGroup) return null

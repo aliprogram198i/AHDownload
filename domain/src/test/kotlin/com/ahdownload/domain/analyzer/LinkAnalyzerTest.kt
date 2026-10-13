@@ -131,9 +131,10 @@ class LinkAnalyzerTest {
     }
 
     @Test
-    fun rejectsCleartextHttpLinks() {
+    fun allowsHttpWebAndDirectMediaButKeepsSocialPlatformsHttpsOnly() {
         assertNull(analyzer.analyze("http://youtu.be/example"))
-        assertNull(analyzer.analyze("http://cdn.example.com/video.mp4"))
+        assertEquals(MediaPlatform.Web, analyzer.analyze("http://example.com/article")?.platform)
+        assertEquals(MediaPlatform.DirectMedia, analyzer.analyze("http://cdn.example.com/video.mp4")?.platform)
     }
 
     @Test

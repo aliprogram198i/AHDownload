@@ -71,20 +71,32 @@ class BrowserErrorLogStore(context: Context) {
         }
     }
 
-    fun exportText(): String = buildString {
-        appendLine("AHDownload Browser Error Log")
-        appendLine("entries=" + list().size)
-        list().forEachIndexed { index, item ->
-            appendLine()
-            appendLine("#${index + 1}")
-            appendLine("time_epoch_ms=${item.timestampEpochMs}")
-            appendLine("type=${item.type}")
-            appendLine("stage=${item.stage}")
-            appendLine("host=${item.host}")
-            item.code?.let { appendLine("code=$it") }
-            appendLine("message=${item.message}")
-        }
+    fun exportEntryText(entry: BrowserErrorEntry): String = buildString {
+        appendLine("AHDownload Browser Error Detail")
+        appendLine("time_epoch_ms=\${entry.timestampEpochMs}")
+        appendLine("type=\${entry.type}")
+        appendLine("stage=\${entry.stage}")
+        appendLine("host=\${entry.host}")
+        entry.code?.let { appendLine("code=\$it") }
+        appendLine("message=\${entry.message}")
+        appendLine("sensitive_values=redacted")
     }.take(MAX_EXPORT_CHARS)
+
+    fun exportLatestText(): String =
+        list().firstOrNull()?.let(::exportEntryText) ?: "AHDownload Browser Error Log\nentries=0"
+
+    fun exportText(): String {
+        val entries = list()
+        return buildString {
+            appendLine("AHDownload Browser Error Log")
+            appendLine("entries=" + entries.size)
+            entries.forEachIndexed { index, item ->
+                appendLine()
+                appendLine("#\${index + 1}")
+                append(exportEntryText(item))
+            }
+        }.take(MAX_EXPORT_CHARS)
+    }
 
     private fun hostOnly(url: String?): String =
         runCatching { URI(url.orEmpty()).host?.lowercase()?.take(120) }
@@ -92,13 +104,22 @@ class BrowserErrorLogStore(context: Context) {
             ?.takeIf { it.isNotBlank() }
             ?: "unknown"
 
-    private fun safe(value: String, maxLength: Int): String =
-        value.replace(Regex("""https?://\S+""", RegexOption.IGNORE_CASE), "[url]")
-            .replace(Regex("""(?i)(cookie|authorization|token|password|secret)\s*[:=]\s*[^\s,;]+"""), "\$1=[redacted]")
+    private fun safe(value: String, maxLength: Int): String {
+        val withoutUrls = value.replace(
+            Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE),
+            "[url]",
+        )
+        val withoutSecrets = Regex(
+            """(?i)\b(cookie|set-cookie|authorization|proxy-authorization|access[_-]?token|refresh[_-]?token|id[_-]?token|token|password|passwd|secret|session(?:id)?|csrf(?:token)?|signature|sig|jwt)\b\s*[:=]\s*[^\s,;&]+""",
+        ).replace(withoutUrls) { match ->
+            match.groupValues[1] + "=[redacted]"
+        }
+        return withoutSecrets
             .filter { it == '\n' || it == '\t' || it >= ' ' }
             .trim()
             .take(maxLength)
             .ifBlank { "unknown" }
+    }
 
     private companion object {
         const val PREFERENCES = "ahdownload_browser_error_log"
