@@ -514,10 +514,12 @@ class AndroidBrowserMediaSessionProvider(
                         // below xig_polaris_media and need JSON-aware traversal, not a shallow regex.
                         const structuredMedia=[];
                         const dataSjs=[...document.querySelectorAll('script[type="application/json"][data-sjs]')].slice(0,100);
-                        dataSjs.forEach(script=>{
-                          try{structuredMedia.push(...collectMedia(JSON.parse(script.textContent||'')));}
-                          catch(_){}
-                        });
+                        if(typeof collectMedia==='function'){
+                          dataSjs.forEach(script=>{
+                            try{structuredMedia.push(...collectMedia(JSON.parse(script.textContent||'')));}
+                            catch(_){}
+                          });
+                        }
                         embedded.push(...structuredMedia);
                         const clean=scripts
                           .replace(/\\u002f/gi,'/')
@@ -651,7 +653,8 @@ class AndroidBrowserMediaSessionProvider(
                         favicon: android.graphics.Bitmap?,
                     ) {
                         super.onPageStarted(view, pageUrl, favicon)
-                        if (platform == MediaPlatform.Instagram) {
+                        when (platform) {
+                        MediaPlatform.Instagram -> {
                             // Keep polling bounded. If the normal permalink does not expose a
                             // playable source, switch to the public embed and observe its player.
                             scheduleInspection(view, 900L)
@@ -659,6 +662,15 @@ class AndroidBrowserMediaSessionProvider(
                             scheduleInspection(view, 4200L)
                             scheduleInstagramEmbedFallback(view, 7000L)
                         }
+                        MediaPlatform.Facebook -> {
+                            // Facebook pages can delay or omit onPageFinished in WebView.
+                            // Start bounded DOM/resource inspection from onPageStarted as well.
+                            scheduleInspection(view, 900L)
+                            scheduleInspection(view, 2200L)
+                            scheduleInspection(view, 4200L)
+                        }
+                        else -> Unit
+                    }
                     }
 
                     override fun onReceivedError(
