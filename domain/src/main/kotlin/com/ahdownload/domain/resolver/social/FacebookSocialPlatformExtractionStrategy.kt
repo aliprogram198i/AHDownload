@@ -31,66 +31,69 @@ internal class FacebookSocialPlatformExtractionStrategy :
         logger: DiagnosticLogger,
     ): ParsedPageMedia? {
         if (pageUrl.isNullOrBlank() || browserMediaCount > 0 || pageFallbackMediaCount > 0) return null
-        val fallback = mobileFallbackUrl(pageUrl) ?: return null
-        val (variant, fallbackUrl) = fallback
-        val headers = requestHeaders()
-        var body: String? = null
-        var parsed: ParsedPageMedia? = null
-        var exceptionType: String? = null
-        var httpStatus: String? = null
+        val fallbacks = fallbackUrls(pageUrl)
+        if (fallbacks.isEmpty()) return null
 
-        try {
-            body = withTimeoutOrNull(FACEBOOK_MOBILE_FETCH_TIMEOUT_MS) {
-                pageClient.get(
-                    fallbackUrl,
-                    headers,
-                    mapOf(
-                        "platform" to platform.name,
-                        "operation_id" to (operationId ?: "none"),
-                        "stage" to "RESOLUTION",
-                        "diagnostic_operation" to "social.resolve.facebook_fallback",
-                        "request_role" to "mobile_html_fallback",
-                        "fallback_variant" to variant,
-                    ),
-                )
+        for ((variant, fallbackUrl) in fallbacks) {
+            var body: String? = null
+            var parsed: ParsedPageMedia? = null
+            var exceptionType: String? = null
+            var httpStatus: String? = null
+
+            try {
+                body = withTimeoutOrNull(FACEBOOK_FALLBACK_FETCH_TIMEOUT_MS) {
+                    pageClient.get(
+                        fallbackUrl,
+                        requestHeaders(),
+                        mapOf(
+                            "platform" to platform.name,
+                            "operation_id" to (operationId ?: "none"),
+                            "stage" to "RESOLUTION",
+                            "diagnostic_operation" to "social.resolve.facebook_fallback",
+                            "request_role" to "facebook_host_fallback",
+                            "fallback_variant" to variant,
+                        ),
+                    )
+                }
+                parsed = body?.let { WebPageMediaParser.parse(it, fallbackUrl) }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                exceptionType = error::class.java.simpleName
+                httpStatus = HTTP_STATUS_PATTERN.find(error.message.orEmpty())
+                    ?.groupValues?.getOrNull(1)
             }
-            parsed = body?.let { WebPageMediaParser.parse(it, fallbackUrl) }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Throwable) {
-            exceptionType = error::class.java.simpleName
-            httpStatus = HTTP_STATUS_PATTERN.find(error.message.orEmpty())
-                ?.groupValues?.getOrNull(1)
-        }
 
-        val mediaCount = parsed?.mediaUrls?.size ?: 0
-        val status = when {
-            exceptionType != null -> "request_failed"
-            body == null -> "request_timeout"
-            mediaCount > 0 -> "media_found"
-            looksLikeLoginWall(body) -> "login_wall"
-            else -> "no_media"
+            val mediaCount = parsed?.mediaUrls?.size ?: 0
+            val status = when {
+                exceptionType != null -> "request_failed"
+                body == null -> "request_timeout"
+                mediaCount > 0 -> "media_found"
+                looksLikeLoginWall(body) -> "login_wall"
+                else -> "no_media"
+            }
+            logger.log(
+                if (mediaCount > 0) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
+                "SOCIAL_FACEBOOK_FALLBACK_RESULT",
+                "اكتمل فحص مضيف Facebook الاحتياطي",
+                "social.resolve.facebook_fallback",
+                buildMap {
+                    put("platform", platform.name)
+                    put("operation_id", operationId ?: "none")
+                    put("fallback_variant", variant)
+                    put("fallback_status", status)
+                    put("response_chars", (body?.length ?: 0).toString())
+                    put("media_count", mediaCount.toString())
+                    put("login_wall_detected", (body?.let(::looksLikeLoginWall) ?: false).toString())
+                    httpStatus?.let { put("http_status", it) }
+                    body?.let { putAll(responseMarkers(it)) }
+                    exceptionType?.let { put("exception_type", it) }
+                },
+                null,
+            )
+            if (mediaCount > 0) return parsed
         }
-        logger.log(
-            if (mediaCount > 0) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
-            "SOCIAL_FACEBOOK_MOBILE_FALLBACK_RESULT",
-            "اكتمل فحص مسار Facebook المحمول الاحتياطي",
-            "social.resolve.facebook_fallback",
-            buildMap {
-                put("platform", platform.name)
-                put("operation_id", operationId ?: "none")
-                put("fallback_variant", variant)
-                put("fallback_status", status)
-                put("response_chars", (body?.length ?: 0).toString())
-                put("media_count", mediaCount.toString())
-                put("login_wall_detected", (body?.let(::looksLikeLoginWall) ?: false).toString())
-                httpStatus?.let { put("http_status", it) }
-                body?.let { putAll(responseMarkers(it)) }
-                exceptionType?.let { put("exception_type", it) }
-            },
-            null,
-        )
-        return parsed?.takeIf { it.mediaUrls.isNotEmpty() }
+        return null
     }
 
     override fun requestHeadersForCandidate(
@@ -101,18 +104,27 @@ internal class FacebookSocialPlatformExtractionStrategy :
         return safeHeaders + ("Referer" to FACEBOOK_REFERER)
     }
 
-    private fun mobileFallbackUrl(pageUrl: String): Pair<String, String>? {
-        val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return null
-        if (uri.scheme?.lowercase() !in setOf("http", "https")) return null
-        val host = uri.host?.lowercase() ?: return null
-        if (host !in FACEBOOK_PAGE_HOSTS) return null
+    private fun fallbackUrls(pageUrl: String): List<Pair<String, String>> {
+        val uri = runCatching { URI(pageUrl) }.getOrNull() ?: return emptyList()
+        if (uri.scheme?.lowercase() !in setOf("http", "https")) return emptyList()
+        val host = uri.host?.lowercase() ?: return emptyList()
+        if (host !in FACEBOOK_PAGE_HOSTS) return emptyList()
 
-        val targetHost = if (host == "m.facebook.com") "www.facebook.com" else "m.facebook.com"
         val path = uri.rawPath?.takeIf { it.isNotBlank() } ?: "/"
         val query = uri.rawQuery?.let { "?$it" }.orEmpty()
-        val alternate = "https://$targetHost$path$query"
-        if (alternate.equals(pageUrl, ignoreCase = true)) return null
-        return (if (targetHost == "m.facebook.com") "mobile_host" else "desktop_host") to alternate
+        // Keep attempts bounded and restricted to Facebook-owned hosts.
+        val targets = listOf(
+            "m.facebook.com" to "mobile_host",
+            "mbasic.facebook.com" to "mbasic_host",
+            "www.facebook.com" to "desktop_host",
+            "web.facebook.com" to "web_host",
+        )
+        return targets
+            .filterNot { (targetHost, _) -> targetHost == host }
+            .distinctBy { it.first }
+            .take(MAX_FACEBOOK_HOST_FALLBACKS)
+            .map { (targetHost, variant) -> variant to "https://$targetHost$path$query" }
+            .filterNot { (_, alternate) -> alternate.equals(pageUrl, ignoreCase = true) }
     }
 
     private fun isFacebookPageUrl(pageUrl: String): Boolean {
@@ -162,7 +174,8 @@ internal class FacebookSocialPlatformExtractionStrategy :
             "web.facebook.com",
         )
         val HTTP_STATUS_PATTERN = Regex("""(?i)\bHTTP\s+(\d{3})\b""")
-        const val FACEBOOK_MOBILE_FETCH_TIMEOUT_MS = 3_500L
+        const val FACEBOOK_FALLBACK_FETCH_TIMEOUT_MS = 2_000L
+        const val MAX_FACEBOOK_HOST_FALLBACKS = 3
         const val MAX_MARKER_SCAN_CHARS = 500_000
         const val FACEBOOK_REFERER = "https://www.facebook.com/"
         const val FACEBOOK_USER_AGENT =
