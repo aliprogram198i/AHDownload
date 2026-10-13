@@ -31,12 +31,14 @@ class BrowserErrorLogStore(context: Context) {
                 val item = json.optJSONObject(index) ?: continue
                 val rawDetails = item.optJSONObject("details") ?: JSONObject()
                 val parsedDetails = buildMap {
-                    val names = rawDetails.names() ?: continue
-                    for (detailIndex in 0 until names.length()) {
-                        val key = names.optString(detailIndex)
-                        if (key.isBlank()) continue
-                        val value = rawDetails.optString(key).takeIf { it.isNotBlank() && it != "null" } ?: continue
-                        put(safeKey(key), safe(value, 220))
+                    val names = rawDetails.names()
+                    if (names != null) {
+                        for (detailIndex in 0 until names.length()) {
+                            val key = names.optString(detailIndex)
+                            if (key.isBlank()) continue
+                            val value = rawDetails.optString(key).takeIf { it.isNotBlank() && it != "null" } ?: continue
+                            put(safeKey(key), safe(value, 220))
+                        }
                     }
                 }
                 add(
@@ -45,7 +47,7 @@ class BrowserErrorLogStore(context: Context) {
                         type = safe(item.optString("type"), 80),
                         message = safe(item.optString("message"), 300),
                         stage = safe(item.optString("stage"), 80),
-                        host = hostOnly(item.optString("host").takeIf { it != "null" }),
+                        host = safe(item.optString("host").takeIf { it != "null" } ?: "unknown", 120),
                         code = item.optString("code").takeIf { it.isNotBlank() && it != "null" }?.let { safe(it, 60) },
                         severity = normalizeSeverity(item.optString("severity")),
                         safeUrl = safeUrlOnly(item.optString("safe_url").takeIf { it.isNotBlank() && it != "null" }),
