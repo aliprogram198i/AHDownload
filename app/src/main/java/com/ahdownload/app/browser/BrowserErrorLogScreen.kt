@@ -69,12 +69,12 @@ fun BrowserErrorLogRoute(
                     DiagnosticIconButton(
                         trackingScreen = "BROWSER_ERRORS",
                         trackingId = "BROWSER_ERRORS.copy",
-                        trackingLabel = "نسخ تفاصيل آخر خطأ",
+                        trackingLabel = "نسخ سجل أخطاء المتصفح بالكامل",
                         disabledReason = "السجل فارغ",
                         enabled = entries.isNotEmpty(),
-                        onClick = { latestEntry?.let { clipboard.setText(AnnotatedString(store.exportEntryText(it))) } },
+                        onClick = { clipboard.setText(AnnotatedString(store.exportText())) },
                     ) {
-                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل")
+                        Icon(Icons.Rounded.ContentCopy, contentDescription = "نسخ السجل بالكامل")
                     }
                     DiagnosticIconButton(
                         trackingScreen = "BROWSER_ERRORS",
