@@ -53,7 +53,7 @@ fun BrowserErrorLogRoute(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("سجل أخطاء المتصفح") },
+                title = { Text("سجل أحداث المتصفح") },
                 navigationIcon = {
                     DiagnosticIconButton(
                         trackingScreen = "BROWSER_ERRORS",
@@ -110,9 +110,9 @@ fun BrowserErrorLogRoute(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.tertiary,
                 )
-                Text("لا توجد أخطاء مسجلة في المتصفح.", fontWeight = FontWeight.SemiBold)
+                Text("لا توجد أحداث مسجلة في المتصفح بعد.", fontWeight = FontWeight.SemiBold)
                 Text(
-                    "ستظهر هنا أخطاء تحميل الصفحات أو الفحص أو التحقق من اتصال آمن.",
+                    "ستظهر هنا أحداث التنقل وتقدم التحميل ومؤشرات عرض الصفحة ونتائج فحص الخيارات والتنزيل.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -123,7 +123,7 @@ fun BrowserErrorLogRoute(
             ) {
                 item {
                     Text(
-                        "يعرض القسم الأول آخر حادثة بالتفصيل. تُحفظ حتى 50 حادثة، دون حفظ عنوان الصفحة الكامل أو ملفات تعريف الارتباط أو رموز الجلسة.",
+                        "يعرض القسم الأول آخر حدث بالتفصيل. تُحفظ حتى 80 حدثًا. يُحفظ المضيف ومسار مختصر فقط؛ تُحذف معاملات الرابط والجزء النهائي وتُنقّح الأسرار.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -138,11 +138,21 @@ fun BrowserErrorLogRoute(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text("آخر خطأ بالتفصيل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                Text(entry.type, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                Text("آخر حدث بالتفصيل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(
+                                    entry.severity,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (entry.severity == "ERROR" || entry.severity == "WARNING") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
+                                Text(entry.type, fontWeight = FontWeight.Bold)
                                 Text(entry.message, style = MaterialTheme.typography.bodyMedium)
                                 Text("المرحلة: ${entry.stage}", style = MaterialTheme.typography.bodyMedium)
-                                Text("الموقع: ${entry.host}", style = MaterialTheme.typography.bodyMedium)
+                                Text("المضيف: ${entry.host}", style = MaterialTheme.typography.bodyMedium)
+                                entry.safeUrl?.let { Text("الرابط بعد التنقيح: $it", style = MaterialTheme.typography.bodySmall) }
+                                entry.pageTitle?.let { Text("عنوان الصفحة: $it", style = MaterialTheme.typography.bodySmall) }
+                                entry.details.toSortedMap().forEach { (key, value) ->
+                                    Text("${diagnosticLabel(key)}: $value", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                                 entry.code?.let { Text("رمز الخطأ: $it", style = MaterialTheme.typography.bodyMedium) }
                                 Text(
                                     DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
@@ -169,8 +179,9 @@ fun BrowserErrorLogRoute(
                                 modifier = Modifier.padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
-                                Text(entry.type, fontWeight = FontWeight.SemiBold)
+                                Text("${entry.severity} • ${entry.type}", fontWeight = FontWeight.SemiBold)
                                 Text(entry.message, style = MaterialTheme.typography.bodySmall)
+                                entry.safeUrl?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                 Text(
                                     "${entry.stage} • ${entry.host}" + (entry.code?.let { " • $it" } ?: ""),
                                     style = MaterialTheme.typography.labelSmall,
@@ -208,4 +219,53 @@ fun BrowserErrorLogRoute(
             },
         )
     }
+}
+
+private fun diagnosticLabel(key: String): String = when (key) {
+    "navigation_id" -> "معرّف التنقل"
+    "navigation_source" -> "مصدر التنقل"
+    "is_redirect" -> "إعادة توجيه"
+    "http_method" -> "طريقة الطلب"
+    "initiator" -> "مصدر الانتقال"
+    "progress_percent" -> "تقدم التحميل"
+    "elapsed_ms" -> "المدة (مللي ثانية)"
+    "render_status" -> "تقييم ظهور المحتوى"
+    "page_render_status_at_event" -> "حالة العرض وقت الحدث"
+    "ready_state" -> "حالة المستند"
+    "body_text_chars" -> "عدد أحرف النص"
+    "body_child_count" -> "عدد عناصر الصفحة"
+    "document_height" -> "ارتفاع المستند"
+    "viewport" -> "حجم نافذة العرض"
+    "video_count" -> "عدد عناصر الفيديو"
+    "audio_count" -> "عدد عناصر الصوت"
+    "image_count" -> "عدد الصور"
+    "visible_image_count" -> "الصور الظاهرة"
+    "iframe_count" -> "عدد الإطارات"
+    "background_color" -> "لون خلفية الصفحة"
+    "challenge_detected" -> "مؤشرات تحقق أو حظر"
+    "http_resource_errors" -> "أخطاء موارد HTTP"
+    "http_status" -> "رمز HTTP"
+    "is_main_frame" -> "خطأ في الصفحة الرئيسية"
+    "operation_id" -> "معرّف الفحص"
+    "candidate_count" -> "عدد المصادر المكتشفة"
+    "video_option_count" -> "خيارات الفيديو"
+    "audio_source_count" -> "مصادر الصوت"
+    "resolver_outcome" -> "نتيجة المحلل"
+    "failure_code" -> "رمز الفشل"
+    "reason" -> "السبب"
+    "result" -> "نتيجة الفحص"
+    "console_line" -> "سطر JavaScript"
+    "console_source_host" -> "مضيف مصدر JavaScript"
+    "page_progress_percent" -> "تقدم الصفحة عند الفحص"
+    "page_title_known" -> "عنوان الصفحة متوفر"
+    "resource_error_index" -> "رقم خطأ المورد"
+    "exception_type" -> "نوع الاستثناء"
+    "validation_failure" -> "سبب فشل التحقق"
+    "candidate_id" -> "معرّف مصدر الوسائط"
+    "format" -> "صيغة الوسائط"
+    "has_audio" -> "يحتوي صوتًا"
+    "has_video" -> "يحتوي فيديو"
+    "enqueue_outcome" -> "نتيجة إدراج التنزيل"
+    "output_format" -> "صيغة الصوت"
+    else -> key
 }
