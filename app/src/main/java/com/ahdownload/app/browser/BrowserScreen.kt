@@ -1365,7 +1365,8 @@ fun BrowserRoute(
                                                     view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
                                                     view.url == url &&
-                                                    currentUrl == url                                                ) {
+                                                    currentUrl == url
+                                                ) {
                                                     val recheckReadyState = recheckJson.optString("readyState", "unknown")
                                                     val recheckBodyChars = recheckJson.optInt("bodyTextChars", 0).coerceAtLeast(0)
                                                     val recheckChildCount = recheckJson.optInt("bodyChildCount", 0).coerceAtLeast(0)
@@ -1476,7 +1477,8 @@ fun BrowserRoute(
                                                 } else if (view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
                                                     view.url == url &&
-                                                    currentUrl == url                                                ) {
+                                                    currentUrl == url
+                                                ) {
                                                     recordBrowserEvent(
                                                         "PAGE_RENDER_RECHECK_FAILED",
                                                         "تعذر قراءة مؤشرات DOM أثناء الفحص المؤجل",
