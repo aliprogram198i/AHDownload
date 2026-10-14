@@ -14,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ahdownload.app.MainActivity
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
@@ -36,11 +37,25 @@ class BrowserPublicSitesAcceptanceTest {
 
     @Test(timeout = 480_000L)
     fun googleShahid4uAndXnxxArabicRenderAndExposeNavigationUi() {
+        val requestedSiteId = InstrumentationRegistry.getArguments()
+            .getString("browserSite")
+            ?.trim()
+            ?.lowercase()
+        val sitesToTest = if (requestedSiteId.isNullOrBlank()) {
+            SITES
+        } else {
+            SITES.filter { it.id == requestedSiteId }
+        }
+        assertTrue(
+            "The browser-site acceptance target must be one of the configured site IDs",
+            sitesToTest.isNotEmpty(),
+        )
+
         val store = BrowserErrorLogStore(composeRule.activity.applicationContext)
         openBrowser()
         val results = mutableListOf<SiteResult>()
 
-        for (site in SITES) {
+        for (site in sitesToTest) {
             store.clear()
             val startedAt = SystemClock.elapsedRealtime()
             composeRule.onNode(hasSetTextAction()).performTextReplacement(site.url)
@@ -62,16 +77,19 @@ class BrowserPublicSitesAcceptanceTest {
             val renderEvent = store.list().lastOrNull {
                 it.type == "PAGE_RENDER_CHECK" || it.type == "PAGE_RENDER_RECHECK"
             }
+            // Classify the page before opening an optional site menu. A valid menu
+            // overlay can intentionally cover the page body and must not be mistaken
+            // for a page-render failure.
             val classification = when {
                 !pageFinished -> "LOAD_TIMEOUT_OR_NO_FINISH"
-                summary.challengeDetected -> "REMOTE_CHALLENGE_OR_ACCESS_GATE"
-                summary.visibleTextChars >= 12 ||
-                    summary.visibleImageAreaRatio >= 0.025 ||
-                    summary.visibleMediaCount > 0 -> "VISIBLE_CONTENT"
-                summary.bodyTextChars >= 80 &&
-                    (summary.viewportIntersectingTextNodes > 0 || summary.viewportIntersectingImages > 0) ->
+                firstSummary.challengeDetected -> "REMOTE_CHALLENGE_OR_ACCESS_GATE"
+                firstSummary.visibleTextChars >= 12 ||
+                    firstSummary.visibleImageAreaRatio >= 0.025 ||
+                    firstSummary.visibleMediaCount > 0 -> "VISIBLE_CONTENT"
+                firstSummary.bodyTextChars >= 80 &&
+                    (firstSummary.viewportIntersectingTextNodes > 0 || firstSummary.viewportIntersectingImages > 0) ->
                     "DOM_PRESENT_BUT_NOT_CONFIRMED_VISIBLE"
-                summary.bodyTextChars > 0 || summary.bodyChildCount > 0 ->
+                firstSummary.bodyTextChars > 0 || firstSummary.bodyChildCount > 0 ->
                     "DOM_PRESENT_WITHOUT_STRONG_VISIBLE_SIGNALS"
                 else -> "NO_RENDERABLE_DOM_CONTENT"
             }
@@ -81,6 +99,7 @@ class BrowserPublicSitesAcceptanceTest {
                 classification = classification,
                 pageFinished = pageFinished,
                 finalHost = finalHost,
+                initialSummary = firstSummary,
                 summary = summary,
                 menuPanelsBefore = menuAttempt.optInt("menuPanelCountBefore", firstSummary.menuPanelCount),
                 menuPanelsAfter = summary.menuPanelCount,
@@ -97,7 +116,11 @@ class BrowserPublicSitesAcceptanceTest {
             Log.i(TAG, result.toSafeLogLine())
         }
 
-        assertEquals("All three requested sites must produce a bounded probe result", SITES.size, results.size)
+        assertEquals(
+            "Every requested site must produce one bounded result",
+            sitesToTest.size,
+            results.size,
+        )
         assertTrue(
             "Every requested URL must finish navigation or report a detectable page failure. Results: " +
                 results.joinToString(" || ") { it.toSafeLogLine() },
@@ -106,14 +129,14 @@ class BrowserPublicSitesAcceptanceTest {
         val provenVisibilityFailures = results.filter { result ->
             result.pageFinished &&
                 !result.summary.challengeDetected &&
-                result.summary.bodyTextChars >= 80 &&
-                result.summary.visibleTextChars == 0 &&
-                result.summary.visibleImageCount == 0 &&
-                result.summary.visibleMediaCount == 0 &&
-                result.summary.visibleLinkCount == 0 &&
-                result.summary.visibleButtonCount == 0 &&
-                result.summary.visibleInputCount == 0 &&
-                result.summary.visibleNavigationCount == 0
+                result.initialSummary.bodyTextChars >= 80 &&
+                result.initialSummary.visibleTextChars == 0 &&
+                result.initialSummary.visibleImageCount == 0 &&
+                result.initialSummary.visibleMediaCount == 0 &&
+                result.initialSummary.visibleLinkCount == 0 &&
+                result.initialSummary.visibleButtonCount == 0 &&
+                result.initialSummary.visibleInputCount == 0 &&
+                result.initialSummary.visibleNavigationCount == 0
         }
         assertTrue(
             "A completed non-challenge site has substantial DOM and viewport geometry but no confirmed visible content. " +
@@ -265,6 +288,7 @@ class BrowserPublicSitesAcceptanceTest {
         val classification: String,
         val pageFinished: Boolean,
         val finalHost: String,
+        val initialSummary: SiteSummary,
         val summary: SiteSummary,
         val menuPanelsBefore: Int,
         val menuPanelsAfter: Int,
@@ -277,17 +301,19 @@ class BrowserPublicSitesAcceptanceTest {
     ) {
         fun toSafeLogLine(): String =
             "$TAG|site=$id|result=$classification|page_finished=$pageFinished|host=$finalHost|" +
-                "ready=${summary.readyState}|body_chars=${summary.bodyTextChars}|body_children=${summary.bodyChildCount}|" +
-                "viewport=${summary.viewportWidth}x${summary.viewportHeight}|document_height=${summary.documentHeight}|" +
-                "visible_text=${summary.visibleTextChars}|readable_text=${summary.readableTextChars}|" +
-                "images=${summary.visibleImageCount}/${summary.imageCount}|viewport_images=${summary.viewportIntersectingImages}|" +
-                "rejected_images=${summary.hitTestRejectedImages}|image_area=${"%.4f".format(java.util.Locale.ROOT, summary.visibleImageAreaRatio)}|" +
-                "viewport_text_nodes=${summary.viewportIntersectingTextNodes}|rejected_text_nodes=${summary.hitTestRejectedTextNodes}|" +
-                "links=${summary.visibleLinkCount}|buttons=${summary.visibleButtonCount}|inputs=${summary.visibleInputCount}|" +
-                "nav_regions=${summary.visibleNavigationCount}|menu_panels_before=$menuPanelsBefore|menu_panels_after=$menuPanelsAfter|" +
-                "menu_toggle_candidates=${summary.visibleMenuTriggerCount}|menu_toggle_attempted=$menuToggleAttempted|menu_opened=$menuOpened|" +
-                "expanded_before=$expandedBefore|expanded_after=$expandedAfter|media=${summary.visibleMediaCount}|" +
-                "challenge=${summary.challengeDetected}|render_event=${renderEventStatus.ifBlank { "unknown" }}|elapsed_ms=$elapsedMs"
+                "ready=${initialSummary.readyState}|body_chars=${initialSummary.bodyTextChars}|body_children=${initialSummary.bodyChildCount}|" +
+                "viewport=${initialSummary.viewportWidth}x${initialSummary.viewportHeight}|document_height=${initialSummary.documentHeight}|" +
+                "initial_visible_text=${initialSummary.visibleTextChars}|initial_readable_text=${initialSummary.readableTextChars}|" +
+                "initial_images=${initialSummary.visibleImageCount}/${initialSummary.imageCount}|initial_viewport_images=${initialSummary.viewportIntersectingImages}|" +
+                "initial_rejected_images=${initialSummary.hitTestRejectedImages}|initial_image_area=${"%.4f".format(java.util.Locale.ROOT, initialSummary.visibleImageAreaRatio)}|" +
+                "initial_viewport_text_nodes=${initialSummary.viewportIntersectingTextNodes}|initial_rejected_text_nodes=${initialSummary.hitTestRejectedTextNodes}|" +
+                "initial_links=${initialSummary.visibleLinkCount}|initial_buttons=${initialSummary.visibleButtonCount}|initial_inputs=${initialSummary.visibleInputCount}|" +
+                "initial_nav_regions=${initialSummary.visibleNavigationCount}|after_menu_visible_text=${summary.visibleTextChars}|" +
+                "after_menu_links=${summary.visibleLinkCount}|after_menu_buttons=${summary.visibleButtonCount}|after_menu_nav=${summary.visibleNavigationCount}|" +
+                "menu_panels_before=$menuPanelsBefore|menu_panels_after=$menuPanelsAfter|" +
+                "menu_toggle_candidates=${initialSummary.visibleMenuTriggerCount}|menu_toggle_attempted=$menuToggleAttempted|menu_opened=$menuOpened|" +
+                "expanded_before=$expandedBefore|expanded_after=$expandedAfter|after_menu_media=${summary.visibleMediaCount}|" +
+                "challenge=${initialSummary.challengeDetected}|render_event=${renderEventStatus.ifBlank { "unknown" }}|elapsed_ms=$elapsedMs"
     }
 
     private companion object {
