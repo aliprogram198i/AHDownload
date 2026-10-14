@@ -272,6 +272,77 @@ class BrowserPageLoadRegressionTest {
         assertTrue(snapshot.optBoolean("correctedMatched"))
     }
 
+    @Test(timeout = 45_000)
+    fun hitTestCountsVisibleTextWhenWebKitReturnsItsClickableAncestor() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
+        waitForConfiguredHomePage()
+
+        val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
+        browserStore.clear()
+        val targetUrl = "https://example.com/"
+        val fixtureHtml = """
+            <!doctype html>
+            <html>
+              <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>AH Text Hit Test Fixture</title>
+                <style>
+                  body { margin: 0; background: #fff; color: #111; }
+                  a { display: block; position: absolute; left: 8px; top: 8px;
+                      width: 340px; min-height: 80px; color: #111;
+                      background: #fff; text-decoration: none; font: 24px sans-serif; }
+                  span { display: block; padding: 16px; pointer-events: none; }
+                </style>
+              </head>
+              <body><a href="#fixture"><span>Visible browser text</span></a></body>
+            </html>
+        """.trimIndent()
+
+        composeRule.runOnUiThread {
+            findWebView(composeRule.activity.window.decorView)?.loadDataWithBaseURL(
+                targetUrl,
+                fixtureHtml,
+                "text/html",
+                "UTF-8",
+                targetUrl,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any {
+                it.type == "PAGE_RENDER_CHECK" &&
+                    it.host == "example.com" &&
+                    it.pageTitle == "AH Text Hit Test Fixture"
+            }
+        }
+        val renderEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_CHECK" &&
+                it.host == "example.com" &&
+                it.pageTitle == "AH Text Hit Test Fixture"
+        }
+        assertEquals("CONTENT_SIGNALS_DETECTED", renderEvent.details["render_status"])
+        assertTrue((renderEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
+        assertEquals("0", renderEvent.details["hit_test_rejected_text_node_count"])
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any {
+                it.type == "PAGE_RENDER_RECHECK" &&
+                    it.host == "example.com" &&
+                    it.pageTitle == "AH Text Hit Test Fixture"
+            }
+        }
+        val recheckEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_RECHECK" &&
+                it.host == "example.com" &&
+                it.pageTitle == "AH Text Hit Test Fixture"
+        }
+        assertEquals("CONTENT_SIGNALS_DETECTED", recheckEvent.details["render_status"])
+        assertTrue((recheckEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
+        assertEquals("0", recheckEvent.details["hit_test_rejected_text_node_count"])
+    }
+
     private fun waitForConfiguredHomePage(timeoutMillis: Long = 30_000L) {
         composeRule.waitUntil(timeoutMillis = timeoutMillis) {
             val state = AtomicReference<Pair<Int, String?>?>(null)
