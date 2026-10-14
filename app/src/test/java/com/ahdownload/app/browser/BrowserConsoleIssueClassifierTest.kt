@@ -64,6 +64,23 @@ class BrowserConsoleIssueClassifierTest {
     }
 
     @Test
+    fun compoundPublicSuffixesDoNotMergeUnrelatedSites() {
+        val sameSite = BrowserConsoleIssueClassifier.classify(
+            rawMessage = "Uncaught TypeError: same site runtime error",
+            pageHost = "www.example.co.uk",
+            sourceHost = "static.example.co.uk",
+        )
+        val otherSite = BrowserConsoleIssueClassifier.classify(
+            rawMessage = "Uncaught Error: unrelated runtime error",
+            pageHost = "www.example.co.uk",
+            sourceHost = "cdn.other.co.uk",
+        )
+
+        assertEquals("PAGE_CONSOLE_ERROR", sameSite.type)
+        assertEquals("PAGE_EXTERNAL_SCRIPT_ERROR", otherSite.type)
+    }
+
+    @Test
     fun duplicateKeyIgnoresCommonUncaughtErrorPrefixAndCase() {
         val first = BrowserConsoleIssueClassifier.deduplicationKey(
             type = "PAGE_EXTERNAL_SCRIPT_ERROR",
