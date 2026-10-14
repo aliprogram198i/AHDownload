@@ -42,6 +42,19 @@ class BrowserNavigationCallbackGuardTest {
     }
 
     @Test
+    fun rejectsCallbackWhenBrowserStateHasAlreadyMovedToAnotherUrl() {
+        assertFalse(
+            BrowserNavigationCallbackGuard.isCurrent(
+                callbackNavigationId = "navigation-2",
+                activeNavigationId = "navigation-2",
+                callbackUrl = "https://old.example.com/",
+                activeWebViewUrl = "https://old.example.com/",
+                activeBrowserUrl = "https://new.example.com/",
+            ),
+        )
+    }
+
+    @Test
     fun rejectsBlankOrMissingNavigationContext() {
         assertFalse(
             BrowserNavigationCallbackGuard.isCurrent(
@@ -57,6 +70,7 @@ class BrowserNavigationCallbackGuardTest {
                 activeNavigationId = "navigation-2",
                 callbackUrl = "https://example.com/",
                 activeWebViewUrl = null,
+                activeBrowserUrl = "https://example.com/",
             ),
         )
     }
