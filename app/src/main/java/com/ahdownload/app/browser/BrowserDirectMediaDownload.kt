@@ -83,6 +83,15 @@ internal object BrowserDirectMediaDownload {
         return uri.host?.lowercase(Locale.ROOT)?.removePrefix("www.")?.takeIf { it.isNotBlank() }
     }
 
+    fun isStreamingManifest(mimeType: String?): Boolean =
+        safeMimeType(mimeType) in setOf(
+            "application/vnd.apple.mpegurl",
+            "application/x-mpegurl",
+            "application/mpegurl",
+            "audio/mpegurl",
+            "application/dash+xml",
+        )
+
     fun containerFor(url: String, mimeType: String?, contentDisposition: String?): MediaContainer? {
         val mime = mimeType.orEmpty().substringBefore(';').trim().lowercase(Locale.ROOT)
         val fromMime = when (mime) {
@@ -176,7 +185,7 @@ internal object BrowserDirectMediaDownload {
             .find(value)?.let { it.groupValues.getOrNull(1)?.ifBlank { null } ?: it.groupValues.getOrNull(2) }
             ?.trim()?.trim('"')
         val raw = encoded ?: plain ?: return null
-        return runCatching { URLDecoder.decode(raw, StandardCharsets.UTF_8) }.getOrDefault(raw)
+        return runCatching { URLDecoder.decode(raw, StandardCharsets.UTF_8.toString()) }.getOrDefault(raw)
     }
 
     private fun sanitizeFileName(value: String): String? =
