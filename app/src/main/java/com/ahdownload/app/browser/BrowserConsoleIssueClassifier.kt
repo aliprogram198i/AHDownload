@@ -102,6 +102,42 @@ internal object BrowserConsoleIssueClassifier {
         value.orEmpty().trim().trimEnd('.').lowercase(Locale.ROOT).take(253)
             .takeIf { it.isNotBlank() && it != "unknown" } ?: ""
 
+    private val compoundSuffixes = setOf(
+        // Common country-code public suffixes with more than one label.
+        "ac.uk", "co.uk", "gov.uk", "ltd.uk", "me.uk", "net.uk", "org.uk", "plc.uk", "sch.uk",
+        "com.au", "edu.au", "gov.au", "net.au", "org.au", "asn.au", "id.au",
+        "ac.nz", "co.nz", "govt.nz", "net.nz", "org.nz",
+        "ac.jp", "co.jp", "go.jp", "ne.jp", "or.jp",
+        "com.br", "net.br", "org.br",
+        "com.cn", "gov.cn", "net.cn", "org.cn",
+        "com.sg", "gov.sg", "net.sg", "org.sg",
+        "com.hk", "gov.hk", "net.hk", "org.hk",
+        "com.my", "gov.my", "net.my", "org.my",
+        "co.in", "firm.in", "gen.in", "ind.in", "net.in", "org.in",
+        "co.kr", "go.kr", "ne.kr", "or.kr", "re.kr",
+        "com.mx", "gob.mx", "net.mx", "org.mx",
+        "com.tr", "biz.tr", "info.tr", "net.tr", "org.tr",
+        "com.tw", "idv.tw", "net.tw", "org.tw",
+        "com.ar", "gov.ar", "net.ar", "org.ar",
+        "co.za", "gov.za", "net.za", "org.za",
+        "com.pl", "net.pl", "org.pl",
+        "com.ua", "gov.ua", "net.ua", "org.ua",
+        // Common hosted-app suffixes are separate customer boundaries as well.
+        "appspot.com", "blogspot.com", "cloudfront.net", "github.io",
+        "herokuapp.com", "netlify.app", "pages.dev", "vercel.app", "wordpress.com",
+    )
+
     private fun belongsToSameHostFamily(first: String, second: String): Boolean =
-        first == second || first.endsWith(".$second") || second.endsWith(".$first")
+        registrableDomain(first) == registrableDomain(second)
+
+    private fun registrableDomain(host: String): String {
+        if (host.matches(Regex("""^\\d{1,3}(?:\\.\\d{1,3}){3}$""")) || !host.contains('.')) {
+            return host
+        }
+        val labels = host.split('.').filter { it.isNotBlank() }
+        if (labels.size <= 2) return labels.joinToString(".")
+        val lastTwo = labels.takeLast(2).joinToString(".")
+        val labelCount = if (lastTwo in compoundSuffixes) 3 else 2
+        return labels.takeLast(labelCount).joinToString(".")
+    }
 }
