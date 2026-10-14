@@ -124,10 +124,18 @@ class WebVideoPageResolver(
             }
             var browserSession: BrowserMediaSession? = null
 
-            // Only open the WebView when server-delivered HTML did not yield a valid
-            // source. This lets JavaScript-driven players expose their real media requests
-            // without adding browser startup latency to ordinary HTML5 pages.
-            if (candidates.isEmpty() && browserMediaSessionProvider != null) {
+            // Static metadata can expose only a small HLS/DASH playlist, not the underlying
+            // video object. Prefer live WebView media observation when no confidently sized
+            // progressive source exists, and also when manifest-only sources were found.
+            val hasConfidentProgressiveSource = candidates.any { candidate ->
+                !candidate.streamingManifest &&
+                    (candidate.format.fileSizeBytes ?: 0L) >= MIN_CONFIDENT_PROGRESSIVE_BYTES
+            }
+            if (
+                (candidates.isEmpty() || !hasConfidentProgressiveSource ||
+                    candidates.any { it.streamingManifest }) &&
+                browserMediaSessionProvider != null
+            ) {
                 resolverStage = "BROWSER_FALLBACK"
                 browserSession = try {
                     browserMediaSessionProvider.snapshot(pageUrl, MediaPlatform.Web)
@@ -169,7 +177,27 @@ class WebVideoPageResolver(
                     )
                 }.distinctBy { it.url }
                 resolverStage = "BROWSER_MEDIA_PROBE"
-                candidates = buildCandidates(observedPageUrl, observedHints, request, resolverStage)
+                val observedCandidates = buildCandidates(observedPageUrl, observedHints, request, resolverStage)
+                val observedProgressive = observedCandidates.filter { !it.streamingManifest }
+                val observedManifests = observedCandidates.filter { it.streamingManifest }
+                val staticConfirmedProgressive = candidates.filter { candidate ->
+                    !candidate.streamingManifest &&
+                        (candidate.format.fileSizeBytes ?: 0L) >= MIN_CONFIDENT_PROGRESSIVE_BYTES
+                }
+                val staticManifests = candidates.filter { it.streamingManifest }
+                val progressiveCandidates = (staticConfirmedProgressive + observedProgressive)
+                    .distinctBy { it.sourceUrl }
+                    .sortedByDescending { it.format.fileSizeBytes ?: 0L }
+                val manifestCandidates = (staticManifests + observedManifests)
+                    .distinctBy { it.sourceUrl }
+                val fallbackCandidates = if (progressiveCandidates.isEmpty()) {
+                    candidates.filter { !it.streamingManifest } + observedProgressive
+                } else {
+                    emptyList()
+                }
+                candidates = (progressiveCandidates + manifestCandidates + fallbackCandidates)
+                    .distinctBy { it.sourceUrl }
+                    .take(MAX_CANDIDATES)
             }
 
             if (candidates.isEmpty()) {
@@ -434,7 +462,6 @@ class WebVideoPageResolver(
             if (response.status !in 200..299) return@mapNotNull null
 
             val mime = response.contentType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT)
-            if (mime == "text/html" || mime == "application/xhtml+xml") return@mapNotNull null
             val extension = extensionFromUrl(response.finalUrl)
                 ?: extensionFromMime(mime)
                 ?: when {
@@ -444,13 +471,16 @@ class WebVideoPageResolver(
                 }
                 ?: return@mapNotNull null
             val manifest = extension in MANIFEST_EXTENSIONS || isHlsMime(mime) || isDashMime(mime)
-            val videoMime = mime?.startsWith("video/") == true
-            val explicitVideoSource = hint.explicitVideo ||
-                extension in VIDEO_EXTENSIONS || extension in MANIFEST_EXTENSIONS
-            if (!videoMime && !manifest && !explicitVideoSource) return@mapNotNull null
+            // A filename ending in .mp4 is not sufficient: pages can advertise poster images,
+            // JSON payloads, or error documents under media-looking URLs.
+            if (!isSupportedVideoPayload(mime, extension, manifest)) return@mapNotNull null
 
             val height = hint.height ?: inferHeight(hint.label, response.finalUrl)
-            val size = response.contentRangeTotal ?: response.contentLength?.takeIf { response.status != 206 }
+            // Manifest byte length measures the playlist/descriptor, not the resulting video.
+            val size = if (manifest) null else {
+                (response.contentRangeTotal ?: response.contentLength?.takeIf { response.status != 206 })
+                    ?.takeIf { it > 0L }
+            }
             MediaCandidate(
                 id = "web-video-" + extension + "-" + response.finalUrl.hashCode().toUInt().toString(16),
                 sourceUrl = response.finalUrl,
@@ -713,6 +743,25 @@ class WebVideoPageResolver(
         return parsed.toString().takeIf { isAllowedDestination(parsed) }
     }
 
+    private fun isSupportedVideoPayload(mime: String?, extension: String, manifest: Boolean): Boolean {
+        val type = mime?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        if (type.isBlank()) return extension in VIDEO_EXTENSIONS || extension in MANIFEST_EXTENSIONS
+
+        if (manifest) {
+            if (isHlsMime(type) || isDashMime(type)) return true
+            // Some HLS endpoints expose valid playlists as text/plain or generic binary.
+            return type == "text/plain" || type in GENERIC_BINARY_MIME_TYPES
+        }
+
+        if (type.startsWith("video/")) return true
+        if (type in GENERIC_BINARY_MIME_TYPES) return extension in VIDEO_EXTENSIONS
+        if (type == "application/mp4") return true
+        if (type == "application/ogg") return extension == "ogv"
+
+        // Reject image/text/JSON/PDF responses even when HTML advertises a ".mp4" URL.
+        return false
+    }
+
     private fun inferHeight(label: String?, url: String): Int? {
         val text = label.orEmpty() + " " + url
         return Regex("(?i)(?:^|[^0-9])(2160|1440|1080|720|576|480|360|240)p?(?:[^0-9]|$)")
@@ -918,11 +967,13 @@ class WebVideoPageResolver(
         const val MAX_HTML_BYTES = 1_048_576
         const val MAX_API_BYTES = 1_048_576
         const val MAX_CANDIDATES = 12
+        const val MIN_CONFIDENT_PROGRESSIVE_BYTES = 256 * 1024L
         const val MAX_REDIRECTS = 8
         const val USER_AGENT = "AHDownload/1.0 (Android)"
         val HTML_MIME_TYPES = setOf("text/html", "application/xhtml+xml")
         val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi", "ogv")
         val MANIFEST_EXTENSIONS = setOf("m3u8", "mpd")
+        val GENERIC_BINARY_MIME_TYPES = setOf("application/octet-stream", "binary/octet-stream")
         val AUDIO_EXTENSIONS = setOf("m4a", "mp3", "aac", "ogg", "flac", "wav", "opus")
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "tiff", "heic", "heif")
         val VIDEO_META_KEYS = setOf(
