@@ -61,6 +61,21 @@ class BrowserRenderStatusClassifierTest {
     }
 
     @Test
+    fun completeOcclusionTakesPrecedenceOverWeakVisibleDomSignals() {
+        assertEquals(
+            "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH",
+            BrowserRenderStatusClassifier.classify(
+                challengeDetected = false,
+                readyState = "complete",
+                hasVisibleContentSignals = true,
+                hasAnyDomContentSignals = true,
+                hasPrimaryVisibleContent = false,
+                hasOccludedViewportContent = true,
+            ),
+        )
+    }
+
+    @Test
     fun accessChallengeStillTakesPrecedenceOverHitTestSignals() {
         assertEquals(
             "POSSIBLE_ACCESS_CHALLENGE",
