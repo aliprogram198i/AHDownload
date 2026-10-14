@@ -1901,6 +1901,8 @@ private fun CandidateOption(
     busy: Boolean,
     onDownload: () -> Unit,
 ) {
+    // Capture the cross-module property in a local stable value for Kotlin smart-cast safety.
+    val fileSizeBytes = candidate.format.fileSizeBytes
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -1927,8 +1929,7 @@ private fun CandidateOption(
                         )
                         when {
                             candidate.streamingManifest -> add("حجم الفيديو النهائي يحدده البث أثناء التنزيل")
-                            candidate.format.fileSizeBytes != null && candidate.format.fileSizeBytes > 0L ->
-                                add(formatBytes(candidate.format.fileSizeBytes))
+                            fileSizeBytes != null && fileSizeBytes > 0L -> add(formatBytes(fileSizeBytes))
                             else -> add("الحجم غير معروف؛ سيُحدَّد عند التحقق")
                         }
                     }.joinToString(" • "),
