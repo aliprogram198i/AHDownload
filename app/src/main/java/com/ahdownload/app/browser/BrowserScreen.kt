@@ -1353,6 +1353,7 @@ fun BrowserRoute(
                                         if (view.isAttachedToWindow &&
                                             currentNavigationId == renderRecheckNavigationId &&
                                             view.url == url &&
+                                            currentUrl == url &&
                                             !isLoading
                                         ) {
                                             view.evaluateJavascript(PAGE_RENDER_RECHECK_SCRIPT) { recheckRaw ->
@@ -1363,8 +1364,8 @@ fun BrowserRoute(
                                                     !recheckJson.has("diagnosticError") &&
                                                     view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
-                                                    view.url == url
-                                                ) {
+                                                    view.url == url &&
+                                                    currentUrl == url                                                ) {
                                                     val recheckReadyState = recheckJson.optString("readyState", "unknown")
                                                     val recheckBodyChars = recheckJson.optInt("bodyTextChars", 0).coerceAtLeast(0)
                                                     val recheckChildCount = recheckJson.optInt("bodyChildCount", 0).coerceAtLeast(0)
@@ -1474,8 +1475,8 @@ fun BrowserRoute(
                                                     )
                                                 } else if (view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
-                                                    view.url == url
-                                                ) {
+                                                    view.url == url &&
+                                                    currentUrl == url                                                ) {
                                                     recordBrowserEvent(
                                                         "PAGE_RENDER_RECHECK_FAILED",
                                                         "تعذر قراءة مؤشرات DOM أثناء الفحص المؤجل",
@@ -1502,6 +1503,23 @@ fun BrowserRoute(
                                 error: android.webkit.WebResourceError,
                             ) {
                                 if (request.isForMainFrame) {
+                                    val failedUrl = request.url.toString()
+                                    if (failedUrl != currentUrl) {
+                                        recordBrowserEvent(
+                                            "STALE_MAIN_FRAME_ERROR_IGNORED",
+                                            "أُهملت نتيجة خطأ تحميل لإطار لم يعد هو الصفحة النشطة",
+                                            "navigation",
+                                            currentUrl,
+                                            code = error.errorCode.toString(),
+                                            severity = "INFO",
+                                            details = mapOf(
+                                                "callback_host" to safeHost(failedUrl),
+                                                "active_host" to safeHost(currentUrl),
+                                                "reason" to "main_frame_url_mismatch",
+                                            ),
+                                        )
+                                        return
+                                    }
                                     isLoading = false
                                     val loadErrorMessage = when (error.errorCode) {
                                         android.webkit.WebViewClient.ERROR_HOST_LOOKUP ->
@@ -1550,6 +1568,23 @@ fun BrowserRoute(
                                 val status = errorResponse.statusCode
                                 if (status < 400) return
                                 val mainFrame = request.isForMainFrame
+                                if (mainFrame && request.url.toString() != currentUrl) {
+                                    recordBrowserEvent(
+                                        "STALE_MAIN_FRAME_HTTP_ERROR_IGNORED",
+                                        "أُهملت استجابة HTTP لإطار لم يعد هو الصفحة النشطة",
+                                        "navigation",
+                                        currentUrl,
+                                        code = status.toString(),
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "callback_host" to safeHost(request.url.toString()),
+                                            "active_host" to safeHost(currentUrl),
+                                            "http_status" to status.toString(),
+                                            "reason" to "main_frame_url_mismatch",
+                                        ),
+                                    )
+                                    return
+                                }
                                 if (mainFrame) {
                                     inspectMessage = "استجابة HTTP $status من الموقع. قد يكون المحتوى مقيدًا أو يتطلب جلسة صالحة."
                                 } else {
@@ -1640,6 +1675,17 @@ fun BrowserRoute(
                             }
 
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
+                                val activeViewUrl = view.url
+                                if (!BrowserNavigationCallbackGuard.isCurrent(
+                                        callbackNavigationId = currentNavigationId,
+                                        activeNavigationId = currentNavigationId,
+                                        callbackUrl = activeViewUrl.orEmpty(),
+                                        activeWebViewUrl = activeViewUrl,
+                                        activeBrowserUrl = currentUrl,
+                                    )
+                                ) {
+                                    return
+                                }
                                 pageProgress = newProgress
                                 isLoading = pageLoadError == null && newProgress < 100
                                 val bucket = newProgress.coerceIn(0, 100) / 25
@@ -1658,6 +1704,30 @@ fun BrowserRoute(
                             }
 
                             override fun onReceivedTitle(view: WebView, title: String?) {
+                                val titlePageUrl = view.url
+                                if (!BrowserNavigationCallbackGuard.isCurrent(
+                                        callbackNavigationId = currentNavigationId,
+                                        activeNavigationId = currentNavigationId,
+                                        callbackUrl = titlePageUrl.orEmpty(),
+                                        activeWebViewUrl = titlePageUrl,
+                                        activeBrowserUrl = currentUrl,
+                                    )
+                                ) {
+                                    val activeUrl = currentUrl
+                                    recordBrowserEvent(
+                                        "STALE_PAGE_TITLE_CALLBACK_IGNORED",
+                                        "أُهملت نتيجة عنوان صفحة بعد تغيّر عنوان المتصفح النشط",
+                                        "render",
+                                        activeUrl,
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "callback_host" to safeHost(titlePageUrl.orEmpty()),
+                                            "active_host" to safeHost(activeUrl),
+                                            "reason" to "webview_or_browser_state_url_mismatch",
+                                        ),
+                                    )
+                                    return
+                                }
                                 val value = title.orEmpty().take(160)
                                 if (value.isNotBlank() && value != currentPageTitle) {
                                     currentPageTitle = value
