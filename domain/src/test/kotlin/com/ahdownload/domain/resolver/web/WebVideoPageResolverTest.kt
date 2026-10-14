@@ -69,6 +69,7 @@ class WebVideoPageResolverTest {
         assertTrue(candidate.streamingManifest)
         assertEquals(MediaKind.Video, candidate.format.kind)
         assertEquals(MediaContainer.Mkv, candidate.format.container)
+        assertEquals(null, candidate.format.fileSizeBytes)
     }
 
     @Test
@@ -130,6 +131,91 @@ class WebVideoPageResolverTest {
         assertTrue(requests[1].url.encodedPath.startsWith("/api/v1/videos/"))
     }
 
+
+    @Test
+    fun fallsBackToLiveBrowserMediaWhenHtmlOnlyExposesSmallManifest() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val pageUrl = "https://site.example/watch/player"
+        val manifestUrl = "https://cdn.example.com/stream/master.m3u8"
+        val actualVideoUrl = "https://cdn.example.com/media/actual-video.mp4"
+        var providerCalled = false
+        val html = """<html><head><title>Example video</title><meta property="og:video" content="$manifestUrl"></head></html>"""
+        val browser = object : BrowserMediaSessionProvider {
+            override suspend fun snapshot(url: String, platform: MediaPlatform): BrowserMediaSession {
+                providerCalled = true
+                assertEquals(pageUrl, url)
+                assertEquals(MediaPlatform.Web, platform)
+                return BrowserMediaSession(
+                    platform = platform,
+                    pageUrl = url,
+                    finalUrl = url,
+                    title = "Actual video",
+                    mediaUrls = listOf(actualVideoUrl),
+                    requestHeadersByUrl = mapOf(actualVideoUrl to mapOf("Origin" to "https://site.example")),
+                )
+            }
+        }
+        val resolver = WebVideoPageResolver(
+            client = client(requests, listOf(
+                response(200, mapOf("Content-Type" to "text/html"), html),
+                response(200, mapOf("Content-Type" to "application/vnd.apple.mpegurl", "Content-Length" to "4096")),
+                response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "26000000")),
+            )),
+            browserMediaSessionProvider = browser,
+        )
+
+        val result = resolver.resolve(request(pageUrl))
+
+        assertTrue(result is ResolverResult.Success)
+        assertTrue("Browser fallback should run for manifest-only static results", providerCalled)
+        val candidates = (result as ResolverResult.Success).candidates
+        assertEquals(2, candidates.size)
+        val manifest = candidates.single { it.streamingManifest }
+        val progressive = candidates.single { !it.streamingManifest }
+        assertEquals(null, manifest.format.fileSizeBytes)
+        assertEquals(actualVideoUrl, progressive.sourceUrl)
+        assertEquals(26_000_000L, progressive.format.fileSizeBytes)
+        assertEquals("Actual video", (result as ResolverResult.Success).title)
+    }
+
+    @Test
+    fun rejectsImagePayloadEvenWhenHtmlAdvertisesMp4AndUsesRealBrowserMedia() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val pageUrl = "https://site.example/watch"
+        val placeholderUrl = "https://cdn.example.com/assets/placeholder.mp4"
+        val actualVideoUrl = "https://cdn.example.com/media/actual-video.mp4"
+        var providerCalled = false
+        val html = """<html><video><source src="$placeholderUrl" type="video/mp4"></video></html>"""
+        val browser = object : BrowserMediaSessionProvider {
+            override suspend fun snapshot(url: String, platform: MediaPlatform): BrowserMediaSession {
+                providerCalled = true
+                return BrowserMediaSession(
+                    platform = platform,
+                    pageUrl = url,
+                    finalUrl = url,
+                    title = "Actual video",
+                    mediaUrls = listOf(actualVideoUrl),
+                )
+            }
+        }
+        val resolver = WebVideoPageResolver(
+            client = client(requests, listOf(
+                response(200, mapOf("Content-Type" to "text/html"), html),
+                response(200, mapOf("Content-Type" to "image/jpeg", "Content-Length" to "4096")),
+                response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "26000000")),
+            )),
+            browserMediaSessionProvider = browser,
+        )
+
+        val result = resolver.resolve(request(pageUrl))
+
+        assertTrue(result is ResolverResult.Success)
+        assertTrue(providerCalled)
+        val candidates = (result as ResolverResult.Success).candidates
+        assertEquals(1, candidates.size)
+        assertEquals(actualVideoUrl, candidates.single().sourceUrl)
+        assertEquals(26_000_000L, candidates.single().format.fileSizeBytes)
+    }
 
     @Test
     fun reportsNoCandidatesForHtmlWithoutRecognizedVideoSources() = runBlocking {
