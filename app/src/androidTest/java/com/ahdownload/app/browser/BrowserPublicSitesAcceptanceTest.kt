@@ -127,6 +127,16 @@ class BrowserPublicSitesAcceptanceTest {
             sitesToTest.size,
             results.size,
         )
+        val unconfirmedViewportResults = results.filter { result ->
+            result.classification != "VISIBLE_CONTENT" &&
+                result.classification != "REMOTE_CHALLENGE_OR_ACCESS_GATE"
+        }
+        assertTrue(
+            "A completed target page must have confirmed viewport-visible content or an explicit access gate. " +
+                "Unconfirmed page results: " +
+                unconfirmedViewportResults.joinToString(" || ") { it.toSafeLogLine() },
+            unconfirmedViewportResults.isEmpty(),
+        )
         assertTrue(
             "Every requested URL must finish its own navigation. Results: " +
                 results.joinToString(" || ") { it.toSafeLogLine() },
