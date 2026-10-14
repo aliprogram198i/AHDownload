@@ -127,6 +127,8 @@ fun BrowserRoute(
     var lastProgressBucket by remember { mutableStateOf(0) }
     var resourceHttpErrorCount by remember { mutableStateOf(0) }
     var consoleErrorCount by remember { mutableStateOf(0) }
+    var consoleDuplicateIssueCount by remember { mutableStateOf(0) }
+    val consoleIssueFingerprints = remember { linkedSetOf<String>() }
     var lastPageFinishedEventKey by remember { mutableStateOf("") }
     var lastRenderSnapshotFingerprint by remember { mutableStateOf("") }
     var lastRenderRecheckScheduledNavigationId by remember { mutableStateOf("") }
@@ -544,6 +546,8 @@ fun BrowserRoute(
                                 lastProgressBucket = 0
                                 resourceHttpErrorCount = 0
                                 consoleErrorCount = 0
+                                consoleDuplicateIssueCount = 0
+                                consoleIssueFingerprints.clear()
                                 pageRenderStatus = "LOADING"
                                 recordBrowserEvent(
                                     "NAVIGATION_STARTED",
@@ -863,6 +867,8 @@ fun BrowserRoute(
                                                 "challenge_detected" to challengeDetected.toString(),
                                                 "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
                                                 "http_resource_errors" to resourceHttpErrorCount.toString(),
+                                                "console_issue_events_recorded" to consoleErrorCount.toString(),
+                                                "console_duplicate_issues_suppressed" to consoleDuplicateIssueCount.toString(),
                                             ),
                                             pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                         )
@@ -1035,6 +1041,8 @@ fun BrowserRoute(
                                                             "readable_visible_text_chars" to recheckReadableText.toString(),
                                                             "visible_media_element_count" to recheckVisibleMedia.toString(),
                                                             "navigation_id" to renderRecheckNavigationId,
+                                                            "console_issue_events_recorded" to consoleErrorCount.toString(),
+                                                            "console_duplicate_issues_suppressed" to consoleDuplicateIssueCount.toString(),
                                                         ),
                                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                                     )
@@ -1182,23 +1190,55 @@ fun BrowserRoute(
                             }
 
                             override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-                                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR && consoleErrorCount < 8) {
-                                    consoleErrorCount++
-                                    recordBrowserEvent(
-                                        "PAGE_CONSOLE_ERROR",
-                                        "سجل JavaScript خطأ أثناء عرض الصفحة",
-                                        "javascript",
-                                        viewUrlOrCurrent(webView?.url, currentUrl),
-                                        code = consoleMessage.lineNumber().toString(),
-                                        severity = "WARNING",
-                                        details = mapOf(
-                                            "console_line" to consoleMessage.lineNumber().toString(),
-                                            "console_source_host" to safeHost(consoleMessage.sourceId()),
-                                            "console_message_level" to consoleMessage.messageLevel().name,
-                                            "console_message" to BrowserConsoleMessageSanitizer.sanitize(consoleMessage.message()),
-                                            "console_error_index" to consoleErrorCount.toString(),
-                                        ),
+                                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                    val pageUrl = viewUrlOrCurrent(webView?.url, currentUrl)
+                                    val sourceHost = safeHost(consoleMessage.sourceId())
+                                    val sanitizedMessage = BrowserConsoleMessageSanitizer.sanitize(consoleMessage.message())
+                                    val issue = BrowserConsoleIssueClassifier.classify(
+                                        rawMessage = consoleMessage.message(),
+                                        pageHost = safeHost(pageUrl),
+                                        sourceHost = sourceHost,
                                     )
+                                    val fingerprint = BrowserConsoleIssueClassifier.deduplicationKey(
+                                        type = issue.type,
+                                        sourceHost = sourceHost,
+                                        line = consoleMessage.lineNumber(),
+                                        sanitizedMessage = sanitizedMessage,
+                                    )
+                                    if (!consoleIssueFingerprints.add(fingerprint)) {
+                                        consoleDuplicateIssueCount = (consoleDuplicateIssueCount + 1).coerceAtMost(999)
+                                        return false
+                                    }
+                                    if (consoleIssueFingerprints.size > 64) {
+                                        val iterator = consoleIssueFingerprints.iterator()
+                                        if (iterator.hasNext()) {
+                                            iterator.next()
+                                            iterator.remove()
+                                        }
+                                    }
+                                    // Keep console diagnostics bounded: the first eight distinct issues
+                                    // are retained, while duplicate messages above are counted separately.
+                                    if (consoleErrorCount < 8) {
+                                        consoleErrorCount++
+                                        recordBrowserEvent(
+                                            issue.type,
+                                            issue.summary,
+                                            "javascript",
+                                            pageUrl,
+                                            code = consoleMessage.lineNumber().toString(),
+                                            severity = issue.severity,
+                                            details = mapOf(
+                                                "console_line" to consoleMessage.lineNumber().toString(),
+                                                "console_source_host" to sourceHost,
+                                                "console_message_level" to consoleMessage.messageLevel().name,
+                                                "console_message" to sanitizedMessage,
+                                                "console_error_index" to consoleErrorCount.toString(),
+                                                "console_issue_category" to issue.category,
+                                                "console_issue_scope" to issue.scope,
+                                                "console_deduplication" to "navigation_source_line_category_message",
+                                            ),
+                                        )
+                                    }
                                 }
                                 return false
                             }
