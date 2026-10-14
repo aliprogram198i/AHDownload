@@ -137,12 +137,10 @@ class CandidateValidator(
         }
 
         val measuredContentLength = probeResult.contentLengthBytes?.takeIf { it > 0L }
-        val updatedFormat = if (
-            candidate.format.fileSizeBytes == null && measuredContentLength != null
-        ) {
-            candidate.format.copy(fileSizeBytes = measuredContentLength)
-        } else {
-            candidate.format
+        val updatedFormat = when {
+            candidate.streamingManifest -> candidate.format.copy(fileSizeBytes = null)
+            measuredContentLength != null -> candidate.format.copy(fileSizeBytes = measuredContentLength)
+            else -> candidate.format
         }
         val updated = candidate.copy(
             format = updatedFormat,

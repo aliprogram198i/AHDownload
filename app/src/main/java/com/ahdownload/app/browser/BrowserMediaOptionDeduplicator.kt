@@ -19,6 +19,7 @@ internal object BrowserMediaOptionDeduplicator {
                 val format = candidate.format
                 VideoOptionKey(
                     container = format.container,
+                    streamingType = streamingType(candidate),
                     width = format.width,
                     height = format.height,
                     fps = format.fps,
@@ -45,7 +46,7 @@ internal object BrowserMediaOptionDeduplicator {
             if (format.width != null && format.height != null) {
                 add("${format.width}×${format.height}")
             }
-            add(format.container.name)
+            add(sourceFormatLabel(candidate))
         }.distinct().joinToString(" • ")
     }
 
@@ -69,7 +70,7 @@ internal object BrowserMediaOptionDeduplicator {
                 ?.takeIf { it.isNotBlank() && !it.equals(format.container.name, ignoreCase = true) }
                 ?.let { add(it.uppercase(Locale.ROOT)) }
             format.bitrateKbps?.takeIf { it > 0 }?.let { add("${it} kbps") }
-            add(format.container.name)
+            add(sourceFormatLabel(candidate))
             add(
                 when {
                     format.hasVideo && format.hasAudio -> "صوت مضمّن"
@@ -80,11 +81,29 @@ internal object BrowserMediaOptionDeduplicator {
         }.distinct().joinToString(" • ")
     }
 
+    private fun sourceFormatLabel(candidate: MediaCandidate): String =
+        streamingType(candidate) ?: candidate.format.container.name
+
+    private fun streamingType(candidate: MediaCandidate): String? {
+        if (!candidate.streamingManifest) return null
+        val extension = runCatching {
+            java.net.URI(candidate.sourceUrl).path.orEmpty()
+                .substringAfterLast('.', "")
+                .lowercase(Locale.ROOT)
+        }.getOrDefault("")
+        return when (extension) {
+            "m3u8" -> "HLS"
+            "mpd" -> "DASH"
+            else -> "بث"
+        }
+    }
+
     private fun normalizeCodec(codec: String?): String? =
         codec?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() }
 
     private data class VideoOptionKey(
         val container: MediaContainer,
+        val streamingType: String?,
         val width: Int?,
         val height: Int?,
         val fps: Double?,

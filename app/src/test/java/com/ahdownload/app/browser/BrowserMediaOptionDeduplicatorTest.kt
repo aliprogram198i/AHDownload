@@ -120,6 +120,35 @@ class BrowserMediaOptionDeduplicatorTest {
         assertTrue(BrowserMediaOptionDeduplicator.audioSourceLabel(result[1]).contains("192 kbps"))
     }
 
+    @Test
+    fun streamingManifestsShowTheirProtocolAndAreNotMislabelledAsMkv() {
+        val hls = candidate(
+            id = "hls-480",
+            url = "https://cdn.example.test/stream/master.m3u8",
+            width = 854,
+            height = 480,
+            container = MediaContainer.Mkv,
+            fileSizeBytes = null,
+            streamingManifest = true,
+        )
+        val dash = candidate(
+            id = "dash-480",
+            url = "https://cdn.example.test/stream/manifest.mpd",
+            width = 854,
+            height = 480,
+            container = MediaContainer.Mkv,
+            fileSizeBytes = null,
+            streamingManifest = true,
+        )
+
+        val options = BrowserMediaOptionDeduplicator.videoOptions(listOf(hls, dash))
+
+        assertEquals(2, options.size)
+        assertTrue(BrowserMediaOptionDeduplicator.videoOptionTitle(hls).contains("HLS"))
+        assertTrue(BrowserMediaOptionDeduplicator.videoOptionTitle(dash).contains("DASH"))
+        assertTrue(!BrowserMediaOptionDeduplicator.videoOptionTitle(hls).contains("Mkv"))
+    }
+
     private fun candidate(
         id: String,
         url: String,
@@ -134,6 +163,7 @@ class BrowserMediaOptionDeduplicatorTest {
         hasVideo: Boolean = true,
         hasAudio: Boolean = true,
         fileSizeBytes: Long? = 10_000L,
+        streamingManifest: Boolean = false,
     ) = MediaCandidate(
         id = id,
         sourceUrl = url,
@@ -151,5 +181,6 @@ class BrowserMediaOptionDeduplicatorTest {
             hasVideo = hasVideo,
             hasAudio = hasAudio,
         ),
+        streamingManifest = streamingManifest,
     )
 }
