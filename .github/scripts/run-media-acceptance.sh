@@ -59,8 +59,7 @@ run_instrumented_class() {
   validate_instrumentation_results "$label"
 }
 
-# Run both suites even if one fails so diagnostics always include the independent
-# source-matrix result and the requested full-download result. Aggregate failures last.
+# Run both media suites even if one fails, then aggregate their statuses.
 set +e
 run_instrumented_class \
   "com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest" \
@@ -81,6 +80,6 @@ set -e
 
 printf 'Acceptance summary: https_matrix=%s requested_download=%s\n' "$https_status" "$download_status"
 if [[ "$https_status" -ne 0 || "$download_status" -ne 0 ]]; then
-  echo "Media acceptance failed; inspect both per-suite logs and instrumentation reports." >&2
+  echo "Media acceptance failed; inspect the HTTPS matrix and full-download logs." >&2
   exit 1
 fi
