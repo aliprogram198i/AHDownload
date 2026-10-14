@@ -40,7 +40,6 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -254,8 +253,20 @@ fun BrowserRoute(
                     Text("AHDownload Browser")
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
+                    IconButton(
+                        onClick = {
+                            if (canGoBack) {
+                                nextNavigationSource = "toolbar_back"
+                                webView?.goBack()
+                            } else {
+                                onBack()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = if (canGoBack) "الصفحة السابقة" else "رجوع",
+                        )
                     }
                 },
                 actions = {
@@ -281,21 +292,34 @@ fun BrowserRoute(
                 modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (inspectMessage == null) Arrangement.End else Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (inspectMessage != null) {
+                    inspectMessage?.takeIf { it.isNotBlank() }?.let { message ->
                         Text(
-                            inspectMessage.orEmpty(),
-                            modifier = Modifier.weight(1f),
+                            message,
+                            modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = when {
+                                message.startsWith("أُضيف") ||
+                                    message.startsWith("تم العثور") ||
+                                    message.startsWith("هذا الملف موجود بالفعل") ->
+                                    MaterialTheme.colorScheme.primary
+                                message.contains("تعذر") ||
+                                    message.contains("خطأ") ||
+                                    message.contains("رفض") ||
+                                    message.contains("غير صالح") ||
+                                    message.startsWith("لم يُعثر") ||
+                                    message.startsWith("لم يتم العثور") ->
+                                    MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             maxLines = 2,
                         )
                     }
                     Button(
+                        modifier = Modifier.fillMaxWidth(),
                         enabled = !inspecting && !isLoading && pageLoadError == null && currentUrl.isNotBlank(),
                         onClick = {
                             val target = webView?.url ?: currentUrl
@@ -474,7 +498,19 @@ fun BrowserRoute(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Shield, contentDescription = "اتصال آمن", tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    Icons.Rounded.Shield,
+                    contentDescription = if (currentUrl.startsWith("https://", ignoreCase = true)) {
+                        "اتصال HTTPS"
+                    } else {
+                        "اتصال HTTP غير مشفّر"
+                    },
+                    tint = if (currentUrl.startsWith("https://", ignoreCase = true)) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                )
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
@@ -501,9 +537,6 @@ fun BrowserRoute(
                 }
                 IconButton(onClick = { nextNavigationSource = "reload_button"; pageLoadError = null; isLoading = true; pageProgress = 0; webView?.reload() }) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
-                }
-                IconButton(onClick = { showResults = false }) {
-                    Icon(Icons.Rounded.Close, contentDescription = "إغلاق النتائج")
                 }
             }
             if (isLoading) {
@@ -1407,6 +1440,12 @@ fun BrowserRoute(
                     Text(
                         resultTitle ?: "مصادر الصفحة",
                         style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                    Text(
+                        "${candidates.size} مصدرًا مكتشفًا • لا يتم اختيار أي مصدر تلقائيًا",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
