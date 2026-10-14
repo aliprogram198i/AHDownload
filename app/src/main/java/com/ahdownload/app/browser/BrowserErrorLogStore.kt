@@ -80,7 +80,13 @@ class BrowserErrorLogStore(context: Context) {
             safeUrl = safeUrlOnly(url),
             pageTitle = pageTitle?.let { safe(it, 160) },
             details = details.entries
-                .take(MAX_DETAILS)
+                .take(
+                    if (type == "PAGE_RENDER_CHECK" || type == "PAGE_RENDER_RECHECK") {
+                        MAX_RENDER_DIAGNOSTIC_DETAILS
+                    } else {
+                        MAX_DETAILS
+                    },
+                )
                 .associate { safeKey(it.key) to safeDetail(it.key, it.value) },
         )
         synchronized(lock) {
@@ -201,8 +207,8 @@ class BrowserErrorLogStore(context: Context) {
         const val PREFERENCES = "ahdownload_browser_error_log"
         const val KEY_ENTRIES = "entries"
         const val MAX_ENTRIES = 80
-        // PAGE_RENDER_CHECK records 38 bounded metrics; preserve the full diagnostic snapshot.
-        const val MAX_DETAILS = 40
+        const val MAX_DETAILS = 30
+        const val MAX_RENDER_DIAGNOSTIC_DETAILS = 40
         const val MAX_EXPORT_CHARS = 30_000
         val SEVERITIES = setOf("INFO", "SUCCESS", "WARNING", "ERROR")
     }
