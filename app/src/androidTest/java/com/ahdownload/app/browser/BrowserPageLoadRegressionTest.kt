@@ -343,6 +343,83 @@ class BrowserPageLoadRegressionTest {
         assertEquals("0", recheckEvent.details["hit_test_rejected_text_node_count"])
     }
 
+
+    @Test(timeout = 45_000)
+    fun hitTestSamplesVisibleTextAwayFromCoveredCenterPoint() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
+        waitForConfiguredHomePage()
+
+        val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
+        browserStore.clear()
+        val targetUrl = "https://example.com/"
+        val fixtureHtml = """
+            <!doctype html>
+            <html>
+              <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>AH Center Overlay Fixture</title>
+                <style>
+                  html, body { margin: 0; width: 100%; min-height: 100%; background: #fff; color: #111; }
+                  a { display: block; position: fixed; left: 0; top: 0; width: 100vw;
+                      min-height: 80px; color: #111; background: #fff; text-decoration: none;
+                      font: 24px sans-serif; text-align: center; }
+                  span { display: block; padding: 16px 0; pointer-events: none; }
+                  #center-hit-blocker { position: fixed; left: 49%; top: 0; bottom: 0; width: 2%;
+                      z-index: 2147483647; pointer-events: auto; background: rgba(0, 0, 0, 0.2); }
+                </style>
+              </head>
+              <body>
+                <a href="#fixture"><span>Visible browser text</span></a>
+                <div id="center-hit-blocker"></div>
+              </body>
+            </html>
+        """.trimIndent()
+
+        composeRule.runOnUiThread {
+            findWebView(composeRule.activity.window.decorView)?.loadDataWithBaseURL(
+                targetUrl,
+                fixtureHtml,
+                "text/html",
+                "UTF-8",
+                targetUrl,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any {
+                it.type == "PAGE_RENDER_CHECK" &&
+                    it.host == "example.com" &&
+                    it.pageTitle == "AH Center Overlay Fixture"
+            }
+        }
+        val renderEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_CHECK" &&
+                it.host == "example.com" &&
+                it.pageTitle == "AH Center Overlay Fixture"
+        }
+        assertEquals("CONTENT_SIGNALS_DETECTED", renderEvent.details["render_status"])
+        assertTrue((renderEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
+        assertEquals("0", renderEvent.details["hit_test_rejected_text_node_count"])
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any {
+                it.type == "PAGE_RENDER_RECHECK" &&
+                    it.host == "example.com" &&
+                    it.pageTitle == "AH Center Overlay Fixture"
+            }
+        }
+        val recheckEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_RECHECK" &&
+                it.host == "example.com" &&
+                it.pageTitle == "AH Center Overlay Fixture"
+        }
+        assertEquals("CONTENT_SIGNALS_DETECTED", recheckEvent.details["render_status"])
+        assertTrue((recheckEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
+        assertEquals("0", recheckEvent.details["hit_test_rejected_text_node_count"])
+    }
+
     private fun waitForConfiguredHomePage(timeoutMillis: Long = 30_000L) {
         composeRule.waitUntil(timeoutMillis = timeoutMillis) {
             val state = AtomicReference<Pair<Int, String?>?>(null)
