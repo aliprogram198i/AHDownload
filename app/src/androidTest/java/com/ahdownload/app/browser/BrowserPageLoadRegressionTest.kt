@@ -144,6 +144,23 @@ class BrowserPageLoadRegressionTest {
             "The diagnostic must count text actually intersecting the viewport",
             (renderEvent.details["visible_text_chars"]?.toIntOrNull() ?: 0) > 0,
         )
+        assertTrue(
+            "Visible text must contribute at least one visible text-host element",
+            (renderEvent.details["visible_text_host_element_count"]?.toIntOrNull() ?: 0) > 0,
+        )
+        assertTrue(
+            "A visible main/article fixture must contribute a semantic-container element",
+            (renderEvent.details["visible_semantic_container_count"]?.toIntOrNull() ?: 0) > 0,
+        )
+        assertTrue(
+            "The overall visible-content count must include visible text hosts, not only semantic containers",
+            (renderEvent.details["visible_content_element_count"]?.toIntOrNull() ?: 0) > 0,
+        )
+        assertEquals(
+            "unique_visible_text_hosts_semantic_containers_and_renderable_media",
+            renderEvent.details["visible_content_element_scope"],
+        )
+        assertEquals("false", renderEvent.details["challenge_detected"])
         assertEquals(
             "viewport_intersection_visible_style_contrast_and_hit_test",
             renderEvent.details["content_visibility_basis"],
@@ -158,6 +175,13 @@ class BrowserPageLoadRegressionTest {
         assertEquals("CONTENT_SIGNALS_DETECTED", recheckEvent.details["render_status"])
         assertEquals("1400", recheckEvent.details["recheck_delay_ms"])
         assertTrue((recheckEvent.details["readable_visible_text_chars"]?.toIntOrNull() ?: 0) >= 12)
+        assertTrue((recheckEvent.details["visible_text_host_element_count"]?.toIntOrNull() ?: 0) > 0)
+        assertTrue((recheckEvent.details["visible_semantic_container_count"]?.toIntOrNull() ?: 0) > 0)
+        assertTrue((recheckEvent.details["visible_content_element_count"]?.toIntOrNull() ?: 0) > 0)
+        assertEquals(
+            "unique_visible_text_hosts_semantic_containers_and_renderable_media",
+            recheckEvent.details["visible_content_element_scope"],
+        )
         val recheckEvents = browserStore.list().filter {
             it.type == "PAGE_RENDER_RECHECK" && it.host == "example.com"
         }

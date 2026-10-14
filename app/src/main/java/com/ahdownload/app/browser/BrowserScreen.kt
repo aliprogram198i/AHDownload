@@ -699,6 +699,7 @@ fun BrowserRoute(
                                         const visibleImageAreaRatio=viewportWidth>0&&viewportHeight>0
                                           ? Math.min(1,visibleImageArea/(viewportWidth*viewportHeight)) : 0;
                                         let visibleTextChars=0, readableVisibleTextChars=0, scannedTextNodes=0;
+                                        const visibleTextHostElements=new Set();
                                         let viewportIntersectingTextNodeCount=0, hitTestRejectedTextNodeCount=0;
                                         if(b){
                                           const walker=d.createTreeWalker(b,NodeFilter.SHOW_TEXT);
@@ -722,23 +723,28 @@ fun BrowserRoute(
                                               continue;
                                             }
                                             visibleTextChars=Math.min(10000,visibleTextChars+value.length);
+                                            visibleTextHostElements.add(parent);
                                             if(hasReadableContrast(parent)) readableVisibleTextChars=Math.min(10000,readableVisibleTextChars+value.length);
                                           }
                                         }
-                                        const visibleMediaElementCount=[...d.querySelectorAll('video,canvas,iframe')].filter(i=>{
+                                        const visibleMediaElements=[...d.querySelectorAll('video,canvas,iframe')].filter(i=>{
                                           const r=i.getBoundingClientRect();
                                           if(!hasVisibleStyle(i,r)||r.width<32||r.height<18||!unobscuredAt(i,r)) return false;
                                           if(i.tagName==='VIDEO') return i.videoWidth>0&&i.videoHeight>0&&i.readyState>=2;
                                           if(i.tagName==='CANVAS') return i.width>0&&i.height>0;
                                           return true;
-                                        }).length;
-                                        const visibleContentElements=[...d.querySelectorAll('main,article,video,audio,canvas,iframe,[role="main"]')].filter(i=>{
+                                        });
+                                        const visibleMediaElementCount=visibleMediaElements.length;
+                                        const visibleSemanticContainers=[...d.querySelectorAll('main,article,[role="main"]')].filter(i=>{
                                           const r=i.getBoundingClientRect();
                                           if(!hasVisibleStyle(i,r)) return false;
-                                          if(['VIDEO','CANVAS','IFRAME'].includes(i.tagName)) return visibleMediaElementCount>0;
-                                          if(i.tagName==='AUDIO') return false;
-                                          return readableVisibleTextChars>=12;
-                                        }).length;
+                                          return [...visibleTextHostElements].some(host=>i===host||i.contains(host));
+                                        });
+                                        const visibleContentElements=new Set([
+                                          ...visibleTextHostElements,
+                                          ...visibleSemanticContainers,
+                                          ...visibleMediaElements
+                                        ]);
                                         const challenge=/verify you are human|checking your browser|just a moment|access denied|captcha|unusual traffic|confirm you are not a robot|enable javascript and cookies/i
                                           .test((title+' '+text.slice(0,5000)).toLowerCase());
                                         return JSON.stringify({
@@ -764,7 +770,10 @@ fun BrowserRoute(
                                           viewportIntersectingTextNodeCount:viewportIntersectingTextNodeCount,
                                           hitTestRejectedTextNodeCount:hitTestRejectedTextNodeCount,
                                           readableVisibleTextChars:readableVisibleTextChars,
-                                          visibleContentElementCount:visibleContentElements,
+                                          visibleTextHostElementCount:visibleTextHostElements.size,
+                                          visibleSemanticContainerCount:visibleSemanticContainers.length,
+                                          visibleContentElementCount:visibleContentElements.size,
+                                          visibleContentElementScope:'unique_visible_text_hosts_semantic_containers_and_renderable_media',
                                           backgroundColor:b?getComputedStyle(b).backgroundColor:'unknown',
                                           challengeDetected:challenge
                                         });
@@ -811,7 +820,13 @@ fun BrowserRoute(
                                     val hitTestRejectedTextNodeCount = snapshot.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
                                     val readableVisibleTextChars = snapshot.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                     val visibleMediaElementCount = snapshot.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
+                                    val visibleTextHostElementCount = snapshot.optInt("visibleTextHostElementCount", 0).coerceAtLeast(0)
+                                    val visibleSemanticContainerCount = snapshot.optInt("visibleSemanticContainerCount", 0).coerceAtLeast(0)
                                     val visibleContentElementCount = snapshot.optInt("visibleContentElementCount", 0).coerceAtLeast(0)
+                                    val visibleContentElementScope = snapshot.optString(
+                                        "visibleContentElementScope",
+                                        "unique_visible_text_hosts_semantic_containers_and_renderable_media",
+                                    )
                                     val iframeCount = snapshot.optInt("iframeCount", 0).coerceAtLeast(0)
                                     val challengeDetected = snapshot.optBoolean("challengeDetected", false)
                                     val hasVisibleContentSignals = visibleTextChars >= 12 ||
@@ -876,14 +891,16 @@ fun BrowserRoute(
                                                 "hit_test_rejected_text_node_count" to hitTestRejectedTextNodeCount.toString(),
                                                 "readable_visible_text_chars" to readableVisibleTextChars.toString(),
                                                 "visible_media_element_count" to visibleMediaElementCount.toString(),
+                                                "visible_text_host_element_count" to visibleTextHostElementCount.toString(),
+                                                "visible_semantic_container_count" to visibleSemanticContainerCount.toString(),
                                                 "visible_content_element_count" to visibleContentElementCount.toString(),
+                                                "visible_content_element_scope" to visibleContentElementScope,
                                                 "has_visible_content_signals" to hasVisibleContentSignals.toString(),
                                                 "visible_content_signal_sources" to listOfNotNull(
                                                     "visible_text".takeIf { visibleTextChars >= 12 },
                                                     "visible_images".takeIf { visibleImageCount > 0 },
                                                     "visible_media".takeIf { visibleMediaElementCount > 0 },
                                                 ).joinToString(",").ifBlank { "none" },
-                                                "visible_content_element_scope" to "visible_semantic_containers_and_renderable_media_only",
                                                 "content_visibility_basis" to "viewport_intersection_visible_style_contrast_and_hit_test",
                                                 "iframe_count" to iframeCount.toString(),
                                                 "background_color" to snapshot.optString("backgroundColor", "unknown"),
@@ -990,6 +1007,13 @@ fun BrowserRoute(
                                                     val recheckRejectedTextNodes = recheckJson.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
                                                     val recheckReadableText = recheckJson.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                                     val recheckVisibleMedia = recheckJson.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleTextHostElements = recheckJson.optInt("visibleTextHostElementCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleSemanticContainers = recheckJson.optInt("visibleSemanticContainerCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleContentElements = recheckJson.optInt("visibleContentElementCount", 0).coerceAtLeast(0)
+                                                    val recheckVisibleContentElementScope = recheckJson.optString(
+                                                        "visibleContentElementScope",
+                                                        "unique_visible_text_hosts_semantic_containers_and_renderable_media",
+                                                    )
                                                     val recheckVisibleSignals = recheckVisibleText >= 12 ||
                                                         recheckVisibleImages > 0 || recheckVisibleMedia > 0
                                                     val recheckPrimaryContent = recheckReadableText >= 12 ||
@@ -1063,6 +1087,11 @@ fun BrowserRoute(
                                                             "hit_test_rejected_text_node_count" to recheckRejectedTextNodes.toString(),
                                                             "readable_visible_text_chars" to recheckReadableText.toString(),
                                                             "visible_media_element_count" to recheckVisibleMedia.toString(),
+                                                            "visible_text_host_element_count" to recheckVisibleTextHostElements.toString(),
+                                                            "visible_semantic_container_count" to recheckVisibleSemanticContainers.toString(),
+                                                            "visible_content_element_count" to recheckVisibleContentElements.toString(),
+                                                            "visible_content_element_scope" to recheckVisibleContentElementScope,
+                                                            "content_visibility_basis" to "viewport_intersection_visible_style_contrast_and_hit_test",
                                                             "navigation_id" to renderRecheckNavigationId,
                                                             "console_issue_events_recorded" to consoleErrorCount.toString(),
                                                             "console_duplicate_issues_suppressed" to consoleDuplicateIssueCount.toString(),
@@ -1667,6 +1696,7 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       return false;
     };
     let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
+    const visibleTextHostElements=new Set();
     let intersectingImages=0,rejectedImages=0,intersectingTextNodes=0,rejectedTextNodes=0;
     const images=[...d.images];
     images.forEach(i=>{
@@ -1693,16 +1723,28 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
         intersectingTextNodes++;
         if(!rects.some(r=>unobscured(el,r))){rejectedTextNodes++;continue;}
         visibleText=Math.min(10000,visibleText+value.length);
+        visibleTextHostElements.add(el);
         if(readable(el)) readableText=Math.min(10000,readableText+value.length);
       }
     }
-    const visibleMedia=[...d.querySelectorAll('video,canvas,iframe')].filter(el=>{
+    const visibleMediaElements=[...d.querySelectorAll('video,canvas,iframe')].filter(el=>{
       const r=el.getBoundingClientRect();
       if(!visible(el,r)||r.width<32||r.height<18||!unobscured(el,r)) return false;
       if(el.tagName==='VIDEO') return el.videoWidth>0&&el.videoHeight>0&&el.readyState>=2;
       if(el.tagName==='CANVAS') return el.width>0&&el.height>0;
       return true;
-    }).length;
+    });
+    const visibleMedia=visibleMediaElements.length;
+    const visibleSemanticContainers=[...d.querySelectorAll('main,article,[role="main"]')].filter(el=>{
+      const r=el.getBoundingClientRect();
+      if(!visible(el,r)) return false;
+      return [...visibleTextHostElements].some(host=>el===host||el.contains(host));
+    });
+    const visibleContentElements=new Set([
+      ...visibleTextHostElements,
+      ...visibleSemanticContainers,
+      ...visibleMediaElements
+    ]);
     const videoCount=d.querySelectorAll('video').length;
     const audioCount=d.querySelectorAll('audio').length;
     const bodyTextChars=(b&&b.innerText?b.innerText:'').trim().length;
@@ -1716,7 +1758,12 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       hitTestRejectedImageCount:rejectedImages,visibleImageAreaRatio:imageAreaRatio,
       viewportIntersectingTextNodeCount:intersectingTextNodes,hitTestRejectedTextNodeCount:rejectedTextNodes,
       visibleTextChars:visibleText,readableVisibleTextChars:readableText,
-      visibleMediaElementCount:visibleMedia,challengeDetected:challenge
+      visibleMediaElementCount:visibleMedia,
+      visibleTextHostElementCount:visibleTextHostElements.size,
+      visibleSemanticContainerCount:visibleSemanticContainers.length,
+      visibleContentElementCount:visibleContentElements.size,
+      visibleContentElementScope:'unique_visible_text_hosts_semantic_containers_and_renderable_media',
+      challengeDetected:challenge
     });
   } catch(e) { return JSON.stringify({diagnosticError:'recheck_failed'}); }
 })()
