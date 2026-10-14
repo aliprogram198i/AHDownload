@@ -218,6 +218,40 @@ class WebVideoPageResolverTest {
     }
 
     @Test
+    fun suppressesTinyBrowserObservedProgressiveClipsWhenRealVideoSizeIsKnown() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val pageUrl = "https://site.example/watch"
+        val tinyClip = "https://cdn.example.com/ads/short-clip.mp4"
+        val actualVideo = "https://cdn.example.com/media/episode.mp4"
+        val browser = object : BrowserMediaSessionProvider {
+            override suspend fun snapshot(url: String, platform: MediaPlatform): BrowserMediaSession =
+                BrowserMediaSession(
+                    platform = platform,
+                    pageUrl = url,
+                    finalUrl = url,
+                    title = "Episode",
+                    mediaUrls = listOf(tinyClip, actualVideo),
+                )
+        }
+        val resolver = WebVideoPageResolver(
+            client = client(requests, listOf(
+                response(200, mapOf("Content-Type" to "text/html"), "<html><title>Episode</title><video></video></html>"),
+                response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "67000")),
+                response(200, mapOf("Content-Type" to "video/mp4", "Content-Length" to "26000000")),
+            )),
+            browserMediaSessionProvider = browser,
+        )
+
+        val result = resolver.resolve(request(pageUrl))
+
+        assertTrue(result is ResolverResult.Success)
+        val candidates = (result as ResolverResult.Success).candidates
+        assertEquals(1, candidates.size)
+        assertEquals(actualVideo, candidates.single().sourceUrl)
+        assertEquals(26_000_000L, candidates.single().format.fileSizeBytes)
+    }
+
+    @Test
     fun reportsNoCandidatesForHtmlWithoutRecognizedVideoSources() = runBlocking {
         val requests = mutableListOf<Request>()
         val resolver = WebVideoPageResolver(client = client(requests, listOf(
