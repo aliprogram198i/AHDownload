@@ -1182,7 +1182,7 @@ fun BrowserRoute(
                             override fun onShowFileChooser(
                                 webView: WebView?,
                                 filePathCallback: ValueCallback<Array<Uri>>?,
-                                fileChooserParams: FileChooserParams?,
+                                fileChooserParams: WebChromeClient.FileChooserParams?,
                             ): Boolean {
                                 if (filePathCallback == null || fileChooserParams == null) return false
 
@@ -1206,13 +1206,13 @@ fun BrowserRoute(
                                         webView?.url ?: currentUrl,
                                         severity = "INFO",
                                         details = mapOf(
-                                            "selection_mode" to if (fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
+                                            "selection_mode" to if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
                                             "accepted_mime_type_count" to acceptedTypes.size.toString(),
                                             "capture_requested" to fileChooserParams.isCaptureEnabled.toString(),
                                             "picker" to "android_document_picker",
                                         ),
                                     )
-                                    if (fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                                    if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
                                         multipleDocumentPicker.launch(acceptedTypes)
                                     } else {
                                         singleDocumentPicker.launch(acceptedTypes)
@@ -1229,7 +1229,7 @@ fun BrowserRoute(
                                         severity = "ERROR",
                                         details = mapOf(
                                             "exception_type" to error.javaClass.simpleName,
-                                            "selection_mode" to if (fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
+                                            "selection_mode" to if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
                                         ),
                                     )
                                     true
