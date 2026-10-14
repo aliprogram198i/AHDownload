@@ -672,11 +672,16 @@ fun BrowserRoute(
                                           if(right<=left||bottomEdge<=topEdge) return false;
                                           const x=(left+right)/2, y=(topEdge+bottomEdge)/2;
                                           const top=d.elementFromPoint(x,y);
-                                          if(!top) return true;
-                                          // The hit target may be the actual element, a descendant, or an
-                                          // ancestor such as an <a> wrapping an image with pointer-events:none.
-                                          for(let p=top;p;p=p.parentElement) if(p===element) return true;
-                                          for(let p=element;p;p=p.parentElement) if(p===top) return true;
+                                          if(!top) return false;
+                                          if(top===element) return true;
+                                          // Keep the hit test conservative. Arbitrary descendants can be overlay
+                                          // elements inside a content container; document-level ancestors can
+                                          // represent full-page pseudo-element overlays rather than painted text.
+                                          // Only accept a known, close image wrapper when the image itself is
+                                          // not returned as the hit target.
+                                          if(element.tagName==='IMG' &&
+                                             (top.tagName==='A'||top.tagName==='PICTURE') &&
+                                             top.contains(element)) return true;
                                           return false;
                                         };
                                         let visibleImageCount=0, visibleImageArea=0, visibleLargeImageCount=0;
@@ -1688,11 +1693,13 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       const left=Math.max(0,r.left),right=Math.min(vw,r.right),topEdge=Math.max(0,r.top),bottomEdge=Math.min(vh,r.bottom);
       if(right<=left||bottomEdge<=topEdge) return false;
       const top=d.elementFromPoint((left+right)/2,(topEdge+bottomEdge)/2);
-      if(!top) return true;
-      // elementFromPoint can return a wrapper ancestor (for example <a> around
-      // an image with pointer-events disabled), not only the painted child.
-      for(let p=top;p;p=p.parentElement) if(p===el) return true;
-      for(let p=el;p;p=p.parentElement) if(p===top) return true;
+      if(!top) return false;
+      if(top===el) return true;
+      // Avoid treating arbitrary descendant overlays or document-level ancestors
+      // as proof that the target pixels are unobscured.
+      if(el.tagName==='IMG' &&
+         (top.tagName==='A'||top.tagName==='PICTURE') &&
+         top.contains(el)) return true;
       return false;
     };
     let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
