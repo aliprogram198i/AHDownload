@@ -881,6 +881,7 @@ fun BrowserRoute(
                                         activeNavigationId = currentNavigationId,
                                         callbackUrl = url,
                                         activeWebViewUrl = view.url,
+                                        activeBrowserUrl = currentUrl,
                                     )
                                 ) {
                                     return
@@ -905,6 +906,7 @@ fun BrowserRoute(
                                         activeNavigationId = currentNavigationId,
                                         callbackUrl = url,
                                         activeWebViewUrl = callbackWebViewUrl,
+                                        activeBrowserUrl = currentUrl,
                                     )
                                 ) {
                                     val activeUrl = callbackWebViewUrl ?: currentUrl
@@ -1125,6 +1127,7 @@ fun BrowserRoute(
                                             activeNavigationId = currentNavigationId,
                                             callbackUrl = url,
                                             activeWebViewUrl = view.url,
+                                        activeBrowserUrl = currentUrl,
                                         )
                                     ) {
                                         val activeUrl = view.url ?: currentUrl
@@ -1286,6 +1289,7 @@ fun BrowserRoute(
                                                             activeNavigationId = currentNavigationId,
                                                             callbackUrl = url,
                                                             activeWebViewUrl = view.url,
+                                                            activeBrowserUrl = currentUrl,
                                                         ) &&
                                                         lastVisualStateReadyNavigationId != visualStateNavigationId
                                                     ) {
