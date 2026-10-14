@@ -369,12 +369,10 @@ fun BrowserRoute(
                                                 resultThumbnail = result.thumbnailUrl
                                                 resultSourceUrl = target
                                                 showResults = result.candidates.isNotEmpty()
-                                                val videoOptionCount = result.candidates.count {
-                                                    it.format.kind == MediaKind.Video && it.format.hasVideo
-                                                }
-                                                val audioSourceCount = result.candidates.count {
-                                                    it.format.hasAudio || it.format.kind == MediaKind.Audio
-                                                }
+                                                val videoOptionCount = BrowserMediaOptionDeduplicator
+                                                    .videoOptions(result.candidates).size
+                                                val audioSourceCount = BrowserMediaOptionDeduplicator
+                                                    .audioSources(result.candidates).size
                                                 val elapsedMs = (System.currentTimeMillis() - inspectionStartedAtMs).coerceAtLeast(0)
                                                 recordBrowserEvent(
                                                     "OPTIONS_INSPECTION_COMPLETED",
@@ -427,7 +425,7 @@ fun BrowserRoute(
                                                 inspectMessage = if (result.candidates.isEmpty()) {
                                                     "لم يُعثر على مصدر وسائط صالح. قد يكون المشغّل غير مدعوم أو يتطلب الموقع جلسة صالحة."
                                                 } else {
-                                                    "تم العثور على ${result.candidates.size} خيارًا."
+                                                    "تم العثور على ${videoOptionCount} خيار فيديو و${audioSourceCount} مصدر صوت."
                                                 }
                                             }
                                             is ResolverResult.Failure -> {
@@ -1429,6 +1427,13 @@ fun BrowserRoute(
         }
     }
 
+    val videoCandidates = remember(candidates) {
+        BrowserMediaOptionDeduplicator.videoOptions(candidates)
+    }
+    val audioSources = remember(candidates) {
+        BrowserMediaOptionDeduplicator.audioSources(candidates)
+    }
+
     if (showResults) {
         ModalBottomSheet(onDismissRequest = { showResults = false }) {
             LazyColumn(
@@ -1444,13 +1449,12 @@ fun BrowserRoute(
                         maxLines = 2,
                     )
                     Text(
-                        "${candidates.size} مصدرًا مكتشفًا • لا يتم اختيار أي مصدر تلقائيًا",
+                        "${videoCandidates.size} خيار فيديو • ${audioSources.size} مصدر صوت • لا يتم اختيار أي مصدر تلقائيًا",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 item { Text("الفيديو", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                val videoCandidates = candidates.filter { it.format.kind == MediaKind.Video && it.format.hasVideo }
                 if (videoCandidates.isEmpty()) {
                     item { Text("لم يتم العثور على خيار فيديو.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else {
@@ -1528,9 +1532,6 @@ fun BrowserRoute(
                     }
                 }
                 item { Text("استخراج الصوت", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                val audioSources = candidates.filter {
-                    it.format.hasAudio || it.format.kind == MediaKind.Audio
-                }
                 if (audioSources.isEmpty()) {
                     item { Text("لم يتم العثور على مصدر صوت قابل للتحقق.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else {
@@ -1544,7 +1545,7 @@ fun BrowserRoute(
                                 FilterChip(
                                     selected = selectedAudioCandidateId == candidate.id,
                                     onClick = { selectedAudioCandidateId = candidate.id },
-                                    label = { Text(candidate.format.height?.let { "${it}p" } ?: candidate.format.container.name) },
+                                    label = { Text(BrowserMediaOptionDeduplicator.audioSourceLabel(candidate)) },
                                 )
                             }
                         }
@@ -1651,16 +1652,24 @@ private fun CandidateOption(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    candidate.format.height?.let { "${it}p video" } ?: candidate.format.container.name,
+                    BrowserMediaOptionDeduplicator.videoOptionTitle(candidate),
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    buildString {
-                        append(candidate.format.container.name)
-                        if (candidate.format.hasAudio) append(" • صوت مضمّن")
-                        else append(" • مسار الصوت غير مؤكد")
-                        candidate.format.fileSizeBytes?.takeIf { it > 0L }?.let { append(" • ").append(formatBytes(it)) }
-                    },
+                    buildList {
+                        candidate.format.videoCodec?.takeIf { it.isNotBlank() }?.let { add("Video ${it.uppercase()}") }
+                        candidate.format.audioCodec?.takeIf { it.isNotBlank() }?.let { add("Audio ${it.uppercase()}") }
+                        candidate.format.fps?.let { add("${it} fps") }
+                        candidate.format.bitrateKbps?.takeIf { it > 0 }?.let { add("${it} kbps") }
+                        add(
+                            when {
+                                candidate.format.hasAudio -> "صوت مضمّن"
+                                !candidate.companionAudioSourceUrl.isNullOrBlank() -> "صوت منفصل"
+                                else -> "مسار الصوت غير مؤكد"
+                            },
+                        )
+                        candidate.format.fileSizeBytes?.takeIf { it > 0L }?.let { add(formatBytes(it)) }
+                    }.joinToString(" • "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
