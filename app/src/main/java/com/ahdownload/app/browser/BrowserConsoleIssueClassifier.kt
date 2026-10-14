@@ -131,7 +131,7 @@ internal object BrowserConsoleIssueClassifier {
         registrableDomain(first) == registrableDomain(second)
 
     private fun registrableDomain(host: String): String {
-        if (host.matches(Regex("""^\\d{1,3}(?:\\.\\d{1,3}){3}$""")) || !host.contains('.')) {
+        if (host.matches(Regex("""^\d{1,3}(?:\.\d{1,3}){3}$""")) || !host.contains('.')) {
             return host
         }
         val labels = host.split('.').filter { it.isNotBlank() }
