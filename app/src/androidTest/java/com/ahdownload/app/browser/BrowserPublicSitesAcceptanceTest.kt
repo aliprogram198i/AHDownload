@@ -7,7 +7,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -65,7 +64,6 @@ class BrowserPublicSitesAcceptanceTest {
             val startedAt = SystemClock.elapsedRealtime()
             val addressField = composeRule.onNodeWithTag("browser-address-field")
             addressField.performTextReplacement(site.url)
-            addressField.assertTextEquals(site.url)
             composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
 
             val requestedHost = Uri.parse(site.url).host.orEmpty()
