@@ -14,14 +14,16 @@ internal object BrowserNavigationCallbackGuard {
         activeNavigationId: String,
         callbackUrl: String,
         activeWebViewUrl: String?,
+        activeBrowserUrl: String?,
     ): Boolean {
         if (callbackNavigationId.isBlank() || activeNavigationId.isBlank()) return false
         if (callbackNavigationId != activeNavigationId) return false
 
         val callback = callbackUrl.trim()
         val active = activeWebViewUrl?.trim().orEmpty()
-        if (callback.isEmpty() || active.isEmpty()) return false
+        val browserStateUrl = activeBrowserUrl?.trim().orEmpty()
+        if (callback.isEmpty() || active.isEmpty() || browserStateUrl.isEmpty()) return false
 
-        return callback == active
+        return callback == active && callback == browserStateUrl
     }
 }
