@@ -75,7 +75,7 @@ class BrowserConsoleIssueClassifierTest {
             type = "PAGE_EXTERNAL_SCRIPT_ERROR",
             sourceHost = "cdn.vendor.test",
             line = 2,
-            sanitizedMessage = "the first argument to client_id is required",
+            sanitizedMessage = "the first argument to client_id is required\u200B\u200B",
         )
         val otherLine = BrowserConsoleIssueClassifier.deduplicationKey(
             type = "PAGE_EXTERNAL_SCRIPT_ERROR",
