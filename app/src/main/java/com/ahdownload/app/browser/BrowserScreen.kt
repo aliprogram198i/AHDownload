@@ -309,15 +309,20 @@ fun BrowserRoute(
                         val container = BrowserDirectMediaDownload.containerFor(url, mimeType, contentDisposition)
                         val observedSize = contentLength.takeIf { it > 0L }
                         val directCandidates = result.candidates.map { candidate ->
+                            val sourceExtension = runCatching {
+                                URI(url).path.orEmpty().substringAfterLast('.', "").lowercase()
+                            }.getOrDefault("")
+                            val streamingManifest = candidate.streamingManifest ||
+                                BrowserDirectMediaDownload.isStreamingManifest(mimeType) ||
+                                sourceExtension in setOf("m3u8", "mpd")
                             candidate.copy(
                                 requestHeaders = candidate.requestHeaders + transientHeaders,
                                 sessionCookieHost = pageCookieHost,
                                 sourceContext = MediaSourceContext.BROWSER_OBSERVED,
-                                streamingManifest = candidate.streamingManifest ||
-                                    BrowserDirectMediaDownload.isStreamingManifest(mimeType),
+                                streamingManifest = streamingManifest,
                                 format = candidate.format.copy(
                                     container = container ?: candidate.format.container,
-                                    fileSizeBytes = observedSize ?: candidate.format.fileSizeBytes,
+                                    fileSizeBytes = if (streamingManifest) null else observedSize ?: candidate.format.fileSizeBytes,
                                 ),
                             )
                         }
@@ -1920,7 +1925,12 @@ private fun CandidateOption(
                                 else -> "مسار الصوت غير مؤكد"
                             },
                         )
-                        candidate.format.fileSizeBytes?.takeIf { it > 0L }?.let { add(formatBytes(it)) }
+                        when {
+                            candidate.streamingManifest -> add("حجم الفيديو النهائي يحدده البث أثناء التنزيل")
+                            candidate.format.fileSizeBytes != null && candidate.format.fileSizeBytes > 0L ->
+                                add(formatBytes(candidate.format.fileSizeBytes))
+                            else -> add("الحجم غير معروف؛ سيُحدَّد عند التحقق")
+                        }
                     }.joinToString(" • "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
