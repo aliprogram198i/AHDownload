@@ -407,7 +407,9 @@ class BrowserPublicSitesAcceptanceTest {
               const w=Math.max(0,Math.min(vw,top.getBoundingClientRect().right)-Math.max(0,top.getBoundingClientRect().left));
               const h=Math.max(0,Math.min(vh,top.getBoundingClientRect().bottom)-Math.max(0,top.getBoundingClientRect().top));
               const area=vw>0&&vh>0?Math.min(100,Math.round(w*h/(vw*vh)*100)):0;
-              const key=[tag,role,String(cs.position||'static'),String(cs.pointerEvents||'auto'),String(cs.zIndex||'auto'),category,'area'+area].join('/');
+              const markerSummary=marker.replace(/[^a-z0-9 _-]/g,' ').replace(/\s+/g,' ').trim().slice(0,72)||'-';
+              const background=String(cs.backgroundColor||'').replace(/[^a-z0-9(),. ]/gi,'').slice(0,32)||'-';
+              const key=[tag,role,String(cs.position||'static'),String(cs.pointerEvents||'auto'),String(cs.zIndex||'auto'),category,'area'+area,'children'+Math.min(99,top.children?top.children.length:0),'bg'+background,'marker'+markerSummary].join('/');
               hitTestBlockers[key]=(hitTestBlockers[key]||0)+1;return false;};
             const readable=el=>{const m=String(getComputedStyle(el).color||'').match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
               if(!m)return false;const f={r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]};if(f.a<0.35)return false;if(f.a<0.98)return true;
