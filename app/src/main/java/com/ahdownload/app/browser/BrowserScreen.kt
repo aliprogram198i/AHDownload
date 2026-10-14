@@ -11,8 +11,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.ValueCallback
 import android.net.http.SslError
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,6 +101,23 @@ fun BrowserRoute(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var pendingFileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+
+    fun finishFileChooserResult(result: Array<Uri>?) {
+        pendingFileChooserCallback?.onReceiveValue(result)
+        pendingFileChooserCallback = null
+    }
+
+    val singleDocumentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        finishFileChooserResult(uri?.let { arrayOf(it) })
+    }
+    val multipleDocumentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        finishFileChooserResult(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
+    }
     val analyzer = remember { LinkAnalyzer() }
     val resolver = remember(context, logger) {
         HomeResolver(
@@ -127,6 +147,8 @@ fun BrowserRoute(
     var lastProgressBucket by remember { mutableStateOf(0) }
     var resourceHttpErrorCount by remember { mutableStateOf(0) }
     var consoleErrorCount by remember { mutableStateOf(0) }
+    var consoleDuplicateIssueCount by remember { mutableStateOf(0) }
+    val consoleIssueFingerprints = remember { linkedSetOf<String>() }
     var lastPageFinishedEventKey by remember { mutableStateOf("") }
     var lastRenderSnapshotFingerprint by remember { mutableStateOf("") }
     var lastRenderRecheckScheduledNavigationId by remember { mutableStateOf("") }
@@ -214,6 +236,9 @@ fun BrowserRoute(
 
     DisposableEffect(Unit) {
         onDispose {
+            // WebView may be destroyed while the Android document picker is open.
+            // Complete the pending callback before releasing the view.
+            finishFileChooserResult(null)
             webView?.let { view ->
                 runCatching { view.stopLoading() }
                 (view.parent as? ViewGroup)?.removeView(view)
@@ -544,6 +569,8 @@ fun BrowserRoute(
                                 lastProgressBucket = 0
                                 resourceHttpErrorCount = 0
                                 consoleErrorCount = 0
+                                consoleDuplicateIssueCount = 0
+                                consoleIssueFingerprints.clear()
                                 pageRenderStatus = "LOADING"
                                 recordBrowserEvent(
                                     "NAVIGATION_STARTED",
@@ -863,6 +890,8 @@ fun BrowserRoute(
                                                 "challenge_detected" to challengeDetected.toString(),
                                                 "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
                                                 "http_resource_errors" to resourceHttpErrorCount.toString(),
+                                                "console_issue_events_recorded" to consoleErrorCount.toString(),
+                                                "console_duplicate_issues_suppressed" to consoleDuplicateIssueCount.toString(),
                                             ),
                                             pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                         )
@@ -1035,6 +1064,8 @@ fun BrowserRoute(
                                                             "readable_visible_text_chars" to recheckReadableText.toString(),
                                                             "visible_media_element_count" to recheckVisibleMedia.toString(),
                                                             "navigation_id" to renderRecheckNavigationId,
+                                                            "console_issue_events_recorded" to consoleErrorCount.toString(),
+                                                            "console_duplicate_issues_suppressed" to consoleDuplicateIssueCount.toString(),
                                                         ),
                                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                                     )
@@ -1148,6 +1179,63 @@ fun BrowserRoute(
                             }
                         }
                         webChromeClient = object : WebChromeClient() {
+                            override fun onShowFileChooser(
+                                webView: WebView?,
+                                filePathCallback: ValueCallback<Array<Uri>>?,
+                                fileChooserParams: WebChromeClient.FileChooserParams?,
+                            ): Boolean {
+                                if (filePathCallback == null || fileChooserParams == null) return false
+
+                                // A new chooser request replaces an older pending request deterministically.
+                                finishFileChooserResult(null)
+                                pendingFileChooserCallback = filePathCallback
+                                val acceptedTypes = fileChooserParams.acceptTypes
+                                    .orEmpty()
+                                    .flatMap { it.orEmpty().split(',', ';') }
+                                    .map { it.trim().lowercase(java.util.Locale.ROOT) }
+                                    .filter { it.matches(Regex("""^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+*-]+$""")) }
+                                    .distinct()
+                                    .ifEmpty { listOf("*/*") }
+                                    .toTypedArray()
+
+                                return try {
+                                    recordBrowserEvent(
+                                        "FILE_CHOOSER_REQUESTED",
+                                        "طلبت الصفحة اختيار ملف من المستخدم",
+                                        "file_chooser",
+                                        webView?.url ?: currentUrl,
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "selection_mode" to if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
+                                            "accepted_mime_type_count" to acceptedTypes.size.toString(),
+                                            "capture_requested" to fileChooserParams.isCaptureEnabled.toString(),
+                                            "picker" to "android_document_picker",
+                                        ),
+                                    )
+                                    if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+                                        multipleDocumentPicker.launch(acceptedTypes)
+                                    } else {
+                                        singleDocumentPicker.launch(acceptedTypes)
+                                    }
+                                    true
+                                } catch (error: Exception) {
+                                    finishFileChooserResult(null)
+                                    recordBrowserEvent(
+                                        "FILE_CHOOSER_LAUNCH_FAILED",
+                                        "تعذر فتح منتقي الملفات للنموذج الحالي",
+                                        "file_chooser",
+                                        webView?.url ?: currentUrl,
+                                        code = error.javaClass.simpleName,
+                                        severity = "ERROR",
+                                        details = mapOf(
+                                            "exception_type" to error.javaClass.simpleName,
+                                            "selection_mode" to if (fileChooserParams.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
+                                        ),
+                                    )
+                                    true
+                                }
+                            }
+
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 pageProgress = newProgress
                                 isLoading = pageLoadError == null && newProgress < 100
@@ -1182,23 +1270,55 @@ fun BrowserRoute(
                             }
 
                             override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
-                                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR && consoleErrorCount < 8) {
-                                    consoleErrorCount++
-                                    recordBrowserEvent(
-                                        "PAGE_CONSOLE_ERROR",
-                                        "سجل JavaScript خطأ أثناء عرض الصفحة",
-                                        "javascript",
-                                        viewUrlOrCurrent(webView?.url, currentUrl),
-                                        code = consoleMessage.lineNumber().toString(),
-                                        severity = "WARNING",
-                                        details = mapOf(
-                                            "console_line" to consoleMessage.lineNumber().toString(),
-                                            "console_source_host" to safeHost(consoleMessage.sourceId()),
-                                            "console_message_level" to consoleMessage.messageLevel().name,
-                                            "console_message" to BrowserConsoleMessageSanitizer.sanitize(consoleMessage.message()),
-                                            "console_error_index" to consoleErrorCount.toString(),
-                                        ),
+                                if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                    val pageUrl = viewUrlOrCurrent(webView?.url, currentUrl)
+                                    val sourceHost = safeHost(consoleMessage.sourceId())
+                                    val sanitizedMessage = BrowserConsoleMessageSanitizer.sanitize(consoleMessage.message())
+                                    val issue = BrowserConsoleIssueClassifier.classify(
+                                        rawMessage = consoleMessage.message(),
+                                        pageHost = safeHost(pageUrl),
+                                        sourceHost = sourceHost,
                                     )
+                                    val fingerprint = BrowserConsoleIssueClassifier.deduplicationKey(
+                                        type = issue.type,
+                                        sourceHost = sourceHost,
+                                        line = consoleMessage.lineNumber(),
+                                        sanitizedMessage = sanitizedMessage,
+                                    )
+                                    if (!consoleIssueFingerprints.add(fingerprint)) {
+                                        consoleDuplicateIssueCount = (consoleDuplicateIssueCount + 1).coerceAtMost(999)
+                                        return false
+                                    }
+                                    if (consoleIssueFingerprints.size > 64) {
+                                        val iterator = consoleIssueFingerprints.iterator()
+                                        if (iterator.hasNext()) {
+                                            iterator.next()
+                                            iterator.remove()
+                                        }
+                                    }
+                                    // Keep console diagnostics bounded: the first eight distinct issues
+                                    // are retained, while duplicate messages above are counted separately.
+                                    if (consoleErrorCount < 8) {
+                                        consoleErrorCount++
+                                        recordBrowserEvent(
+                                            issue.type,
+                                            issue.summary,
+                                            "javascript",
+                                            pageUrl,
+                                            code = consoleMessage.lineNumber().toString(),
+                                            severity = issue.severity,
+                                            details = mapOf(
+                                                "console_line" to consoleMessage.lineNumber().toString(),
+                                                "console_source_host" to sourceHost,
+                                                "console_message_level" to consoleMessage.messageLevel().name,
+                                                "console_message" to sanitizedMessage,
+                                                "console_error_index" to consoleErrorCount.toString(),
+                                                "console_issue_category" to issue.category,
+                                                "console_issue_scope" to issue.scope,
+                                                "console_deduplication" to "navigation_source_line_category_message",
+                                            ),
+                                        )
+                                    }
                                 }
                                 return false
                             }
