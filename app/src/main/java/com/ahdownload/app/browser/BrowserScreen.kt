@@ -76,6 +76,7 @@ import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.domain.resolver.MediaSourceContext
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.ValidationFailure
@@ -132,6 +133,7 @@ fun BrowserRoute(
     var canGoForward by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var inspecting by remember { mutableStateOf(false) }
+    var activeInspectionId by remember { mutableStateOf<String?>(null) }
     var resultTitle by remember { mutableStateOf<String?>(null) }
     var resultThumbnail by remember { mutableStateOf<String?>(null) }
     var resultSourceUrl by remember { mutableStateOf<String?>(null) }
@@ -201,6 +203,201 @@ fun BrowserRoute(
         recordBrowserEvent(type, message, stage, url, code, severity = "ERROR")
     }
 
+    fun invalidateInspectionForNavigation() {
+        // Resolver work may continue in the background, but no result from a previous
+        // document may replace the current page's result card.
+        activeInspectionId = null
+        inspecting = false
+        candidates = emptyList()
+        showResults = false
+        selectedAudioCandidateId = null
+        selectedAudioFormat = null
+        resultTitle = null
+        resultThumbnail = null
+        resultSourceUrl = null
+        inspectMessage = null
+    }
+
+    fun handleDirectBrowserDownload(
+        url: String,
+        userAgent: String?,
+        contentDisposition: String?,
+        mimeType: String?,
+        contentLength: Long,
+    ) {
+        val sourcePageUrl = webView?.url ?: currentUrl
+        val mediaLink = BrowserDirectMediaDownload.mediaLink(
+            url = url,
+            mimeType = mimeType,
+            contentDisposition = contentDisposition,
+            analyzer = analyzer,
+        )
+        if (mediaLink == null) {
+            inspectMessage = "رصد المتصفح رابط تنزيل، لكن لم يمكن تأكيد أنه ملف صوت أو فيديو مدعوم."
+            recordBrowserEvent(
+                "DIRECT_DOWNLOAD_IGNORED",
+                "تم تجاهل رابط تنزيل لا يملك نوع وسائط مدعومًا",
+                "direct_download",
+                url,
+                severity = "WARNING",
+                details = mapOf(
+                    "reason" to "unsupported_or_unknown_media_type",
+                    "mime_type" to BrowserDirectMediaDownload.safeMimeType(mimeType),
+                ),
+            )
+            return
+        }
+        if (actionInProgress) {
+            inspectMessage = "أكمل إجراء التنزيل الجاري قبل تجهيز رابط آخر."
+            recordBrowserEvent(
+                "DIRECT_DOWNLOAD_DEFERRED",
+                "أُجّل تجهيز رابط مباشر أثناء تنفيذ إجراء تنزيل",
+                "direct_download",
+                url,
+                severity = "WARNING",
+                details = mapOf("reason" to "download_action_in_progress"),
+            )
+            return
+        }
+
+        val operationId = "browser-direct-" + UUID.randomUUID().toString()
+        activeInspectionId = operationId
+        inspecting = true
+        candidates = emptyList()
+        selectedAudioCandidateId = null
+        selectedAudioFormat = null
+        showResults = false
+        inspectMessage = "تم اكتشاف رابط وسائط مباشر؛ يجري تجهيز الخيار للتحقق قبل التنزيل."
+        recordBrowserEvent(
+            "DIRECT_DOWNLOAD_DETECTED",
+            "اكتشف WebView رابط تنزيل مباشرًا لصوت أو فيديو",
+            "direct_download",
+            url,
+            severity = "INFO",
+            details = mapOf(
+                "operation_id" to operationId,
+                "mime_type" to BrowserDirectMediaDownload.safeMimeType(mimeType),
+                "content_length_known" to (contentLength > 0L).toString(),
+            ),
+        )
+
+        scope.launch {
+            try {
+                val result = resolver.resolve(mediaLink, operationId)
+                if (activeInspectionId != operationId) {
+                    recordBrowserEvent(
+                        "DIRECT_DOWNLOAD_RESULT_DISCARDED",
+                        "أُهملت نتيجة رابط مباشر بعد تغيّر الطلب النشط",
+                        "direct_download",
+                        url,
+                        severity = "INFO",
+                        details = mapOf(
+                            "operation_id" to operationId,
+                            "reason" to "superseded_by_navigation_or_new_request",
+                        ),
+                    )
+                    return@launch
+                }
+
+                when (result) {
+                    is ResolverResult.Success -> {
+                        val transientHeaders = BrowserDirectMediaDownload.requestHeaders(
+                            referer = sourcePageUrl,
+                            userAgent = userAgent,
+                        )
+                        val pageCookieHost = BrowserDirectMediaDownload.sessionCookieHost(sourcePageUrl)
+                        val container = BrowserDirectMediaDownload.containerFor(url, mimeType, contentDisposition)
+                        val observedSize = contentLength.takeIf { it > 0L }
+                        val directCandidates = result.candidates.map { candidate ->
+                            candidate.copy(
+                                requestHeaders = candidate.requestHeaders + transientHeaders,
+                                sessionCookieHost = pageCookieHost,
+                                sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+                                streamingManifest = candidate.streamingManifest ||
+                                    BrowserDirectMediaDownload.isStreamingManifest(mimeType),
+                                format = candidate.format.copy(
+                                    container = container ?: candidate.format.container,
+                                    fileSizeBytes = observedSize ?: candidate.format.fileSizeBytes,
+                                ),
+                            )
+                        }
+                        candidates = directCandidates
+                        resultTitle = BrowserDirectMediaDownload.displayName(url, contentDisposition)
+                            ?: result.title
+                            ?: currentPageTitle.takeIf { it.isNotBlank() }
+                        resultThumbnail = result.thumbnailUrl
+                        resultSourceUrl = sourcePageUrl
+                        selectedAudioCandidateId = null
+                        selectedAudioFormat = null
+                        showResults = directCandidates.isNotEmpty()
+                        val videoCount = BrowserMediaOptionDeduplicator.videoOptions(directCandidates).size
+                        val audioCount = BrowserMediaOptionDeduplicator.audioSources(directCandidates).size
+                        inspectMessage = if (directCandidates.isEmpty()) {
+                            "رُصد الرابط، لكن لم ينتج محرك التنزيل خيارًا صالحًا."
+                        } else {
+                            "تم تجهيز رابط مباشر: $videoCount خيار فيديو و$audioCount مصدر صوت. سيُتحقق من المصدر عند اختيار التنزيل."
+                        }
+                        recordBrowserEvent(
+                            "DIRECT_DOWNLOAD_OPTIONS_READY",
+                            if (directCandidates.isEmpty()) "لم ينتج الرابط المباشر خيارات قابلة للعرض" else "أصبحت خيارات الرابط المباشر جاهزة للعرض",
+                            "direct_download",
+                            url,
+                            code = "candidates_${directCandidates.size}",
+                            severity = if (directCandidates.isEmpty()) "WARNING" else "SUCCESS",
+                            details = mapOf(
+                                "operation_id" to operationId,
+                                "candidate_count" to directCandidates.size.toString(),
+                                "video_option_count" to videoCount.toString(),
+                                "audio_source_count" to audioCount.toString(),
+                                "mime_type" to BrowserDirectMediaDownload.safeMimeType(mimeType),
+                                "referer_header_attached" to transientHeaders.keys.any { it.equals("Referer", ignoreCase = true) }.toString(),
+                                "user_agent_header_attached" to transientHeaders.keys.any { it.equals("User-Agent", ignoreCase = true) }.toString(),
+                            ),
+                        )
+                    }
+                    is ResolverResult.Failure -> {
+                        inspectMessage = result.message ?: "تعذر تجهيز رابط التنزيل المباشر."
+                        recordBrowserEvent(
+                            "DIRECT_DOWNLOAD_RESOLUTION_FAILED",
+                            "تعذر تجهيز رابط التنزيل المباشر",
+                            "direct_download",
+                            url,
+                            code = result.code.name,
+                            severity = "ERROR",
+                            details = mapOf(
+                                "operation_id" to operationId,
+                                "failure_code" to result.code.name,
+                            ),
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                if (activeInspectionId == operationId) {
+                    inspectMessage = "تعذر تجهيز رابط التنزيل المباشر."
+                    recordBrowserEvent(
+                        "DIRECT_DOWNLOAD_EXCEPTION",
+                        "حدث استثناء أثناء تجهيز رابط تنزيل مباشر",
+                        "direct_download",
+                        url,
+                        code = error.javaClass.simpleName,
+                        severity = "ERROR",
+                        details = mapOf(
+                            "operation_id" to operationId,
+                            "exception_type" to error.javaClass.simpleName,
+                        ),
+                    )
+                }
+            } finally {
+                if (activeInspectionId == operationId) {
+                    activeInspectionId = null
+                    inspecting = false
+                }
+            }
+        }
+    }
+
     fun loadAddress() {
         val normalized = normalizeBrowserUrl(address)
         if (normalized == null) {
@@ -208,6 +405,7 @@ fun BrowserRoute(
             recordError("INVALID_ADDRESS", "عنوان الموقع غير صالح", "navigation", address)
             return
         }
+        invalidateInspectionForNavigation()
         nextNavigationSource = "address_bar"
         // Persist the requested destination before touching WebView. The AndroidView
         // factory may not have assigned webView yet; in that case the factory must
@@ -226,6 +424,7 @@ fun BrowserRoute(
         if (showResults) {
             showResults = false
         } else if (canGoBack) {
+            invalidateInspectionForNavigation()
             nextNavigationSource = "system_back"
             webView?.goBack()
         } else {
@@ -256,6 +455,7 @@ fun BrowserRoute(
                     IconButton(
                         onClick = {
                             if (canGoBack) {
+                                invalidateInspectionForNavigation()
                                 nextNavigationSource = "toolbar_back"
                                 webView?.goBack()
                             } else {
@@ -271,6 +471,7 @@ fun BrowserRoute(
                 },
                 actions = {
                     IconButton(onClick = {
+                        invalidateInspectionForNavigation()
                         nextNavigationSource = "home_button"
                         val homeUrl = "https://www.google.com"
                         address = homeUrl
@@ -346,6 +547,7 @@ fun BrowserRoute(
                                 selectedAudioFormat = null
                                 showResults = false
                                 val operationId = "browser-" + UUID.randomUUID().toString()
+                                activeInspectionId = operationId
                                 val inspectionStartedAtMs = System.currentTimeMillis()
                                 recordBrowserEvent(
                                     "OPTIONS_INSPECTION_STARTED",
@@ -362,7 +564,22 @@ fun BrowserRoute(
                                 )
                                 scope.launch {
                                     try {
-                                        when (val result = resolver.resolve(link, operationId)) {
+                                        val result = resolver.resolve(link, operationId)
+                                        if (activeInspectionId != operationId) {
+                                            recordBrowserEvent(
+                                                "OPTIONS_INSPECTION_RESULT_DISCARDED",
+                                                "أُهملت نتيجة فحص قديم بعد التنقل أو بدء طلب أحدث",
+                                                "inspection",
+                                                target,
+                                                severity = "INFO",
+                                                details = mapOf(
+                                                    "operation_id" to operationId,
+                                                    "reason" to "superseded_by_navigation_or_new_request",
+                                                ),
+                                            )
+                                            return@launch
+                                        }
+                                        when (result) {
                                             is ResolverResult.Success -> {
                                                 candidates = result.candidates
                                                 resultTitle = result.title
@@ -449,6 +666,7 @@ fun BrowserRoute(
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (error: Exception) {
+                                        if (activeInspectionId != operationId) return@launch
                                         inspectMessage = "حدث خطأ أثناء فحص الصفحة."
                                         recordBrowserEvent(
                                             "OPTIONS_INSPECTION_EXCEPTION",
@@ -464,7 +682,10 @@ fun BrowserRoute(
                                             ),
                                         )
                                     } finally {
-                                        inspecting = false
+                                        if (activeInspectionId == operationId) {
+                                            activeInspectionId = null
+                                            inspecting = false
+                                        }
                                     }
                                 }
                             }
@@ -527,13 +748,13 @@ fun BrowserRoute(
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(enabled = canGoBack, onClick = { nextNavigationSource = "back_button"; webView?.goBack() }) {
+                IconButton(enabled = canGoBack, onClick = { invalidateInspectionForNavigation(); nextNavigationSource = "back_button"; webView?.goBack() }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "السابق")
                 }
-                IconButton(enabled = canGoForward, onClick = { nextNavigationSource = "forward_button"; webView?.goForward() }) {
+                IconButton(enabled = canGoForward, onClick = { invalidateInspectionForNavigation(); nextNavigationSource = "forward_button"; webView?.goForward() }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "التالي")
                 }
-                IconButton(onClick = { nextNavigationSource = "reload_button"; pageLoadError = null; isLoading = true; pageProgress = 0; webView?.reload() }) {
+                IconButton(onClick = { invalidateInspectionForNavigation(); nextNavigationSource = "reload_button"; pageLoadError = null; isLoading = true; pageProgress = 0; webView?.reload() }) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                 }
             }
@@ -564,6 +785,15 @@ fun BrowserRoute(
                         settings.javaScriptCanOpenWindowsAutomatically = false
                         settings.setSupportMultipleWindows(false)
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                            handleDirectBrowserDownload(
+                                url = url,
+                                userAgent = userAgent,
+                                contentDisposition = contentDisposition,
+                                mimeType = mimeType,
+                                contentLength = contentLength,
+                            )
+                        }
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                 val scheme = request.url.scheme?.lowercase()
@@ -588,6 +818,7 @@ fun BrowserRoute(
                             }
 
                             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                                invalidateInspectionForNavigation()
                                 currentUrl = url
                                 address = url
                                 isLoading = true
@@ -616,6 +847,27 @@ fun BrowserRoute(
                                     pageTitle = null,
                                 )
                                 nextNavigationSource = "page_navigation"
+                            }
+
+                            override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                                if (url != currentUrl) {
+                                    invalidateInspectionForNavigation()
+                                    currentUrl = url
+                                    address = url
+                                    canGoBack = view.canGoBack()
+                                    canGoForward = view.canGoForward()
+                                    recordBrowserEvent(
+                                        "NAVIGATION_HISTORY_UPDATED",
+                                        "تغير عنوان الصفحة عبر سجل المتصفح",
+                                        "navigation",
+                                        url,
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "history_reload" to isReload.toString(),
+                                            "navigation_source" to "webview_history_api",
+                                        ),
+                                    )
+                                }
                             }
 
                             override fun onPageCommitVisible(view: WebView, url: String) {
