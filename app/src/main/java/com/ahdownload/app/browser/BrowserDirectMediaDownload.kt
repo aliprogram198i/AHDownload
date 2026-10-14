@@ -25,7 +25,8 @@ internal object BrowserDirectMediaDownload {
     ): MediaLink? {
         val exactUrl = url.trim()
         val uri = runCatching { URI(exactUrl) }.getOrNull() ?: return null
-        if (uri.scheme?.lowercase(Locale.ROOT) !in setOf("http", "https") || uri.host.isNullOrBlank()) {
+        // CandidateValidator currently requires HTTPS for all transfer sources.
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrBlank()) {
             return null
         }
 
@@ -165,5 +166,5 @@ internal object BrowserDirectMediaDownload {
         return uri.scheme?.lowercase(Locale.ROOT) in setOf("http", "https") && !uri.host.isNullOrBlank()
     }
 
-    private fun isHeaderSafe(value: String): Boolean = value.none { it == '\\r' || it == '\\n' }
+    private fun isHeaderSafe(value: String): Boolean = value.none { it.code < 0x20 || it.code == 0x7f }
 }
