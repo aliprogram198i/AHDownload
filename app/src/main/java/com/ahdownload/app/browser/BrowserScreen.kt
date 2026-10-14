@@ -40,7 +40,6 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -254,8 +253,20 @@ fun BrowserRoute(
                     Text("AHDownload Browser")
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "رجوع")
+                    IconButton(
+                        onClick = {
+                            if (canGoBack) {
+                                nextNavigationSource = "toolbar_back"
+                                webView?.goBack()
+                            } else {
+                                onBack()
+                            }
+                        },
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = if (canGoBack) "الصفحة السابقة" else "رجوع",
+                        )
                     }
                 },
                 actions = {
@@ -281,21 +292,34 @@ fun BrowserRoute(
                 modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (inspectMessage == null) Arrangement.End else Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    if (inspectMessage != null) {
+                    inspectMessage?.takeIf { it.isNotBlank() }?.let { message ->
                         Text(
-                            inspectMessage.orEmpty(),
-                            modifier = Modifier.weight(1f),
+                            message,
+                            modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = when {
+                                message.startsWith("أُضيف") ||
+                                    message.startsWith("تم العثور") ||
+                                    message.startsWith("هذا الملف موجود بالفعل") ->
+                                    MaterialTheme.colorScheme.primary
+                                message.contains("تعذر") ||
+                                    message.contains("خطأ") ||
+                                    message.contains("رفض") ||
+                                    message.contains("غير صالح") ||
+                                    message.startsWith("لم يُعثر") ||
+                                    message.startsWith("لم يتم العثور") ->
+                                    MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             maxLines = 2,
                         )
                     }
                     Button(
+                        modifier = Modifier.fillMaxWidth(),
                         enabled = !inspecting && !isLoading && pageLoadError == null && currentUrl.isNotBlank(),
                         onClick = {
                             val target = webView?.url ?: currentUrl
@@ -345,12 +369,10 @@ fun BrowserRoute(
                                                 resultThumbnail = result.thumbnailUrl
                                                 resultSourceUrl = target
                                                 showResults = result.candidates.isNotEmpty()
-                                                val videoOptionCount = result.candidates.count {
-                                                    it.format.kind == MediaKind.Video && it.format.hasVideo
-                                                }
-                                                val audioSourceCount = result.candidates.count {
-                                                    it.format.hasAudio || it.format.kind == MediaKind.Audio
-                                                }
+                                                val videoOptionCount = BrowserMediaOptionDeduplicator
+                                                    .videoOptions(result.candidates).size
+                                                val audioSourceCount = BrowserMediaOptionDeduplicator
+                                                    .audioSources(result.candidates).size
                                                 val elapsedMs = (System.currentTimeMillis() - inspectionStartedAtMs).coerceAtLeast(0)
                                                 recordBrowserEvent(
                                                     "OPTIONS_INSPECTION_COMPLETED",
@@ -403,7 +425,7 @@ fun BrowserRoute(
                                                 inspectMessage = if (result.candidates.isEmpty()) {
                                                     "لم يُعثر على مصدر وسائط صالح. قد يكون المشغّل غير مدعوم أو يتطلب الموقع جلسة صالحة."
                                                 } else {
-                                                    "تم العثور على ${result.candidates.size} خيارًا."
+                                                    "تم العثور على ${videoOptionCount} خيار فيديو و${audioSourceCount} مصدر صوت."
                                                 }
                                             }
                                             is ResolverResult.Failure -> {
@@ -474,7 +496,19 @@ fun BrowserRoute(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Shield, contentDescription = "اتصال آمن", tint = MaterialTheme.colorScheme.primary)
+                Icon(
+                    Icons.Rounded.Shield,
+                    contentDescription = if (currentUrl.startsWith("https://", ignoreCase = true)) {
+                        "اتصال HTTPS"
+                    } else {
+                        "اتصال HTTP غير مشفّر"
+                    },
+                    tint = if (currentUrl.startsWith("https://", ignoreCase = true)) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                )
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
@@ -501,9 +535,6 @@ fun BrowserRoute(
                 }
                 IconButton(onClick = { nextNavigationSource = "reload_button"; pageLoadError = null; isLoading = true; pageProgress = 0; webView?.reload() }) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
-                }
-                IconButton(onClick = { showResults = false }) {
-                    Icon(Icons.Rounded.Close, contentDescription = "إغلاق النتائج")
                 }
             }
             if (isLoading) {
@@ -1396,6 +1427,13 @@ fun BrowserRoute(
         }
     }
 
+    val videoCandidates = remember(candidates) {
+        BrowserMediaOptionDeduplicator.videoOptions(candidates)
+    }
+    val audioSources = remember(candidates) {
+        BrowserMediaOptionDeduplicator.audioSources(candidates)
+    }
+
     if (showResults) {
         ModalBottomSheet(onDismissRequest = { showResults = false }) {
             LazyColumn(
@@ -1408,10 +1446,15 @@ fun BrowserRoute(
                         resultTitle ?: "مصادر الصفحة",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                    )
+                    Text(
+                        "${videoCandidates.size} خيار فيديو • ${audioSources.size} مصدر صوت • لا يتم اختيار أي مصدر تلقائيًا",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 item { Text("الفيديو", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                val videoCandidates = candidates.filter { it.format.kind == MediaKind.Video && it.format.hasVideo }
                 if (videoCandidates.isEmpty()) {
                     item { Text("لم يتم العثور على خيار فيديو.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else {
@@ -1489,9 +1532,6 @@ fun BrowserRoute(
                     }
                 }
                 item { Text("استخراج الصوت", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                val audioSources = candidates.filter {
-                    it.format.hasAudio || it.format.kind == MediaKind.Audio
-                }
                 if (audioSources.isEmpty()) {
                     item { Text("لم يتم العثور على مصدر صوت قابل للتحقق.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 } else {
@@ -1505,7 +1545,7 @@ fun BrowserRoute(
                                 FilterChip(
                                     selected = selectedAudioCandidateId == candidate.id,
                                     onClick = { selectedAudioCandidateId = candidate.id },
-                                    label = { Text(candidate.format.height?.let { "${it}p" } ?: candidate.format.container.name) },
+                                    label = { Text(BrowserMediaOptionDeduplicator.audioSourceLabel(candidate)) },
                                 )
                             }
                         }
@@ -1612,16 +1652,24 @@ private fun CandidateOption(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    candidate.format.height?.let { "${it}p video" } ?: candidate.format.container.name,
+                    BrowserMediaOptionDeduplicator.videoOptionTitle(candidate),
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    buildString {
-                        append(candidate.format.container.name)
-                        if (candidate.format.hasAudio) append(" • صوت مضمّن")
-                        else append(" • مسار الصوت غير مؤكد")
-                        candidate.format.fileSizeBytes?.takeIf { it > 0L }?.let { append(" • ").append(formatBytes(it)) }
-                    },
+                    buildList {
+                        candidate.format.videoCodec?.takeIf { it.isNotBlank() }?.let { add("Video ${it.uppercase()}") }
+                        candidate.format.audioCodec?.takeIf { it.isNotBlank() }?.let { add("Audio ${it.uppercase()}") }
+                        candidate.format.fps?.let { add("${it} fps") }
+                        candidate.format.bitrateKbps?.takeIf { it > 0 }?.let { add("${it} kbps") }
+                        add(
+                            when {
+                                candidate.format.hasAudio -> "صوت مضمّن"
+                                !candidate.companionAudioSourceUrl.isNullOrBlank() -> "صوت منفصل"
+                                else -> "مسار الصوت غير مؤكد"
+                            },
+                        )
+                        candidate.format.fileSizeBytes?.takeIf { it > 0L }?.let { add(formatBytes(it)) }
+                    }.joinToString(" • "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

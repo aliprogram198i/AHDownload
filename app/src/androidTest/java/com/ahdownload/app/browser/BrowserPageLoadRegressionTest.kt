@@ -37,6 +37,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("اتصال HTTPS").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
         waitForConfiguredHomePage()
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
