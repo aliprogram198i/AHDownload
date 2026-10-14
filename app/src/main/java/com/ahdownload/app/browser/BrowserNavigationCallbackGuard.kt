@@ -14,7 +14,7 @@ internal object BrowserNavigationCallbackGuard {
         activeNavigationId: String,
         callbackUrl: String,
         activeWebViewUrl: String?,
-        activeBrowserUrl: String?,
+        activeBrowserUrl: String? = activeWebViewUrl,
     ): Boolean {
         if (callbackNavigationId.isBlank() || activeNavigationId.isBlank()) return false
         if (callbackNavigationId != activeNavigationId) return false
