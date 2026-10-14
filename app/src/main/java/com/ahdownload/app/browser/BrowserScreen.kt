@@ -1532,7 +1532,7 @@ fun BrowserRoute(
                                             "webview_error_description" to error.description.toString(),
                                             "error_code" to error.errorCode.toString(),
                                             "is_main_frame" to request.isForMainFrame.toString(),
-                                            "elapsed_ms" to (System.currentTimeMillis() - pageNavigationStartedAtMs).coerceAtLeast(0).toString(),
+                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
                                         ),
                                     )
                                 }
