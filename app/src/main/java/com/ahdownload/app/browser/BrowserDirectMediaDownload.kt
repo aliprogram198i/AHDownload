@@ -31,7 +31,16 @@ internal object BrowserDirectMediaDownload {
         }
 
         val analyzed = analyzer.analyze(exactUrl)
+        val normalizedMime = safeMimeType(mimeType)
         val mimeKind = kindFromMime(mimeType)
+        val mimeAllowsFallback = normalizedMime in setOf(
+            "unknown",
+            "application/octet-stream",
+            "binary/octet-stream",
+        )
+        // A known non-media response (for example text/html or application/pdf) must
+        // not become a media option merely because its URL or filename ends in .mp4.
+        if (mimeKind == null && !mimeAllowsFallback) return null
         val extensionKind = kindFromExtension(uri.path.orEmpty())
             ?: filenameFromContentDisposition(contentDisposition)?.let(::kindFromExtension)
         val kind = mimeKind
@@ -60,9 +69,7 @@ internal object BrowserDirectMediaDownload {
     }
 
     fun requestHeaders(referer: String?, userAgent: String?): Map<String, String> = buildMap {
-        referer?.trim()?.takeIf(::isHttpUrl)?.takeIf(::isHeaderSafe)?.let {
-            put("Referer", it.take(2048))
-        }
+        referer?.trim()?.let(::safeRefererHeaderValue)?.let { put("Referer", it) }
         userAgent?.trim()
             ?.takeIf { it.isNotEmpty() && it.length <= 1024 }
             ?.takeIf(::isHeaderSafe)
@@ -127,8 +134,26 @@ internal object BrowserDirectMediaDownload {
         return when {
             mime.startsWith("video/") -> MediaKind.Video
             mime.startsWith("audio/") -> MediaKind.Audio
+            mime in setOf(
+                "application/vnd.apple.mpegurl",
+                "application/x-mpegurl",
+                "application/mpegurl",
+                "audio/mpegurl",
+                "application/dash+xml",
+            ) -> MediaKind.Video
             else -> null
         }
+    }
+
+    private fun safeRefererHeaderValue(value: String): String? {
+        if (!isHttpUrl(value) || !isHeaderSafe(value)) return null
+        val uri = runCatching { URI(value) }.getOrNull() ?: return null
+        val scheme = uri.scheme ?: return null
+        val host = uri.host ?: return null
+        val port = if (uri.port >= 0) ":" + uri.port.toString() else ""
+        // Strip credentials, query, and fragment from Referer to avoid forwarding
+        // page tokens or user-info to the media host.
+        return "$scheme://$host$port" + uri.rawPath.orEmpty().take(2048)
     }
 
     private fun kindFromExtension(value: String): MediaKind? = when (extensionOf(value)) {
