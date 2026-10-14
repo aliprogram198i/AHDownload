@@ -201,7 +201,8 @@ class BrowserErrorLogStore(context: Context) {
         const val PREFERENCES = "ahdownload_browser_error_log"
         const val KEY_ENTRIES = "entries"
         const val MAX_ENTRIES = 80
-        const val MAX_DETAILS = 30
+        // PAGE_RENDER_CHECK records 38 bounded metrics; preserve the full diagnostic snapshot.
+        const val MAX_DETAILS = 40
         const val MAX_EXPORT_CHARS = 30_000
         val SEVERITIES = setOf("INFO", "SUCCESS", "WARNING", "ERROR")
     }
