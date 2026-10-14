@@ -11,8 +11,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.ValueCallback
 import android.net.http.SslError
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,6 +101,23 @@ fun BrowserRoute(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var pendingFileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
+
+    fun finishFileChooserResult(result: Array<Uri>?) {
+        pendingFileChooserCallback?.onReceiveValue(result)
+        pendingFileChooserCallback = null
+    }
+
+    val singleDocumentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        finishFileChooserResult(uri?.let { arrayOf(it) })
+    }
+    val multipleDocumentPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        finishFileChooserResult(uris.takeIf { it.isNotEmpty() }?.toTypedArray())
+    }
     val analyzer = remember { LinkAnalyzer() }
     val resolver = remember(context, logger) {
         HomeResolver(
@@ -216,6 +236,9 @@ fun BrowserRoute(
 
     DisposableEffect(Unit) {
         onDispose {
+            // WebView may be destroyed while the Android document picker is open.
+            // Complete the pending callback before releasing the view.
+            finishFileChooserResult(null)
             webView?.let { view ->
                 runCatching { view.stopLoading() }
                 (view.parent as? ViewGroup)?.removeView(view)
@@ -1156,6 +1179,63 @@ fun BrowserRoute(
                             }
                         }
                         webChromeClient = object : WebChromeClient() {
+                            override fun onShowFileChooser(
+                                webView: WebView?,
+                                filePathCallback: ValueCallback<Array<Uri>>?,
+                                fileChooserParams: FileChooserParams?,
+                            ): Boolean {
+                                if (filePathCallback == null || fileChooserParams == null) return false
+
+                                // A new chooser request replaces an older pending request deterministically.
+                                finishFileChooserResult(null)
+                                pendingFileChooserCallback = filePathCallback
+                                val acceptedTypes = fileChooserParams.acceptTypes
+                                    .orEmpty()
+                                    .flatMap { it.orEmpty().split(',', ';') }
+                                    .map { it.trim().lowercase(java.util.Locale.ROOT) }
+                                    .filter { it.matches(Regex("""^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+*-]+$""")) }
+                                    .distinct()
+                                    .ifEmpty { listOf("*/*") }
+                                    .toTypedArray()
+
+                                return try {
+                                    recordBrowserEvent(
+                                        "FILE_CHOOSER_REQUESTED",
+                                        "طلبت الصفحة اختيار ملف من المستخدم",
+                                        "file_chooser",
+                                        webView?.url ?: currentUrl,
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "selection_mode" to if (fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
+                                            "accepted_mime_type_count" to acceptedTypes.size.toString(),
+                                            "capture_requested" to fileChooserParams.isCaptureEnabled.toString(),
+                                            "picker" to "android_document_picker",
+                                        ),
+                                    )
+                                    if (fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                                        multipleDocumentPicker.launch(acceptedTypes)
+                                    } else {
+                                        singleDocumentPicker.launch(acceptedTypes)
+                                    }
+                                    true
+                                } catch (error: Exception) {
+                                    finishFileChooserResult(null)
+                                    recordBrowserEvent(
+                                        "FILE_CHOOSER_LAUNCH_FAILED",
+                                        "تعذر فتح منتقي الملفات للنموذج الحالي",
+                                        "file_chooser",
+                                        webView?.url ?: currentUrl,
+                                        code = error.javaClass.simpleName,
+                                        severity = "ERROR",
+                                        details = mapOf(
+                                            "exception_type" to error.javaClass.simpleName,
+                                            "selection_mode" to if (fileChooserParams.mode == FileChooserParams.MODE_OPEN_MULTIPLE) "multiple" else "single",
+                                        ),
+                                    )
+                                    true
+                                }
+                            }
+
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 pageProgress = newProgress
                                 isLoading = pageLoadError == null && newProgress < 100
