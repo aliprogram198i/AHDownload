@@ -285,6 +285,7 @@ class BrowserPublicSitesAcceptanceTest {
         visibleImageAreaRatio = s.optDouble("visibleImageAreaRatio", 0.0).coerceIn(0.0, 1.0),
         viewportIntersectingTextNodes = s.optInt("viewportIntersectingTextNodeCount", 0).coerceAtLeast(0),
         hitTestRejectedTextNodes = s.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0),
+        hitTestBlockerSummary = s.optString("hitTestBlockerSummary", "").take(240),
         visibleMediaCount = s.optInt("visibleMediaElementCount", 0).coerceAtLeast(0),
         visibleLinkCount = s.optInt("visibleLinkCount", 0).coerceAtLeast(0),
         visibleButtonCount = s.optInt("visibleButtonCount", 0).coerceAtLeast(0),
@@ -332,6 +333,7 @@ class BrowserPublicSitesAcceptanceTest {
         val visibleImageAreaRatio: Double,
         val viewportIntersectingTextNodes: Int,
         val hitTestRejectedTextNodes: Int,
+        val hitTestBlockerSummary: String,
         val visibleMediaCount: Int,
         val visibleLinkCount: Int,
         val visibleButtonCount: Int,
@@ -367,6 +369,7 @@ class BrowserPublicSitesAcceptanceTest {
                 "initial_images=${initialSummary.visibleImageCount}/${initialSummary.imageCount}|initial_viewport_images=${initialSummary.viewportIntersectingImages}|" +
                 "initial_rejected_images=${initialSummary.hitTestRejectedImages}|initial_image_area=${"%.4f".format(java.util.Locale.ROOT, initialSummary.visibleImageAreaRatio)}|" +
                 "initial_viewport_text_nodes=${initialSummary.viewportIntersectingTextNodes}|initial_rejected_text_nodes=${initialSummary.hitTestRejectedTextNodes}|" +
+                "initial_hit_test_blockers=${initialSummary.hitTestBlockerSummary.ifBlank { "none" }}|" +
                 "initial_links=${initialSummary.visibleLinkCount}|initial_buttons=${initialSummary.visibleButtonCount}|initial_inputs=${initialSummary.visibleInputCount}|" +
                 "initial_nav_regions=${initialSummary.visibleNavigationCount}|after_menu_visible_text=${summary.visibleTextChars}|" +
                 "after_menu_links=${summary.visibleLinkCount}|after_menu_buttons=${summary.visibleButtonCount}|after_menu_nav=${summary.visibleNavigationCount}|" +
@@ -391,10 +394,15 @@ class BrowserPublicSitesAcceptanceTest {
             const shown=(el,r)=>{if(!el||!r||r.width<=0||r.height<=0||!intersects(r))return false;
               const s=getComputedStyle(el);if(s.display==='none'||s.visibility==='hidden'||Number(s.opacity||1)<=0.05)return false;
               for(let p=el.parentElement;p;p=p.parentElement){const q=getComputedStyle(p);if(q.display==='none'||q.visibility==='hidden'||Number(q.opacity||1)<=0.05)return false;}return true;};
+            const hitTestBlockers={};
             const unobscured=(el,r)=>{const l=Math.max(0,r.left),rr=Math.min(vw,r.right),t=Math.max(0,r.top),bb=Math.min(vh,r.bottom);
               if(rr<=l||bb<=t)return false;const top=d.elementFromPoint((l+rr)/2,(t+bb)/2);if(!top)return true;
               for(let p=top;p;p=p.parentElement)if(p===el)return true;
-              for(let p=el;p;p=p.parentElement)if(p===top)return true;return false;};
+              for(let p=el;p;p=p.parentElement)if(p===top)return true;
+              const cs=getComputedStyle(top);
+              const role=String(top.getAttribute('role')||'-').toLowerCase().replace(/[^a-z0-9_-]/g,'').slice(0,20)||'-';
+              const key=[String(top.tagName||'unknown').toLowerCase(),role,String(cs.position||'static'),String(cs.pointerEvents||'auto'),String(cs.zIndex||'auto')].join('/');
+              hitTestBlockers[key]=(hitTestBlockers[key]||0)+1;return false;};
             const readable=el=>{const m=String(getComputedStyle(el).color||'').match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
               if(!m)return false;const f={r:+m[1],g:+m[2],b:+m[3],a:m[4]===undefined?1:+m[4]};if(f.a<0.35)return false;if(f.a<0.98)return true;
               let bg=null;for(let p=el;p;p=p.parentElement){const q=String(getComputedStyle(p).backgroundColor||'').match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
@@ -429,6 +437,7 @@ class BrowserPublicSitesAcceptanceTest {
               visibleMediaElementCount:media,visibleLinkCount:controls('a[href]'),visibleButtonCount:controls('button,[role="button"],input[type="button"],input[type="submit"]'),
               visibleInputCount:controls('input:not([type="hidden"]),textarea,select'),visibleNavigationCount:count('nav,header,[role="navigation"],[role="menubar"]'),
               menuPanelCount:panels,visibleMenuTriggerCount:toggles,expandedControlCount:d.querySelectorAll('[aria-expanded="true"]').length,
+              hitTestBlockerSummary:Object.entries(hitTestBlockers).sort((a,b)=>b[1]-a[1]).slice(0,4).map(x=>x[0]+':'+x[1]).join(','),
               videoCount:d.querySelectorAll('video').length,challengeDetected:challenge});
           }catch(e){return JSON.stringify({diagnosticError:'site_probe_failed'});}})()
         """.trimIndent()
