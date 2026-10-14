@@ -17,7 +17,7 @@ internal data class BrowserConsoleIssue(
  */
 internal object BrowserConsoleIssueClassifier {
     private val contentSecurityPolicyBlock = Regex(
-        """(?is)(violates the following content security policy directive|content security policy.{0,100}(?:blocked|refused|violates)|refused to (?:load|execute).{0,180}content security policy)""",
+        """(?is)(violates.{0,100}content security policy|content security policy.{0,100}(?:blocked|refused|violates)|refused to (?:load|execute).{0,180}content security policy)""",
     )
 
     fun classify(
