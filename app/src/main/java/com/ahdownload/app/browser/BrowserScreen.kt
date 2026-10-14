@@ -313,6 +313,8 @@ fun BrowserRoute(
                                 requestHeaders = candidate.requestHeaders + transientHeaders,
                                 sessionCookieHost = pageCookieHost,
                                 sourceContext = MediaSourceContext.BROWSER_OBSERVED,
+                                streamingManifest = candidate.streamingManifest ||
+                                    BrowserDirectMediaDownload.isStreamingManifest(mimeType),
                                 format = candidate.format.copy(
                                     container = container ?: candidate.format.container,
                                     fileSizeBytes = observedSize ?: candidate.format.fileSizeBytes,
