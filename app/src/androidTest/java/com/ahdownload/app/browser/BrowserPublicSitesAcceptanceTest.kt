@@ -128,7 +128,7 @@ class BrowserPublicSitesAcceptanceTest {
         )
         val provenVisibilityFailures = results.filter { result ->
             result.pageFinished &&
-                !result.summary.challengeDetected &&
+                !result.initialSummary.challengeDetected &&
                 result.initialSummary.bodyTextChars >= 80 &&
                 result.initialSummary.visibleTextChars == 0 &&
                 result.initialSummary.visibleImageCount == 0 &&
