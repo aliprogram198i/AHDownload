@@ -909,7 +909,8 @@ fun BrowserRoute(
                                         activeBrowserUrl = currentUrl,
                                     )
                                 ) {
-                                    val activeUrl = callbackWebViewUrl ?: currentUrl
+                                    val activeUrl = currentUrl
+                                    val observedWebViewUrl = callbackWebViewUrl.orEmpty()
                                     recordBrowserEvent(
                                         "STALE_PAGE_FINISHED_CALLBACK_IGNORED",
                                         "أُهملت callback تحميل لعنوان لم يعد هو العنوان النشط",
@@ -919,7 +920,8 @@ fun BrowserRoute(
                                         details = mapOf(
                                             "callback_host" to safeHost(url),
                                             "active_host" to safeHost(activeUrl),
-                                            "reason" to "webview_url_mismatch",
+                                            "webview_host" to safeHost(observedWebViewUrl),
+                                            "reason" to "webview_or_browser_state_url_mismatch",
                                         ),
                                     )
                                     return
@@ -1130,7 +1132,8 @@ fun BrowserRoute(
                                         activeBrowserUrl = currentUrl,
                                         )
                                     ) {
-                                        val activeUrl = view.url ?: currentUrl
+                                        val activeUrl = currentUrl
+                                        val observedWebViewUrl = view.url.orEmpty()
                                         recordBrowserEvent(
                                             "STALE_PAGE_RENDER_CALLBACK_IGNORED",
                                             "أُهملت نتيجة فحص عرض بعد تغيّر الصفحة النشطة",
@@ -1140,6 +1143,7 @@ fun BrowserRoute(
                                             details = mapOf(
                                                 "callback_host" to safeHost(url),
                                                 "active_host" to safeHost(activeUrl),
+                                                "webview_host" to safeHost(observedWebViewUrl),
                                                 "callback_navigation_id" to pageNavigationId,
                                                 "active_navigation_id" to currentNavigationId,
                                                 "reason" to "navigation_superseded_or_url_changed",
