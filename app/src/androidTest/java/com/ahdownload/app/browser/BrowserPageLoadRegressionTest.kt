@@ -160,6 +160,7 @@ class BrowserPageLoadRegressionTest {
             "unique_visible_text_hosts_semantic_containers_and_renderable_media",
             renderEvent.details["visible_content_element_scope"],
         )
+        assertEquals("false", renderEvent.details["challenge_detected"])
         assertEquals(
             "viewport_intersection_visible_style_contrast_and_hit_test",
             renderEvent.details["content_visibility_basis"],
