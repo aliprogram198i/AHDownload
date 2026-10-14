@@ -62,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -452,7 +453,7 @@ fun BrowserRoute(
                 OutlinedTextField(
                     value = address,
                     onValueChange = { address = it },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("browser-address-field"),
                     singleLine = true,
                     label = { Text("عنوان الموقع") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),

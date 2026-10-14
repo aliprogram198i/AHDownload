@@ -7,7 +7,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -53,15 +54,22 @@ class BrowserPublicSitesAcceptanceTest {
 
         val store = BrowserErrorLogStore(composeRule.activity.applicationContext)
         openBrowser()
+        assertTrue(
+            "The configured browser home page must settle before target-site navigation",
+            waitForHomePageToSettle(),
+        )
         val results = mutableListOf<SiteResult>()
 
         for (site in sitesToTest) {
             store.clear()
             val startedAt = SystemClock.elapsedRealtime()
-            composeRule.onNode(hasSetTextAction()).performTextReplacement(site.url)
+            val addressField = composeRule.onNodeWithTag("browser-address-field")
+            addressField.performTextReplacement(site.url)
+            addressField.assertTextEquals(site.url)
             composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
 
-            val pageFinished = waitForPageFinish(store, site.timeoutMs)
+            val requestedHost = Uri.parse(site.url).host.orEmpty()
+            val pageFinished = waitForPageFinish(store, site.timeoutMs, requestedHost)
             // Let the page's scripts, lazy controls and the browser's delayed render check settle.
             SystemClock.sleep(1_650L)
             val firstSnapshot = evaluateSnapshot() ?: JSONObject()
@@ -122,9 +130,18 @@ class BrowserPublicSitesAcceptanceTest {
             results.size,
         )
         assertTrue(
-            "Every requested URL must finish navigation or report a detectable page failure. Results: " +
+            "Every requested URL must finish its own navigation. Results: " +
                 results.joinToString(" || ") { it.toSafeLogLine() },
             results.all { it.pageFinished },
+        )
+        val hostMismatches = results.filter { result ->
+            if (result.id == "google") result.finalHost != "google.com"
+            else result.finalHost == "google.com" || result.finalHost == "unknown"
+        }
+        assertTrue(
+            "The test must not report default Google content as Shahid4u/XNXX. Host mismatches: " +
+                hostMismatches.joinToString(" || ") { it.toSafeLogLine() },
+            hostMismatches.isEmpty(),
         )
         val provenVisibilityFailures = results.filter { result ->
             result.pageFinished &&
@@ -157,7 +174,39 @@ class BrowserPublicSitesAcceptanceTest {
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
     }
 
-    private fun waitForPageFinish(store: BrowserErrorLogStore, timeoutMs: Long): Boolean {
+    private fun waitForHomePageToSettle(timeoutMs: Long = 45_000L): Boolean {
+        val started = SystemClock.elapsedRealtime()
+        var stableUrl: String? = null
+        var stableSince = 0L
+        while (SystemClock.elapsedRealtime() - started < timeoutMs) {
+            val state = AtomicReference<Pair<Int, String?>?>(null)
+            composeRule.runOnUiThread {
+                val view = findWebView(composeRule.activity.window.decorView)
+                state.set((view?.progress ?: 0) to view?.url)
+            }
+            val now = SystemClock.elapsedRealtime()
+            val current = state.get()
+            val url = current?.second
+            if (current?.first == 100 && safeHost(url) == "google.com") {
+                if (url == stableUrl && now - stableSince >= 650L) return true
+                if (url != stableUrl) {
+                    stableUrl = url
+                    stableSince = now
+                }
+            } else {
+                stableUrl = null
+                stableSince = 0L
+            }
+            SystemClock.sleep(150L)
+        }
+        return false
+    }
+
+    private fun waitForPageFinish(
+        store: BrowserErrorLogStore,
+        timeoutMs: Long,
+        expectedHost: String,
+    ): Boolean {
         val started = SystemClock.elapsedRealtime()
         while (SystemClock.elapsedRealtime() - started < timeoutMs) {
             val state = AtomicReference<Pair<Int, String?>?>(null)
@@ -166,14 +215,17 @@ class BrowserPublicSitesAcceptanceTest {
                 state.set((view?.progress ?: 0) to view?.url)
             }
             val events = store.list()
-            val navigationStarted = events.any { it.type == "NAVIGATION_STARTED" }
+            val navigationStarted = events.any {
+                it.type == "NAVIGATION_STARTED" && it.host.equals(expectedHost, ignoreCase = true)
+            }
             val pageFinished = events.any { it.type == "PAGE_LOAD_FINISHED" }
-            val mainFrameError = events.any {
+            val mainFrameError = navigationStarted && events.any {
                 it.type == "MAIN_FRAME_LOAD_ERROR" || it.type == "PAGE_LOAD_ERROR" ||
-                    it.type == "NAVIGATION_ERROR" || it.type == "RESOURCE_HTTP_ERROR" && it.details["is_main_frame"] == "true"
+                    it.type == "NAVIGATION_ERROR" ||
+                    it.type == "RESOURCE_HTTP_ERROR" && it.details["is_main_frame"] == "true"
             }
             if (navigationStarted && pageFinished && state.get()?.first == 100) return true
-            if (navigationStarted && mainFrameError) return false
+            if (mainFrameError) return false
             SystemClock.sleep(200L)
         }
         return false

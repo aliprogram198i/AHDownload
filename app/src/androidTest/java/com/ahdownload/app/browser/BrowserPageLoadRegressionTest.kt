@@ -1,5 +1,7 @@
 package com.ahdownload.app.browser
 
+import android.net.Uri
+import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
@@ -8,6 +10,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -36,6 +39,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
+        waitForConfiguredHomePage()
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
 
@@ -76,27 +80,59 @@ class BrowserPageLoadRegressionTest {
         }
         assertNotNull("Browser must retain a WebView instance", webViewRef.get())
 
-        val loadedState = AtomicReference<Pair<String?, String?>?>(null)
-        composeRule.waitUntil(timeoutMillis = 15_000) {
+        val fixtureSnapshotScript = """
+            (function() {
+              const main = document.getElementById("main-content");
+              return JSON.stringify({
+                readyState: document.readyState,
+                title: document.title,
+                heading: main ? (main.querySelector("h1")?.textContent || "") : "",
+                text: main ? (main.innerText || "") : ""
+              });
+            })()
+        """.trimIndent()
+        val fixtureDeadline = SystemClock.elapsedRealtime() + 15_000L
+        var renderedSnapshot: JSONObject? = null
+        while (renderedSnapshot == null && SystemClock.elapsedRealtime() < fixtureDeadline) {
+            val evaluated = AtomicReference<JSONObject?>(null)
             composeRule.runOnUiThread {
-                val webView = findWebView(composeRule.activity.window.decorView)
-                loadedState.set(webView?.url to webView?.title)
+                webViewRef.get()?.evaluateJavascript(fixtureSnapshotScript) { raw ->
+                    val decoded = runCatching {
+                        JSONTokener(raw.orEmpty()).nextValue() as? String
+                    }.getOrNull()
+                    evaluated.set(decoded?.let { runCatching { JSONObject(it) }.getOrNull() })
+                }
             }
-            loadedState.get()?.let { (url, title) ->
-                url?.startsWith(baseUrl) == true && title == expectedTitle
-            } == true
+            val callbackDeadline = minOf(fixtureDeadline, SystemClock.elapsedRealtime() + 500L)
+            while (evaluated.get() == null && SystemClock.elapsedRealtime() < callbackDeadline) {
+                SystemClock.sleep(25L)
+            }
+            val candidate = evaluated.get()
+            if (candidate != null &&
+                candidate.optString("readyState") == "complete" &&
+                candidate.optString("title") == expectedTitle &&
+                candidate.optString("heading") == expectedTitle &&
+                candidate.optString("text").contains("Visible deterministic text confirms")
+            ) {
+                renderedSnapshot = candidate
+            } else {
+                SystemClock.sleep(100L)
+            }
         }
+        assertNotNull(
+            "The WebView DOM must contain the rendered deterministic fixture (title, heading and body text)",
+            renderedSnapshot,
+        )
+        assertEquals(expectedTitle, renderedSnapshot!!.optString("title"))
+        assertEquals(expectedTitle, renderedSnapshot!!.optString("heading"))
 
-        val finalState = AtomicReference<Pair<String?, String?>?>(null)
+        val retainedWebView = AtomicReference<WebView?>(null)
         composeRule.runOnUiThread {
-            val webView = findWebView(composeRule.activity.window.decorView)
-            finalState.set(webView?.url to webView?.title)
+            retainedWebView.set(findWebView(composeRule.activity.window.decorView))
         }
-        assertNotNull("The browser must retain its WebView after fixture rendering", finalState.get())
-        assertEquals(
-            "WebView must render the deterministic HTML fixture",
-            baseUrl to expectedTitle,
-            finalState.get(),
+        assertTrue(
+            "The same WebView instance must remain mounted after fixture rendering",
+            retainedWebView.get() === webViewRef.get(),
         )
 
         composeRule.waitUntil(timeoutMillis = 15_000) {
@@ -155,8 +191,9 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
+        waitForConfiguredHomePage()
         val targetUrl = "https://example.com/"
-        composeRule.onNode(hasSetTextAction()).performTextReplacement(targetUrl)
+        composeRule.onNodeWithTag("browser-address-field").performTextReplacement(targetUrl)
         composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
 
         val pageLoaded = AtomicReference(false)
@@ -210,6 +247,19 @@ class BrowserPageLoadRegressionTest {
         assertTrue("Legacy target-to-hit walk misses an ancestor wrapper", !snapshot.optBoolean("legacyMatched"))
         assertTrue("Reverse ancestor walk must accept the wrapper", snapshot.optBoolean("ancestorMatched"))
         assertTrue(snapshot.optBoolean("correctedMatched"))
+    }
+
+    private fun waitForConfiguredHomePage(timeoutMillis: Long = 30_000L) {
+        composeRule.waitUntil(timeoutMillis = timeoutMillis) {
+            val state = AtomicReference<Pair<Int, String?>?>(null)
+            composeRule.runOnUiThread {
+                val view = findWebView(composeRule.activity.window.decorView)
+                state.set((view?.progress ?: 0) to view?.url)
+            }
+            val current = state.get()
+            val host = runCatching { Uri.parse(current?.second.orEmpty()).host?.lowercase() }.getOrNull()
+            current?.first == 100 && host in setOf("google.com", "www.google.com")
+        }
     }
 
     @Test(timeout = 30_000)
