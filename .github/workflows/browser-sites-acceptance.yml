@@ -10,9 +10,13 @@ permissions:
 
 jobs:
   browser-sites:
-    name: Verify Google, Shahid4u and XNXX Arabic in Android WebView
+    name: Verify ${{ matrix.site }} in Android WebView
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        site: [google, shahid4u, xnxx_arabic]
 
     steps:
       - name: Check out source
@@ -71,7 +75,7 @@ jobs:
             set -eu
             mkdir -p browser-sites-results
             set +e
-            bash -o pipefail -c 'gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest" 2>&1 | tee browser-sites-acceptance.log'
+            bash -o pipefail -c 'gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest" "-Pandroid.testInstrumentationRunnerArguments.browserSite=${{ matrix.site }}" 2>&1 | tee browser-sites-acceptance.log'
             test_exit_code=$?
             adb logcat -d -v threadtime -s AH_BROWSER_SITE_ACCEPTANCE:I AndroidRuntime:E > browser-sites-acceptance-logcat.txt 2>&1 || echo "Filtered logcat collection failed" >> browser-sites-acceptance-logcat.txt
             printf '%s\n' "$test_exit_code" > browser-sites-results/instrumentation-exit-code.txt
@@ -105,7 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ahdownload-browser-site-acceptance-${{ github.run_id }}
+          name: ahdownload-browser-site-acceptance-${{ matrix.site }}-${{ github.run_id }}
           path: |
             browser-sites-acceptance.log
             browser-sites-acceptance-logcat.txt
