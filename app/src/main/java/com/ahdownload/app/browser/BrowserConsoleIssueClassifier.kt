@@ -83,6 +83,7 @@ internal object BrowserConsoleIssueClassifier {
     ): String {
         val normalizedMessage = sanitizedMessage
             .lowercase(Locale.ROOT)
+            .replace(Regex("""[\u200B-\u200D\uFEFF]"""), "")
             .replace(
                 Regex("""^\s*(?:uncaught\s+)?(?:error|typeerror|referenceerror|syntaxerror|rangeerror):\s*"""),
                 "",
