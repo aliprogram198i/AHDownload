@@ -46,6 +46,8 @@ class BrowserDirectMediaDownloadTest {
     @Test
     fun rejectsUnsupportedMimeTypesAndUnsafeSchemes() {
         assertNull(BrowserDirectMediaDownload.mediaLink("https://example.test/page", "text/html", null, analyzer))
+        assertNull(BrowserDirectMediaDownload.mediaLink("https://example.test/clip.mp4", "text/html", null, analyzer))
+        assertNull(BrowserDirectMediaDownload.mediaLink("https://example.test/document.mp4", "application/pdf", null, analyzer))
         assertNull(BrowserDirectMediaDownload.mediaLink("javascript:alert(1)", "video/mp4", null, analyzer))
         assertNull(BrowserDirectMediaDownload.mediaLink("file:///sdcard/clip.mp4", null, null, analyzer))
     }
@@ -58,7 +60,9 @@ class BrowserDirectMediaDownloadTest {
         )
 
         assertTrue(headers.isEmpty())
-        assertFalse(BrowserDirectMediaDownload.requestHeaders("https://site.example/", "Browser/1").isEmpty())
+        val safe = BrowserDirectMediaDownload.requestHeaders("https://site.example/watch?id=secret#section", "Browser/1")
+        assertFalse(safe.isEmpty())
+        assertEquals("https://site.example/watch", safe["Referer"])
     }
 
     @Test
