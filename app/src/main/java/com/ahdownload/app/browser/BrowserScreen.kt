@@ -673,15 +673,13 @@ fun BrowserRoute(
                                           const x=(left+right)/2, y=(topEdge+bottomEdge)/2;
                                           const top=d.elementFromPoint(x,y);
                                           if(!top) return false;
-                                          if(top===element) return true;
-                                          // Keep the hit test conservative. Arbitrary descendants can be overlay
-                                          // elements inside a content container; document-level ancestors can
-                                          // represent full-page pseudo-element overlays rather than painted text.
-                                          // Only accept a known, close image wrapper when the image itself is
-                                          // not returned as the hit target.
-                                          if(element.tagName==='IMG' &&
-                                             (top.tagName==='A'||top.tagName==='PICTURE') &&
-                                             top.contains(element)) return true;
+                                          // WebKit may return a nested painted child (e.g. strong/span) or a
+                                          // local wrapper (e.g. an anchor around a pointer-events:none span)
+                                          // instead of the measured text/image host. Treat related DOM targets
+                                          // as a hit, but never let BODY/HTML alone prove content visibility:
+                                          // a page-wide overlay can otherwise create a false positive.
+                                          if(top===element || element.contains(top)) return true;
+                                          if(top!==b && top!==e && top.contains(element)) return true;
                                           return false;
                                         };
                                         let visibleImageCount=0, visibleImageArea=0, visibleLargeImageCount=0;
@@ -1694,12 +1692,11 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       if(right<=left||bottomEdge<=topEdge) return false;
       const top=d.elementFromPoint((left+right)/2,(topEdge+bottomEdge)/2);
       if(!top) return false;
-      if(top===el) return true;
-      // Avoid treating arbitrary descendant overlays or document-level ancestors
-      // as proof that the target pixels are unobscured.
-      if(el.tagName==='IMG' &&
-         (top.tagName==='A'||top.tagName==='PICTURE') &&
-         top.contains(el)) return true;
+      // WebKit may target a nested painted child or a local wrapper instead of
+      // the measured host. Accept related DOM targets while excluding document
+      // roots, which are too broad to prove that the content itself is visible.
+      if(top===el || el.contains(top)) return true;
+      if(top!==b && top!==e && top.contains(el)) return true;
       return false;
     };
     let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
