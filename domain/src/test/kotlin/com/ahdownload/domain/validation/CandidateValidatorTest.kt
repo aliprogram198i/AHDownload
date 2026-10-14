@@ -8,6 +8,7 @@ import com.ahdownload.domain.resolver.MediaSourceContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class CandidateValidatorTest {
 
@@ -30,6 +31,56 @@ class CandidateValidatorTest {
         val valid = assertIs<CandidateValidationResult.Valid>(result)
         assertEquals(1234L, valid.candidate.format.fileSizeBytes)
         assertEquals("https://cdn.example/video.mp4", valid.finalUrl)
+    }
+
+    @Test
+    fun refreshesStaleMetadataWithTheValidatedMediaSize() = kotlinx.coroutines.test.runTest {
+        val original = candidate(MediaKind.Video).copy(
+            format = candidate(MediaKind.Video).format.copy(fileSizeBytes = 4096L),
+        )
+        val validator = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "video/mp4",
+                    contentLengthBytes = 26_000_000L,
+                    finalUrl = original.sourceUrl,
+                    method = "HEAD",
+                ),
+            ),
+        )
+
+        val result = validator.validate(original)
+
+        val valid = assertIs<CandidateValidationResult.Valid>(result)
+        assertEquals(26_000_000L, valid.candidate.format.fileSizeBytes)
+        assertEquals(26_000_000L, valid.candidate.validatedContentLengthBytes)
+    }
+
+    @Test
+    fun doesNotPresentManifestSizeAsTheWholeVideoSize() = kotlinx.coroutines.test.runTest {
+        val original = candidate(MediaKind.Video).copy(
+            sourceUrl = "https://cdn.example/master.m3u8",
+            streamingManifest = true,
+            format = candidate(MediaKind.Video).format.copy(fileSizeBytes = 4096L),
+        )
+        val validator = CandidateValidator(
+            FakeProbe(
+                MediaProbeResult(
+                    statusCode = 200,
+                    contentType = "application/vnd.apple.mpegurl",
+                    contentLengthBytes = 4096L,
+                    finalUrl = original.sourceUrl,
+                    method = "HEAD",
+                ),
+            ),
+        )
+
+        val result = validator.validate(original)
+
+        val valid = assertIs<CandidateValidationResult.Valid>(result)
+        assertNull(valid.candidate.format.fileSizeBytes)
+        assertEquals(4096L, valid.candidate.validatedContentLengthBytes)
     }
 
     @Test
