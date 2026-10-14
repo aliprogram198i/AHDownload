@@ -38,6 +38,17 @@ internal object BrowserMediaOptionDeduplicator {
             .distinctBy(::audioSourceLabel)
             .toList()
 
+    fun videoOptionTitle(candidate: MediaCandidate): String {
+        val format = candidate.format
+        return buildList {
+            format.height?.let { add("${it}p") }
+            if (format.width != null && format.height != null) {
+                add("${format.width}×${format.height}")
+            }
+            add(format.container.name)
+        }.distinct().joinToString(" • ")
+    }
+
     /**
      * Audio chips expose the available quality metadata so an audio-only source does not
      * collapse to an ambiguous container-only label when bitrate or codec is known.
