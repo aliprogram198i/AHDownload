@@ -180,22 +180,26 @@ class WebVideoPageResolver(
                 val observedCandidates = buildCandidates(observedPageUrl, observedHints, request, resolverStage)
                 val observedProgressive = observedCandidates.filter { !it.streamingManifest }
                 val observedManifests = observedCandidates.filter { it.streamingManifest }
-                val staticConfirmedProgressive = candidates.filter { candidate ->
-                    !candidate.streamingManifest &&
-                        (candidate.format.fileSizeBytes ?: 0L) >= MIN_CONFIDENT_PROGRESSIVE_BYTES
-                }
-                val staticManifests = candidates.filter { it.streamingManifest }
-                val progressiveCandidates = (staticConfirmedProgressive + observedProgressive)
-                    .distinctBy { it.sourceUrl }
-                    .sortedByDescending { it.format.fileSizeBytes ?: 0L }
-                val manifestCandidates = (staticManifests + observedManifests)
-                    .distinctBy { it.sourceUrl }
-                val fallbackCandidates = if (progressiveCandidates.isEmpty()) {
+                val allProgressiveCandidates = (
                     candidates.filter { !it.streamingManifest } + observedProgressive
-                } else {
-                    emptyList()
+                ).distinctBy { it.sourceUrl }
+                val confidentProgressiveCandidates = allProgressiveCandidates.filter { candidate ->
+                    (candidate.format.fileSizeBytes ?: 0L) >= MIN_CONFIDENT_PROGRESSIVE_BYTES
                 }
-                candidates = (progressiveCandidates + manifestCandidates + fallbackCandidates)
+                // If the browser yields a clearly sized video, tiny progressive responses
+                // are commonly ad/tracker clips or placeholder assets. Keep them only when
+                // no confidently sized progressive source is available.
+                val progressiveCandidates = (
+                    if (confidentProgressiveCandidates.isNotEmpty()) {
+                        confidentProgressiveCandidates
+                    } else {
+                        allProgressiveCandidates
+                    }
+                ).sortedByDescending { it.format.fileSizeBytes ?: 0L }
+                val manifestCandidates = (
+                    candidates.filter { it.streamingManifest } + observedManifests
+                ).distinctBy { it.sourceUrl }
+                candidates = (progressiveCandidates + manifestCandidates)
                     .distinctBy { it.sourceUrl }
                     .take(MAX_CANDIDATES)
             }
