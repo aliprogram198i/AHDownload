@@ -76,6 +76,7 @@ import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
+import com.ahdownload.domain.resolver.MediaSourceContext
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.validation.CandidateValidationResult
 import com.ahdownload.domain.validation.ValidationFailure
@@ -311,6 +312,7 @@ fun BrowserRoute(
                             candidate.copy(
                                 requestHeaders = candidate.requestHeaders + transientHeaders,
                                 sessionCookieHost = pageCookieHost,
+                                sourceContext = MediaSourceContext.BROWSER_OBSERVED,
                                 format = candidate.format.copy(
                                     container = container ?: candidate.format.container,
                                     fileSizeBytes = observedSize ?: candidate.format.fileSizeBytes,
