@@ -670,16 +670,25 @@ fun BrowserRoute(
                                           const left=Math.max(0,rect.left), right=Math.min(viewportWidth,rect.right);
                                           const topEdge=Math.max(0,rect.top), bottomEdge=Math.min(viewportHeight,rect.bottom);
                                           if(right<=left||bottomEdge<=topEdge) return false;
-                                          const x=(left+right)/2, y=(topEdge+bottomEdge)/2;
-                                          const top=d.elementFromPoint(x,y);
-                                          if(!top) return false;
-                                          // WebKit may return a nested painted child (e.g. strong/span) or a
-                                          // local wrapper (e.g. an anchor around a pointer-events:none span)
-                                          // instead of the measured text/image host. Treat related DOM targets
-                                          // as a hit, but never let BODY/HTML alone prove content visibility:
-                                          // a page-wide overlay can otherwise create a false positive.
-                                          if(top===element || element.contains(top)) return true;
-                                          if(top!==b && top!==e && top.contains(element)) return true;
+                                          const width=right-left, height=bottomEdge-topEdge;
+                                          // Probe the center and four inset side points. A single midpoint can land
+                                          // on a narrow fixed overlay even when most of the text/image remains visible.
+                                          const points=[
+                                            [left+width*0.5,topEdge+height*0.5],
+                                            [left+width*0.2,topEdge+height*0.5],
+                                            [left+width*0.8,topEdge+height*0.5],
+                                            [left+width*0.5,topEdge+height*0.2],
+                                            [left+width*0.5,topEdge+height*0.8],
+                                          ];
+                                          for(const [x,y] of points) {
+                                            const top=d.elementFromPoint(x,y);
+                                            if(!top) continue;
+                                            // WebKit can return a painted child or a local wrapper. A related
+                                            // target at any sampled point is evidence that part of this item is
+                                            // actually exposed; unrelated full-page overlays still fail every probe.
+                                            if(top===element || element.contains(top)) return true;
+                                            if(top!==b && top!==e && top.contains(element)) return true;
+                                          }
                                           return false;
                                         };
                                         let visibleImageCount=0, visibleImageArea=0, visibleLargeImageCount=0;
@@ -1690,13 +1699,21 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
     const unobscured=(el,r)=>{
       const left=Math.max(0,r.left),right=Math.min(vw,r.right),topEdge=Math.max(0,r.top),bottomEdge=Math.min(vh,r.bottom);
       if(right<=left||bottomEdge<=topEdge) return false;
-      const top=d.elementFromPoint((left+right)/2,(topEdge+bottomEdge)/2);
-      if(!top) return false;
-      // WebKit may target a nested painted child or a local wrapper instead of
-      // the measured host. Accept related DOM targets while excluding document
-      // roots, which are too broad to prove that the content itself is visible.
-      if(top===el || el.contains(top)) return true;
-      if(top!==b && top!==e && top.contains(el)) return true;
+      const width=right-left,height=bottomEdge-topEdge;
+      // Match the initial check: don't let a narrow center overlay reject otherwise exposed content.
+      const points=[
+        [left+width*0.5,topEdge+height*0.5],
+        [left+width*0.2,topEdge+height*0.5],
+        [left+width*0.8,topEdge+height*0.5],
+        [left+width*0.5,topEdge+height*0.2],
+        [left+width*0.5,topEdge+height*0.8]
+      ];
+      for(const [x,y] of points) {
+        const top=d.elementFromPoint(x,y);
+        if(!top) continue;
+        if(top===el || el.contains(top)) return true;
+        if(top!==b && top!==e && top.contains(el)) return true;
+      }
       return false;
     };
     let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
