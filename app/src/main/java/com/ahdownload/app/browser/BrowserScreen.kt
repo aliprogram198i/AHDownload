@@ -876,6 +876,16 @@ fun BrowserRoute(
                             }
 
                             override fun onPageCommitVisible(view: WebView, url: String) {
+                                if (!BrowserNavigationCallbackGuard.isCurrent(
+                                        callbackNavigationId = currentNavigationId,
+                                        activeNavigationId = currentNavigationId,
+                                        callbackUrl = url,
+                                        activeWebViewUrl = view.url,
+                                        activeBrowserUrl = currentUrl,
+                                    )
+                                ) {
+                                    return
+                                }
                                 recordBrowserEvent(
                                     "PAGE_COMMITTED_VISIBLE",
                                     "بدأ WebView بإظهار محتوى الصفحة",
@@ -887,6 +897,37 @@ fun BrowserRoute(
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
+                                // WebView callbacks may arrive after a later navigation has begun.
+                                // Validate the callback against the active view before changing UI state.
+                                val callbackNavigationId = currentNavigationId
+                                val callbackWebViewUrl = view.url
+                                if (!BrowserNavigationCallbackGuard.isCurrent(
+                                        callbackNavigationId = callbackNavigationId,
+                                        activeNavigationId = currentNavigationId,
+                                        callbackUrl = url,
+                                        activeWebViewUrl = callbackWebViewUrl,
+                                        activeBrowserUrl = currentUrl,
+                                    )
+                                ) {
+                                    val activeUrl = currentUrl
+                                    val observedWebViewUrl = callbackWebViewUrl.orEmpty()
+                                    recordBrowserEvent(
+                                        "STALE_PAGE_FINISHED_CALLBACK_IGNORED",
+                                        "أُهملت callback تحميل لعنوان لم يعد هو العنوان النشط",
+                                        "navigation",
+                                        activeUrl,
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "callback_host" to safeHost(url),
+                                            "active_host" to safeHost(activeUrl),
+                                            "webview_host" to safeHost(observedWebViewUrl),
+                                            "reason" to "webview_or_browser_state_url_mismatch",
+                                        ),
+                                    )
+                                    return
+                                }
+                                val pageNavigationId = callbackNavigationId
+                                val pageNavigationStartedAtMs = navigationStartedAtMs
                                 currentUrl = url
                                 address = url
                                 currentPageTitle = view.title.orEmpty().take(160)
@@ -894,7 +935,7 @@ fun BrowserRoute(
                                 isLoading = false
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
-                                val pageFinishedEventKey = "$currentNavigationId|$url"
+                                val pageFinishedEventKey = "$pageNavigationId|$url"
                                 if (lastPageFinishedEventKey != pageFinishedEventKey) {
                                     lastPageFinishedEventKey = pageFinishedEventKey
                                     recordBrowserEvent(
@@ -906,7 +947,7 @@ fun BrowserRoute(
                                         severity = "INFO",
                                         details = mapOf(
                                             "progress_percent" to "100",
-                                            "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                            "elapsed_ms" to (System.currentTimeMillis() - pageNavigationStartedAtMs).coerceAtLeast(0).toString(),
                                             "http_resource_errors" to resourceHttpErrorCount.toString(),
                                         ),
                                         pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
@@ -1083,6 +1124,33 @@ fun BrowserRoute(
                                     })();
                                     """.trimIndent(),
                                 ) { raw ->
+                                    if (!BrowserNavigationCallbackGuard.isCurrent(
+                                            callbackNavigationId = pageNavigationId,
+                                            activeNavigationId = currentNavigationId,
+                                            callbackUrl = url,
+                                            activeWebViewUrl = view.url,
+                                        activeBrowserUrl = currentUrl,
+                                        )
+                                    ) {
+                                        val activeUrl = currentUrl
+                                        val observedWebViewUrl = view.url.orEmpty()
+                                        recordBrowserEvent(
+                                            "STALE_PAGE_RENDER_CALLBACK_IGNORED",
+                                            "أُهملت نتيجة فحص عرض بعد تغيّر الصفحة النشطة",
+                                            "render",
+                                            activeUrl,
+                                            severity = "INFO",
+                                            details = mapOf(
+                                                "callback_host" to safeHost(url),
+                                                "active_host" to safeHost(activeUrl),
+                                                "webview_host" to safeHost(observedWebViewUrl),
+                                                "callback_navigation_id" to pageNavigationId,
+                                                "active_navigation_id" to currentNavigationId,
+                                                "reason" to "navigation_superseded_or_url_changed",
+                                            ),
+                                        )
+                                        return@evaluateJavascript
+                                    }
                                     val decoded = runCatching {
                                         JSONTokener(raw.orEmpty()).nextValue() as? String
                                     }.getOrNull()
@@ -1097,7 +1165,7 @@ fun BrowserRoute(
                                             severity = "WARNING",
                                             details = mapOf(
                                                 "progress_percent" to "100",
-                                                "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                                "elapsed_ms" to (System.currentTimeMillis() - pageNavigationStartedAtMs).coerceAtLeast(0).toString(),
                                             ),
                                         )
                                         return@evaluateJavascript
@@ -1157,7 +1225,7 @@ fun BrowserRoute(
                                         "POSSIBLY_EMPTY_PAGE" -> "اكتمل التحميل لكن لم تُرصد مؤشرات محتوى كافية؛ قد تكون الصفحة فارغة أو محجوبة"
                                         else -> "لم تصل مؤشرات DOM إلى حالة جاهزة"
                                     }
-                                    val renderSnapshotFingerprint = "$currentNavigationId|$url|${snapshot}"
+                                    val renderSnapshotFingerprint = "$pageNavigationId|$url|${snapshot}"
                                     if (lastRenderSnapshotFingerprint != renderSnapshotFingerprint) {
                                         lastRenderSnapshotFingerprint = renderSnapshotFingerprint
                                         recordBrowserEvent(
@@ -1205,7 +1273,7 @@ fun BrowserRoute(
                                                 "iframe_count" to iframeCount.toString(),
                                                 "background_color" to snapshot.optString("backgroundColor", "unknown"),
                                                 "challenge_detected" to challengeDetected.toString(),
-                                                "elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                                "elapsed_ms" to (System.currentTimeMillis() - pageNavigationStartedAtMs).coerceAtLeast(0).toString(),
                                                 "http_resource_errors" to resourceHttpErrorCount.toString(),
                                                 "console_issue_events_recorded" to consoleErrorCount.toString(),
                                                 "console_duplicate_issues_suppressed" to consoleDuplicateIssueCount.toString(),
@@ -1213,14 +1281,20 @@ fun BrowserRoute(
                                             pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                         )
                                     }
-                                    val visualStateNavigationId = currentNavigationId
+                                    val visualStateNavigationId = pageNavigationId
                                     val visualStateRequestId = System.currentTimeMillis().coerceAtLeast(1L)
                                     runCatching {
                                         view.postVisualStateCallback(
                                             visualStateRequestId,
                                             object : WebView.VisualStateCallback() {
                                                 override fun onComplete(requestId: Long) {
-                                                    if (currentNavigationId == visualStateNavigationId &&
+                                                    if (BrowserNavigationCallbackGuard.isCurrent(
+                                                            callbackNavigationId = visualStateNavigationId,
+                                                            activeNavigationId = currentNavigationId,
+                                                            callbackUrl = url,
+                                                            activeWebViewUrl = view.url,
+                                                            activeBrowserUrl = currentUrl,
+                                                        ) &&
                                                         lastVisualStateReadyNavigationId != visualStateNavigationId
                                                     ) {
                                                         lastVisualStateReadyNavigationId = visualStateNavigationId
@@ -1235,7 +1309,7 @@ fun BrowserRoute(
                                                                 "visual_state_request_id" to requestId.toString(),
                                                                 "webview_width_px" to view.width.toString(),
                                                                 "webview_height_px" to view.height.toString(),
-                                                                "navigation_elapsed_ms" to (System.currentTimeMillis() - navigationStartedAtMs).coerceAtLeast(0).toString(),
+                                                                "navigation_elapsed_ms" to (System.currentTimeMillis() - pageNavigationStartedAtMs).coerceAtLeast(0).toString(),
                                                             ),
                                                             pageTitle = currentPageTitle.takeIf { it.isNotBlank() },
                                                         )
@@ -1272,13 +1346,14 @@ fun BrowserRoute(
                                             "تعذر تأكيد ظهور محتوى الصفحة. راجع سجل أحداث المتصفح للتفاصيل."
                                         else -> null
                                     }
-                                    val renderRecheckNavigationId = currentNavigationId
+                                    val renderRecheckNavigationId = pageNavigationId
                                     if (lastRenderRecheckScheduledNavigationId != renderRecheckNavigationId) {
                                         lastRenderRecheckScheduledNavigationId = renderRecheckNavigationId
                                         view.postDelayed({
                                         if (view.isAttachedToWindow &&
                                             currentNavigationId == renderRecheckNavigationId &&
                                             view.url == url &&
+                                            currentUrl == url &&
                                             !isLoading
                                         ) {
                                             view.evaluateJavascript(PAGE_RENDER_RECHECK_SCRIPT) { recheckRaw ->
@@ -1289,7 +1364,8 @@ fun BrowserRoute(
                                                     !recheckJson.has("diagnosticError") &&
                                                     view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
-                                                    view.url == url
+                                                    view.url == url &&
+                                                    currentUrl == url
                                                 ) {
                                                     val recheckReadyState = recheckJson.optString("readyState", "unknown")
                                                     val recheckBodyChars = recheckJson.optInt("bodyTextChars", 0).coerceAtLeast(0)
@@ -1400,7 +1476,8 @@ fun BrowserRoute(
                                                     )
                                                 } else if (view.isAttachedToWindow &&
                                                     currentNavigationId == renderRecheckNavigationId &&
-                                                    view.url == url
+                                                    view.url == url &&
+                                                    currentUrl == url
                                                 ) {
                                                     recordBrowserEvent(
                                                         "PAGE_RENDER_RECHECK_FAILED",
@@ -1428,6 +1505,23 @@ fun BrowserRoute(
                                 error: android.webkit.WebResourceError,
                             ) {
                                 if (request.isForMainFrame) {
+                                    val failedUrl = request.url.toString()
+                                    if (failedUrl != currentUrl) {
+                                        recordBrowserEvent(
+                                            "STALE_MAIN_FRAME_ERROR_IGNORED",
+                                            "أُهملت نتيجة خطأ تحميل لإطار لم يعد هو الصفحة النشطة",
+                                            "navigation",
+                                            currentUrl,
+                                            code = error.errorCode.toString(),
+                                            severity = "INFO",
+                                            details = mapOf(
+                                                "callback_host" to safeHost(failedUrl),
+                                                "active_host" to safeHost(currentUrl),
+                                                "reason" to "main_frame_url_mismatch",
+                                            ),
+                                        )
+                                        return
+                                    }
                                     isLoading = false
                                     val loadErrorMessage = when (error.errorCode) {
                                         android.webkit.WebViewClient.ERROR_HOST_LOOKUP ->
@@ -1476,6 +1570,23 @@ fun BrowserRoute(
                                 val status = errorResponse.statusCode
                                 if (status < 400) return
                                 val mainFrame = request.isForMainFrame
+                                if (mainFrame && request.url.toString() != currentUrl) {
+                                    recordBrowserEvent(
+                                        "STALE_MAIN_FRAME_HTTP_ERROR_IGNORED",
+                                        "أُهملت استجابة HTTP لإطار لم يعد هو الصفحة النشطة",
+                                        "navigation",
+                                        currentUrl,
+                                        code = status.toString(),
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "callback_host" to safeHost(request.url.toString()),
+                                            "active_host" to safeHost(currentUrl),
+                                            "http_status" to status.toString(),
+                                            "reason" to "main_frame_url_mismatch",
+                                        ),
+                                    )
+                                    return
+                                }
                                 if (mainFrame) {
                                     inspectMessage = "استجابة HTTP $status من الموقع. قد يكون المحتوى مقيدًا أو يتطلب جلسة صالحة."
                                 } else {
@@ -1566,6 +1677,17 @@ fun BrowserRoute(
                             }
 
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
+                                val activeViewUrl = view.url
+                                if (!BrowserNavigationCallbackGuard.isCurrent(
+                                        callbackNavigationId = currentNavigationId,
+                                        activeNavigationId = currentNavigationId,
+                                        callbackUrl = activeViewUrl.orEmpty(),
+                                        activeWebViewUrl = activeViewUrl,
+                                        activeBrowserUrl = currentUrl,
+                                    )
+                                ) {
+                                    return
+                                }
                                 pageProgress = newProgress
                                 isLoading = pageLoadError == null && newProgress < 100
                                 val bucket = newProgress.coerceIn(0, 100) / 25
@@ -1584,6 +1706,30 @@ fun BrowserRoute(
                             }
 
                             override fun onReceivedTitle(view: WebView, title: String?) {
+                                val titlePageUrl = view.url
+                                if (!BrowserNavigationCallbackGuard.isCurrent(
+                                        callbackNavigationId = currentNavigationId,
+                                        activeNavigationId = currentNavigationId,
+                                        callbackUrl = titlePageUrl.orEmpty(),
+                                        activeWebViewUrl = titlePageUrl,
+                                        activeBrowserUrl = currentUrl,
+                                    )
+                                ) {
+                                    val activeUrl = currentUrl
+                                    recordBrowserEvent(
+                                        "STALE_PAGE_TITLE_CALLBACK_IGNORED",
+                                        "أُهملت نتيجة عنوان صفحة بعد تغيّر عنوان المتصفح النشط",
+                                        "render",
+                                        activeUrl,
+                                        severity = "INFO",
+                                        details = mapOf(
+                                            "callback_host" to safeHost(titlePageUrl.orEmpty()),
+                                            "active_host" to safeHost(activeUrl),
+                                            "reason" to "webview_or_browser_state_url_mismatch",
+                                        ),
+                                    )
+                                    return
+                                }
                                 val value = title.orEmpty().take(160)
                                 if (value.isNotBlank() && value != currentPageTitle) {
                                     currentPageTitle = value
