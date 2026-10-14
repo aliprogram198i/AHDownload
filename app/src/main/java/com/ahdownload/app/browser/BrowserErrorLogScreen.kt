@@ -47,6 +47,7 @@ fun BrowserErrorLogRoute(
 ) {
     var entries by remember { mutableStateOf(store.list()) }
     var showClearConfirmation by remember { mutableStateOf(false) }
+    var showTechnicalDetails by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val latestEntry = entries.firstOrNull()
 
@@ -123,7 +124,7 @@ fun BrowserErrorLogRoute(
             ) {
                 item {
                     Text(
-                        "يعرض القسم الأول آخر حدث بالتفصيل. تُحفظ حتى 80 حدثًا. يُحفظ المضيف ومسار مختصر فقط؛ تُحذف معاملات الرابط والجزء النهائي وتُنقّح الأسرار.",
+                        "يعرض القسم الأول ملخص آخر حدث، ويمكن توسيع تفاصيله التقنية عند الحاجة. تُحفظ حتى 80 حدثًا، وتُنقّح معلومات الروابط والأسرار.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -138,7 +139,7 @@ fun BrowserErrorLogRoute(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Text("آخر حدث بالتفصيل", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("ملخص آخر حدث", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(
                                     entry.severity,
                                     fontWeight = FontWeight.Bold,
@@ -148,29 +149,41 @@ fun BrowserErrorLogRoute(
                                 Text(entry.message, style = MaterialTheme.typography.bodyMedium)
                                 Text("المرحلة: ${entry.stage}", style = MaterialTheme.typography.bodyMedium)
                                 Text("المضيف: ${entry.host}", style = MaterialTheme.typography.bodyMedium)
-                                entry.safeUrl?.let { Text("الرابط بعد التنقيح: $it", style = MaterialTheme.typography.bodySmall) }
-                                entry.pageTitle?.let { Text("عنوان الصفحة: $it", style = MaterialTheme.typography.bodySmall) }
-                                entry.details.toSortedMap()
-                                    .filterNot { (key, _) ->
-                                        (key == "document_height" && entry.details.containsKey("document_height_css_px")) ||
-                                            (key == "viewport" && entry.details.containsKey("viewport_css_px"))
-                                    }
-                                    .forEach { (key, value) ->
-                                        Text(
-                                            "${diagnosticLabel(key)}: ${diagnosticValue(key, value)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                entry.code?.let { Text("رمز الخطأ: $it", style = MaterialTheme.typography.bodyMedium) }
                                 Text(
                                     DateFormat.getDateTimeInstance().format(Date(entry.timestampEpochMs)),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                                TextButton(onClick = { showTechnicalDetails = !showTechnicalDetails }) {
+                                    Text(
+                                        if (showTechnicalDetails) "إخفاء التفاصيل التقنية"
+                                        else "عرض التفاصيل التقنية (${entry.details.size})",
+                                    )
+                                }
+                                if (showTechnicalDetails) {
+                                    entry.safeUrl?.let {
+                                        Text("الرابط بعد التنقيح: $it", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    entry.pageTitle?.let {
+                                        Text("عنوان الصفحة: $it", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    entry.details.toSortedMap()
+                                        .filterNot { (key, _) ->
+                                            (key == "document_height" && entry.details.containsKey("document_height_css_px")) ||
+                                                (key == "viewport" && entry.details.containsKey("viewport_css_px"))
+                                        }
+                                        .forEach { (key, value) ->
+                                            Text(
+                                                "${diagnosticLabel(key)}: ${diagnosticValue(key, value)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    entry.code?.let { Text("رمز الحدث: $it", style = MaterialTheme.typography.bodyMedium) }
+                                }
                                 TextButton(
                                     onClick = { clipboard.setText(AnnotatedString(store.exportEntryText(entry))) },
-                                ) { Text("نسخ تفاصيل آخر خطأ") }
+                                ) { Text("نسخ تفاصيل الحدث الأخير") }
                             }
                         }
                     }
