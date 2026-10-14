@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -258,7 +257,7 @@ class BrowserPageLoadRegressionTest {
             }
             val current = state.get()
             val host = runCatching { Uri.parse(current?.second.orEmpty()).host?.lowercase() }.getOrNull()
-            current?.first == 100 && host in setOf("google.com", "www.google.com")
+            current?.first == 100 && (host == "google.com" || host == "www.google.com")
         }
     }
 
