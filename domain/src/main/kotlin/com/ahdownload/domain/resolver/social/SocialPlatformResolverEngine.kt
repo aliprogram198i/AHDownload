@@ -108,7 +108,18 @@ class SocialPlatformResolverEngine(
                     } else {
                         null
                     }
-                val pageUrlCandidate = resolvedFacebookPageCandidate ?: listOf(
+                val resolvedTikTokPageCandidate =
+                    if (platform == MediaPlatform.TikTok && !isTikTokCanonicalVideoUrl(requestedHttpUrl)) {
+                        listOf(
+                            "final_url" to session.finalUrl,
+                            "session_page_url" to session.pageUrl,
+                        ).firstOrNull { (_, candidate) ->
+                            isHttpPageUrl(candidate) && isTikTokCanonicalVideoUrl(candidate)
+                        }
+                    } else {
+                        null
+                    }
+                val pageUrlCandidate = resolvedFacebookPageCandidate ?: resolvedTikTokPageCandidate ?: listOf(
                     "normalized_request_url" to request.link.normalizedUrl,
                     "original_request_url" to request.link.originalUrl,
                     "session_page_url" to session.pageUrl,
