@@ -10,7 +10,7 @@ class XResolverAdapter(
     provider: BrowserMediaSessionProvider,
     logger: DiagnosticLogger = defaultSocialDiagnosticLogger(),
     resolveTimeoutMs: Long = SOCIAL_RESOLVE_TIMEOUT_MS,
-    pageClient: HttpTextClient = defaultSocialPageClient(),
+    pageClient: HttpTextClient = defaultSocialPageClient(logger),
 ) : FixedSocialPlatformAdapter(
     platform = MediaPlatform.X,
     provider = provider,
