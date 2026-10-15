@@ -716,16 +716,33 @@ class DiagnosticReportFormatterTest {
 
     @Test
     fun youtubeSearchFailureIsSurfacedAsTheLatestDiagnosticIncident() {
+        val session = "youtube-search-session"
+        val operation = "youtube-search-operation"
         val report = DiagnosticReportFormatter.format(
             listOf(
+                event(
+                    time = 9_000L,
+                    sequence = "76",
+                    type = "HTTP_REQUEST",
+                    level = DiagnosticLevel.WARNING,
+                    reason = "http_response_error",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "request_outcome" to "http_error",
+                        "http_status" to "503",
+                    ),
+                ),
                 event(
                     time = 10_000L,
                     sequence = "77",
                     type = "YOUTUBE_SEARCH_FAILED",
                     level = DiagnosticLevel.ERROR,
                     reason = "HTTP 503",
-                    session = "youtube-search-session",
-                    operation = "youtube-search-operation",
+                    session = session,
+                    operation = operation,
                     context = mapOf(
                         "platform" to "YouTube",
                         "stage" to "SEARCH",
@@ -739,10 +756,13 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("status=FAILED"))
         assertTrue(report.contains("operation_id=youtube-search-operation"))
         assertTrue(report.contains("stage=SEARCH"))
+        assertTrue(report.contains("classification=NETWORK"))
+        assertTrue(report.contains("root_cause=HTTP_503"))
         assertTrue(report.contains("error_type=YOUTUBE_SEARCH_FAILED"))
         assertTrue(report.contains("reason=HTTP 503"))
+        assertTrue(report.contains("action=INSPECT_YOUTUBE_SEARCH_REQUEST"))
+        assertTrue(report.contains("FAILURE_CHAIN\\nsearch -> http_request_failed:HTTP_503"))
         assertTrue(report.contains("platform=YouTube"))
     }
-
 
 }
