@@ -564,7 +564,7 @@ class HomeViewModel(
                         .containsMatchIn(current).toString(),
                     "input_has_explicit_scheme" to Regex("""^[A-Za-z][A-Za-z0-9+.-]*://""", RegexOption.IGNORE_CASE)
                         .containsMatchIn(current).toString(),
-                    "input_has_domain_token" to Regex("""(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}""", RegexOption.IGNORE_CASE)
+                    "input_has_domain_token" to Regex("""(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}""", RegexOption.IGNORE_CASE)
                         .containsMatchIn(current).toString(),
                     "input_contains_whitespace" to current.any(Char::isWhitespace).toString(),
                 ),
