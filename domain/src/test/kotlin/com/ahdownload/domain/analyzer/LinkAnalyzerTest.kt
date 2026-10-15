@@ -138,6 +138,30 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun addsHttpsToSchemeLessUrlsFromClipboard() {
+        val youtube = analyzer.analyze("www.youtube.com/watch?v=abc123")
+        assertEquals(MediaPlatform.YouTube, youtube?.platform)
+        assertEquals("https://www.youtube.com/watch?v=abc123", youtube?.normalizedUrl)
+
+        val directMedia = analyzer.analyze("cdn.example.com/video.mp4")
+        assertEquals(MediaPlatform.DirectMedia, directMedia?.platform)
+        assertEquals("https://cdn.example.com/video.mp4", directMedia?.normalizedUrl)
+    }
+
+    @Test
+    fun extractsSchemeLessUrlFromSharedText() {
+        val result = analyzer.analyze("شاهد هذا: youtu.be/abc123.")
+        assertEquals(MediaPlatform.YouTube, result?.platform)
+        assertEquals("https://youtu.be/abc123", result?.normalizedUrl)
+    }
+
+    @Test
+    fun doesNotRewriteExplicitUnsupportedSchemesAsHttps() {
+        assertNull(analyzer.analyze("ftp://example.com/video.mp4"))
+        assertNull(analyzer.analyze("file:///storage/emulated/0/video.mp4"))
+    }
+
+    @Test
     fun rejectsInvalidAndMalformedUrls() {
         assertNull(analyzer.analyze(""))
         assertNull(analyzer.analyze("   "))
