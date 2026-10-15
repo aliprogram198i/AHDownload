@@ -244,12 +244,19 @@ object DiagnosticReportFormatter {
             }
         }
 
-        return if (
-            error.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true
-        ) {
-            "YOUTUBE_SEARCH_PAYLOAD_UNAVAILABLE"
-        } else {
-            "YOUTUBE_SEARCH_FAILED"
+        return when (error.context["payload_failure_reason"]) {
+            "bot_challenge" -> "YOUTUBE_BOT_CHALLENGE"
+            "consent_or_privacy_gate" -> "YOUTUBE_CONSENT_OR_PRIVACY_GATE"
+            "initial_data_parse_failed" -> "YOUTUBE_SEARCH_PAYLOAD_MALFORMED"
+            "initial_data_marker_missing" -> "YOUTUBE_SEARCH_PAYLOAD_MARKER_MISSING"
+            "empty_response" -> "YOUTUBE_SEARCH_EMPTY_RESPONSE"
+            else -> if (
+                error.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true
+            ) {
+                "YOUTUBE_SEARCH_PAYLOAD_UNAVAILABLE"
+            } else {
+                "YOUTUBE_SEARCH_FAILED"
+            }
         }
     }
 
@@ -258,8 +265,9 @@ object DiagnosticReportFormatter {
             if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
         } else when {
             rootCause.startsWith("HTTP_") || isNetworkFailureCause(rootCause) -> "NETWORK"
-            log.type == "YOUTUBE_SEARCH_FAILED" -> "YOUTUBE_SEARCH"
             rootCause == "YOUTUBE_BOT_CHALLENGE" -> "UPSTREAM_CHALLENGE"
+            rootCause == "YOUTUBE_CONSENT_OR_PRIVACY_GATE" -> "UPSTREAM_GATE"
+            log.type == "YOUTUBE_SEARCH_FAILED" -> "YOUTUBE_SEARCH"
             rootCause == "AUTHENTICATION_REQUIRED" -> "AUTHENTICATION"
             rootCause == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_PROCESSING"
             rootCause == "STORAGE_ERROR" -> "STORAGE"
@@ -289,6 +297,13 @@ object DiagnosticReportFormatter {
         return when {
             rootCause == "YOUTUBE_BOT_CHALLENGE" && isYouTube ->
                 "REFRESH_YOUTUBE_SESSION_AFTER_BOT_CHECK"
+            rootCause == "YOUTUBE_CONSENT_OR_PRIVACY_GATE" && isYouTube ->
+                "INSPECT_YOUTUBE_CONSENT_OR_PRIVACY_GATE"
+            rootCause in setOf(
+                "YOUTUBE_SEARCH_PAYLOAD_MALFORMED",
+                "YOUTUBE_SEARCH_PAYLOAD_MARKER_MISSING",
+                "YOUTUBE_SEARCH_EMPTY_RESPONSE",
+            ) && isYouTube -> "INSPECT_YOUTUBE_SEARCH_RESPONSE_VARIANT"
             classification == "AUTHENTICATION" && isYouTube ->
                 "COMPLETE_YOUTUBE_AGE_VERIFICATION"
             isYouTube && explicitUnavailablePlayback ->
@@ -410,9 +425,15 @@ object DiagnosticReportFormatter {
                 code != null && code in 400..599 -> "search -> http_request_failed:HTTP_$code"
                 request?.context?.get("request_outcome") == "transport_error" ->
                     "search -> network_transport_failed"
-                latestError.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true ->
+                latestError.context["payload_failure_reason"]?.let { payloadReason ->
+                    "search -> response_payload_unavailable:$payloadReason"
+                } ?: if (
+                    latestError.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true
+                ) {
                     "search -> response_payload_unavailable"
-                else -> "search -> request_or_response_failed"
+                } else {
+                    "search -> request_or_response_failed"
+                }
             }
         }
 
