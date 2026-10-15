@@ -23,7 +23,6 @@ class YouTubeSearchProvider(
             "https://www.youtube.com/results?search_query=$encoded",
             headers = mapOf(
                 "Accept-Language" to "en-US,en;q=0.9",
-                "User-Agent" to "Mozilla/5.0",
             ),
         )
 
@@ -31,28 +30,23 @@ class YouTubeSearchProvider(
             ?: throw IllegalStateException("YouTube search payload unavailable")
         val resultLimit = limit.coerceIn(1, 24)
 
-        // Collect each kind independently so that early video results do not prevent Shorts
-        // or channel renderers farther down the page from being discovered.
-        val videos = mutableListOf<ContentSearchItem>()
-        val shorts = mutableListOf<ContentSearchItem>()
-        val channels = mutableListOf<ContentSearchItem>()
-        collectRenderers(root, "videoRenderer", videos, resultLimit, ::parseVideoRenderer)
-        collectRenderers(root, "reelItemRenderer", shorts, resultLimit, ::parseReelRenderer)
-        collectRenderers(root, "shortsLockupViewModel", shorts, resultLimit, ::parseShortsLockup)
-        collectRenderers(root, "channelRenderer", channels, resultLimit, ::parseChannelRenderer)
-
-        val interleaved = interleaveResults(
-            videos.distinctBy { it.id },
-            shorts.distinctBy { it.id },
-            channels.distinctBy { it.id },
-        )
-        // If YouTube exposes a Short through both a video renderer and a Shorts renderer,
-        // retain the Shorts identity while keeping the result's original position.
-        val shortsById = shorts.distinctBy { it.id }.associateBy { it.id }
-        return interleaved
-            .map { item -> shortsById[item.id] ?: item }
-            .distinctBy { it.id }
-            .take(resultLimit)
+        // Traverse the payload once to preserve YouTube's source ordering. If a video is
+        // later identified as a Short by a Shorts renderer, upgrade its kind in place.
+        val ordered = mutableListOf<ContentSearchItem>()
+        val indexById = mutableMapOf<String, Int>()
+        collectRenderersInSourceOrder(root) { item ->
+            val existingIndex = indexById[item.id]
+            if (existingIndex == null) {
+                indexById[item.id] = ordered.size
+                ordered += item
+            } else if (
+                item.kind == ContentSearchKind.SHORT &&
+                ordered[existingIndex].kind != ContentSearchKind.SHORT
+            ) {
+                ordered[existingIndex] = item
+            }
+        }
+        return ordered.take(resultLimit)
     }
 
     private fun extractInitialData(html: String): JsonObject? {
@@ -95,31 +89,30 @@ class YouTubeSearchProvider(
         return null
     }
 
-    private fun collectRenderers(
+    private fun collectRenderersInSourceOrder(
         value: JsonElement,
-        rendererKey: String,
-        results: MutableList<ContentSearchItem>,
-        limit: Int,
-        parse: (JsonObject) -> ContentSearchItem?,
+        onResult: (ContentSearchItem) -> Unit,
     ) {
-        if (results.size >= limit) return
-
         when {
             value.isJsonObject -> {
                 for ((key, child) in value.asJsonObject.entrySet()) {
-                    if (results.size >= limit) break
-                    if (key == rendererKey && child.isJsonObject) {
-                        parse(child.asJsonObject)?.let(results::add)
-                    } else {
-                        collectRenderers(child, rendererKey, results, limit, parse)
+                    if (child.isJsonObject) {
+                        val renderer = child.asJsonObject
+                        val parsed = when (key) {
+                            "videoRenderer" -> parseVideoRenderer(renderer)
+                            "reelItemRenderer" -> parseReelRenderer(renderer)
+                            "shortsLockupViewModel" -> parseShortsLockup(renderer)
+                            "channelRenderer" -> parseChannelRenderer(renderer)
+                            else -> null
+                        }
+                        parsed?.let(onResult)
                     }
+                    collectRenderersInSourceOrder(child, onResult)
                 }
             }
             value.isJsonArray -> {
                 value.asJsonArray.forEach { child ->
-                    if (results.size < limit) {
-                        collectRenderers(child, rendererKey, results, limit, parse)
-                    }
+                    collectRenderersInSourceOrder(child, onResult)
                 }
             }
         }
@@ -251,17 +244,4 @@ class YouTubeSearchProvider(
             .takeIf { it.isNotBlank() }
     }
 
-    private fun interleaveResults(
-        vararg groups: List<ContentSearchItem>,
-    ): List<ContentSearchItem> {
-        val output = mutableListOf<ContentSearchItem>()
-        var index = 0
-        while (groups.any { index < it.size }) {
-            groups.forEach { group ->
-                group.getOrNull(index)?.let(output::add)
-            }
-            index++
-        }
-        return output
-    }
 }
