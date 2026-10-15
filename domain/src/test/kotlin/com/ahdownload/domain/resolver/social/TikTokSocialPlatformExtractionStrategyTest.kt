@@ -2,10 +2,8 @@ package com.ahdownload.domain.resolver.social
 
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.resolver.HttpTextClient
-import com.ahdownload.domain.resolver.browser.ParsedPageMedia
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
