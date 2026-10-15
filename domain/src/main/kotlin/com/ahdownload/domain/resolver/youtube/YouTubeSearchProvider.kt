@@ -403,6 +403,38 @@ class YouTubeSearchProvider(
         val failureStage: String,
     )
 
+    private fun extractBalancedJson(source: String, start: Int): String? {
+        if (start >= source.length || source[start] != '{') return null
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+
+        for (index in start until source.length) {
+            val ch = source[index]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+                continue
+            }
+
+            when (ch) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        return null
+    }
+
     private fun collectRenderersInSourceOrder(
         value: JsonElement,
         onResult: (ContentSearchItem) -> Unit,
