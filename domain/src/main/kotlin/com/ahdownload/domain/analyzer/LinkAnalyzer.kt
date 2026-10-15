@@ -8,6 +8,17 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 
+private val ABSOLUTE_HTTP_URL_PATTERN =
+    Regex("""https?://[^\\s<>"']+""", RegexOption.IGNORE_CASE)
+
+private val EXPLICIT_SCHEME_PATTERN =
+    Regex("""^[A-Za-z][A-Za-z0-9+.-]*://""", RegexOption.IGNORE_CASE)
+
+private val SCHEMELESS_URL_PATTERN = Regex(
+    """(?<![A-Za-z0-9@])(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z]{2,}(?::\\d{1,5})?(?:[/?#][^\\s<>"']*)?""",
+    RegexOption.IGNORE_CASE,
+)
+
 class LinkAnalyzer {
     fun analyze(rawUrl: String): MediaLink? {
         val extracted = extractHttpUrl(rawUrl) ?: return null
@@ -59,9 +70,24 @@ class LinkAnalyzer {
 
     private fun extractHttpUrl(raw: String): String? {
         val cleaned = raw.trim().replace("&amp;", "&")
-        val match = Regex("""https?://[^\s<>"']+""", RegexOption.IGNORE_CASE).find(cleaned)
-        val candidate = (match?.value ?: cleaned).trimEnd('.', ',', ';', ')', ']', '}')
-        return candidate.takeIf { it.isNotBlank() }
+        if (cleaned.isBlank()) return null
+
+        val absoluteMatch = ABSOLUTE_HTTP_URL_PATTERN.find(cleaned)
+        val startsWithExplicitScheme = EXPLICIT_SCHEME_PATTERN.containsMatchIn(cleaned)
+        val bareMatch = if (absoluteMatch == null && !startsWithExplicitScheme) {
+            SCHEMELESS_URL_PATTERN.find(cleaned)
+        } else {
+            null
+        }
+
+        val extracted = (absoluteMatch?.value ?: bareMatch?.value ?: cleaned)
+            .trim()
+            .trimEnd('.', ',', ';', ')', ']', '}', '!', '،', '؛', '…')
+        if (extracted.isBlank()) return null
+
+        // Shared text and clipboard contents sometimes omit the scheme. Infer HTTPS only
+        // when a hostname-shaped URL token was found; never rewrite explicit ftp:// etc.
+        return if (bareMatch != null) "https://$extracted" else extracted
     }
 
     private fun unwrapRedirect(url: String): String {
