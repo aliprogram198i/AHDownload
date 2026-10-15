@@ -233,7 +233,8 @@ class YouTubeSearchProvider(
         return null
     }
 
-    private fun decodeJavaScriptStringLiteral(literal: String): String? = runCatching {
+    private fun decodeJavaScriptStringLiteral(literal: String): String? {
+        return runCatching {
         if (literal.length < 2) return null
         val quote = literal.first()
         if (literal.last() != quote || quote !in charArrayOf('"', '\'', '\u0060')) return null
@@ -299,7 +300,8 @@ class YouTubeSearchProvider(
                 }
             }
         }
-    }.getOrNull()
+        }.getOrNull()
+    }
 
     private fun findQuotedStringEnd(source: String, start: Int): Int? {
         if (start >= source.length || source[start] !in charArrayOf('"', '\'', '\u0060')) return null
