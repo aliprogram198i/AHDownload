@@ -4,6 +4,7 @@ import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.search.ContentSearchKind
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -83,6 +84,44 @@ class YouTubeSearchProviderTest {
         assertEquals("short789", result.id)
         assertEquals(ContentSearchKind.SHORT, result.kind)
         assertEquals("https://img.example/modern.jpg", result.thumbnailUrl)
+    }
+
+    @Test
+    fun forwardsRedactedOperationContextToHttpClient() = runTest {
+        val html = """<html><script>var ytInitialData = {"contents":{"videoRenderer":{"videoId":"abc123","title":{"simpleText":"Test video"}}}};</script></html>"""
+        var requestedUrl = ""
+        var seenContext: Map<String, String> = emptyMap()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun get(
+                url: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                requestedUrl = url
+                seenContext = diagnosticContext
+                return html
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search(
+            query = "private search phrase",
+            limit = 5,
+            diagnosticContext = mapOf(
+                "operation_id" to "youtube-search-test-42",
+                "query_length" to "20",
+            ),
+        )
+
+        assertEquals(1, results.size)
+        assertTrue(requestedUrl.contains("search_query=private+search+phrase"))
+        assertEquals("youtube.search", seenContext["diagnostic_operation"])
+        assertEquals("youtube-search-test-42", seenContext["operation_id"])
+        assertEquals("YouTube", seenContext["platform"])
+        assertEquals("SEARCH", seenContext["stage"])
+        assertEquals("20", seenContext["search_query_length"])
+        assertFalse(seenContext.values.any { it.contains("private search phrase") })
     }
 
     private fun textClient(html: String): HttpTextClient = object : HttpTextClient {
