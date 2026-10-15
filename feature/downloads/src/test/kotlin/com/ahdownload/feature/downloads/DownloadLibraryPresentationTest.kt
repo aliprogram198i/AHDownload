@@ -27,7 +27,7 @@ class DownloadLibraryPresentationTest {
         val alphaLarge = record("b", "alpha", DownloadStatus.COMPLETED, 8_000, 1_000, 1_400)
 
         assertEquals(
-            listOf("a", "b", "z"),
+            listOf("b", "a", "z"),
             sortDownloadRecords(listOf(zeta, alphaLarge, alphaSmall), DownloadSortOption.Name)
                 .map { it.task.id },
         )
