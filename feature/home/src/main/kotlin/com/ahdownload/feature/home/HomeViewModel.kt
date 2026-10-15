@@ -21,6 +21,7 @@ import com.ahdownload.domain.resolver.FailureCode
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.SmartResultEngine
 import com.ahdownload.domain.resolver.youtube.YouTubeSearchProvider
+import com.ahdownload.domain.resolver.youtube.YouTubeSearchPayloadException
 import com.ahdownload.domain.search.ContentSearchItem
 import com.ahdownload.domain.search.ContentSearchKind
 import com.ahdownload.domain.search.ContentSearchProvider
@@ -302,7 +303,13 @@ class HomeViewModel(
                     searchDiagnosticContext + mapOf(
                         "request_outcome" to "failed",
                         "failure_type" to error.javaClass.simpleName,
-                    ),
+                    ) + (error as? YouTubeSearchPayloadException)?.let { payloadError ->
+                        mapOf(
+                            "payload_failure_reason" to payloadError.payloadFailureReason,
+                            "payload_response_chars" to payloadError.responseChars.toString(),
+                            "payload_assignment_marker_present" to payloadError.initialDataAssignmentPresent.toString(),
+                        )
+                    }.orEmpty(),
                     error,
                 )
                 _uiState.value = _uiState.value.copy(
