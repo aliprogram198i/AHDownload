@@ -117,14 +117,14 @@ class YouTubeSearchProvider(
     }
 
     private fun findQuotedStringEnd(source: String, start: Int): Int? {
-        if (start >= source.length || source[start] !in charArrayOf('"', '\\'')) return null
+        if (start >= source.length || source[start] !in charArrayOf('"', '\'')) return null
         val quote = source[start]
         var escaped = false
         for (index in start + 1 until source.length) {
             val ch = source[index]
             if (escaped) {
                 escaped = false
-            } else if (ch == '\\\\') {
+            } else if (ch == '\\') {
                 escaped = true
             } else if (ch == quote) {
                 return index
@@ -145,19 +145,19 @@ class YouTubeSearchProvider(
                 var index = 0
                 while (index < body.length) {
                     val ch = body[index]
-                    if (ch == '\\\\' && index + 1 < body.length) {
+                    if (ch == '\\' && index + 1 < body.length) {
                         val next = body[index + 1]
                         when (next) {
-                            '\\'' -> append('\\'')
-                            '"' -> append("\\\\\"")
+                            '\'' -> append('\'')
+                            '"' -> append("\\\"")
                             else -> {
-                                append('\\\\')
+                                append('\\')
                                 append(next)
                             }
                         }
                         index += 2
                     } else {
-                        if (ch == '"') append("\\\\\"") else append(ch)
+                        if (ch == '"') append("\\\"") else append(ch)
                         index++
                     }
                 }
