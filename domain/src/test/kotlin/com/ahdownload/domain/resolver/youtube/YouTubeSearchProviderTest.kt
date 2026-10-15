@@ -53,13 +53,13 @@ class YouTubeSearchProviderTest {
     @Test
     fun preservesSourceOrderAndPromotesDuplicateVideoToShorts() = runTest {
         val client = textClient(
-            """<html><script>var ytInitialData = {"contents":{
-              "videoRenderer":{"videoId":"video-first","title":{"simpleText":"First video"}},
-              "channelRenderer":{"channelId":"UCcreator","title":{"simpleText":"Creator"}},
-              "videoRenderer":{"videoId":"shared-short","title":{"simpleText":"Short before promotion"}},
-              "reelItemRenderer":{"videoId":"shared-short","headline":{"simpleText":"Actual Short"}},
-              "videoRenderer":{"videoId":"video-last","title":{"simpleText":"Last video"}}
-            }};</script></html>""",
+            """<html><script>var ytInitialData = {"contents":[
+              {"videoRenderer":{"videoId":"video-first","title":{"simpleText":"First video"}}},
+              {"channelRenderer":{"channelId":"UCcreator","title":{"simpleText":"Creator"}}},
+              {"videoRenderer":{"videoId":"shared-short","title":{"simpleText":"Short before promotion"}}},
+              {"reelItemRenderer":{"videoId":"shared-short","headline":{"simpleText":"Actual Short"}}},
+              {"videoRenderer":{"videoId":"video-last","title":{"simpleText":"Last video"}}}
+            ]};</script></html>""",
         )
 
         val results = YouTubeSearchProvider(client).search("ordered", limit = 12)
