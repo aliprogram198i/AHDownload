@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
@@ -85,6 +86,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -772,7 +774,22 @@ private fun HomeScreen(
                                 },
                                 label = { Text("ابحث في YouTube") },
                                 placeholder = { Text("عنوان فيديو أو اسم قناة...") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Text,
+                                    imeAction = ImeAction.Search,
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSearch = {
+                                        if (state.searchQuery.isNotBlank() && !state.searching) {
+                                            uiTraceLogger.interaction(
+                                                "HOME",
+                                                "search_keyboard_action",
+                                                "search_youtube",
+                                            )
+                                            onSearch()
+                                        }
+                                    },
+                                ),
                             )
                             DiagnosticButton(
                                 trackingScreen = "HOME",
@@ -1326,8 +1343,8 @@ private fun SearchResultCard(
             .fillMaxWidth()
             .tracedClickable(
                 trackingScreen = "HOME",
-                trackingId = "HOME.clickable.01",
-                trackingLabel = "search_result_card",
+                trackingId = "HOME.search.result.\${item.kind.name.lowercase()}.\${item.id}",
+                trackingLabel = "search_result_\${item.kind.name.lowercase()}",
                 onClick = onClick,
             ),
     ) {
@@ -1391,8 +1408,8 @@ private fun SearchResultCard(
             if (canSelect) {
                 DiagnosticFilterChip(
                     trackingScreen = "HOME",
-                    trackingId = "HOME.filterchip.03",
-                    trackingLabel = "محدد",
+                    trackingId = "HOME.search.selection.\${item.kind.name.lowercase()}.\${item.id}",
+                    trackingLabel = "search_result_selection",
                     disabledReason = "callsite_precondition_not_explicit",
                     selected = selected,
                     onClick = onToggleSelection,
