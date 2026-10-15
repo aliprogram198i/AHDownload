@@ -21,3 +21,15 @@ internal fun downloadStateForControlIntent(intent: String?): DownloadState? = wh
     DownloadStatus.CANCELLED -> DownloadState.Cancelled
     else -> null
 }
+
+/** True only for orphaned active records with no explicit user control intent. */
+internal fun shouldReconcileDownloadAtStartup(
+    status: DownloadStatus,
+    controlIntent: String?,
+    hasUnfinishedWork: Boolean,
+): Boolean {
+    if (controlIntent != null || hasUnfinishedWork) return false
+    return status == DownloadStatus.QUEUED ||
+        status == DownloadStatus.PREPARING ||
+        status == DownloadStatus.DOWNLOADING
+}

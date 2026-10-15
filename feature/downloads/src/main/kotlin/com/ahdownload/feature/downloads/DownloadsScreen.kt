@@ -84,6 +84,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -218,9 +219,18 @@ fun DownloadsRoute(
             if (previous != null) {
                 val elapsedMs = current.epochMs - previous.epochMs
                 val bytesDelta = current.bytes - previous.bytes
-                if (elapsedMs > 0L && bytesDelta >= 0L) {
-                    val bytesPerSecond = bytesDelta * 1000L / elapsedMs
-                    transferStats[record.task.id] = TransferStats(bytesPerSecond, record.totalBytes)
+                when {
+                    bytesDelta < 0L -> transferStats.remove(record.task.id)
+                    elapsedMs > 0L && bytesDelta > 0L -> {
+                        val measuredSpeed = (
+                            bytesDelta.toDouble() * 1_000.0 / elapsedMs.toDouble()
+                        ).coerceIn(1.0, Long.MAX_VALUE.toDouble()).toLong()
+                        transferStats[record.task.id] = TransferStats(
+                            bytesPerSecond = measuredSpeed,
+                            totalBytes = record.totalBytes,
+                            sampledAtEpochMs = System.currentTimeMillis(),
+                        )
+                    }
                 }
             }
             lastSamples[record.task.id] = current
@@ -326,10 +336,12 @@ private fun DownloadsScreen(
     onToggleFavorite: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
 ) {
-    var query by remember { mutableStateOf("") }
-    var favoritesOnly by remember { mutableStateOf(false) }
-    var mediaFilter by remember { mutableStateOf(DownloadMediaFilter.All) }
-    var statusFilter by remember { mutableStateOf(DownloadStatusFilter.All) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var favoritesOnly by rememberSaveable { mutableStateOf(false) }
+    var mediaFilter by rememberSaveable { mutableStateOf(DownloadMediaFilter.All) }
+    var statusFilter by rememberSaveable { mutableStateOf(DownloadStatusFilter.All) }
+    var sortOption by rememberSaveable { mutableStateOf(DownloadSortOption.Recent) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
     var pendingRename by remember { mutableStateOf<DownloadRecord?>(null) }
@@ -347,9 +359,9 @@ private fun DownloadsScreen(
     }
 
     val normalizedQuery = query.trim().lowercase(Locale.ROOT)
-    val filtered = remember(records, favoritesOnly, normalizedQuery, favorites, statusFilter) {
-        records
-            .filter { record ->
+    val filtered = remember(records, favoritesOnly, normalizedQuery, favorites, statusFilter, sortOption) {
+        sortDownloadRecords(
+            records = records.filter { record ->
                 val matchesStatus = statusFilter.matches(record.status)
                 val matchesFavorite = !favoritesOnly ||
                     FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites
@@ -360,11 +372,9 @@ private fun DownloadsScreen(
                         title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
                         path.lowercase(Locale.ROOT).contains(normalizedQuery)
                     )
-            }
-            .sortedWith(
-                compareByDescending<DownloadRecord> { it.status.isActivelyRunning }
-                    .thenByDescending { it.updatedAtEpochMs },
-            )
+            },
+            option = sortOption,
+        )
     }
 
     val visibleSections = remember(filtered, mediaFilter) {
@@ -740,6 +750,49 @@ private fun DownloadsScreen(
                     }
                 }
 
+
+                item(key = "download-sort-options") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "ترتيب السجل",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Box {
+                            DiagnosticOutlinedButton(
+                                trackingScreen = "DOWNLOADS",
+                                trackingId = "DOWNLOADS.sort.open",
+                                trackingLabel = "تغيير ترتيب السجل",
+                                disabledReason = "none",
+                                onClick = { sortMenuExpanded = true },
+                            ) {
+                                Text(sortOption.label)
+                            }
+                            DropdownMenu(
+                                expanded = sortMenuExpanded,
+                                onDismissRequest = { sortMenuExpanded = false },
+                            ) {
+                                DownloadSortOption.entries.forEach { option ->
+                                    DiagnosticDropdownMenuItem(
+                                        trackingScreen = "DOWNLOADS",
+                                        trackingId = "DOWNLOADS.sort." + option.name.lowercase(Locale.ROOT),
+                                        trackingLabel = option.label,
+                                        disabledReason = "none",
+                                        text = { Text(option.label) },
+                                        onClick = {
+                                            sortOption = option
+                                            sortMenuExpanded = false
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (visibleSections.isEmpty()) {
                     item {
@@ -1279,7 +1332,12 @@ private fun DownloadRecordCard(
             }
 
             if (record.status == DownloadStatus.DOWNLOADING) {
-                val speed = transferStats?.bytesPerSecond?.takeIf { it > 0L }
+                val nowEpochMs = System.currentTimeMillis()
+                val speed = visibleTransferSpeed(
+                    bytesPerSecond = transferStats?.bytesPerSecond,
+                    sampledAtEpochMs = transferStats?.sampledAtEpochMs,
+                    nowEpochMs = nowEpochMs,
+                )
                 val remainingSeconds = estimatedDownloadRemainingSeconds(
                     totalBytes = record.totalBytes,
                     downloadedBytes = record.bytesDownloaded,
@@ -1792,6 +1850,7 @@ private data class TransferSample(
 private data class TransferStats(
     val bytesPerSecond: Long,
     val totalBytes: Long?,
+    val sampledAtEpochMs: Long,
 )
 
 private fun formatPerformanceDuration(durationMs: Long): String = when {

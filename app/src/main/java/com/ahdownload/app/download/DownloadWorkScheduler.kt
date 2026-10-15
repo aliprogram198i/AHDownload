@@ -13,6 +13,8 @@ import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadRepository
+import com.ahdownload.domain.download.DownloadTemporaryFiles
+import androidx.work.WorkInfo
 import com.ahdownload.app.AHDownloadApplication
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import kotlinx.coroutines.CoroutineScope
@@ -30,12 +32,18 @@ class DownloadWorkScheduler(
     private val preferencesStore = DownloadPreferencesStore(appContext)
     private val repository: DownloadRepository? = (appContext as? AHDownloadApplication)?.downloadRepository
     private val controlStateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** Serializes scheduler-side actions so a concurrent enqueue cannot run after a pause/cancel. */
+    private val controlOperationLock = Any()
 
     fun enqueue(task: DownloadTask) {
         enqueueInternal(task, forceRefresh = false)
     }
 
     private fun enqueueInternal(task: DownloadTask, forceRefresh: Boolean) {
+        synchronized(controlOperationLock) { enqueueLocked(task, forceRefresh) }
+    }
+
+    private fun enqueueLocked(task: DownloadTask, forceRefresh: Boolean) {
         require(task.id.isNotBlank()) { "task.id must not be blank" }
         require(task.sourceUrl.isNotBlank()) { "task.sourceUrl must not be blank" }
         require(task.destinationPath.isNotBlank()) { "task.destinationPath must not be blank" }
@@ -68,8 +76,11 @@ class DownloadWorkScheduler(
 
     fun pause(taskId: String) {
         require(taskId.isNotBlank())
-        val intent = controlStore.markPaused(taskId)
-        workManager.cancelUniqueWork(uniqueWorkName(taskId))
+        val intent = synchronized(controlOperationLock) {
+            controlStore.markPaused(taskId).also {
+                workManager.cancelUniqueWork(uniqueWorkName(taskId))
+            }
+        }
         persistControlStatus(taskId, DownloadStatus.PAUSED, intent)
     }
 
@@ -80,9 +91,72 @@ class DownloadWorkScheduler(
 
     fun cancel(taskId: String) {
         require(taskId.isNotBlank())
-        val intent = controlStore.markCancelled(taskId)
-        workManager.cancelUniqueWork(uniqueWorkName(taskId))
+        val intent = synchronized(controlOperationLock) {
+            controlStore.markCancelled(taskId).also {
+                workManager.cancelUniqueWork(uniqueWorkName(taskId))
+            }
+        }
         persistControlStatus(taskId, DownloadStatus.CANCELLED, intent)
+    }
+
+    /**
+     * Reconcile persisted active records against WorkManager on app startup. Only orphaned active
+     * records are restored; intentionally paused/cancelled tasks are never auto-resumed.
+     */
+    fun reconcileOnStartup() {
+        val store = repository ?: return
+        controlStateScope.launch {
+            val records = runCatching { store.listHistory() }.getOrElse { return@launch }
+            records.forEach { record ->
+                if (!shouldReconcileDownloadAtStartup(
+                        record.status,
+                        controlStore.snapshot(record.task.id)?.intent,
+                        hasUnfinishedWork = false,
+                    )
+                ) return@forEach
+
+                val workInfos = runCatching {
+                    workManager.getWorkInfosForUniqueWork(uniqueWorkName(record.task.id)).get()
+                }.getOrElse { return@forEach }
+                val hasUnfinishedWork = workInfos.any { info ->
+                    info.state == WorkInfo.State.ENQUEUED ||
+                        info.state == WorkInfo.State.BLOCKED ||
+                        info.state == WorkInfo.State.RUNNING
+                }
+                val current = runCatching { store.get(record.task.id) }.getOrNull() ?: return@forEach
+                if (!shouldReconcileDownloadAtStartup(
+                        current.status,
+                        controlStore.snapshot(current.task.id)?.intent,
+                        hasUnfinishedWork,
+                    )
+                ) return@forEach
+
+                val partialSize = DownloadTemporaryFiles.recoverableTemporaryFiles(current.task)
+                    .firstOrNull { it.isFile }
+                    ?.let { file -> runCatching { file.length() }.getOrDefault(0L) }
+                    ?.coerceAtLeast(0L)
+                    ?: 0L
+                val restored = current.copy(
+                    status = DownloadStatus.QUEUED,
+                    bytesDownloaded = partialSize,
+                    totalBytes = current.totalBytes?.coerceAtLeast(partialSize),
+                    failureCode = null,
+                    failureDetail = null,
+                    updatedAtEpochMs = maxOf(
+                        System.currentTimeMillis(),
+                        current.createdAtEpochMs,
+                        current.updatedAtEpochMs,
+                    ),
+                )
+                if (restored != current) {
+                    runCatching { store.upsert(restored) }.getOrElse { return@forEach }
+                }
+                synchronized(controlOperationLock) {
+                    if (controlStore.snapshot(restored.task.id) != null) return@synchronized
+                    enqueueLocked(restored.task, forceRefresh = false)
+                }
+            }
+        }
     }
 
     /**
@@ -125,7 +199,9 @@ class DownloadWorkScheduler(
         }
     }
 
-    fun clearControl(taskId: String) = controlStore.clearPaused(taskId)
+    fun clearControl(taskId: String) {
+        synchronized(controlOperationLock) { controlStore.clearPaused(taskId) }
+    }
 
     fun isPaused(taskId: String): Boolean = controlStore.isPaused(taskId)
 

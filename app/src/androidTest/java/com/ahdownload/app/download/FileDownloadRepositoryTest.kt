@@ -93,6 +93,22 @@ class FileDownloadRepositoryTest {
     }
 
     @Test
+    fun recoveryNeverResumesIntentionallyPausedOrCancelledTasks() = runTest {
+        val repository = FileDownloadRepository(context)
+        val pausedTask = task("paused-task")
+        val cancelledTask = task("cancelled-task")
+        val queuedPaused = DownloadRecordMapper.queued(pausedTask, 1000)
+        val queuedCancelled = DownloadRecordMapper.queued(cancelledTask, 1000)
+
+        repository.upsert(queuedPaused.copy(status = DownloadStatus.PAUSED, updatedAtEpochMs = 1100))
+        repository.upsert(queuedCancelled.copy(status = DownloadStatus.CANCELLED, updatedAtEpochMs = 1200))
+
+        assertTrue(repository.recoverInterrupted(2000).isEmpty())
+        assertEquals(DownloadStatus.PAUSED, repository.get(pausedTask.id)?.status)
+        assertEquals(DownloadStatus.CANCELLED, repository.get(cancelledTask.id)?.status)
+    }
+
+    @Test
     fun recoveryUsesTheCurrentTaskScopedPartialNotAnotherTasksBytes() = runTest {
         val task = task()
         val ownPartial = DownloadTemporaryFiles.temporaryFile(task.destinationPath, task.id).apply {
@@ -120,8 +136,8 @@ class FileDownloadRepositoryTest {
         assertTrue(unrelatedPartial.exists())
     }
 
-    private fun task() = DownloadTask(
-        id = "instrumented-task",
+    private fun task(id: String = "instrumented-task") = DownloadTask(
+        id = id,
         sourceUrl = "https://example.com/video.mp4",
         destinationPath = File(context.cacheDir, "video.mp4").absolutePath,
     )

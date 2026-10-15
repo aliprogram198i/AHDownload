@@ -6,6 +6,16 @@ import org.junit.Test
 
 class DownloadProgressPresentationTest {
     @Test
+    fun onlyShowsRecentPositiveTransferSpeed() {
+        assertEquals(2_048L, visibleTransferSpeed(2_048L, 9_000L, 20_000L))
+        assertNull(visibleTransferSpeed(2_048L, 7_999L, 20_000L))
+        assertNull(visibleTransferSpeed(2_048L, 20_001L, 20_000L))
+        assertNull(visibleTransferSpeed(0L, 20_000L, 20_000L))
+        assertNull(visibleTransferSpeed(null, 20_000L, 20_000L))
+        assertNull(visibleTransferSpeed(1L, null, 20_000L))
+    }
+
+    @Test
     fun estimatesRemainingTimeFromKnownTotalAndMeasuredSpeed() {
         val mib = 1024L * 1024L
         assertEquals(

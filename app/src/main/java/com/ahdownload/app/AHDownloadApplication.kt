@@ -59,5 +59,7 @@ class AHDownloadApplication : Application() {
             }
             previousHandler?.uncaughtException(thread, throwable)
         }
+
+        downloadWorkScheduler.reconcileOnStartup()
     }
 }
