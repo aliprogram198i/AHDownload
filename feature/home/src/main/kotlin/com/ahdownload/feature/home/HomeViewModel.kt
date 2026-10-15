@@ -308,6 +308,9 @@ class HomeViewModel(
                             "payload_failure_reason" to payloadError.payloadFailureReason,
                             "payload_response_chars" to payloadError.responseChars.toString(),
                             "payload_assignment_marker_present" to payloadError.initialDataAssignmentPresent.toString(),
+                            "payload_assignment_count" to payloadError.assignmentCount.toString(),
+                            "payload_assignment_value_kind" to payloadError.assignmentValueKind,
+                            "payload_parser_failure_stage" to payloadError.parserFailureStage,
                         )
                     }.orEmpty(),
                     error,
