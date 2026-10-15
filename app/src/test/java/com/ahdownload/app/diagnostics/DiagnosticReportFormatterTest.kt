@@ -714,5 +714,35 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("FAILURE_CHAIN\nresolver -> page_request_failed:TLS_FAILURE -> resolution_failed_without_candidates"))
     }
 
+    @Test
+    fun youtubeSearchFailureIsSurfacedAsTheLatestDiagnosticIncident() {
+        val report = DiagnosticReportFormatter.format(
+            listOf(
+                event(
+                    time = 10_000L,
+                    sequence = "77",
+                    type = "YOUTUBE_SEARCH_FAILED",
+                    level = DiagnosticLevel.ERROR,
+                    reason = "HTTP 503",
+                    session = "youtube-search-session",
+                    operation = "youtube-search-operation",
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "failure_type" to "IOException",
+                        "request_outcome" to "failed",
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("operation_id=youtube-search-operation"))
+        assertTrue(report.contains("stage=SEARCH"))
+        assertTrue(report.contains("error_type=YOUTUBE_SEARCH_FAILED"))
+        assertTrue(report.contains("reason=HTTP 503"))
+        assertTrue(report.contains("platform=YouTube"))
+    }
+
 
 }
