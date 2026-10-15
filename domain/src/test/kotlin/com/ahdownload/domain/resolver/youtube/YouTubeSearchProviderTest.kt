@@ -110,7 +110,7 @@ class YouTubeSearchProviderTest {
             limit = 5,
             diagnosticContext = mapOf(
                 "operation_id" to "youtube-search-test-42",
-                "query_length" to "20",
+                "query_length" to "21",
             ),
         )
 
@@ -120,7 +120,7 @@ class YouTubeSearchProviderTest {
         assertEquals("youtube-search-test-42", seenContext["operation_id"])
         assertEquals("YouTube", seenContext["platform"])
         assertEquals("SEARCH", seenContext["stage"])
-        assertEquals("20", seenContext["search_query_length"])
+        assertEquals("21", seenContext["search_query_length"])
         assertFalse(seenContext.values.any { it.contains("private search phrase") })
     }
 
