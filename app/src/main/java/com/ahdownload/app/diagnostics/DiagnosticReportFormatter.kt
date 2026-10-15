@@ -425,15 +425,12 @@ object DiagnosticReportFormatter {
                 code != null && code in 400..599 -> "search -> http_request_failed:HTTP_$code"
                 request?.context?.get("request_outcome") == "transport_error" ->
                     "search -> network_transport_failed"
-                latestError.context["payload_failure_reason"]?.let { payloadReason ->
-                    "search -> response_payload_unavailable:$payloadReason"
-                } ?: if (
-                    latestError.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true
-                ) {
+                latestError.context["payload_failure_reason"] != null ->
+                    "search -> response_payload_unavailable:" +
+                        latestError.context["payload_failure_reason"].orEmpty()
+                latestError.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true ->
                     "search -> response_payload_unavailable"
-                } else {
-                    "search -> request_or_response_failed"
-                }
+                else -> "search -> request_or_response_failed"
             }
         }
 
