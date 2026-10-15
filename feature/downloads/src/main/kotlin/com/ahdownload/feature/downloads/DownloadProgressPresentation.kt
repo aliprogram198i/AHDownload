@@ -4,6 +4,21 @@ package com.ahdownload.feature.downloads
  * Returns a conservative ETA only when the total size and a positive measured speed are known.
  * Estimates longer than one day are omitted because transfer rates can change significantly.
  */
+internal fun visibleTransferSpeed(
+    bytesPerSecond: Long?,
+    sampledAtEpochMs: Long?,
+    nowEpochMs: Long,
+    maxAgeMs: Long = MAX_TRANSFER_SPEED_AGE_MS,
+): Long? {
+    val speed = bytesPerSecond?.takeIf { it > 0L } ?: return null
+    val sampledAt = sampledAtEpochMs ?: return null
+    if (maxAgeMs < 0L) return null
+    val ageMs = nowEpochMs - sampledAt
+    return speed.takeIf { ageMs in 0L..maxAgeMs }
+}
+
+private const val MAX_TRANSFER_SPEED_AGE_MS = 12_000L
+
 internal fun estimatedDownloadRemainingSeconds(
     totalBytes: Long?,
     downloadedBytes: Long,

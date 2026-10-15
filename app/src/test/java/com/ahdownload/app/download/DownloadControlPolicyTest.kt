@@ -23,4 +23,37 @@ class DownloadControlPolicyTest {
         assertEquals(null, downloadStateForControlIntent("ACTIVE"))
         assertEquals(null, downloadStateForControlIntent("REPLACED"))
     }
+
+    @Test
+    fun startupRecoveryOnlyRestoresOrphanedActiveRecords() {
+        val recoverable = setOf(
+            DownloadStatus.QUEUED,
+            DownloadStatus.PREPARING,
+            DownloadStatus.DOWNLOADING,
+        )
+        DownloadStatus.entries.forEach { status ->
+            assertEquals(
+                "status=$status",
+                status in recoverable,
+                shouldReconcileDownloadAtStartup(status, null, hasUnfinishedWork = false),
+            )
+            assertEquals(
+                "unfinished work must be preserved for $status",
+                false,
+                shouldReconcileDownloadAtStartup(status, null, hasUnfinishedWork = true),
+            )
+        }
+    }
+
+    @Test
+    fun startupRecoveryNeverOverridesAnExplicitControlIntent() {
+        listOf("PAUSED", "CANCELLED", "ACTIVE", "REPLACED").forEach { intent ->
+            assertEquals(
+                false,
+                shouldReconcileDownloadAtStartup(
+                    DownloadStatus.DOWNLOADING, intent, hasUnfinishedWork = false,
+                ),
+            )
+        }
+    }
 }
