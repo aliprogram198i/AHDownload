@@ -761,7 +761,7 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("error_type=YOUTUBE_SEARCH_FAILED"))
         assertTrue(report.contains("reason=HTTP 503"))
         assertTrue(report.contains("action=INSPECT_YOUTUBE_SEARCH_REQUEST"))
-        assertTrue(report.contains("FAILURE_CHAIN\\nsearch -> http_request_failed:HTTP_503"))
+        assertTrue(report.contains("FAILURE_CHAIN\nsearch -> http_request_failed:HTTP_503"))
         assertTrue(report.contains("platform=YouTube"))
     }
 
