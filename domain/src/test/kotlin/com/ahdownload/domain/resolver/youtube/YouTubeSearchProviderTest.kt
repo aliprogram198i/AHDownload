@@ -160,6 +160,76 @@ class YouTubeSearchProviderTest {
         assertFalse(payloadError.message.orEmpty().contains("Before you continue"))
     }
 
+    @Test
+    fun parsesParenthesizedObjectWithJavaScriptCommentsAroundAssignment() = runTest {
+        val html = """<html><script>window["ytInitialData"] = /* payload follows */ (
+          {"contents":{"videoRenderer":{"videoId":"commented123","title":{"simpleText":"Commented payload"}}}}
+        );</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("comments").single()
+
+        assertEquals("commented123", result.id)
+        assertEquals("Commented payload", result.title)
+    }
+
+    @Test
+    fun parsesJsonParseWithSingleQuotedJavaScriptString() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"single123","title":{"simpleText":"Quoted payload"}}}}"""
+        val escapedPayload = payload
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("\"", "\\\"")
+        val html = "<html><script>ytInitialData = JSON.parse('$escapedPayload');</script></html>"
+
+        val result = YouTubeSearchProvider(textClient(html)).search("single quote").single()
+
+        assertEquals("single123", result.id)
+        assertEquals("Quoted payload", result.title)
+    }
+
+    @Test
+    fun parsesJsonParseWithDecodeURIComponentWrapper() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"encoded123","title":{"simpleText":"Plus + and space"}}}}"""
+        val encoded = java.net.URLEncoder.encode(payload, "UTF-8").replace("+", "%20")
+        val html = """<html><script>ytInitialData = JSON.parse(decodeURIComponent("$encoded"));</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("encoded").single()
+
+        assertEquals("encoded123", result.id)
+        assertEquals("Plus + and space", result.title)
+    }
+
+    @Test
+    fun parsesJsonParseWithBase64Wrapper() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"base64123","title":{"simpleText":"Base64 payload"}}}}"""
+        val encoded = java.util.Base64.getEncoder()
+            .encodeToString(payload.toByteArray(Charsets.UTF_8))
+        val html = """<html><script>ytInitialData = JSON.parse(atob("$encoded"));</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("base64").single()
+
+        assertEquals("base64123", result.id)
+        assertEquals("Base64 payload", result.title)
+    }
+
+    @Test
+    fun rejectsUnsupportedJavaScriptExpressionWithoutScrapingUnrelatedObjects() = runTest {
+        val html = """<html><script>
+            var ytInitialData = createInitialData();
+            var unrelated = {"contents":{"videoRenderer":{"videoId":"wrong123","title":{"simpleText":"Do not use"}}}};
+        </script></html>"""
+
+        val error = runCatching {
+            YouTubeSearchProvider(textClient(html)).search("invalid")
+        }.exceptionOrNull()
+
+        assertTrue(error is YouTubeSearchPayloadException)
+        val payloadError = error as YouTubeSearchPayloadException
+        assertEquals("initial_data_parse_failed", payloadError.payloadFailureReason)
+        assertEquals("unsupported_expression", payloadError.assignmentValueKind)
+        assertEquals("expression_decode", payloadError.parserFailureStage)
+    }
+
     private fun textClient(html: String): HttpTextClient = object : HttpTextClient {
         override suspend fun get(url: String): String = html
     }
