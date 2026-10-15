@@ -554,6 +554,57 @@ class DiagnosticReportFormatterTest {
     )
 
     @Test
+    fun classifiesYouTubeSearchConsentPayloadFailureFromRedactedHints() {
+        val session = "youtube-search-consent-session"
+        val operation = "youtube-search-consent-operation"
+        val report = DiagnosticReportFormatter.format(
+            listOf(
+                event(
+                    time = 9_000L,
+                    sequence = "80",
+                    type = "HTTP_REQUEST",
+                    level = DiagnosticLevel.INFO,
+                    reason = "http_response_received",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "request_outcome" to "success",
+                        "http_status" to "200",
+                    ),
+                ),
+                event(
+                    time = 10_000L,
+                    sequence = "81",
+                    type = "YOUTUBE_SEARCH_FAILED",
+                    level = DiagnosticLevel.ERROR,
+                    reason = "YouTube search payload unavailable",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "failure_type" to "YouTubeSearchPayloadException",
+                        "request_outcome" to "failed",
+                        "payload_failure_reason" to "consent_or_privacy_gate",
+                        "payload_response_chars" to "120",
+                        "payload_assignment_marker_present" to "false",
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(report.contains("stage=SEARCH"))
+        assertTrue(report.contains("root_cause=YOUTUBE_CONSENT_OR_PRIVACY_GATE"))
+        assertTrue(report.contains("classification=UPSTREAM_GATE"))
+        assertTrue(report.contains("action=INSPECT_YOUTUBE_CONSENT_OR_PRIVACY_GATE"))
+        assertTrue(report.contains("payload_failure_reason=consent_or_privacy_gate"))
+        assertTrue(report.contains("payload_response_chars=120"))
+        assertTrue(report.contains("FAILURE_CHAIN\nsearch -> response_payload_unavailable:consent_or_privacy_gate"))
+    }
+
+    @Test
     fun classifiesYouTubeAgeGateAsAuthenticationNotResolverOrNetworkFailure() {
         val session = "session-age-gate"
         val operation = "op-age-gate"
