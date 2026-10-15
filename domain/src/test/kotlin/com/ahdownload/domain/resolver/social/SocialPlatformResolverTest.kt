@@ -178,6 +178,64 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun tiktokShortLinkUsesCanonicalResolvedVideoUrlForPublicEmbedFallback() = runTest {
+        val shortUrl = "https://vm.tiktok.com/ZMshortCode/"
+        val canonicalUrl = "https://www.tiktok.com/@creator/video/7345678901234567890"
+        val mediaUrl = "https://v16-webapp.tiktokcdn.com/video/tos/sample.mp4?mime_type=video_mp4"
+        val embedUrl = "https://www.tiktok.com/embed/v2/7345678901234567890"
+        val embedHtml = """<html><script>{"playAddr":"https:\\/\\/v16-webapp.tiktokcdn.com\\/video\\/tos\\/sample.mp4?mime_type=video_mp4"}</script></html>"""
+        val fetchedUrls = mutableListOf<String>()
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = TikTokResolverAdapter(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.TikTok,
+                    pageUrl = shortUrl,
+                    finalUrl = canonicalUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    fetchedUrls += url
+                    return if (url == embedUrl) embedHtml else "<html><body></body></html>"
+                }
+                override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
+                override suspend fun get(
+                    url: String,
+                    headers: Map<String, String>,
+                    diagnosticContext: Map<String, String>,
+                ): String = get(url)
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.TikTok).copy(
+                    originalUrl = shortUrl,
+                    normalizedUrl = shortUrl,
+                ),
+                operationId = "tiktok-short-link-resolved-test",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Success)
+        assertEquals(mediaUrl, (result as ResolverResult.Success).candidates.single().sourceUrl)
+        assertEquals(listOf(canonicalUrl, embedUrl), fetchedUrls)
+        assertEquals(
+            "final_url",
+            events.single { it.first == "SOCIAL_PAGE_FETCH_STARTED" }.second["page_url_source"],
+        )
+        assertEquals(
+            "media_found",
+            events.single { it.first == "SOCIAL_TIKTOK_EMBED_FALLBACK_RESULT" }.second["fallback_status"],
+        )
+    }
+
+    @Test
     fun hangingBrowserSessionReturnsExplicitTimeoutFailure() = runTest {
         val resolver = InstagramResolverAdapter(
             provider = object : BrowserMediaSessionProvider {
