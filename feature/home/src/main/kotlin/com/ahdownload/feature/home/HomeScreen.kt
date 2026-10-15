@@ -1343,8 +1343,8 @@ private fun SearchResultCard(
             .fillMaxWidth()
             .tracedClickable(
                 trackingScreen = "HOME",
-                trackingId = "HOME.search.result.\${item.kind.name.lowercase()}.\${item.id}",
-                trackingLabel = "search_result_\${item.kind.name.lowercase()}",
+                trackingId = "HOME.search.result.${item.kind.name.lowercase()}.${item.id}",
+                trackingLabel = "search_result_${item.kind.name.lowercase()}",
                 onClick = onClick,
             ),
     ) {
@@ -1408,7 +1408,7 @@ private fun SearchResultCard(
             if (canSelect) {
                 DiagnosticFilterChip(
                     trackingScreen = "HOME",
-                    trackingId = "HOME.search.selection.\${item.kind.name.lowercase()}.\${item.id}",
+                    trackingId = "HOME.search.selection.${item.kind.name.lowercase()}.${item.id}",
                     trackingLabel = "search_result_selection",
                     disabledReason = "callsite_precondition_not_explicit",
                     selected = selected,
