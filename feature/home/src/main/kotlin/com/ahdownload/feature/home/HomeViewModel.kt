@@ -54,6 +54,11 @@ internal fun canAddSearchSelection(
     maxSelections: Int = MAX_SEARCH_BATCH_SELECTION,
 ): Boolean = id in selectedIds || selectedIds.size < maxSelections
 
+internal fun isCurrentSearchRequest(
+    requestGeneration: Long,
+    activeGeneration: Long,
+): Boolean = requestGeneration == activeGeneration
+
 /**
  * Root navigation can re-emit Link mode after a search-result selection has started analysis.
  * Re-applying the same mode is a synchronization no-op, not a request to cancel that analysis.
@@ -249,7 +254,7 @@ class HomeViewModel(
         searchJob = viewModelScope.launch {
             try {
                 val results = searchProvider.search(normalized)
-                if (requestGeneration != searchRequestGeneration) return@launch
+                if (!isCurrentSearchRequest(requestGeneration, searchRequestGeneration)) return@launch
                 searchJob = null
                 _uiState.value = _uiState.value.copy(
                     searching = false,
@@ -259,7 +264,7 @@ class HomeViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
-                if (requestGeneration != searchRequestGeneration) return@launch
+                if (!isCurrentSearchRequest(requestGeneration, searchRequestGeneration)) return@launch
                 searchJob = null
                 logger.log(
                     DiagnosticLevel.WARNING,
