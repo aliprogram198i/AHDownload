@@ -384,7 +384,7 @@ class YouTubeSearchProvider(
 
     private companion object {
         val INITIAL_DATA_ASSIGNMENT = Regex(
-            """(?:window\\s*\\[\\s*["']ytInitialData["']\\s*]|window\\s*\\.\\s*ytInitialData|\\b(?:var|let|const)\\s+ytInitialData\\b|\\bytInitialData\\b)\\s*=\\s*""",
+            """(?:window\s*\[\s*["']ytInitialData["']\s*]|window\s*\.\s*ytInitialData|\b(?:var|let|const)\s+ytInitialData\b|\bytInitialData\b)\s*=\s*""",
         )
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
     }
