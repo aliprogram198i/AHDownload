@@ -213,6 +213,31 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesJsonParseWithConcatenatedStringLiterals() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"concat123","title":{"simpleText":"Concatenated payload"}}}}"""
+        val split = payload.length / 2
+        val firstLiteral = com.google.gson.JsonPrimitive(payload.substring(0, split)).toString()
+        val secondLiteral = com.google.gson.JsonPrimitive(payload.substring(split)).toString()
+        val html = """<html><script>ytInitialData = JSON.parse($firstLiteral + $secondLiteral);</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("concat").single()
+
+        assertEquals("concat123", result.id)
+        assertEquals("Concatenated payload", result.title)
+    }
+
+    @Test
+    fun parsesJsonParsePayloadWithAntiXssiPrefixWithoutNewline() = runTest {
+        val payload = """)]}'{"contents":{"videoRenderer":{"videoId":"xssi123","title":{"simpleText":"Prefixed payload"}}}}"""
+        val html = """<html><script>ytInitialData = JSON.parse(${com.google.gson.JsonPrimitive(payload)});</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("xssi").single()
+
+        assertEquals("xssi123", result.id)
+        assertEquals("Prefixed payload", result.title)
+    }
+
+    @Test
     fun rejectsUnsupportedJavaScriptExpressionWithoutScrapingUnrelatedObjects() = runTest {
         val html = """<html><script>
             var ytInitialData = createInitialData();
