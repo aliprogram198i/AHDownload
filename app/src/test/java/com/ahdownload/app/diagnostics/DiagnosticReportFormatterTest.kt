@@ -601,7 +601,7 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("action=INSPECT_YOUTUBE_CONSENT_OR_PRIVACY_GATE"))
         assertTrue(report.contains("payload_failure_reason=consent_or_privacy_gate"))
         assertTrue(report.contains("payload_response_chars=120"))
-        assertTrue(report.contains("FAILURE_CHAIN\\nsearch -> response_payload_unavailable:consent_or_privacy_gate"))
+        assertTrue(report.contains("FAILURE_CHAIN\nsearch -> response_payload_unavailable:consent_or_privacy_gate"))
     }
 
     @Test
