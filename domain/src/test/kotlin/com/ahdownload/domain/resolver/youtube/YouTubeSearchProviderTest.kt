@@ -124,6 +124,42 @@ class YouTubeSearchProviderTest {
         assertFalse(seenContext.values.any { it.contains("private search phrase") })
     }
 
+    @Test
+    fun parsesWindowBracketInitialDataAssignment() = runTest {
+        val html = """<html><script>window["ytInitialData"]={"contents":{"videoRenderer":{"videoId":"window123","title":{"simpleText":"Window payload"}}}};</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("window").single()
+
+        assertEquals("window123", result.id)
+        assertEquals("Window payload", result.title)
+    }
+
+    @Test
+    fun parsesJsonParseWrappedInitialDataAssignment() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"wrapped123","title":{"simpleText":"Wrapped payload"}}}}"""
+        val html = """<html><script>window["ytInitialData"] = JSON.parse(${com.google.gson.JsonPrimitive(payload)});</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("wrapped").single()
+
+        assertEquals("wrapped123", result.id)
+        assertEquals("Wrapped payload", result.title)
+    }
+
+    @Test
+    fun reportsRedactedReasonWhenResponseIsAConsentPage() = runTest {
+        val html = """<!doctype html><html><title>Before you continue to YouTube</title><body>We use cookies and data</body></html>"""
+        val error = runCatching {
+            YouTubeSearchProvider(textClient(html)).search("private query")
+        }.exceptionOrNull()
+
+        assertTrue(error is YouTubeSearchPayloadException)
+        val payloadError = error as YouTubeSearchPayloadException
+        assertEquals("consent_or_privacy_gate", payloadError.payloadFailureReason)
+        assertEquals(html.length, payloadError.responseChars)
+        assertFalse(payloadError.message.orEmpty().contains("private query"))
+        assertFalse(payloadError.message.orEmpty().contains("Before you continue"))
+    }
+
     private fun textClient(html: String): HttpTextClient = object : HttpTextClient {
         override suspend fun get(url: String): String = html
     }
