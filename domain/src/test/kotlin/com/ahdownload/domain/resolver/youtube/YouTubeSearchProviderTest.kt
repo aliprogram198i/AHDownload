@@ -51,6 +51,28 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun preservesSourceOrderAndPromotesDuplicateVideoToShorts() = runTest {
+        val client = textClient(
+            """<html><script>var ytInitialData = {"contents":[
+              {"videoRenderer":{"videoId":"video-first","title":{"simpleText":"First video"}}},
+              {"channelRenderer":{"channelId":"UCcreator","title":{"simpleText":"Creator"}}},
+              {"videoRenderer":{"videoId":"shared-short","title":{"simpleText":"Short before promotion"}}},
+              {"reelItemRenderer":{"videoId":"shared-short","headline":{"simpleText":"Actual Short"}}},
+              {"videoRenderer":{"videoId":"video-last","title":{"simpleText":"Last video"}}}
+            ]};</script></html>""",
+        )
+
+        val results = YouTubeSearchProvider(client).search("ordered", limit = 12)
+
+        assertEquals(
+            listOf("video-first", "UCcreator", "shared-short", "video-last"),
+            results.map { it.id },
+        )
+        assertEquals(ContentSearchKind.SHORT, results[2].kind)
+        assertEquals("Actual Short", results[2].title)
+    }
+
+    @Test
     fun parsesModernShortsLockupRenderer() = runTest {
         val client = textClient(
             """<html><script>var ytInitialData = {"contents":{"shortsLockupViewModel":{"entityId":"shorts-shelf-item-short789","overlayMetadata":{"primaryText":{"content":"Modern short"}},"thumbnail":{"sources":[{"url":"https://img.example/modern.jpg"}]}}}};</script></html>""",
