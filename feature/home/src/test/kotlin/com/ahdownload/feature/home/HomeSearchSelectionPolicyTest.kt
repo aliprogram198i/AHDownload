@@ -6,6 +6,16 @@ import org.junit.Test
 
 class HomeSearchSelectionPolicyTest {
     @Test
+    fun staleSearchResponsesAreRejected() {
+        assertFalse(isCurrentSearchRequest(requestGeneration = 2L, activeGeneration = 3L))
+    }
+
+    @Test
+    fun currentSearchResponsesAreAccepted() {
+        assertTrue(isCurrentSearchRequest(requestGeneration = 3L, activeGeneration = 3L))
+    }
+
+    @Test
     fun selectionStopsAtTheBatchLimit() {
         val selected = (1..MAX_SEARCH_BATCH_SELECTION).map { "video-$it" }.toSet()
 
