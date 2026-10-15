@@ -1,0 +1,118 @@
+package com.ahdownload.domain.resolver.social
+
+import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.domain.resolver.HttpTextClient
+import com.ahdownload.domain.resolver.browser.ParsedPageMedia
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TikTokSocialPlatformExtractionStrategyTest {
+    @Test
+    fun publicEmbedFallbackExtractsOnlyTikTokCdnVideoUrls() = runTest {
+        val pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890"
+        val mediaUrl = "https://v16-webapp.tiktokcdn.com/video/tos/sample.mp4?mime_type=video_mp4"
+        val externalUrl = "https://example.org/not-tiktok.mp4"
+        val requests = mutableListOf<String>()
+        var headers = emptyMap<String, String>()
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = error("Headers are required for TikTok fallback")
+            override suspend fun get(url: String, requestHeaders: Map<String, String>): String {
+                requests += url
+                headers = requestHeaders
+                return """<html><head><meta property="og:title" content="Public clip"></head><script>{"playAddr":"https:\/\/v16-webapp.tiktokcdn.com\/video\/tos\/sample.mp4?mime_type=video_mp4","downloadAddr":"$externalUrl"}</script></html>"""
+            }
+            override suspend fun get(
+                url: String,
+                requestHeaders: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String = get(url, requestHeaders)
+        }
+        val strategy = TikTokSocialPlatformExtractionStrategy()
+
+        val result = strategy.extractAdditionalMedia(
+            pageUrl = pageUrl,
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "tiktok-public-embed-test",
+            logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context },
+        )
+
+        assertEquals(listOf("https://www.tiktok.com/embed/v2/7345678901234567890"), requests)
+        assertTrue(headers["User-Agent"].orEmpty().contains("Android"))
+        assertEquals(pageUrl, headers["Referer"])
+        assertEquals(listOf(mediaUrl), result?.mediaUrls)
+        assertEquals("media_found", events.single().second["fallback_status"])
+        assertEquals("tiktok-public-embed-test", events.single().second["operation_id"])
+    }
+
+    @Test
+    fun fallbackIsSkippedWhenBrowserOrPageAlreadyFoundMedia() = runTest {
+        val strategy = TikTokSocialPlatformExtractionStrategy()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = error("Fallback must not run")
+        }
+
+        assertNull(
+            strategy.extractAdditionalMedia(
+                pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890",
+                browserMediaCount = 1,
+                pageFallbackMediaCount = 0,
+                pageClient = client,
+                operationId = null,
+                logger = DiagnosticLogger { _, _, _, _, _, _ -> },
+            ),
+        )
+        assertNull(
+            strategy.extractAdditionalMedia(
+                pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890",
+                browserMediaCount = 0,
+                pageFallbackMediaCount = 1,
+                pageClient = client,
+                operationId = null,
+                logger = DiagnosticLogger { _, _, _, _, _, _ -> },
+            ),
+        )
+    }
+
+    @Test
+    fun fallbackRejectsNonTikTokAndNonCanonicalUrls() = runTest {
+        val strategy = TikTokSocialPlatformExtractionStrategy()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = error("Invalid URL must not trigger network")
+        }
+
+        assertNull(
+            strategy.extractAdditionalMedia(
+                pageUrl = "https://example.org/@creator/video/7345678901234567890",
+                browserMediaCount = 0,
+                pageFallbackMediaCount = 0,
+                pageClient = client,
+                operationId = null,
+                logger = DiagnosticLogger { _, _, _, _, _, _ -> },
+            ),
+        )
+        assertNull(
+            strategy.extractAdditionalMedia(
+                pageUrl = "https://www.tiktok.com/@creator/video/not-a-video-id",
+                browserMediaCount = 0,
+                pageFallbackMediaCount = 0,
+                pageClient = client,
+                operationId = null,
+                logger = DiagnosticLogger { _, _, _, _, _, _ -> },
+            ),
+        )
+    }
+
+    @Test
+    fun pageHeadersArePlatformScoped() {
+        val strategy = TikTokSocialPlatformExtractionStrategy()
+        assertTrue(strategy.pageRequestHeaders("https://www.tiktok.com/@creator/video/7345678901234567890").containsKey("User-Agent"))
+        assertTrue(strategy.pageRequestHeaders("https://example.org/video.mp4").isEmpty())
+    }
+}
