@@ -192,44 +192,81 @@ class YouTubeSearchProvider(
      * Decode a JavaScript string or the narrowly supported string wrappers used by JSON.parse.
      * No expression evaluation is performed. Unsupported wrappers fail closed.
      */
+    /**
+     * Decode a bounded subset of JavaScript string expressions used by JSON.parse.
+     * Supports quoted literals, concatenation, parentheses, decodeURIComponent and atob.
+     * This parser never evaluates arbitrary JavaScript.
+     */
     private fun decodeJavaScriptStringExpression(source: String, start: Int): String? {
+        val decoded = parseJavaScriptStringExpression(source, start, depth = 0) ?: return null
+        val closing = skipJavaScriptTrivia(source, decoded.endExclusive)
+        if (closing >= source.length || source[closing] != ')') return null
+        return decoded.value
+    }
+
+    private data class DecodedStringExpression(
+        val value: String,
+        val endExclusive: Int,
+    )
+
+    private fun parseJavaScriptStringExpression(
+        source: String,
+        start: Int,
+        depth: Int,
+    ): DecodedStringExpression? {
+        if (depth > MAX_STRING_EXPRESSION_DEPTH) return null
+        val first = parseJavaScriptStringAtom(source, start, depth) ?: return null
+        val value = StringBuilder(first.value)
+        var end = first.endExclusive
+        while (true) {
+            val operator = skipJavaScriptTrivia(source, end)
+            if (operator >= source.length || source[operator] != '+') break
+            val next = parseJavaScriptStringAtom(source, operator + 1, depth) ?: return null
+            value.append(next.value)
+            end = next.endExclusive
+        }
+        return DecodedStringExpression(value.toString(), end)
+    }
+
+    private fun parseJavaScriptStringAtom(
+        source: String,
+        start: Int,
+        depth: Int,
+    ): DecodedStringExpression? {
         val position = skipJavaScriptTrivia(source, start)
         if (position >= source.length) return null
-
         val quote = source[position]
         if (quote == '"' || quote == '\'' || quote == '\u0060') {
             val end = findQuotedStringEnd(source, position) ?: return null
-            return decodeJavaScriptStringLiteral(source.substring(position, end + 1))
+            val decoded = decodeJavaScriptStringLiteral(source.substring(position, end + 1)) ?: return null
+            return DecodedStringExpression(decoded, end + 1)
         }
-
+        if (source[position] == '(') {
+            val nested = parseJavaScriptStringExpression(source, position + 1, depth + 1) ?: return null
+            val close = skipJavaScriptTrivia(source, nested.endExclusive)
+            if (close >= source.length || source[close] != ')') return null
+            return DecodedStringExpression(nested.value, close + 1)
+        }
         for (wrapper in listOf("decodeURIComponent", "atob")) {
             val argumentStart = callArgumentStart(source, position, wrapper) ?: continue
-            if (argumentStart >= source.length) return null
-            val argumentQuote = source[argumentStart]
-            if (argumentQuote != '"' && argumentQuote != '\'' && argumentQuote != '\u0060') return null
-            val argumentEnd = findQuotedStringEnd(source, argumentStart) ?: return null
-            val closeParen = skipJavaScriptTrivia(source, argumentEnd + 1)
-            if (closeParen >= source.length || source[closeParen] != ')') return null
-            val encoded = decodeJavaScriptStringLiteral(source.substring(argumentStart, argumentEnd + 1))
-                ?: return null
-            return runCatching {
+            val argument = parseJavaScriptStringExpression(source, argumentStart, depth + 1) ?: return null
+            val close = skipJavaScriptTrivia(source, argument.endExclusive)
+            if (close >= source.length || source[close] != ')') return null
+            val decoded = runCatching {
                 when (wrapper) {
-                    "decodeURIComponent" -> {
-                        // Java URLDecoder treats '+' as a space; JavaScript decodeURIComponent does not.
-                        java.net.URLDecoder.decode(
-                            encoded.replace("+", "%2B"),
-                            StandardCharsets.UTF_8.name(),
-                        )
-                    }
+                    "decodeURIComponent" -> java.net.URLDecoder.decode(
+                        argument.value.replace("+", "%2B"),
+                        StandardCharsets.UTF_8.name(),
+                    )
                     "atob" -> String(
-                        java.util.Base64.getDecoder().decode(encoded),
+                        java.util.Base64.getDecoder().decode(argument.value),
                         StandardCharsets.UTF_8,
                     )
                     else -> null
                 }
-            }.getOrNull()
+            }.getOrNull() ?: return null
+            return DecodedStringExpression(decoded, close + 1)
         }
-
         return null
     }
 
@@ -352,12 +389,27 @@ class YouTubeSearchProvider(
         val source = decoded.removePrefix("\uFEFF")
         var start = skipWhitespace(source, 0)
         if (source.startsWith(")]}'", start)) {
-            val newline = source.indexOf('\n', start + 4)
-            if (newline < 0) return null
-            start = skipWhitespace(source, newline + 1)
+            start += 4
+            start = skipWhitespace(source, start)
+            if (start < source.length && source[start] == ',') {
+                start++
+                start = skipWhitespace(source, start)
+            }
         }
-        if (start >= source.length || source[start] != '{') return null
-        return extractBalancedJson(source, start)
+        if (start < source.length && source[start] == '{') {
+            return extractBalancedJson(source, start)
+        }
+
+        // This is already the value of the explicit ytInitialData JSON.parse expression.
+        // Allow a known prefix before JSON, but do not search the surrounding HTML or execute JS.
+        for (candidate in start until source.length) {
+            if (source[candidate] != '{') continue
+            val json = extractBalancedJson(source, candidate) ?: continue
+            if (runCatching { JsonParser.parseString(json).isJsonObject }.getOrDefault(false)) {
+                return json
+            }
+        }
+        return null
     }
 
     private fun createPayloadUnavailableException(
@@ -610,6 +662,7 @@ class YouTubeSearchProvider(
         )
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
         const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
+        const val MAX_STRING_EXPRESSION_DEPTH = 16
     }
 
 }
