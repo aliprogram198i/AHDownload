@@ -108,6 +108,36 @@ class TikTokSocialPlatformExtractionStrategyTest {
     }
 
     @Test
+    fun nonCanonicalTikTokPageReportsWhyEmbedFallbackWasSkipped() = runTest {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val strategy = TikTokSocialPlatformExtractionStrategy()
+        val result = strategy.extractAdditionalMedia(
+            pageUrl = "https://vm.tiktok.com/ZMshortCode/",
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String = error("No canonical video ID is available")
+                override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
+                override suspend fun get(
+                    url: String,
+                    headers: Map<String, String>,
+                    diagnosticContext: Map<String, String>,
+                ): String = get(url)
+            },
+            operationId = "tiktok-short-link-skip-test",
+            logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context },
+        )
+
+        assertNull(result)
+        val event = events.single()
+        assertEquals("SOCIAL_TIKTOK_EMBED_FALLBACK_SKIPPED", event.first)
+        assertEquals("video_id_not_found", event.second["skip_reason"])
+        assertEquals("tiktok", event.second["page_url_host_category"])
+        assertEquals("false", event.second["video_id_present"])
+        assertEquals("tiktok-short-link-skip-test", event.second["operation_id"])
+    }
+
+    @Test
     fun pageHeadersArePlatformScoped() {
         val strategy = TikTokSocialPlatformExtractionStrategy()
         assertTrue(strategy.pageRequestHeaders("https://www.tiktok.com/@creator/video/7345678901234567890").containsKey("User-Agent"))

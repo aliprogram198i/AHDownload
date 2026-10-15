@@ -34,8 +34,22 @@ internal class TikTokSocialPlatformExtractionStrategy :
         // The embed is a last-resort path only. Never replace media already observed by the
         // browser or parsed from the original public page.
         if (browserMediaCount > 0 || pageFallbackMediaCount > 0) return null
-        val videoId = extractVideoId(pageUrl) ?: return null
-        val safePageUrl = pageUrl ?: return null
+        val safePageUrl = pageUrl?.takeIf { it.isNotBlank() }
+        if (safePageUrl == null) {
+            logEmbedFallbackSkipped(logger, operationId, "page_url_missing", "none")
+            return null
+        }
+        val videoId = extractVideoId(safePageUrl)
+        if (videoId == null) {
+            val isTikTokPage = isTikTokPageUrl(safePageUrl)
+            logEmbedFallbackSkipped(
+                logger = logger,
+                operationId = operationId,
+                reason = if (isTikTokPage) "video_id_not_found" else "unsupported_page_url",
+                hostCategory = if (isTikTokPage) "tiktok" else "other_or_unknown",
+            )
+            return null
+        }
         val embedUrl = "$TIKTOK_ORIGIN/embed/v2/$videoId"
         var body: String? = null
         var exceptionType: String? = null
@@ -104,14 +118,7 @@ internal class TikTokSocialPlatformExtractionStrategy :
         return generic.copy(mediaUrls = safeUrls)
     }
 
-    private fun extractVideoId(pageUrl: String?): String? {
-        if (!isTikTokPageUrl(pageUrl)) return null
-        val segments = runCatching { URI(pageUrl!!).path.orEmpty().split('/').filter(String::isNotBlank) }
-            .getOrDefault(emptyList())
-        val videoIndex = segments.indexOfLast { it.equals("video", ignoreCase = true) }
-        return segments.getOrNull(videoIndex + 1)
-            ?.takeIf { videoIndex >= 0 && it.matches(Regex("""\d{6,30}""")) }
-    }
+    private fun extractVideoId(pageUrl: String?): String? = extractTikTokVideoId(pageUrl)
 
     private fun isTikTokPageUrl(value: String?): Boolean = runCatching {
         if (value.isNullOrBlank()) return@runCatching false
@@ -141,6 +148,30 @@ internal class TikTokSocialPlatformExtractionStrategy :
         "Origin" to TIKTOK_ORIGIN,
         "User-Agent" to TIKTOK_USER_AGENT,
     )
+
+
+    private fun logEmbedFallbackSkipped(
+        logger: DiagnosticLogger,
+        operationId: String?,
+        reason: String,
+        hostCategory: String,
+    ) {
+        logger.log(
+            DiagnosticLevel.WARNING,
+            "SOCIAL_TIKTOK_EMBED_FALLBACK_SKIPPED",
+            "تم تخطي فحص مشغّل TikTok العام لعدم توفر معرّف فيديو صالح",
+            "social.resolve.tiktok_embed",
+            mapOf(
+                "platform" to MediaPlatform.TikTok.name,
+                "operation_id" to (operationId ?: "none"),
+                "fallback_status" to "skipped",
+                "skip_reason" to reason,
+                "page_url_host_category" to hostCategory,
+                "video_id_present" to "false",
+            ),
+            null,
+        )
+    }
 
     private fun normalizeEscapedJson(value: String): String = value
         .replace(Regex("""\\+u002f""", RegexOption.IGNORE_CASE), "/")
@@ -177,3 +208,20 @@ internal class TikTokSocialPlatformExtractionStrategy :
         )
     }
 }
+
+/** Returns a video ID only from a canonical HTTPS TikTok video URL. */
+internal fun extractTikTokVideoId(pageUrl: String?): String? = runCatching {
+    val value = pageUrl?.takeIf { it.isNotBlank() } ?: return@runCatching null
+    val uri = URI(value)
+    val host = uri.host?.lowercase() ?: return@runCatching null
+    if (uri.scheme?.lowercase() != "https" ||
+        (host != "tiktok.com" && !host.endsWith(".tiktok.com"))
+    ) return@runCatching null
+    val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+    val videoIndex = segments.indexOfLast { it.equals("video", ignoreCase = true) }
+    segments.getOrNull(videoIndex + 1)
+        ?.takeIf { videoIndex >= 0 && it.matches(Regex("""\d{6,30}""")) }
+}.getOrNull()
+
+internal fun isTikTokCanonicalVideoUrl(value: String?): Boolean =
+    extractTikTokVideoId(value) != null
