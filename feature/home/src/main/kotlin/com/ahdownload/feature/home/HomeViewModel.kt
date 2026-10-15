@@ -238,6 +238,15 @@ class HomeViewModel(
             return
         }
 
+        val operationId = UUID.randomUUID().toString()
+        val searchDiagnosticContext = mapOf(
+            "operation_id" to operationId,
+            "platform" to "YouTube",
+            "stage" to "SEARCH",
+            "query_length" to normalized.length.toString(),
+            "request_generation" to requestGeneration.toString(),
+        )
+
         _uiState.value = _uiState.value.copy(
             searchQuery = normalized,
             searching = true,
@@ -250,12 +259,31 @@ class HomeViewModel(
             batchQueued = 0,
             batchError = null,
         )
+        logger.log(
+            DiagnosticLevel.INFO,
+            "YOUTUBE_SEARCH_STARTED",
+            "search_request_started",
+            "youtube.search",
+            searchDiagnosticContext,
+            null,
+        )
 
         searchJob = viewModelScope.launch {
             try {
-                val results = searchProvider.search(normalized)
+                val results = searchProvider.search(normalized, 12, searchDiagnosticContext)
                 if (!isCurrentSearchRequest(requestGeneration, searchRequestGeneration)) return@launch
                 searchJob = null
+                logger.log(
+                    DiagnosticLevel.INFO,
+                    "YOUTUBE_SEARCH_COMPLETED",
+                    if (results.isEmpty()) "search_completed_without_results" else "search_results_received",
+                    "youtube.search",
+                    searchDiagnosticContext + mapOf(
+                        "request_outcome" to if (results.isEmpty()) "empty" else "success",
+                        "result_count" to results.size.toString(),
+                    ),
+                    null,
+                )
                 _uiState.value = _uiState.value.copy(
                     searching = false,
                     searchResults = results,
@@ -267,11 +295,14 @@ class HomeViewModel(
                 if (!isCurrentSearchRequest(requestGeneration, searchRequestGeneration)) return@launch
                 searchJob = null
                 logger.log(
-                    DiagnosticLevel.WARNING,
-                    "SEARCH_FAILED",
+                    DiagnosticLevel.ERROR,
+                    "YOUTUBE_SEARCH_FAILED",
                     error.message ?: error::class.simpleName.orEmpty(),
-                    "home.search",
-                    mapOf("query_length" to normalized.length.toString()),
+                    "youtube.search",
+                    searchDiagnosticContext + mapOf(
+                        "request_outcome" to "failed",
+                        "failure_type" to error.javaClass.simpleName,
+                    ),
                     error,
                 )
                 _uiState.value = _uiState.value.copy(
@@ -1505,7 +1536,7 @@ class HomeViewModel(
                     browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
                 ),
                 recentLinkStore = RecentLinkStore(context.applicationContext),
-                searchProvider = YouTubeSearchProvider(OkHttpTextClient()),
+                searchProvider = YouTubeSearchProvider(OkHttpTextClient(logger = logger)),
                 preferencesProvider = preferencesProvider,
                 onDownloadRequested = onDownloadRequested,
                 onAudioOnlyRequested = onAudioOnlyRequested,
