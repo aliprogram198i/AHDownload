@@ -46,6 +46,14 @@ enum class YouTubeSearchFilter {
     Channels,
 }
 
+internal const val MAX_SEARCH_BATCH_SELECTION = 8
+
+internal fun canAddSearchSelection(
+    selectedIds: Set<String>,
+    id: String,
+    maxSelections: Int = MAX_SEARCH_BATCH_SELECTION,
+): Boolean = id in selectedIds || selectedIds.size < maxSelections
+
 /**
  * Root navigation can re-emit Link mode after a search-result selection has started analysis.
  * Re-applying the same mode is a synchronization no-op, not a request to cancel that analysis.
@@ -119,7 +127,21 @@ class HomeViewModel(
 
     private var analysisJob: Job? = null
     private var searchJob: Job? = null
+    private var searchRequestGeneration: Long = 0L
     private var downloadJob: Job? = null
+
+    /**
+     * Invalidate the active request before cancelling it. Some HTTP implementations can
+     * finish cancellation late, so the generation check also blocks stale UI writes.
+     */
+    private fun cancelSearchRequest() {
+        searchRequestGeneration += 1L
+        searchJob?.cancel()
+        searchJob = null
+        if (_uiState.value.searching) {
+            _uiState.value = _uiState.value.copy(searching = false)
+        }
+    }
 
     /**
      * Manual typing only updates the editor state. It must not start network analysis.
@@ -128,8 +150,7 @@ class HomeViewModel(
     fun onUrlChanged(value: String) {
         analysisJob?.cancel()
         analysisJob = null
-        searchJob?.cancel()
-        searchJob = null
+        cancelSearchRequest()
 
         _uiState.value = HomeUiState(
             url = value,
@@ -145,8 +166,7 @@ class HomeViewModel(
     fun setUrlAndAnalyze(value: String) {
         analysisJob?.cancel()
         analysisJob = null
-        searchJob?.cancel()
-        searchJob = null
+        cancelSearchRequest()
 
         val normalized = value.trim()
         val link = analyzer.analyze(normalized)
@@ -200,17 +220,19 @@ class HomeViewModel(
     }
 
     fun searchContent(query: String = _uiState.value.searchQuery) {
+        cancelSearchRequest()
+        val requestGeneration = searchRequestGeneration
         val normalized = query.trim()
         if (normalized.isBlank()) {
             _uiState.value = _uiState.value.copy(
                 searching = false,
                 searchResults = emptyList(),
                 searchError = "اكتب كلمة أو جملة للبحث أولًا.",
+                selectedSearchIds = emptySet(),
             )
             return
         }
 
-        searchJob?.cancel()
         _uiState.value = _uiState.value.copy(
             searchQuery = normalized,
             searching = true,
@@ -227,6 +249,8 @@ class HomeViewModel(
         searchJob = viewModelScope.launch {
             try {
                 val results = searchProvider.search(normalized)
+                if (requestGeneration != searchRequestGeneration) return@launch
+                searchJob = null
                 _uiState.value = _uiState.value.copy(
                     searching = false,
                     searchResults = results,
@@ -235,6 +259,8 @@ class HomeViewModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Throwable) {
+                if (requestGeneration != searchRequestGeneration) return@launch
+                searchJob = null
                 logger.log(
                     DiagnosticLevel.WARNING,
                     "SEARCH_FAILED",
@@ -262,8 +288,7 @@ class HomeViewModel(
 
                 analysisJob?.cancel()
                 analysisJob = null
-                searchJob?.cancel()
-                searchJob = null
+                cancelSearchRequest()
                 _uiState.value = _uiState.value.copy(
                     mode = HomeMode.Link,
                     searching = false,
@@ -287,6 +312,7 @@ class HomeViewModel(
     fun enterSearchMode() {
         analysisJob?.cancel()
         analysisJob = null
+        cancelSearchRequest()
         _uiState.value = _uiState.value.copy(
             url = "",
             analyzing = false,
@@ -306,9 +332,10 @@ class HomeViewModel(
     }
 
     fun onSearchQueryChanged(value: String) {
-        searchJob?.cancel()
+        cancelSearchRequest()
         _uiState.value = _uiState.value.copy(
             searchQuery = value,
+            searching = false,
             searchResults = if (value == _uiState.value.searchQuery) _uiState.value.searchResults else emptyList(),
             searchError = null,
             selectedSearchIds = if (value == _uiState.value.searchQuery) _uiState.value.selectedSearchIds else emptySet(),
@@ -329,9 +356,19 @@ class HomeViewModel(
         if (_uiState.value.batchDownloading) return
         val item = _uiState.value.searchResults.firstOrNull { it.id == id } ?: return
         if (item.kind == ContentSearchKind.CHANNEL) return
-        val selected = _uiState.value.selectedSearchIds.toMutableSet()
+        val selectedIds = _uiState.value.selectedSearchIds
+        if (!canAddSearchSelection(selectedIds, id)) {
+            _uiState.value = _uiState.value.copy(
+                batchError = "يمكن تحديد $MAX_SEARCH_BATCH_SELECTION عناصر كحد أقصى في الدفعة الواحدة.",
+            )
+            return
+        }
+        val selected = selectedIds.toMutableSet()
         if (!selected.add(id)) selected.remove(id)
-        _uiState.value = _uiState.value.copy(selectedSearchIds = selected)
+        _uiState.value = _uiState.value.copy(
+            selectedSearchIds = selected,
+            batchError = null,
+        )
     }
 
     fun clearSearchSelection() {
@@ -342,7 +379,7 @@ class HomeViewModel(
         if (_uiState.value.batchDownloading) return
         val selected = items.filter {
             it.kind != ContentSearchKind.CHANNEL && it.id in _uiState.value.selectedSearchIds
-        }.take(8)
+        }.take(MAX_SEARCH_BATCH_SELECTION)
         if (selected.isEmpty()) {
             _uiState.value = _uiState.value.copy(batchError = "حدد نتيجة واحدة على الأقل.")
             return
@@ -425,7 +462,7 @@ class HomeViewModel(
 
     fun openSearchResult(item: ContentSearchItem) {
         if (item.kind == ContentSearchKind.CHANNEL) return
-        searchJob?.cancel()
+        cancelSearchRequest()
         _uiState.value = _uiState.value.copy(searchQuery = item.title, mode = HomeMode.Link)
         setUrlAndAnalyze(item.url)
     }
@@ -1248,7 +1285,7 @@ class HomeViewModel(
 
     override fun onCleared() {
         analysisJob?.cancel()
-        searchJob?.cancel()
+        cancelSearchRequest()
         downloadJob?.cancel()
         super.onCleared()
     }
