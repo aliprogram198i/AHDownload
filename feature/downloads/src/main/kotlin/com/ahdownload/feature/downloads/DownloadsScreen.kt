@@ -329,6 +329,7 @@ private fun DownloadsScreen(
     var query by remember { mutableStateOf("") }
     var favoritesOnly by remember { mutableStateOf(false) }
     var mediaFilter by remember { mutableStateOf(DownloadMediaFilter.All) }
+    var statusFilter by remember { mutableStateOf(DownloadStatusFilter.All) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
     var pendingRename by remember { mutableStateOf<DownloadRecord?>(null) }
@@ -346,14 +347,15 @@ private fun DownloadsScreen(
     }
 
     val normalizedQuery = query.trim().lowercase(Locale.ROOT)
-    val filtered = remember(records, favoritesOnly, normalizedQuery, favorites) {
+    val filtered = remember(records, favoritesOnly, normalizedQuery, favorites, statusFilter) {
         records
             .filter { record ->
+                val matchesStatus = statusFilter.matches(record.status)
                 val matchesFavorite = !favoritesOnly ||
                     FavoriteKey.fromUrl(record.task.sourcePageUrl ?: record.task.sourceUrl) in favorites
                 val title = record.task.displayName.orEmpty()
                 val path = record.task.destinationPath
-                matchesFavorite && (
+                matchesStatus && matchesFavorite && (
                     normalizedQuery.isBlank() ||
                         title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
                         path.lowercase(Locale.ROOT).contains(normalizedQuery)
@@ -383,7 +385,11 @@ private fun DownloadsScreen(
     val activeCount = records.count { it.status.isActivelyRunning }
     val pausedCount = records.count { it.status == DownloadStatus.PAUSED }
     val completedCount = records.count { it.status == DownloadStatus.COMPLETED }
-    val failedCount = records.count { it.status == DownloadStatus.FAILED }
+    val statusCounts = remember(records) {
+        DownloadStatusFilter.entries.associateWith { filter ->
+            records.count { filter.matches(it.status) }
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -628,6 +634,45 @@ private fun DownloadsScreen(
                         placeholder = { Text("ابحث في سجل التنزيلات") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                     )
+                }
+
+                item(key = "download-status-filters") {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            "الحالة",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(DownloadStatusFilter.entries, key = { it.name }) { filter ->
+                                val icon = when (filter) {
+                                    DownloadStatusFilter.All -> Icons.Rounded.Download
+                                    DownloadStatusFilter.Active -> Icons.Rounded.PlayArrow
+                                    DownloadStatusFilter.Paused -> Icons.Rounded.Pause
+                                    DownloadStatusFilter.Completed -> Icons.Rounded.CheckCircle
+                                    DownloadStatusFilter.Failed -> Icons.Rounded.ErrorOutline
+                                    DownloadStatusFilter.Cancelled -> Icons.Rounded.Cancel
+                                }
+                                DiagnosticFilterChip(
+                                    trackingScreen = "DOWNLOADS",
+                                    trackingId = "DOWNLOADS.status-filter.${filter.name.lowercase(Locale.ROOT)}",
+                                    trackingLabel = filter.label,
+                                    disabledReason = "none",
+                                    selected = filter == statusFilter,
+                                    onClick = { statusFilter = filter },
+                                    label = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        ) {
+                                            Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Text("${filter.label} · ${statusCounts[filter] ?: 0}")
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
 
                 item {
