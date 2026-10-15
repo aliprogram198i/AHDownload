@@ -558,7 +558,16 @@ class HomeViewModel(
                 "INVALID_URL",
                 "الرابط غير صالح أو غير مدعوم",
                 "home.analyze",
-                emptyMap(),
+                mapOf(
+                    "input_length" to current.length.toString(),
+                    "input_has_http_scheme" to Regex("""^https?://""", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(current).toString(),
+                    "input_has_explicit_scheme" to Regex("""^[A-Za-z][A-Za-z0-9+.-]*://""", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(current).toString(),
+                    "input_has_domain_token" to Regex("""(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}""", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(current).toString(),
+                    "input_contains_whitespace" to current.any(Char::isWhitespace).toString(),
+                ),
                 null,
             )
             _uiState.value = _uiState.value.copy(
