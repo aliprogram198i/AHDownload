@@ -43,7 +43,13 @@ class YouTubeSearchProvider(
                 item.kind == ContentSearchKind.SHORT &&
                 ordered[existingIndex].kind != ContentSearchKind.SHORT
             ) {
-                ordered[existingIndex] = item
+                val existing = ordered[existingIndex]
+                ordered[existingIndex] = item.copy(
+                    thumbnailUrl = item.thumbnailUrl ?: existing.thumbnailUrl,
+                    durationLabel = item.durationLabel ?: existing.durationLabel,
+                    channelLabel = item.channelLabel ?: existing.channelLabel,
+                    subtitle = item.subtitle ?: existing.subtitle,
+                )
             }
         }
         return ordered.take(resultLimit)
