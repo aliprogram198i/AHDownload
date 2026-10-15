@@ -10,20 +10,41 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 class YouTubeSearchProvider(
     private val httpClient: HttpTextClient,
 ) : ContentSearchProvider {
-    override suspend fun search(query: String, limit: Int): List<ContentSearchItem> {
+    override suspend fun search(query: String, limit: Int): List<ContentSearchItem> =
+        search(query, limit, emptyMap())
+
+    override suspend fun search(
+        query: String,
+        limit: Int,
+        diagnosticContext: Map<String, String>,
+    ): List<ContentSearchItem> {
         val normalizedQuery = query.trim()
         require(normalizedQuery.isNotBlank()) { "Search query must not be blank" }
 
         val encoded = URLEncoder.encode(normalizedQuery, StandardCharsets.UTF_8.toString())
+        // Never log the query text itself. Keep only a length and a stable operation ID so
+        // transport failures can be correlated with the user-visible search failure.
+        val operationId = diagnosticContext["operation_id"]
+            ?.takeIf { it.isNotBlank() }
+            ?: UUID.randomUUID().toString()
+        val requestDiagnosticContext = diagnosticContext + mapOf(
+            "diagnostic_operation" to "youtube.search",
+            "operation_id" to operationId,
+            "platform" to "YouTube",
+            "stage" to "SEARCH",
+            "search_query_length" to normalizedQuery.length.toString(),
+        )
         val html = httpClient.get(
             "https://www.youtube.com/results?search_query=$encoded",
             headers = mapOf(
                 "Accept-Language" to "en-US,en;q=0.9",
             ),
+            diagnosticContext = requestDiagnosticContext,
         )
 
         val root = extractInitialData(html)

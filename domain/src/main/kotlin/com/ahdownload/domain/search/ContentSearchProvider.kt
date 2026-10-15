@@ -19,4 +19,14 @@ data class ContentSearchItem(
 
 interface ContentSearchProvider {
     suspend fun search(query: String, limit: Int = 12): List<ContentSearchItem>
+
+    /**
+     * Diagnostic-aware search entry point. Existing providers remain source-compatible;
+     * providers that perform network I/O can propagate this context to their HTTP layer.
+     */
+    suspend fun search(
+        query: String,
+        limit: Int,
+        diagnosticContext: Map<String, String>,
+    ): List<ContentSearchItem> = search(query, limit)
 }

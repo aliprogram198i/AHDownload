@@ -99,6 +99,7 @@ object DiagnosticReportFormatter {
                     anchor.context["failure_code"] == "AuthenticationRequired" ->
                     "AUTHENTICATION_REQUIRED"
                 anchor.type == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_EXTRACTION_FAILED"
+                anchor.type == "YOUTUBE_SEARCH_FAILED" -> youtubeSearchRootCause(scopedEvents, anchor)
                 anchor.type == "DOWNLOAD_DESTINATION_COPY_FAILED" -> "STORAGE_ERROR"
                 anchor.type == "MEDIASTORE_PUBLISH_FAILED" -> "STORAGE_ERROR"
                 anchor.context["failure_code"] == "ResolverUnavailable" &&
@@ -221,11 +222,43 @@ object DiagnosticReportFormatter {
         }.trimEnd()
     }
 
+    private fun youtubeSearchRootCause(
+        events: List<DiagnosticLog>,
+        error: DiagnosticLog,
+    ): String {
+        val request = events.lastOrNull {
+            it.type == "HTTP_REQUEST" && it.context["stage"] == "SEARCH"
+        }
+        val statusCode = request?.let(::statusCode)
+        if (statusCode != null && statusCode in 400..599) return "HTTP_$statusCode"
+
+        if (request?.context?.get("request_outcome") == "transport_error") {
+            val exceptionType = request.throwableType.orEmpty()
+            return when {
+                "SocketTimeoutException" in exceptionType || "InterruptedIOException" in exceptionType -> "TIMEOUT"
+                "UnknownHostException" in exceptionType -> "DNS_FAILURE"
+                "SSLHandshakeException" in exceptionType || "SSLException" in exceptionType -> "TLS_FAILURE"
+                "ConnectException" in exceptionType -> "CONNECTION_FAILURE"
+                "SocketException" in exceptionType -> "CONNECTION_RESET"
+                else -> "IO_FAILURE"
+            }
+        }
+
+        return if (
+            error.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true
+        ) {
+            "YOUTUBE_SEARCH_PAYLOAD_UNAVAILABLE"
+        } else {
+            "YOUTUBE_SEARCH_FAILED"
+        }
+    }
+
     private fun classify(status: String, rootCause: String, log: DiagnosticLog): String =
         if (status == "OK") {
             if (log.type.contains("SMART_CENTER", ignoreCase = true)) "UI_FLOW" else "COMPLETED"
         } else when {
             rootCause.startsWith("HTTP_") || isNetworkFailureCause(rootCause) -> "NETWORK"
+            log.type == "YOUTUBE_SEARCH_FAILED" -> "YOUTUBE_SEARCH"
             rootCause == "YOUTUBE_BOT_CHALLENGE" -> "UPSTREAM_CHALLENGE"
             rootCause == "AUTHENTICATION_REQUIRED" -> "AUTHENTICATION"
             rootCause == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_PROCESSING"
@@ -267,7 +300,10 @@ object DiagnosticReportFormatter {
             classification == "NETWORK" && rootCause == "HTTP_403" && isYouTube &&
                 captureEvidence?.context["browser_media_observed"] == "0" ->
                 "INSPECT_BROWSER_MEDIA_CAPTURE"
+            classification == "NETWORK" && isYouTube &&
+                events.any { it.type == "YOUTUBE_SEARCH_FAILED" } -> "INSPECT_YOUTUBE_SEARCH_REQUEST"
             classification == "NETWORK" -> "INSPECT_REQUEST_CONTEXT"
+            classification == "YOUTUBE_SEARCH" -> "INSPECT_YOUTUBE_SEARCH_RESPONSE"
             classification == "MEDIA_RESOLUTION" -> "INSPECT_RESOLVER"
             classification == "MEDIA_VALIDATION" -> "INSPECT_VALIDATION"
             classification == "AUDIO_PROCESSING" -> "INSPECT_AUDIO_PROCESSOR"
@@ -364,6 +400,21 @@ object DiagnosticReportFormatter {
         accepted: Int,
     ): String {
         if (latestError == null) return "NONE"
+
+        if (latestError.type == "YOUTUBE_SEARCH_FAILED") {
+            val request = events.lastOrNull {
+                it.type == "HTTP_REQUEST" && it.context["stage"] == "SEARCH"
+            }
+            val code = request?.let(::statusCode)
+            return when {
+                code != null && code in 400..599 -> "search -> http_request_failed:HTTP_$code"
+                request?.context?.get("request_outcome") == "transport_error" ->
+                    "search -> network_transport_failed"
+                latestError.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true ->
+                    "search -> response_payload_unavailable"
+                else -> "search -> request_or_response_failed"
+            }
+        }
 
         val networkFailure = networkFailureCategory(events)
         if (latestError.context["failure_code"] == "ResolverUnavailable" && networkFailure != null) {
