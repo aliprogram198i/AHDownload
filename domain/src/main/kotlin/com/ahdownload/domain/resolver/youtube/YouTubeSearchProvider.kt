@@ -85,6 +85,7 @@ class YouTubeSearchProvider(
         var assignmentCount = 0
         var lastValueKind = "unknown"
         var lastFailureStage = "assignment_not_found"
+        var lastExpressionDiagnostics = PayloadExpressionDiagnostics()
 
         for (assignment in INITIAL_DATA_ASSIGNMENT.findAll(html)) {
             assignmentCount++
@@ -93,6 +94,9 @@ class YouTubeSearchProvider(
             val json = extractAssignedJson(html, valueStart)
             if (json == null) {
                 lastFailureStage = "expression_decode"
+                lastExpressionDiagnostics = diagnosePayloadExpression(
+                    html, valueStart, assignment.range.first, assignmentCount, lastFailureStage,
+                )
                 continue
             }
 
@@ -101,10 +105,16 @@ class YouTubeSearchProvider(
             }.getOrNull()
             if (parsed == null) {
                 lastFailureStage = "json_syntax"
+                lastExpressionDiagnostics = diagnosePayloadExpression(
+                    html, valueStart, assignment.range.first, assignmentCount, lastFailureStage,
+                )
                 continue
             }
             if (!looksLikeInitialData(parsed)) {
                 lastFailureStage = "root_shape"
+                lastExpressionDiagnostics = diagnosePayloadExpression(
+                    html, valueStart, assignment.range.first, assignmentCount, lastFailureStage,
+                )
                 continue
             }
 
@@ -121,6 +131,7 @@ class YouTubeSearchProvider(
             assignmentCount = assignmentCount,
             assignmentValueKind = lastValueKind,
             failureStage = lastFailureStage,
+            expressionDiagnostics = lastExpressionDiagnostics,
         )
     }
 
@@ -133,20 +144,278 @@ class YouTubeSearchProvider(
             position >= source.length -> "empty"
             source[position] == '{' -> "object"
             source[position] == '(' -> "parenthesized_expression"
-            source.regionMatches(position, "JSON.parse", 0, "JSON.parse".length) &&
-                source.indexOf("decodeURIComponent", position) >= 0 ->
-                "json_parse_decode_uri"
-            source.regionMatches(position, "JSON.parse", 0, "JSON.parse".length) &&
-                source.indexOf("atob", position) >= 0 ->
-                "json_parse_base64"
-            source.regionMatches(position, "JSON.parse", 0, "JSON.parse".length) ->
-                "json_parse"
-            source.regionMatches(position, "Object.freeze", 0, "Object.freeze".length) ->
-                "object_freeze"
+            isJsonParseWrapper(source, position, "decodeURIComponent") -> "json_parse_decode_uri"
+            isJsonParseWrapper(source, position, "atob") -> "json_parse_base64"
+            callArgumentStart(source, position, "JSON.parse") != null -> "json_parse"
+            callArgumentStart(source, position, "Object.freeze") != null -> "object_freeze"
             source[position] == '"' || source[position] == '\'' || source[position] == '\u0060' ->
                 "string_literal"
             else -> "unsupported_expression"
         }
+    }
+
+    private fun isJsonParseWrapper(source: String, start: Int, wrapper: String): Boolean {
+        val argument = callArgumentStart(source, start, "JSON.parse") ?: return false
+        return callArgumentStart(source, skipJavaScriptTrivia(source, argument), wrapper) != null
+    }
+
+    private fun diagnosePayloadExpression(
+        source: String,
+        expressionStart: Int,
+        assignmentOffset: Int,
+        assignmentAttempt: Int,
+        failureStage: String,
+    ): PayloadExpressionDiagnostics {
+        val position = skipJavaScriptTrivia(source, expressionStart)
+        val argumentStart = callArgumentStart(source, position, "JSON.parse")
+        val wrapper = when {
+            argumentStart != null -> "json_parse"
+            callArgumentStart(source, position, "Object.freeze") != null -> "object_freeze"
+            position < source.length && source[position] == '(' -> "parenthesized"
+            position < source.length && source[position] == '{' -> "direct_object"
+            else -> "none"
+        }
+
+        if (argumentStart == null) {
+            val end = scanAssignmentExpressionEnd(source, position)
+            return PayloadExpressionDiagnostics(
+                wrapper = wrapper,
+                kind = classifyExpressionKind(source, position, end.endExclusive),
+                resolution = "not_applicable",
+                failureDetail = when (failureStage) {
+                    "json_syntax" -> "decoded_json_syntax_invalid"
+                    "root_shape" -> "decoded_json_root_shape_unexpected"
+                    else -> "unsupported_expression_shape"
+                },
+                expressionLength = (end.endExclusive - position).coerceAtLeast(0),
+                expressionStartOffset = position,
+                assignmentOffset = assignmentOffset,
+                assignmentAttempt = assignmentAttempt,
+                scriptIndex = scriptIndexAt(source, assignmentOffset),
+                argumentCount = 0,
+                argumentTermination = end.termination,
+            )
+        }
+
+        val normalizedArgumentStart = skipJavaScriptTrivia(source, argumentStart)
+        val span = findCallArgumentEnd(source, normalizedArgumentStart)
+        val kind = classifyExpressionKind(source, normalizedArgumentStart, span.endExclusive)
+        val identifierEnd = readJavaScriptIdentifierEnd(source, normalizedArgumentStart)
+        val resolution = if (kind == "identifier_reference" && identifierEnd != null) {
+            diagnoseStaticIdentifierResolution(
+                source,
+                source.substring(normalizedArgumentStart, identifierEnd),
+                normalizedArgumentStart,
+            )
+        } else "not_applicable"
+        val detail = when (failureStage) {
+            "json_syntax" -> "decoded_json_syntax_invalid"
+            "root_shape" -> "decoded_json_root_shape_unexpected"
+            else -> when {
+                span.termination == "comma" -> "unsupported_json_parse_second_argument"
+                span.termination == "unclosed_call" -> "json_parse_call_unterminated"
+                kind == "identifier_reference" -> when (resolution) {
+                    "static_string_declaration_resolvable" ->
+                        "static_identifier_suffix_or_delimiter_unsupported"
+                    "same_script_initializer_not_static_string" ->
+                        "static_identifier_initializer_unsupported"
+                    "declaration_outside_current_script" ->
+                        "static_identifier_declared_in_other_script"
+                    else -> "unresolved_static_identifier"
+                }
+                kind == "nested_function_call" -> "unsupported_nested_function_call"
+                kind == "member_reference" || kind == "computed_reference" ->
+                    "unsupported_member_expression"
+                kind == "dynamic_template_literal" -> "dynamic_template_literal_unsupported"
+                kind == "string_literal" || kind == "static_template_literal" ->
+                    "quoted_string_decode_failed_or_unexpected_suffix"
+                else -> "unsupported_expression_shape"
+            }
+        }
+        return PayloadExpressionDiagnostics(
+            wrapper = wrapper,
+            kind = kind,
+            resolution = resolution,
+            failureDetail = detail,
+            expressionLength = (span.endExclusive - normalizedArgumentStart).coerceAtLeast(0),
+            expressionStartOffset = normalizedArgumentStart,
+            assignmentOffset = assignmentOffset,
+            assignmentAttempt = assignmentAttempt,
+            scriptIndex = scriptIndexAt(source, assignmentOffset),
+            argumentCount = if (span.termination == "comma") 2
+                else if (span.termination == "closing_paren") 1 else 0,
+            argumentTermination = span.termination,
+        )
+    }
+
+    private data class ExpressionSpan(val endExclusive: Int, val termination: String)
+
+    private fun findCallArgumentEnd(source: String, start: Int): ExpressionSpan {
+        var parentheses = 0
+        var brackets = 0
+        var braces = 0
+        var quote: Char? = null
+        var escaped = false
+        var index = start
+        while (index < source.length) {
+            val ch = source[index]
+            if (quote != null) {
+                if (escaped) escaped = false
+                else if (ch == '\\') escaped = true
+                else if (ch == quote) quote = null
+                index++
+                continue
+            }
+            if (source.startsWith("//", index)) {
+                val newline = source.indexOf('\n', index + 2)
+                index = if (newline < 0) source.length else newline + 1
+                continue
+            }
+            if (source.startsWith("/*", index)) {
+                val close = source.indexOf("*/", index + 2)
+                index = if (close < 0) source.length else close + 2
+                continue
+            }
+            when (ch) {
+                '"', '\'', '\u0060' -> quote = ch
+                '(' -> parentheses++
+                ')' -> {
+                    if (parentheses == 0 && brackets == 0 && braces == 0) {
+                        return ExpressionSpan(index, "closing_paren")
+                    }
+                    if (parentheses > 0) parentheses--
+                }
+                '[' -> brackets++
+                ']' -> if (brackets > 0) brackets--
+                '{' -> braces++
+                '}' -> if (braces > 0) braces--
+                ',' -> if (parentheses == 0 && brackets == 0 && braces == 0) {
+                    return ExpressionSpan(index, "comma")
+                }
+            }
+            index++
+        }
+        return ExpressionSpan(source.length, "unclosed_call")
+    }
+
+    private fun scanAssignmentExpressionEnd(source: String, start: Int): ExpressionSpan {
+        var parentheses = 0
+        var brackets = 0
+        var braces = 0
+        var quote: Char? = null
+        var escaped = false
+        var index = start
+        while (index < source.length) {
+            val ch = source[index]
+            if (quote != null) {
+                if (escaped) escaped = false
+                else if (ch == '\\') escaped = true
+                else if (ch == quote) quote = null
+                index++
+                continue
+            }
+            if (source.startsWith("//", index)) {
+                val newline = source.indexOf('\n', index + 2)
+                index = if (newline < 0) source.length else newline + 1
+                continue
+            }
+            if (source.startsWith("/*", index)) {
+                val close = source.indexOf("*/", index + 2)
+                index = if (close < 0) source.length else close + 2
+                continue
+            }
+            when (ch) {
+                '"', '\'', '\u0060' -> quote = ch
+                '(' -> parentheses++
+                ')' -> if (parentheses > 0) parentheses-- else return ExpressionSpan(index, "closing_paren")
+                '[' -> brackets++
+                ']' -> if (brackets > 0) brackets--
+                '{' -> braces++
+                '}' -> if (braces > 0) braces-- else return ExpressionSpan(index, "closing_brace")
+                ';' -> if (parentheses == 0 && brackets == 0 && braces == 0) {
+                    return ExpressionSpan(index, "semicolon")
+                }
+            }
+            index++
+        }
+        return ExpressionSpan(source.length, "end_of_response")
+    }
+
+    private fun classifyExpressionKind(source: String, start: Int, endExclusive: Int): String {
+        val position = skipJavaScriptTrivia(source, start)
+        val end = endExclusive.coerceIn(position, source.length)
+        if (position >= end) return "empty_expression"
+        return when {
+            source[position] == '"' || source[position] == '\'' -> "string_literal"
+            source[position] == '\u0060' -> {
+                val quotedEnd = findQuotedStringEnd(source, position)
+                if (quotedEnd != null && quotedEnd < end &&
+                    source.substring(position + 1, quotedEnd).contains("${")
+                ) "dynamic_template_literal" else "static_template_literal"
+            }
+            source[position] == '(' -> "parenthesized_expression"
+            source[position] == '{' -> "object_expression"
+            source[position] == '[' -> "array_expression"
+            readJavaScriptIdentifierEnd(source, position) != null -> {
+                val identifierEnd = readJavaScriptIdentifierEnd(source, position)!!
+                val next = skipJavaScriptTrivia(source, identifierEnd).coerceAtMost(end)
+                when {
+                    next < end && source[next] == '.' -> "member_reference"
+                    next < end && source[next] == '[' -> "computed_reference"
+                    next < end && source[next] == '(' -> "nested_function_call"
+                    else -> "identifier_reference"
+                }
+            }
+            source[position].isDigit() -> "numeric_expression"
+            source[position] in charArrayOf('!', '+', '-', '~') -> "operator_expression"
+            else -> "other_expression"
+        }
+    }
+
+    private fun diagnoseStaticIdentifierResolution(
+        source: String,
+        identifier: String,
+        referencePosition: Int,
+    ): String {
+        val scriptStart = source.lastIndexOf("<script", referencePosition, ignoreCase = true)
+        val scriptEnd = source.lastIndexOf("</script", referencePosition, ignoreCase = true)
+        if (scriptStart < 0 || scriptStart < scriptEnd) return "script_scope_not_found"
+        val bodyStart = source.indexOf('>', scriptStart)
+            .takeIf { it >= 0 && it < referencePosition }?.plus(1)
+            ?: return "script_body_not_found"
+        val scope = source.substring(bodyStart, referencePosition)
+        val pattern = Regex("\\b(?:var|let|const)\\s+" + Regex.escape(identifier) + "\\s*=")
+        val declarations = pattern.findAll(scope).toList().asReversed()
+        for (match in declarations) {
+            val declarationOffset = bodyStart + match.range.first
+            if (!isJavaScriptCodePosition(source, bodyStart, declarationOffset)) continue
+            if (resolveStaticStringVariable(source, identifier, referencePosition, 0) != null) {
+                return "static_string_declaration_resolvable"
+            }
+            return "same_script_initializer_not_static_string"
+        }
+        if (pattern.containsMatchIn(source.substring(0, scriptStart.coerceAtLeast(0)))) {
+            return "declaration_outside_current_script"
+        }
+        return "no_prior_static_declaration"
+    }
+
+    private fun scriptIndexAt(source: String, offset: Int): Int =
+        SCRIPT_OPENING.findAll(source.substring(0, offset.coerceIn(0, source.length))).count()
+
+    private fun responseMarkerProfile(source: String): String {
+        val markers = listOf(
+            "yt_initial_data" to source.contains("ytInitialData", ignoreCase = true),
+            "ytcfg_set" to source.contains("ytcfg.set", ignoreCase = true),
+            "ytcfg_data" to source.contains("ytcfg.data_", ignoreCase = true),
+            "video_renderer" to source.contains("videoRenderer", ignoreCase = true),
+            "search_results_renderer" to source.contains("twoColumnSearchResultsRenderer", ignoreCase = true),
+            "consent_gate" to source.contains("consent.youtube.com", ignoreCase = true) ||
+                source.contains("before you continue to youtube", ignoreCase = true),
+            "bot_challenge" to source.contains("unusual traffic", ignoreCase = true) ||
+                source.contains("not a robot", ignoreCase = true),
+        )
+        return markers.filter { it.second }.joinToString(",") { it.first }.ifEmpty { "none" }
     }
 
     private fun extractAssignedJson(source: String, start: Int, depth: Int = 0): String? {
@@ -509,6 +778,18 @@ class YouTubeSearchProvider(
             assignmentCount = extraction.assignmentCount,
             assignmentValueKind = extraction.assignmentValueKind,
             parserFailureStage = extraction.failureStage,
+            expressionWrapper = extraction.expressionDiagnostics.wrapper,
+            expressionKind = extraction.expressionDiagnostics.kind,
+            expressionResolution = extraction.expressionDiagnostics.resolution,
+            expressionFailureDetail = extraction.expressionDiagnostics.failureDetail,
+            expressionLength = extraction.expressionDiagnostics.expressionLength,
+            expressionStartOffset = extraction.expressionDiagnostics.expressionStartOffset,
+            assignmentOffset = extraction.expressionDiagnostics.assignmentOffset,
+            assignmentAttempt = extraction.expressionDiagnostics.assignmentAttempt,
+            assignmentScriptIndex = extraction.expressionDiagnostics.scriptIndex,
+            jsonParseArgumentCount = extraction.expressionDiagnostics.argumentCount,
+            jsonParseArgumentTermination = extraction.expressionDiagnostics.argumentTermination,
+            responseMarkerProfile = responseMarkerProfile(html),
         )
     }
 
@@ -517,6 +798,21 @@ class YouTubeSearchProvider(
         val assignmentCount: Int,
         val assignmentValueKind: String,
         val failureStage: String,
+        val expressionDiagnostics: PayloadExpressionDiagnostics = PayloadExpressionDiagnostics(),
+    )
+
+    private data class PayloadExpressionDiagnostics(
+        val wrapper: String = "unknown",
+        val kind: String = "unknown",
+        val resolution: String = "not_applicable",
+        val failureDetail: String = "unknown",
+        val expressionLength: Int = 0,
+        val expressionStartOffset: Int = -1,
+        val assignmentOffset: Int = -1,
+        val assignmentAttempt: Int = 0,
+        val scriptIndex: Int = 0,
+        val argumentCount: Int = 0,
+        val argumentTermination: String = "unknown",
     )
 
     private fun extractBalancedJson(source: String, start: Int): String? {
@@ -710,6 +1006,7 @@ class YouTubeSearchProvider(
         val INITIAL_DATA_ASSIGNMENT = Regex(
             """(?:window\s*\[\s*["']ytInitialData["']\s*]|window\s*\.\s*ytInitialData|\b(?:var|let|const)\s+ytInitialData\b|\bytInitialData\b)\s*=\s*""",
         )
+        val SCRIPT_OPENING = Regex("""(?i)<script\b""")
         val INITIAL_DATA_ROOT_KEYS = setOf(
             "contents",
             "responseContext",
@@ -742,4 +1039,16 @@ class YouTubeSearchPayloadException(
     val assignmentCount: Int,
     val assignmentValueKind: String,
     val parserFailureStage: String,
+    val expressionWrapper: String = "unknown",
+    val expressionKind: String = "unknown",
+    val expressionResolution: String = "not_applicable",
+    val expressionFailureDetail: String = "unknown",
+    val expressionLength: Int = 0,
+    val expressionStartOffset: Int = -1,
+    val assignmentOffset: Int = -1,
+    val assignmentAttempt: Int = 0,
+    val assignmentScriptIndex: Int = 0,
+    val jsonParseArgumentCount: Int = 0,
+    val jsonParseArgumentTermination: String = "unknown",
+    val responseMarkerProfile: String = "unknown",
 ) : IllegalStateException("YouTube search payload unavailable")
