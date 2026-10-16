@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
@@ -265,6 +266,9 @@ private fun HomeScreen(
     val androidContext = LocalContext.current
     val visibleSearchResults = remember(state.searchResults, state.searchFilter) {
         filterYouTubeSearchResults(state.searchResults, state.searchFilter)
+    }
+    val searchResultCounts = remember(state.searchResults) {
+        countYouTubeSearchResults(state.searchResults)
     }
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
@@ -851,28 +855,51 @@ private fun HomeScreen(
 
                 if (state.searchResults.isNotEmpty()) {
                     item {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text(
-                                "نتائج البحث",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (state.selectedSearchIds.isNotEmpty()) {
-                                DiagnosticTextButton(
-                                    trackingScreen = "HOME",
-                                    trackingId = "HOME.textbutton.01",
-                                    trackingLabel = "مسح التحديد",
-                                    disabledReason = "callsite_precondition_not_explicit",
-                                    onClick = {
-                                        uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
-                                        onClearSearchSelection()
-                                    },
-                                ) { Text("مسح التحديد") }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "نتائج البحث",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                ) {
+                                    Text(
+                                        "${searchResultCounts.all} نتيجة",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                if (state.selectedSearchIds.isNotEmpty()) {
+                                    DiagnosticTextButton(
+                                        trackingScreen = "HOME",
+                                        trackingId = "HOME.textbutton.01",
+                                        trackingLabel = "مسح التحديد",
+                                        disabledReason = "callsite_precondition_not_explicit",
+                                        onClick = {
+                                            uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
+                                            onClearSearchSelection()
+                                        },
+                                    ) { Text("مسح التحديد") }
+                                }
                             }
+                            Text(
+                                "نتائج «${state.searchQuery}» مرتبة حسب ما أعاده YouTube",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     item {
@@ -890,7 +917,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "all")
                                         onSearchFilterChanged(YouTubeSearchFilter.All)
                                     },
-                                    label = { Text("الكل") },
+                                    label = { Text("الكل · ${searchResultCounts.all}") },
                                 )
                             }
                             item {
@@ -904,7 +931,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "videos")
                                         onSearchFilterChanged(YouTubeSearchFilter.Videos)
                                     },
-                                    label = { Text("الفيديوهات") },
+                                    label = { Text("الفيديوهات · ${searchResultCounts.videos}") },
                                 )
                             }
                             item {
@@ -918,7 +945,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "shorts")
                                         onSearchFilterChanged(YouTubeSearchFilter.Shorts)
                                     },
-                                    label = { Text("Shorts") },
+                                    label = { Text("Shorts · ${searchResultCounts.shorts}") },
                                 )
                             }
                             item {
@@ -932,7 +959,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "channels")
                                         onSearchFilterChanged(YouTubeSearchFilter.Channels)
                                     },
-                                    label = { Text("القنوات") },
+                                    label = { Text("القنوات · ${searchResultCounts.channels}") },
                                 )
                             }
                         }
@@ -1314,22 +1341,22 @@ private fun SearchResultCard(
     onToggleSelection: () -> Unit,
     onClick: () -> Unit,
 ) {
+    val thumbnailShape = when (item.kind) {
+        ContentSearchKind.VIDEO -> RoundedCornerShape(12.dp)
+        ContentSearchKind.SHORT -> RoundedCornerShape(14.dp)
+        ContentSearchKind.CHANNEL -> CircleShape
+    }
     val thumbnailModifier = when (item.kind) {
-        ContentSearchKind.VIDEO -> Modifier
-            .size(width = 112.dp, height = 70.dp)
-            .clip(RoundedCornerShape(12.dp))
-        ContentSearchKind.SHORT -> Modifier
-            .size(width = 76.dp, height = 112.dp)
-            .clip(RoundedCornerShape(12.dp))
-        ContentSearchKind.CHANNEL -> Modifier
-            .size(60.dp)
-            .clip(CircleShape)
+        ContentSearchKind.VIDEO -> Modifier.size(width = 124.dp, height = 78.dp)
+        ContentSearchKind.SHORT -> Modifier.size(width = 78.dp, height = 112.dp)
+        ContentSearchKind.CHANNEL -> Modifier.size(60.dp)
     }
     val typeLabel = when (item.kind) {
         ContentSearchKind.VIDEO -> "فيديو"
         ContentSearchKind.SHORT -> "Shorts"
         ContentSearchKind.CHANNEL -> "قناة"
     }
+    val cardShape = RoundedCornerShape(18.dp)
 
     Card(
         modifier = Modifier
@@ -1340,59 +1367,119 @@ private fun SearchResultCard(
                 trackingLabel = "search_result_${item.kind.name.lowercase()}",
                 onClick = onClick,
             ),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 2.dp else 0.dp),
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MediaThumbnail(
-                url = item.thumbnailUrl,
-                contentDescription = "الصورة المصغرة: " + item.title,
-                modifier = thumbnailModifier,
-            )
+            Box(
+                modifier = thumbnailModifier.clip(thumbnailShape),
+            ) {
+                MediaThumbnail(
+                    url = item.thumbnailUrl,
+                    contentDescription = "الصورة المصغرة: " + item.title,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (item.kind != ContentSearchKind.CHANNEL) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(30.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.78f),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Rounded.PlayArrow,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.inverseOnSurface,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    item.durationLabel
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { duration ->
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(4.dp),
+                                shape = RoundedCornerShape(5.dp),
+                                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f),
+                            ) {
+                                Text(
+                                    duration,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                                )
+                            }
+                        }
+                }
+            }
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
                     item.title,
+                    style = MaterialTheme.typography.titleSmall,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    Text(
-                        typeLabel,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(7.dp),
+                        color = when (item.kind) {
+                            ContentSearchKind.VIDEO -> MaterialTheme.colorScheme.secondaryContainer
+                            ContentSearchKind.SHORT -> MaterialTheme.colorScheme.tertiaryContainer
+                            ContentSearchKind.CHANNEL -> MaterialTheme.colorScheme.primaryContainer
+                        },
+                    ) {
+                        Text(
+                            typeLabel,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = when (item.kind) {
+                                ContentSearchKind.VIDEO -> MaterialTheme.colorScheme.onSecondaryContainer
+                                ContentSearchKind.SHORT -> MaterialTheme.colorScheme.onTertiaryContainer
+                                ContentSearchKind.CHANNEL -> MaterialTheme.colorScheme.onPrimaryContainer
+                            },
+                        )
+                    }
+                    item.channelLabel?.takeIf { it.isNotBlank() }?.let { channel ->
+                        Text(
+                            channel,
+                            modifier = Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                item.channelLabel?.let {
+                item.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
                     Text(
-                        it,
+                        subtitle,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                item.subtitle?.let {
-                    Text(
-                        it,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                item.durationLabel?.let {
-                    Text(
-                        it,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
