@@ -265,6 +265,58 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesRegularVideoWithContextRendererInInnertubeSearchResults() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            window["ytInitialData"] = {"contents":{
+              "reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}
+            }};
+        </script></html>"""
+        val response = """{
+          "contents":{"sectionListRenderer":{"contents":[
+            {"itemSectionRenderer":{"contents":[
+              {"videoWithContextRenderer":{
+                "videoId":"regularVideo123",
+                "headline":{"runs":[{"text":"Regular concert video"}]},
+                "lengthText":{"simpleText":"5:41"},
+                "shortBylineText":{"runs":[{"text":"Music channel"}]},
+                "thumbnail":{"thumbnails":[{"url":"https://img.example/regular-video.jpg"}]},
+                "navigationEndpoint":{"watchEndpoint":{"videoId":"regularVideo123"}}
+              }},
+              {"reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}}
+            ]}}
+          ]}}
+        }"""
+        var postCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postCount++
+                return response
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("music", limit = 12)
+
+        assertEquals("The Shorts-only HTML payload should trigger Innertube fallback.", 1, postCount)
+        assertEquals(listOf("regularVideo123", "short123"), results.map { it.id })
+        assertEquals(ContentSearchKind.VIDEO, results.first().kind)
+        assertEquals("Regular concert video", results.first().title)
+        assertEquals("5:41", results.first().durationLabel)
+        assertEquals("Music channel", results.first().channelLabel)
+        assertEquals("https://img.example/regular-video.jpg", results.first().thumbnailUrl)
+        assertEquals(ContentSearchKind.SHORT, results.last().kind)
+    }
+
+    @Test
     fun parsesModernLockupViewModelVideoResults() = runTest {
         val html = """<html><script>ytInitialData = {"contents":[
           {"lockupViewModel":{
