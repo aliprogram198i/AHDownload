@@ -58,7 +58,9 @@ class YouTubeSearchProvider(
         val minimumUsefulPageResults = minOf(MINIMUM_USEFUL_PAGE_RESULTS, resultLimit)
         val needsFallback = pageResults.size < minimumUsefulPageResults ||
             pageResults.none { it.kind == ContentSearchKind.VIDEO }
-        if (!needsFallback) return pageResults
+        if (!needsFallback) {
+            return ensureChannelResults(pageResults, html, normalizedQuery, requestDiagnosticContext, resultLimit)
+        }
 
         val fallback = fetchInnertubeSearch(
             html = html,
@@ -71,10 +73,16 @@ class YouTubeSearchProvider(
         // The WEB search endpoint can return a valid 200 response whose first result section only
         // contains Shorts; a successful unfiltered response therefore is not enough to stop here.
         if (fallbackResults.any { it.kind == ContentSearchKind.VIDEO }) {
-            return mergeSearchResults(fallbackResults, pageResults, resultLimit)
+            return ensureChannelResults(
+                mergeSearchResults(fallbackResults, pageResults, resultLimit),
+                html, normalizedQuery, requestDiagnosticContext, resultLimit,
+            )
         }
         if (pageResults.any { it.kind == ContentSearchKind.VIDEO }) {
-            return mergeSearchResults(pageResults, fallbackResults, resultLimit)
+            return ensureChannelResults(
+                mergeSearchResults(pageResults, fallbackResults, resultLimit),
+                html, normalizedQuery, requestDiagnosticContext, resultLimit,
+            )
         }
 
         val videoFallback = fetchInnertubeSearch(
@@ -91,14 +99,60 @@ class YouTubeSearchProvider(
                 pageResults,
                 MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING,
             )
-            return mergeSearchResults(videoFallbackResults, otherResults, resultLimit)
+            return ensureChannelResults(
+                mergeSearchResults(videoFallbackResults, otherResults, resultLimit),
+                html, normalizedQuery, requestDiagnosticContext, resultLimit,
+            )
         }
 
-        if (fallbackResults.isNotEmpty()) return mergeSearchResults(fallbackResults, pageResults, resultLimit)
-        if (pageResults.isNotEmpty()) return pageResults
-        if (videoFallback.payload != null || fallback.payload != null) return emptyList()
+        if (fallbackResults.isNotEmpty()) {
+            return ensureChannelResults(
+                mergeSearchResults(fallbackResults, pageResults, resultLimit),
+                html, normalizedQuery, requestDiagnosticContext, resultLimit,
+            )
+        }
+        if (pageResults.isNotEmpty()) {
+            return ensureChannelResults(pageResults, html, normalizedQuery, requestDiagnosticContext, resultLimit)
+        }
+        if (videoFallback.payload != null || fallback.payload != null) {
+            return ensureChannelResults(emptyList(), html, normalizedQuery, requestDiagnosticContext, resultLimit)
+        }
 
         throw createPayloadUnavailableException(html, extraction, videoFallback)
+    }
+
+    /**
+     * The default search feed may be filled with videos and Shorts before the first channel
+     * renderer appears. Search the Channels filter independently when the current result window
+     * has no channel, then reserve a visible slot so the Channels filter is usable in the UI.
+     */
+    private suspend fun ensureChannelResults(
+        results: List<ContentSearchItem>,
+        html: String,
+        query: String,
+        diagnosticContext: Map<String, String>,
+        resultLimit: Int,
+    ): List<ContentSearchItem> {
+        if (results.any { it.kind == ContentSearchKind.CHANNEL }) return results
+
+        val channelFallback = fetchInnertubeSearch(
+            html = html,
+            query = query,
+            diagnosticContext = diagnosticContext,
+            searchParams = CHANNEL_ONLY_SEARCH_PARAMS,
+        )
+        val channelResults = channelFallback.payload
+            ?.let { collectSearchResults(it, MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING) }
+            .orEmpty()
+            .filter { it.kind == ContentSearchKind.CHANNEL }
+        if (channelResults.isEmpty()) return results
+
+        val baseResults = if (results.size >= resultLimit && resultLimit > 1) {
+            results.dropLast(1)
+        } else {
+            results
+        }
+        return mergeSearchResults(baseResults, channelResults, resultLimit)
     }
 
     private fun collectSearchResults(root: JsonObject, resultLimit: Int): List<ContentSearchItem> {
@@ -215,15 +269,15 @@ class YouTubeSearchProvider(
         }
         val fallbackContext = diagnosticContext + mapOf(
             "diagnostic_operation" to "youtube.search.innertube",
-            "search_strategy" to if (searchParams == null) {
-                "INNERTUBE_FALLBACK"
-            } else {
-                "INNERTUBE_VIDEO_FILTER_FALLBACK"
+            "search_strategy" to when (searchParams) {
+                null -> "INNERTUBE_FALLBACK"
+                CHANNEL_ONLY_SEARCH_PARAMS -> "INNERTUBE_CHANNEL_FILTER_FALLBACK"
+                else -> "INNERTUBE_VIDEO_FILTER_FALLBACK"
             },
-            "request_payload_type" to if (searchParams == null) {
-                "search_query_and_client_context"
-            } else {
-                "search_query_client_context_and_video_filter"
+            "request_payload_type" to when (searchParams) {
+                null -> "search_query_and_client_context"
+                CHANNEL_ONLY_SEARCH_PARAMS -> "search_query_client_context_and_channel_filter"
+                else -> "search_query_client_context_and_video_filter"
             },
         )
 
@@ -1207,8 +1261,10 @@ class YouTubeSearchProvider(
     }
 
     private fun parseLockupViewModel(renderer: JsonObject): ContentSearchItem? {
-        if (renderer.getAsJsonPrimitive("contentType")?.asString != "LOCKUP_CONTENT_TYPE_VIDEO") {
-            return null
+        when (renderer.getAsJsonPrimitive("contentType")?.asString) {
+            "LOCKUP_CONTENT_TYPE_CHANNEL" -> return parseChannelLockupViewModel(renderer)
+            "LOCKUP_CONTENT_TYPE_VIDEO" -> Unit
+            else -> return null
         }
         val id = renderer.getAsJsonPrimitive("contentId")?.asString
             ?.takeIf { it.isNotBlank() }
@@ -1250,6 +1306,68 @@ class YouTubeSearchProvider(
             thumbnailUrl = thumbnail,
             durationLabel = duration,
             kind = ContentSearchKind.VIDEO,
+        )
+    }
+
+    private fun parseChannelLockupViewModel(renderer: JsonObject): ContentSearchItem? {
+        val metadata = renderer.getAsJsonObject("metadata")
+            ?.getAsJsonObject("lockupMetadataViewModel")
+        val id = renderer.getAsJsonPrimitive("contentId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.getAsJsonObject("onTap")
+                ?.getAsJsonObject("innertubeCommand")
+                ?.getAsJsonObject("browseEndpoint")
+                ?.getAsJsonPrimitive("browseId")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(metadata?.getAsJsonObject("title")) ?: return null
+        val contentImage = renderer.getAsJsonObject("contentImage")
+        val imageObjects = listOfNotNull(
+            contentImage?.getAsJsonObject("avatarViewModel")
+                ?.getAsJsonObject("avatar")
+                ?.getAsJsonObject("image"),
+            contentImage?.getAsJsonObject("avatarViewModel")
+                ?.getAsJsonObject("image"),
+            contentImage?.getAsJsonObject("thumbnailViewModel")
+                ?.getAsJsonObject("image"),
+            contentImage?.getAsJsonObject("collectionThumbnailViewModel")
+                ?.getAsJsonObject("primaryThumbnail")
+                ?.getAsJsonObject("thumbnailViewModel")
+                ?.getAsJsonObject("image"),
+        )
+        val thumbnail = imageObjects.firstNotNullOfOrNull { image ->
+            image.getAsJsonArray("sources")
+                ?.mapNotNull { source ->
+                    source.takeIf { it.isJsonObject }
+                        ?.asJsonObject
+                        ?.getAsJsonPrimitive("url")
+                        ?.asString
+                        ?.takeIf { it.isNotBlank() }
+                }
+                ?.lastOrNull()
+                ?: image.getAsJsonArray("thumbnails")
+                    ?.mapNotNull { source ->
+                        source.takeIf { it.isJsonObject }
+                            ?.asJsonObject
+                            ?.getAsJsonPrimitive("url")
+                            ?.asString
+                            ?.takeIf { it.isNotBlank() }
+                    }
+                    ?.lastOrNull()
+        }
+        val subtitle = firstText(metadata?.getAsJsonObject("subtitle"))
+            ?: firstText(metadata?.getAsJsonObject("description"))
+        val normalizedThumbnail = thumbnail?.let {
+            if (it.startsWith("//")) "https:$it" else it
+        }
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/channel/$id",
+            thumbnailUrl = normalizedThumbnail,
+            subtitle = subtitle,
+            kind = ContentSearchKind.CHANNEL,
         )
     }
 
@@ -1400,6 +1518,7 @@ class YouTubeSearchProvider(
         )
         const val MINIMUM_USEFUL_PAGE_RESULTS = 6
         const val VIDEO_ONLY_SEARCH_PARAMS = "EgIQAQ%3D%3D"
+        const val CHANNEL_ONLY_SEARCH_PARAMS = "EgIQAg%3D%3D"
         const val MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING = 24
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
         const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
