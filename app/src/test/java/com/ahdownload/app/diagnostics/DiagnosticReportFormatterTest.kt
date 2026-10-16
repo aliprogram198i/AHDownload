@@ -605,6 +605,71 @@ class DiagnosticReportFormatterTest {
     }
 
     @Test
+    fun reportsInnertubeSearchFallbackFailurePrecisely() {
+        val session = "youtube-innertube-session"
+        val operation = "youtube-innertube-operation"
+        val report = DiagnosticReportFormatter.format(
+            listOf(
+                event(
+                    time = 1_000L,
+                    sequence = "1",
+                    type = "HTTP_REQUEST",
+                    level = DiagnosticLevel.INFO,
+                    reason = "http_response_received",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "request_outcome" to "success",
+                        "http_status" to "200",
+                        "search_strategy" to "HTML_PAGE",
+                    ),
+                ),
+                event(
+                    time = 2_000L,
+                    sequence = "2",
+                    type = "HTTP_REQUEST",
+                    level = DiagnosticLevel.INFO,
+                    reason = "http_response_received",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "request_outcome" to "success",
+                        "http_status" to "200",
+                        "search_strategy" to "INNERTUBE_FALLBACK",
+                        "request_method" to "POST",
+                    ),
+                ),
+                event(
+                    time = 3_000L,
+                    sequence = "3",
+                    type = "YOUTUBE_SEARCH_FAILED",
+                    level = DiagnosticLevel.ERROR,
+                    reason = "YouTube search payload unavailable",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "payload_failure_reason" to "initial_data_parse_failed",
+                        "payload_parser_failure_stage" to "expression_decode",
+                        "payload_fallback_attempted" to "true",
+                        "payload_fallback_outcome" to "failed",
+                        "payload_fallback_failure_detail" to "response_shape_unexpected",
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(report.contains("root_cause=YOUTUBE_INNERTUBE_RESPONSE_SHAPE_UNEXPECTED"))
+        assertTrue(report.contains("action=INSPECT_YOUTUBE_INNERTUBE_SEARCH_RESPONSE"))
+        assertTrue(report.contains("html_payload_unavailable -> innertube_fallback_failed:response_shape_unexpected"))
+    }
+
+    @Test
     fun reportsSpecificYouTubeSearchExpressionFailureAndAction() {
         val session = "youtube-expression-session"
         val operation = "youtube-expression-operation"

@@ -265,6 +265,116 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesModernLockupViewModelVideoResults() = runTest {
+        val html = """<html><script>ytInitialData = {"contents":[
+          {"lockupViewModel":{
+            "contentType":"LOCKUP_CONTENT_TYPE_VIDEO",
+            "contentId":"lockup123",
+            "metadata":{"lockupMetadataViewModel":{"title":{"content":"Modern lockup video"}}},
+            "contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://img.example/lockup.jpg"}]}}}
+          }}
+        ]};</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("lockup").single()
+
+        assertEquals("lockup123", result.id)
+        assertEquals("Modern lockup video", result.title)
+        assertEquals("https://www.youtube.com/watch?v=lockup123", result.url)
+        assertEquals("https://img.example/lockup.jpg", result.thumbnailUrl)
+        assertEquals(ContentSearchKind.VIDEO, result.kind)
+    }
+
+    @Test
+    fun fallsBackToInnertubeSearchWhenInitialDataExpressionIsUnsupported() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US","visitorData":"visitor-test"}
+            }});
+            window["ytInitialData"] = JSON.parse(buildInitialData());
+        </script></html>"""
+        val innertubeJson = """{
+          "contents":{"twoColumnSearchResultsRenderer":{"primaryContents":{"sectionListRenderer":{"contents":[
+            {"itemSectionRenderer":{"contents":[
+              {"videoRenderer":{"videoId":"livevideo123","title":{"runs":[{"text":"Search result video"}]},"lengthText":{"simpleText":"3:20"},"ownerText":{"runs":[{"text":"Example channel"}]},"thumbnail":{"thumbnails":[{"url":"https://img.example/video.jpg"}]}}},
+              {"reelItemRenderer":{"videoId":"shortvideo123","headline":{"simpleText":"Search result Short"},"thumbnail":{"thumbnails":[{"url":"https://img.example/short.jpg"}]}}},
+              {"channelRenderer":{"channelId":"UCexample123","title":{"simpleText":"Search result channel"},"subscriberCountText":{"simpleText":"10K subscribers"}}}
+            ]}}
+          ]}}}}
+        }"""
+        var postedUrl = ""
+        var postedBody = ""
+        var postedHeaders: Map<String, String> = emptyMap()
+        var postedDiagnostics: Map<String, String> = emptyMap()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postedUrl = url
+                postedBody = body
+                postedHeaders = headers
+                postedDiagnostics = diagnosticContext
+                return innertubeJson
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search(
+            query = "كاظم",
+            limit = 12,
+            diagnosticContext = mapOf("operation_id" to "innertube-fallback-test"),
+        )
+
+        assertEquals(listOf("livevideo123", "shortvideo123", "UCexample123"), results.map { it.id })
+        assertEquals(listOf(ContentSearchKind.VIDEO, ContentSearchKind.SHORT, ContentSearchKind.CHANNEL), results.map { it.kind })
+        assertEquals("3:20", results[0].durationLabel)
+        assertEquals("Example channel", results[0].channelLabel)
+        assertEquals("https://img.example/short.jpg", results[1].thumbnailUrl)
+        assertEquals("10K subscribers", results[2].subtitle)
+        assertTrue(postedUrl.startsWith("https://www.youtube.com/youtubei/v1/search?prettyPrint=false&key=test-api-key"))
+        val requestJson = com.google.gson.JsonParser.parseString(postedBody).asJsonObject
+        assertEquals("كاظم", requestJson.getAsJsonPrimitive("query").asString)
+        assertEquals("WEB", requestJson.getAsJsonObject("context").getAsJsonObject("client").getAsJsonPrimitive("clientName").asString)
+        assertEquals("1", postedHeaders["X-YouTube-Client-Name"])
+        assertEquals("2.20261015.01.00", postedHeaders["X-YouTube-Client-Version"])
+        assertEquals("INNERTUBE_FALLBACK", postedDiagnostics["search_strategy"])
+        assertEquals("innertube-fallback-test", postedDiagnostics["operation_id"])
+        assertFalse(postedDiagnostics.values.joinToString(" ").contains("كاظم"))
+    }
+
+    @Test
+    fun usesInnertubeSearchWhenPageDoesNotExposeAnApiKey() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}}});
+            ytInitialData = buildInitialData();
+        </script></html>"""
+        val response = """{"contents":{"videoRenderer":{"videoId":"noKeyVideo123","title":{"simpleText":"No key fallback video"}}}}"""
+        var postedUrl = ""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postedUrl = url
+                return response
+            }
+        }
+
+        val result = YouTubeSearchProvider(client).search("test")
+
+        assertEquals("noKeyVideo123", result.single().id)
+        assertEquals("No key fallback video", result.single().title)
+        assertEquals("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", postedUrl)
+    }
+
+    @Test
     fun reportsSafeShapeDetailsForUnsupportedNestedJsonParseFunction() = runTest {
         val html = """<html><script>
             window["ytInitialData"] = JSON.parse(makeSerializedPayload());

@@ -11,6 +11,7 @@ import com.google.gson.JsonParser
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 
 class YouTubeSearchProvider(
     private val httpClient: HttpTextClient,
@@ -48,12 +49,29 @@ class YouTubeSearchProvider(
         )
 
         val extraction = extractInitialData(html)
-        val root = extraction.payload
-            ?: throw createPayloadUnavailableException(html, extraction)
         val resultLimit = limit.coerceIn(1, 24)
+        val pageResults = extraction.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
+        if (pageResults.isNotEmpty()) return pageResults
 
-        // Traverse the payload once to preserve YouTube's source ordering. If a video is
-        // later identified as a Short by a Shorts renderer, upgrade its kind in place.
+        // The HTML boot payload is not a stable search API. If YouTube changes its
+        // ytInitialData wrapper or ships a shell page, retry through the first-party
+        // Innertube search endpoint using the API key/context embedded in that same
+        // response. This path is only used when the page parser yields no results.
+        val fallback = fetchInnertubeSearch(
+            html = html,
+            query = normalizedQuery,
+            diagnosticContext = requestDiagnosticContext,
+        )
+        val fallbackResults = fallback.payload?.let { collectSearchResults(it, resultLimit) }
+        if (!fallbackResults.isNullOrEmpty()) return fallbackResults
+        if (fallback.payload != null) return emptyList()
+
+        throw createPayloadUnavailableException(html, extraction, fallback)
+    }
+
+    private fun collectSearchResults(root: JsonObject, resultLimit: Int): List<ContentSearchItem> {
+        // Preserve source ordering and merge duplicate video/Short renderers without showing
+        // the same video twice. Both the HTML payload and the Innertube response use this path.
         val ordered = mutableListOf<ContentSearchItem>()
         val indexById = mutableMapOf<String, Int>()
         collectRenderersInSourceOrder(root) { item ->
@@ -76,6 +94,179 @@ class YouTubeSearchProvider(
         }
         return ordered.take(resultLimit)
     }
+
+    private suspend fun fetchInnertubeSearch(
+        html: String,
+        query: String,
+        diagnosticContext: Map<String, String>,
+    ): InnertubeSearchFallback {
+        // The Innertube API key is present in most page responses, but current WEB search
+        // clients can accept requests without it. Use the key when available instead of making
+        // it a prerequisite for the fallback.
+        val apiKey = extractConfiguredString(html, "INNERTUBE_API_KEY")
+        val context = extractConfiguredObject(html, "INNERTUBE_CONTEXT")
+        val clientVersion = context
+            ?.getAsJsonObject("client")
+            ?.getAsJsonPrimitive("clientVersion")
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: extractConfiguredString(html, "INNERTUBE_CONTEXT_CLIENT_VERSION")
+            ?: extractConfiguredString(html, "INNERTUBE_CLIENT_VERSION")
+        if (clientVersion.isNullOrBlank()) {
+            return InnertubeSearchFallback(
+                payload = null,
+                outcome = "skipped",
+                failureDetail = "client_version_missing",
+                attempted = false,
+            )
+        }
+
+        val requestContext = context?.deepCopy() ?: JsonObject().apply {
+            add("client", JsonObject().apply {
+                addProperty("hl", "en")
+                addProperty("gl", "US")
+                addProperty("clientName", "WEB")
+                addProperty("clientVersion", clientVersion)
+            })
+        }
+        val client = requestContext.getAsJsonObject("client")
+            ?: JsonObject().also { requestContext.add("client", it) }
+        if (client.get("clientName") == null) client.addProperty("clientName", "WEB")
+        if (client.get("clientVersion") == null) client.addProperty("clientVersion", clientVersion)
+        val clientName = client.getAsJsonPrimitive("clientName")?.asString ?: "WEB"
+        val clientNameId = extractConfiguredString(html, "INNERTUBE_CONTEXT_CLIENT_NAME")
+            ?: extractConfiguredString(html, "INNERTUBE_CLIENT_NAME")
+            ?: when (clientName) {
+                "WEB" -> "1"
+                "MWEB" -> "2"
+                "ANDROID" -> "3"
+                "IOS" -> "5"
+                "TVHTML5" -> "7"
+                "WEB_EMBEDDED_PLAYER" -> "56"
+                else -> "1"
+            }
+
+        val body = JsonObject().apply {
+            add("context", requestContext)
+            addProperty("query", query)
+        }
+        val headers = buildMap {
+            put("Accept", "application/json")
+            put("Origin", "https://www.youtube.com")
+            put("Referer", "https://www.youtube.com/")
+            put("X-YouTube-Client-Name", clientNameId)
+            put("X-YouTube-Client-Version", clientVersion)
+            client.getAsJsonPrimitive("userAgent")?.asString
+                ?.takeIf { it.isNotBlank() }
+                ?.let { put("User-Agent", it) }
+            client.getAsJsonPrimitive("visitorData")?.asString
+                ?.takeIf { it.isNotBlank() }
+                ?.let { put("X-Goog-Visitor-Id", it) }
+        }
+        val endpoint = buildString {
+            append("https://www.youtube.com/youtubei/v1/search?prettyPrint=false")
+            if (!apiKey.isNullOrBlank()) {
+                append("&key=")
+                append(URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString()))
+            }
+        }
+        val fallbackContext = diagnosticContext + mapOf(
+            "diagnostic_operation" to "youtube.search.innertube",
+            "search_strategy" to "INNERTUBE_FALLBACK",
+            "request_payload_type" to "search_query_and_client_context",
+        )
+
+        val raw = try {
+            httpClient.postJson(endpoint, body.toString(), headers, fallbackContext)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Throwable) {
+            val detail = when {
+                error.message?.contains("HTTP 403", ignoreCase = true) == true -> "http_403"
+                error.message?.contains("HTTP 429", ignoreCase = true) == true -> "http_429"
+                error.message?.contains("HTTP 400", ignoreCase = true) == true -> "http_400"
+                error.message?.contains("HTTP 5", ignoreCase = true) == true -> "http_5xx"
+                error is java.net.SocketTimeoutException -> "timeout"
+                error is java.net.UnknownHostException -> "dns_failure"
+                error is java.io.IOException -> "io_failure"
+                else -> "request_failed"
+            }
+            return InnertubeSearchFallback(
+                payload = null,
+                outcome = "failed",
+                failureDetail = detail,
+                attempted = true,
+            )
+        }
+
+        val parsed = runCatching {
+            JsonParser.parseString(raw).takeIf { it.isJsonObject }?.asJsonObject
+        }.getOrNull()
+        if (parsed == null) {
+            return InnertubeSearchFallback(
+                payload = null,
+                outcome = "failed",
+                failureDetail = "response_json_invalid",
+                attempted = true,
+            )
+        }
+        if (!looksLikeInitialData(parsed)) {
+            return InnertubeSearchFallback(
+                payload = null,
+                outcome = "failed",
+                failureDetail = "response_shape_unexpected",
+                attempted = true,
+            )
+        }
+        return InnertubeSearchFallback(
+            payload = parsed,
+            outcome = "success",
+            failureDetail = "none",
+            attempted = true,
+        )
+    }
+
+    private fun extractConfiguredString(source: String, name: String): String? {
+        val markers = listOf(
+            "\"${name}\":\"",
+            "\"${name}\": \"",
+            "${name} = \"",
+            "${name}=\"",
+        )
+        for (marker in markers) {
+            val markerStart = source.indexOf(marker)
+            if (markerStart < 0) continue
+            val valueStart = markerStart + marker.length
+            val valueEnd = source.indexOf('"', valueStart)
+            if (valueEnd > valueStart) {
+                return source.substring(valueStart, valueEnd).takeIf { it.isNotBlank() }
+            }
+        }
+        return null
+    }
+
+    private fun extractConfiguredObject(source: String, name: String): JsonObject? {
+        val markers = listOf("\"${name}\":", "\"${name}\": ", "${name} = ", "${name}=")
+        for (marker in markers) {
+            val markerStart = source.indexOf(marker)
+            if (markerStart < 0) continue
+            var valueStart = skipWhitespace(source, markerStart + marker.length)
+            if (valueStart >= source.length || source[valueStart] != '{') continue
+            val json = extractBalancedJson(source, valueStart) ?: continue
+            val parsed = runCatching {
+                JsonParser.parseString(json).takeIf { it.isJsonObject }?.asJsonObject
+            }.getOrNull()
+            if (parsed != null) return parsed
+        }
+        return null
+    }
+
+    private data class InnertubeSearchFallback(
+        val payload: JsonObject?,
+        val outcome: String,
+        val failureDetail: String,
+        val attempted: Boolean,
+    )
 
     /**
      * YouTube has served ytInitialData as a direct object, a parenthesized object, or a
@@ -766,6 +957,7 @@ class YouTubeSearchProvider(
     private fun createPayloadUnavailableException(
         html: String,
         extraction: InitialDataExtraction,
+        fallback: InnertubeSearchFallback,
     ): YouTubeSearchPayloadException {
         val sample = html.take(MAX_DIAGNOSTIC_SAMPLE_CHARS).lowercase()
         val markerPresent = INITIAL_DATA_ASSIGNMENT.containsMatchIn(html)
@@ -808,6 +1000,9 @@ class YouTubeSearchProvider(
             jsonParseArgumentCount = extraction.expressionDiagnostics.argumentCount,
             jsonParseArgumentTermination = extraction.expressionDiagnostics.argumentTermination,
             responseMarkerProfile = responseMarkerProfile(html),
+            fallbackAttempted = fallback.attempted,
+            fallbackOutcome = fallback.outcome,
+            fallbackFailureDetail = fallback.failureDetail,
         )
     }
 
@@ -875,7 +1070,8 @@ class YouTubeSearchProvider(
                     if (child.isJsonObject) {
                         val renderer = child.asJsonObject
                         val parsed = when (key) {
-                            "videoRenderer" -> parseVideoRenderer(renderer)
+                            "videoRenderer", "gridVideoRenderer" -> parseVideoRenderer(renderer)
+                            "lockupViewModel" -> parseLockupViewModel(renderer)
                             "reelItemRenderer" -> parseReelRenderer(renderer)
                             "shortsLockupViewModel" -> parseShortsLockup(renderer)
                             "channelRenderer" -> parseChannelRenderer(renderer)
@@ -892,6 +1088,53 @@ class YouTubeSearchProvider(
                 }
             }
         }
+    }
+
+    private fun parseLockupViewModel(renderer: JsonObject): ContentSearchItem? {
+        if (renderer.getAsJsonPrimitive("contentType")?.asString != "LOCKUP_CONTENT_TYPE_VIDEO") {
+            return null
+        }
+        val id = renderer.getAsJsonPrimitive("contentId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val metadata = renderer.getAsJsonObject("metadata")
+            ?.getAsJsonObject("lockupMetadataViewModel")
+        val title = metadata?.getAsJsonObject("title")
+            ?.getAsJsonPrimitive("content")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val thumbnail = renderer.getAsJsonObject("contentImage")
+            ?.getAsJsonObject("thumbnailViewModel")
+            ?.getAsJsonObject("image")
+            ?.getAsJsonArray("sources")
+            ?.lastOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.getAsJsonPrimitive("url")
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
+        val overlayBadges = renderer.getAsJsonObject("contentImage")
+            ?.getAsJsonObject("thumbnailViewModel")
+            ?.getAsJsonArray("overlays")
+            ?.mapNotNull { it.takeIf { value -> value.isJsonObject }?.asJsonObject }
+            .orEmpty()
+            .mapNotNull { it.getAsJsonObject("thumbnailBottomOverlayViewModel") }
+            .flatMap { it.getAsJsonArray("badges")?.mapNotNull { value ->
+                value.takeIf { badge -> badge.isJsonObject }?.asJsonObject
+            }.orEmpty() }
+        val duration = overlayBadges.firstNotNullOfOrNull { badge ->
+            badge.getAsJsonObject("thumbnailBadgeViewModel")
+                ?.getAsJsonPrimitive("text")?.asString
+                ?.takeIf { it.isNotBlank() }
+        }
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/watch?v=$id",
+            thumbnailUrl = thumbnail,
+            durationLabel = duration,
+            kind = ContentSearchKind.VIDEO,
+        )
     }
 
     private fun parseVideoRenderer(renderer: JsonObject): ContentSearchItem? {
@@ -1069,4 +1312,7 @@ class YouTubeSearchPayloadException(
     val jsonParseArgumentCount: Int = 0,
     val jsonParseArgumentTermination: String = "unknown",
     val responseMarkerProfile: String = "unknown",
+    val fallbackAttempted: Boolean = false,
+    val fallbackOutcome: String = "not_attempted",
+    val fallbackFailureDetail: String = "none",
 ) : IllegalStateException("YouTube search payload unavailable")

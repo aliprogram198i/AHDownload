@@ -264,14 +264,7 @@ private fun HomeScreen(
     var showResultsScreen by remember { mutableStateOf(false) }
     val androidContext = LocalContext.current
     val visibleSearchResults = remember(state.searchResults, state.searchFilter) {
-        state.searchResults.filter { item ->
-            when (state.searchFilter) {
-                YouTubeSearchFilter.All -> true
-                YouTubeSearchFilter.Videos -> item.kind == ContentSearchKind.VIDEO
-                YouTubeSearchFilter.Shorts -> item.kind == ContentSearchKind.SHORT
-                YouTubeSearchFilter.Channels -> item.kind == ContentSearchKind.CHANNEL
-            }
-        }
+        filterYouTubeSearchResults(state.searchResults, state.searchFilter)
     }
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }

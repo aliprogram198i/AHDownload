@@ -244,6 +244,20 @@ object DiagnosticReportFormatter {
             }
         }
 
+        when (error.context["payload_fallback_failure_detail"]) {
+            "http_403" -> return "HTTP_403"
+            "http_429" -> return "HTTP_429"
+            "http_5xx" -> return "YOUTUBE_INNERTUBE_HTTP_5XX"
+            "timeout" -> return "TIMEOUT"
+            "dns_failure" -> return "DNS_FAILURE"
+            "io_failure" -> return "IO_FAILURE"
+            "api_key_missing" -> return "YOUTUBE_INNERTUBE_API_KEY_MISSING"
+            "client_version_missing" -> return "YOUTUBE_INNERTUBE_CLIENT_CONFIG_MISSING"
+            "response_json_invalid" -> return "YOUTUBE_INNERTUBE_RESPONSE_JSON_INVALID"
+            "response_shape_unexpected" -> return "YOUTUBE_INNERTUBE_RESPONSE_SHAPE_UNEXPECTED"
+            "request_failed" -> return "YOUTUBE_INNERTUBE_REQUEST_FAILED"
+        }
+
         when (error.context["payload_expression_failure_detail"]) {
             "unresolved_static_identifier" ->
                 return "YOUTUBE_SEARCH_PAYLOAD_REFERENCE_UNRESOLVED"
@@ -319,12 +333,29 @@ object DiagnosticReportFormatter {
         val payloadExpressionFailureDetail = events.lastOrNull {
             it.type == "YOUTUBE_SEARCH_FAILED"
         }?.context?.get("payload_expression_failure_detail")
+        val payloadFallbackFailureDetail = events.lastOrNull {
+            it.type == "YOUTUBE_SEARCH_FAILED"
+        }?.context?.get("payload_fallback_failure_detail")
         val explicitUnavailablePlayback = events.any { event ->
             val reason = event.reason.lowercase()
             event.type == "youtube_player_no_candidates" &&
                 ("video unavailable" in reason || "video is unavailable" in reason)
         }
         return when {
+            payloadFallbackFailureDetail == "api_key_missing" ||
+                payloadFallbackFailureDetail == "client_version_missing" ->
+                "INSPECT_YOUTUBE_INNERTUBE_PAGE_CONFIGURATION"
+            payloadFallbackFailureDetail == "response_json_invalid" ||
+                payloadFallbackFailureDetail == "response_shape_unexpected" ->
+                "INSPECT_YOUTUBE_INNERTUBE_SEARCH_RESPONSE"
+            payloadFallbackFailureDetail == "http_403" ||
+                payloadFallbackFailureDetail == "http_429" ||
+                payloadFallbackFailureDetail == "http_5xx" ->
+                "INSPECT_YOUTUBE_INNERTUBE_HTTP_RESPONSE"
+            payloadFallbackFailureDetail == "timeout" ||
+                payloadFallbackFailureDetail == "dns_failure" ||
+                payloadFallbackFailureDetail == "io_failure" ->
+                "INSPECT_YOUTUBE_INNERTUBE_NETWORK"
             payloadExpressionFailureDetail == "unresolved_static_identifier" ->
                 "INSPECT_YOUTUBE_SEARCH_STATIC_DATA_REFERENCE"
             payloadExpressionFailureDetail == "static_identifier_declared_in_other_script" ->
@@ -477,6 +508,10 @@ object DiagnosticReportFormatter {
                 code != null && code in 400..599 -> "search -> http_request_failed:HTTP_$code"
                 request?.context?.get("request_outcome") == "transport_error" ->
                     "search -> network_transport_failed"
+                latestError.context["payload_fallback_attempted"] == "true" -> {
+                    val detail = latestError.context["payload_fallback_failure_detail"].orEmpty()
+                    "search -> html_payload_unavailable -> innertube_fallback_failed:$detail"
+                }
                 latestError.context["payload_failure_reason"] != null -> {
                     val reason = latestError.context["payload_failure_reason"].orEmpty()
                     val expressionDetail =
@@ -625,6 +660,10 @@ object DiagnosticReportFormatter {
                 "تم تحليل الرابط واستخراج المرشحين، ثم رُفضت المصادر أثناء التحقق حتى انتهى المسار دون مصدر وسائط صالح."
             rootCause == "HTTP_403" ->
                 "وصل الطلب إلى مرحلة جلب أو التحقق من المصدر، لكن الخادم رفض الطلب بـ HTTP 403، ثم انتهى المسار الحالي قبل بدء تنزيل صالح."
+            error.type == "YOUTUBE_SEARCH_FAILED" &&
+                error.context["payload_fallback_attempted"] == "true" &&
+                error.context["payload_fallback_outcome"] == "failed" ->
+                "تعذّر استخراج نتائج من حمولة صفحة YouTube، ثم فشل مسار Innertube الاحتياطي. راجع payload_fallback_failure_detail لمعرفة هل السبب إعدادات الصفحة أو HTTP أو الشبكة أو بنية الاستجابة."
             error.type == "YOUTUBE_SEARCH_FAILED" &&
                 error.context["payload_parser_failure_stage"] == "expression_decode" ->
                 "وصلت استجابة بحث YouTube بنجاح على مستوى HTTP، لكن تعذّر تفسير تعبير ytInitialData. حقول payload_expression_* تحدد شكل التعبير وموضعه دون حفظ محتوى الاستجابة."
