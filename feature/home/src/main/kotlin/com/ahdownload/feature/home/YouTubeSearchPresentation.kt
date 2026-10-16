@@ -36,3 +36,17 @@ internal fun filterYouTubeSearchResults(
     YouTubeSearchFilter.Shorts -> results.filter { it.kind == ContentSearchKind.SHORT }
     YouTubeSearchFilter.Channels -> results.filter { it.kind == ContentSearchKind.CHANNEL }
 }
+
+/**
+ * Prevents zero-result filters from looking actionable while preserving their count in the UI.
+ * The All filter stays enabled whenever the current result set is non-empty.
+ */
+internal fun isYouTubeSearchFilterAvailable(
+    filter: YouTubeSearchFilter,
+    counts: YouTubeSearchResultCounts,
+): Boolean = when (filter) {
+    YouTubeSearchFilter.All -> counts.all > 0
+    YouTubeSearchFilter.Videos -> counts.videos > 0
+    YouTubeSearchFilter.Shorts -> counts.shorts > 0
+    YouTubeSearchFilter.Channels -> counts.channels > 0
+}

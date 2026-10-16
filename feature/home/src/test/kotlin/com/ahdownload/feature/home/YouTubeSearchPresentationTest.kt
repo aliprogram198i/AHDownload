@@ -79,6 +79,33 @@ class YouTubeSearchPresentationTest {
     }
 
     @Test
+    fun filtersWithNoMatchingResultsAreUnavailableButKeepStableCounts() {
+        val counts = countYouTubeSearchResults(results)
+
+        assertEquals(true, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.All, counts))
+        assertEquals(true, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Videos, counts))
+        assertEquals(true, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Shorts, counts))
+        assertEquals(true, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Channels, counts))
+
+        val videosOnly = countYouTubeSearchResults(
+            results.filter { it.kind == ContentSearchKind.VIDEO },
+        )
+        assertEquals(true, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.All, videosOnly))
+        assertEquals(true, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Videos, videosOnly))
+        assertEquals(false, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Shorts, videosOnly))
+        assertEquals(false, isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Channels, videosOnly))
+    }
+
+    @Test
+    fun allFiltersAreUnavailableForAnEmptyResultSet() {
+        val counts = countYouTubeSearchResults(emptyList())
+
+        YouTubeSearchFilter.entries.forEach { filter ->
+            assertEquals(false, isYouTubeSearchFilterAvailable(filter, counts))
+        }
+    }
+
+    @Test
     fun emptyResultsRemainEmptyForEveryFilter() {
         YouTubeSearchFilter.entries.forEach { filter ->
             assertEquals(emptyList<ContentSearchItem>(), filterYouTubeSearchResults(emptyList(), filter))
