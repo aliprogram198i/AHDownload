@@ -238,6 +238,37 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesJsonParseUsingEarlierStaticStringVariable() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"static123","title":{"simpleText":"Static variable payload"}}}}"""
+        val serialized = com.google.gson.JsonPrimitive(payload).toString()
+        val html = """<html><script>
+            const serializedInitialData = $serialized;
+            window["ytInitialData"] = JSON.parse(serializedInitialData);
+        </script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("static").single()
+
+        assertEquals("static123", result.id)
+        assertEquals("Static variable payload", result.title)
+    }
+
+    @Test
+    fun parsesStaticJsonParseFirstArgumentWithoutExecutingReviver() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"reviver123","title":{"simpleText":"Reviver payload"}}}}"""
+        val serialized = com.google.gson.JsonPrimitive(payload).toString()
+        val html = """<html><script>
+            ytInitialData = JSON.parse($serialized, function() {
+                throw new Error("This callback must never be executed by the parser");
+            });
+        </script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("reviver").single()
+
+        assertEquals("reviver123", result.id)
+        assertEquals("Reviver payload", result.title)
+    }
+
+    @Test
     fun rejectsUnsupportedJavaScriptExpressionWithoutScrapingUnrelatedObjects() = runTest {
         val html = """<html><script>
             var ytInitialData = createInitialData();
