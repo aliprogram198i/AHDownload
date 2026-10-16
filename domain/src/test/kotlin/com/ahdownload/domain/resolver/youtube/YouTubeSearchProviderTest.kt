@@ -346,6 +346,39 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun selectsLaterCompleteInitialDataAssignmentOverEarlierShortsShelf() = runTest {
+        val html = """<html><script>
+            window["ytInitialData"] = {"contents":{
+              "reelItemRenderer":{"videoId":"earlyShort123","headline":{"simpleText":"Early Shorts shelf"}}
+            }};
+            window["ytInitialData"] = {"contents":[
+              {"videoRenderer":{"videoId":"regularVideo01","title":{"simpleText":"Regular video one"}}},
+              {"videoRenderer":{"videoId":"regularVideo02","title":{"simpleText":"Regular video two"}}},
+              {"videoRenderer":{"videoId":"regularVideo03","title":{"simpleText":"Regular video three"}}},
+              {"videoRenderer":{"videoId":"regularVideo04","title":{"simpleText":"Regular video four"}}},
+              {"videoRenderer":{"videoId":"regularVideo05","title":{"simpleText":"Regular video five"}}},
+              {"videoRenderer":{"videoId":"regularVideo06","title":{"simpleText":"Regular video six"}}}
+            ]};
+        </script></html>"""
+
+        val results = YouTubeSearchProvider(textClient(html)).search("regular videos", limit = 12)
+
+        assertEquals(6, results.size)
+        assertTrue(results.all { it.kind == ContentSearchKind.VIDEO })
+        assertEquals(
+            listOf(
+                "regularVideo01",
+                "regularVideo02",
+                "regularVideo03",
+                "regularVideo04",
+                "regularVideo05",
+                "regularVideo06",
+            ),
+            results.map { it.id },
+        )
+    }
+
+    @Test
     fun retriesInnertubeWhenHtmlOnlyProducesShortsAndReturnsRegularVideosToo() = runTest {
         val html = """<html><script>
             ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
