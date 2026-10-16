@@ -323,6 +323,9 @@ class HomeViewModel(
                             "payload_json_parse_argument_count" to payloadError.jsonParseArgumentCount.toString(),
                             "payload_json_parse_argument_termination" to payloadError.jsonParseArgumentTermination,
                             "payload_response_marker_profile" to payloadError.responseMarkerProfile,
+                            "payload_fallback_attempted" to payloadError.fallbackAttempted.toString(),
+                            "payload_fallback_outcome" to payloadError.fallbackOutcome,
+                            "payload_fallback_failure_detail" to payloadError.fallbackFailureDetail,
                         )
                     }.orEmpty(),
                     error,
@@ -330,7 +333,18 @@ class HomeViewModel(
                 _uiState.value = _uiState.value.copy(
                     searching = false,
                     searchResults = emptyList(),
-                    searchError = "تعذر تنفيذ البحث الآن. أعد المحاولة.",
+                    searchError = when ((error as? YouTubeSearchPayloadException)?.fallbackFailureDetail) {
+                        "http_403" -> "رفضت خدمة بحث YouTube الطلب الاحتياطي (403). أعد المحاولة بعد قليل."
+                        "http_429" -> "حدّدت YouTube معدل طلبات البحث مؤقتًا. انتظر قليلًا ثم أعد المحاولة."
+                        "timeout" -> "انتهت مهلة الاتصال بخدمة بحث YouTube. تحقق من الاتصال ثم أعد المحاولة."
+                        "api_key_missing", "client_version_missing" ->
+                            "لم تتوفر إعدادات خدمة بحث YouTube الاحتياطية في استجابة الصفحة."
+                        "response_json_invalid", "response_shape_unexpected" ->
+                            "استجابت خدمة بحث YouTube الاحتياطية، لكن تعذر تفسير شكل النتائج."
+                        "io_failure", "dns_failure", "http_5xx" ->
+                            "تعذر الاتصال بخدمة بحث YouTube الاحتياطية. تحقق من الاتصال ثم أعد المحاولة."
+                        else -> "تعذر تنفيذ البحث الآن. أعد المحاولة."
+                    },
                 )
             }
         }
