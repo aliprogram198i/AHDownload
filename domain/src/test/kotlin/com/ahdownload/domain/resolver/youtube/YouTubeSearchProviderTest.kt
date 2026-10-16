@@ -265,6 +265,48 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun reportsSafeShapeDetailsForUnsupportedNestedJsonParseFunction() = runTest {
+        val html = """<html><script>
+            window["ytInitialData"] = JSON.parse(makeSerializedPayload());
+        </script></html>"""
+        val error = runCatching {
+            YouTubeSearchProvider(textClient(html)).search("secret query")
+        }.exceptionOrNull()
+
+        assertTrue(error is YouTubeSearchPayloadException)
+        val payloadError = error as YouTubeSearchPayloadException
+        assertEquals("json_parse", payloadError.assignmentValueKind)
+        assertEquals("expression_decode", payloadError.parserFailureStage)
+        assertEquals("nested_function_call", payloadError.expressionKind)
+        assertEquals("unsupported_nested_function_call", payloadError.expressionFailureDetail)
+        assertEquals("json_parse", payloadError.expressionWrapper)
+        assertEquals("closing_paren", payloadError.jsonParseArgumentTermination)
+        assertEquals(1, payloadError.jsonParseArgumentCount)
+        assertTrue(payloadError.expressionLength > 0)
+        assertTrue(payloadError.expressionStartOffset >= 0)
+        assertTrue(payloadError.assignmentOffset >= 0)
+        assertEquals(1, payloadError.assignmentAttempt)
+        assertTrue(payloadError.responseMarkerProfile.contains("yt_initial_data"))
+        assertFalse(payloadError.message.orEmpty().contains("secret query"))
+        assertFalse(payloadError.toString().contains("makeSerializedPayload"))
+    }
+
+    @Test
+    fun distinguishesUnresolvedStaticJsonParseIdentifier() = runTest {
+        val html = """<html><script>ytInitialData = JSON.parse(serializedPayload);</script></html>"""
+        val error = runCatching {
+            YouTubeSearchProvider(textClient(html)).search("private phrase")
+        }.exceptionOrNull()
+
+        assertTrue(error is YouTubeSearchPayloadException)
+        val payloadError = error as YouTubeSearchPayloadException
+        assertEquals("identifier_reference", payloadError.expressionKind)
+        assertEquals("no_prior_static_declaration", payloadError.expressionResolution)
+        assertEquals("unresolved_static_identifier", payloadError.expressionFailureDetail)
+        assertFalse(payloadError.message.orEmpty().contains("private phrase"))
+    }
+
+    @Test
     fun rejectsUnsupportedJavaScriptExpressionWithoutScrapingUnrelatedObjects() = runTest {
         val html = """<html><script>
             var ytInitialData = createInitialData();
