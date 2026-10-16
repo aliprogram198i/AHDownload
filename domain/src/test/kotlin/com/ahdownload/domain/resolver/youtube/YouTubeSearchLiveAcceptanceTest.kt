@@ -1,5 +1,6 @@
 package com.ahdownload.domain.resolver.youtube
 
+import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.resolver.OkHttpTextClient
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -20,16 +21,29 @@ class YouTubeSearchLiveAcceptanceTest {
             System.getenv("AH_YOUTUBE_LIVE_ACCEPTANCE") == "true",
         )
 
-        val results = YouTubeSearchProvider(OkHttpTextClient()).search(
+        val httpEvents = mutableListOf<String>()
+        val logger = DiagnosticLogger { _, type, reason, operation, context, _ ->
+            if (type == "HTTP_REQUEST") {
+                httpEvents += listOf(
+                    operation,
+                    reason,
+                    context["http_status"] ?: "no_status",
+                    context["request_outcome"] ?: "no_outcome",
+                    context["search_strategy"] ?: "HTML_PAGE",
+                ).joinToString(":")
+            }
+        }
+        val results = YouTubeSearchProvider(OkHttpTextClient(logger = logger)).search(
             query = "كاظم",
             limit = 12,
             diagnosticContext = mapOf("operation_id" to "live-youtube-search-acceptance"),
         )
         val resultKinds = results.groupingBy { it.kind }.eachCount()
+        val httpSummary = httpEvents.joinToString("|")
 
-        assertFalse("Live YouTube search returned no results.", results.isEmpty())
+        assertFalse("Live YouTube search returned no results. HTTP=$httpSummary", results.isEmpty())
         assertTrue(
-            "Expected at least one regular video for an Arabic music query; kinds=$resultKinds",
+            "Expected at least one regular video for an Arabic music query; kinds=$resultKinds HTTP=$httpSummary",
             results.any { it.kind == com.ahdownload.domain.search.ContentSearchKind.VIDEO },
         )
         assertEquals(
