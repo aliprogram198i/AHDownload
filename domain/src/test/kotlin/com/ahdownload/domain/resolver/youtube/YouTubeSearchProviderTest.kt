@@ -306,7 +306,7 @@ class YouTubeSearchProviderTest {
 
         val results = YouTubeSearchProvider(client).search("music", limit = 12)
 
-        assertEquals("The Shorts-only HTML payload should trigger Innertube fallback.", 1, postCount)
+        assertEquals("The Shorts-only HTML payload should trigger Innertube fallback, then channel lookup.", 2, postCount)
         assertEquals(listOf("regularVideo123", "short123"), results.map { it.id })
         assertEquals(ContentSearchKind.VIDEO, results.first().kind)
         assertEquals("Regular concert video", results.first().title)
@@ -527,13 +527,16 @@ class YouTubeSearchProviderTest {
 
         val results = YouTubeSearchProvider(client).search("كاظم", limit = 12)
 
-        assertEquals("The unfiltered and video-filtered request should both run.", 2, requestBodies.size)
+        assertEquals("Search should try default, video-filtered, then channel-filtered results.", 3, requestBodies.size)
         val defaultRequest = com.google.gson.JsonParser.parseString(requestBodies[0]).asJsonObject
         val videoRequest = com.google.gson.JsonParser.parseString(requestBodies[1]).asJsonObject
+        val channelRequest = com.google.gson.JsonParser.parseString(requestBodies[2]).asJsonObject
         assertFalse(defaultRequest.has("params"))
         assertEquals("EgIQAQ%3D%3D", videoRequest.getAsJsonPrimitive("params").asString)
+        assertEquals("EgIQAg%3D%3D", channelRequest.getAsJsonPrimitive("params").asString)
         assertEquals("INNERTUBE_FALLBACK", requestDiagnostics[0]["search_strategy"])
         assertEquals("INNERTUBE_VIDEO_FILTER_FALLBACK", requestDiagnostics[1]["search_strategy"])
+        assertEquals("INNERTUBE_CHANNEL_FILTER_FALLBACK", requestDiagnostics[2]["search_strategy"])
         assertEquals(
             listOf("regularVid01", "regularVid02", "short123"),
             results.map { it.id },
@@ -543,6 +546,77 @@ class YouTubeSearchProviderTest {
             results.map { it.kind },
         )
         assertEquals(1, results.count { it.id == "short123" })
+    }
+
+    @Test
+    fun parsesModernChannelLockupViewModelRenderer() = runTest {
+        val html = """<html><script>ytInitialData = {"contents":[
+          {"lockupViewModel":{
+            "contentType":"LOCKUP_CONTENT_TYPE_CHANNEL",
+            "contentId":"UCmodernChannel123",
+            "metadata":{"lockupMetadataViewModel":{"title":{"content":"Modern music channel"}}},
+            "contentImage":{"avatarViewModel":{"avatar":{"image":{"sources":[
+              {"url":"https://img.example/channel-avatar.jpg"}
+            ]}}}}
+          }}
+        ]};</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("channel").single()
+
+        assertEquals("UCmodernChannel123", result.id)
+        assertEquals("Modern music channel", result.title)
+        assertEquals("https://www.youtube.com/channel/UCmodernChannel123", result.url)
+        assertEquals("https://img.example/channel-avatar.jpg", result.thumbnailUrl)
+        assertEquals(ContentSearchKind.CHANNEL, result.kind)
+    }
+
+    @Test
+    fun fetchesChannelFilteredResultsWhenVisibleSearchWindowContainsNoChannels() = runTest {
+        val videoItems = (1..6).joinToString(",") { index ->
+            """{"videoRenderer":{"videoId":"video$index","title":{"simpleText":"Regular video $index"}}}"""
+        }
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            ytInitialData = {"contents":[$videoItems]};
+        </script></html>"""
+        val channelResponse = """{"contents":{"compactChannelRenderer":{
+          "channelId":"UCchannelsOnly123",
+          "title":{"simpleText":"Channel from channel-filtered request"},
+          "thumbnail":{"thumbnails":[{"url":"https://img.example/channel-filtered.jpg"}]},
+          "subscriberCountText":{"simpleText":"25K subscribers"}
+        }}}"""
+        var postedBody = ""
+        var postedDiagnostics: Map<String, String> = emptyMap()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postedBody = body
+                postedDiagnostics = diagnosticContext
+                return channelResponse
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("music", limit = 12)
+
+        val request = com.google.gson.JsonParser.parseString(postedBody).asJsonObject
+        assertEquals("EgIQAg%3D%3D", request.getAsJsonPrimitive("params").asString)
+        assertEquals("INNERTUBE_CHANNEL_FILTER_FALLBACK", postedDiagnostics["search_strategy"])
+        assertEquals(7, results.size)
+        assertEquals(6, results.count { it.kind == ContentSearchKind.VIDEO })
+        val channel = results.single { it.kind == ContentSearchKind.CHANNEL }
+        assertEquals("UCchannelsOnly123", channel.id)
+        assertEquals("Channel from channel-filtered request", channel.title)
+        assertEquals("https://www.youtube.com/channel/UCchannelsOnly123", channel.url)
+        assertEquals("https://img.example/channel-filtered.jpg", channel.thumbnailUrl)
+        assertEquals("25K subscribers", channel.subtitle)
     }
 
     @Test
