@@ -124,8 +124,8 @@ class YouTubeSearchLiveAcceptanceTest {
         val rootKeys = runCatching {
             val element = com.google.gson.JsonParser.parseString(source)
             if (element.isJsonObject) element.asJsonObject.keySet().sorted().take(16).joinToString(",")
-            else "root_\${element.javaClass.simpleName}"
+            else "root_${element.javaClass.simpleName}"
         }.getOrDefault("non_json_root")
-        return "chars=\${source.length};root=$rootKeys;\${counts.joinToString(",")}".take(900)
+        return "chars=${source.length};root=$rootKeys;${counts.joinToString(",")}".take(900)
     }
 }
