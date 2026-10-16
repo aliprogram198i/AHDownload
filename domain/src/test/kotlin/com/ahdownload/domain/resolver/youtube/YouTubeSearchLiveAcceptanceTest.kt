@@ -73,7 +73,7 @@ class YouTubeSearchLiveAcceptanceTest {
         val resultKinds = results.groupingBy { it.kind }.eachCount()
         val httpSummary = httpEvents.joinToString("|")
         val htmlShape = safeSearchStructureProfile(htmlResponse)
-        val innertubeShape = safeSearchStructureProfile(innertubeResponse)
+        val innertubeShape = safeFullSchemaProfile(innertubeResponse)
 
         assertFalse(
             "Live YouTube search returned no results. HTTP=$httpSummary html=$htmlShape innertube=$innertubeShape",
@@ -128,4 +128,35 @@ class YouTubeSearchLiveAcceptanceTest {
         }.getOrDefault("non_json_root")
         return "chars=${source.length};root=$rootKeys;${counts.joinToString(",")}".take(900)
     }
+    
+    private fun safeFullSchemaProfile(source: String): String {
+        val root = runCatching { com.google.gson.JsonParser.parseString(source) }.getOrNull()
+            ?: return "invalid_json_length=" + source.length
+        val counts = linkedMapOf<String, Int>()
+        fun collect(element: com.google.gson.JsonElement) {
+            when {
+                element.isJsonObject -> element.asJsonObject.entrySet().forEach { entry ->
+                    counts[entry.key] = (counts[entry.key] ?: 0) + 1
+                    collect(entry.value)
+                }
+                element.isJsonArray -> element.asJsonArray.forEach(::collect)
+            }
+        }
+        collect(root)
+        val interesting = Regex(
+            "(?i)(renderer|viewmodel|video|short|channel|playlist|title|endpoint|result|search|section|lockup|continuation|entity|command|contents|reel|watch|grid|metadata)",
+        )
+        val schema = counts.entries
+            .filter { interesting.containsMatchIn(it.key) }
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(60)
+            .joinToString(",") { it.key + "=" + it.value }
+        val rootKeys = if (root.isJsonObject) {
+            root.asJsonObject.keySet().sorted().take(24).joinToString(",")
+        } else {
+            "non_object_root"
+        }
+        return ("length=" + source.length + ";root=" + rootKeys + ";schema=" + schema).take(1800)
+    }
+
 }
