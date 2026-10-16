@@ -439,6 +439,61 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun requestsVideoFilteredInnertubeResultsWhenBothDefaultSourcesOnlyHaveShorts() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            ytInitialData = {"contents":{
+              "reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}
+            }};
+        </script></html>"""
+        val shortsOnlyResponse = """{"contents":{"reelItemRenderer":{
+          "videoId":"short123","headline":{"simpleText":"Short result"}
+        }}}"""
+        val videosResponse = """{"contents":[
+          {"videoRenderer":{"videoId":"regularVid01","title":{"runs":[{"text":"Regular video 1"}]},"lengthText":{"simpleText":"4:10"}}},
+          {"videoRenderer":{"videoId":"regularVid02","title":{"simpleText":"Regular video 2"}}}
+        ]}"""
+        val requestBodies = mutableListOf<String>()
+        val requestDiagnostics = mutableListOf<Map<String, String>>()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                requestBodies += body
+                requestDiagnostics += diagnosticContext
+                val request = com.google.gson.JsonParser.parseString(body).asJsonObject
+                return if (request.has("params")) videosResponse else shortsOnlyResponse
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("كاظم", limit = 12)
+
+        assertEquals("The unfiltered and video-filtered request should both run.", 2, requestBodies.size)
+        val defaultRequest = com.google.gson.JsonParser.parseString(requestBodies[0]).asJsonObject
+        val videoRequest = com.google.gson.JsonParser.parseString(requestBodies[1]).asJsonObject
+        assertFalse(defaultRequest.has("params"))
+        assertEquals("EgIQAQ%3D%3D", videoRequest.getAsJsonPrimitive("params").asString)
+        assertEquals("INNERTUBE_FALLBACK", requestDiagnostics[0]["search_strategy"])
+        assertEquals("INNERTUBE_VIDEO_FILTER_FALLBACK", requestDiagnostics[1]["search_strategy"])
+        assertEquals(
+            listOf("regularVid01", "regularVid02", "short123"),
+            results.map { it.id },
+        )
+        assertEquals(
+            listOf(ContentSearchKind.VIDEO, ContentSearchKind.VIDEO, ContentSearchKind.SHORT),
+            results.map { it.kind },
+        )
+        assertEquals(1, results.count { it.id == "short123" })
+    }
+
+    @Test
     fun usesInnertubeSearchWhenPageDoesNotExposeAnApiKey() = runTest {
         val html = """<html><script>
             ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}}});
