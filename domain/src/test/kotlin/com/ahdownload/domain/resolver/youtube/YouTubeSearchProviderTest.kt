@@ -265,6 +265,26 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesModernLockupViewModelVideoResults() = runTest {
+        val html = """<html><script>ytInitialData = {"contents":[
+          {"lockupViewModel":{
+            "contentType":"LOCKUP_CONTENT_TYPE_VIDEO",
+            "contentId":"lockup123",
+            "metadata":{"lockupMetadataViewModel":{"title":{"content":"Modern lockup video"}}},
+            "contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://img.example/lockup.jpg"}]}}}
+          }}
+        ]};</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("lockup").single()
+
+        assertEquals("lockup123", result.id)
+        assertEquals("Modern lockup video", result.title)
+        assertEquals("https://www.youtube.com/watch?v=lockup123", result.url)
+        assertEquals("https://img.example/lockup.jpg", result.thumbnailUrl)
+        assertEquals(ContentSearchKind.VIDEO, result.kind)
+    }
+
+    @Test
     fun fallsBackToInnertubeSearchWhenInitialDataExpressionIsUnsupported() = runTest {
         val html = """<html><script>
             ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
