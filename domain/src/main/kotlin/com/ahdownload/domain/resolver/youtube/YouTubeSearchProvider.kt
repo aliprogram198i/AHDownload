@@ -1206,7 +1206,7 @@ class YouTubeSearchProvider(
                             "lockupViewModel" -> parseLockupViewModel(renderer)
                             "reelItemRenderer" -> parseReelRenderer(renderer)
                             "shortsLockupViewModel" -> parseShortsLockup(renderer)
-                            "channelRenderer" -> parseChannelRenderer(renderer)
+                            "channelRenderer", "compactChannelRenderer" -> parseChannelRenderer(renderer)
                             else -> null
                         }
                         parsed?.let(onResult)
