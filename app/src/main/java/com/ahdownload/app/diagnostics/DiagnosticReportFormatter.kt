@@ -244,6 +244,33 @@ object DiagnosticReportFormatter {
             }
         }
 
+        when (error.context["payload_expression_failure_detail"]) {
+            "unresolved_static_identifier" ->
+                return "YOUTUBE_SEARCH_PAYLOAD_REFERENCE_UNRESOLVED"
+            "static_identifier_declared_in_other_script" ->
+                return "YOUTUBE_SEARCH_PAYLOAD_CROSS_SCRIPT_REFERENCE"
+            "static_identifier_initializer_unsupported" ->
+                return "YOUTUBE_SEARCH_PAYLOAD_DYNAMIC_REFERENCE"
+            "static_identifier_suffix_or_delimiter_unsupported" ->
+                return "YOUTUBE_SEARCH_PAYLOAD_REFERENCE_EXPRESSION_UNSUPPORTED"
+            "unsupported_nested_function_call", "unsupported_member_expression" ->
+                return "YOUTUBE_SEARCH_PAYLOAD_EXPRESSION_UNSUPPORTED"
+            "dynamic_template_literal_unsupported" ->
+                return "YOUTUBE_SEARCH_DYNAMIC_TEMPLATE_UNSUPPORTED"
+            "unsupported_json_parse_second_argument" ->
+                return "YOUTUBE_SEARCH_JSON_PARSE_ARGUMENTS_UNSUPPORTED"
+            "json_parse_call_unterminated" ->
+                return "YOUTUBE_SEARCH_JSON_PARSE_CALL_MALFORMED"
+            "quoted_string_decode_failed_or_unexpected_suffix" ->
+                return "YOUTUBE_SEARCH_STRING_EXPRESSION_MALFORMED"
+            "decoded_json_syntax_invalid" ->
+                return "YOUTUBE_SEARCH_JSON_SYNTAX_INVALID"
+            "decoded_json_root_shape_unexpected" ->
+                return "YOUTUBE_SEARCH_ROOT_SHAPE_UNEXPECTED"
+            "unsupported_expression_shape" ->
+                return "YOUTUBE_SEARCH_PAYLOAD_EXPRESSION_UNSUPPORTED"
+        }
+
         return when (error.context["payload_failure_reason"]) {
             "bot_challenge" -> "YOUTUBE_BOT_CHALLENGE"
             "consent_or_privacy_gate" -> "YOUTUBE_CONSENT_OR_PRIVACY_GATE"
@@ -289,12 +316,37 @@ object DiagnosticReportFormatter {
         }
         val captureEvidence = events.lastOrNull { it.context.containsKey("browser_media_observed") }
         val gvsEvidence = events.lastOrNull { it.type == "youtube.gvs_strategy" }
+        val payloadExpressionFailureDetail = events.lastOrNull {
+            it.type == "YOUTUBE_SEARCH_FAILED"
+        }?.context?.get("payload_expression_failure_detail")
         val explicitUnavailablePlayback = events.any { event ->
             val reason = event.reason.lowercase()
             event.type == "youtube_player_no_candidates" &&
                 ("video unavailable" in reason || "video is unavailable" in reason)
         }
         return when {
+            payloadExpressionFailureDetail == "unresolved_static_identifier" ->
+                "INSPECT_YOUTUBE_SEARCH_STATIC_DATA_REFERENCE"
+            payloadExpressionFailureDetail == "static_identifier_declared_in_other_script" ->
+                "INSPECT_YOUTUBE_SEARCH_CROSS_SCRIPT_DATA_REFERENCE"
+            payloadExpressionFailureDetail == "static_identifier_initializer_unsupported" ->
+                "INSPECT_YOUTUBE_SEARCH_DYNAMIC_DATA_INITIALIZER"
+            payloadExpressionFailureDetail == "static_identifier_suffix_or_delimiter_unsupported" ->
+                "INSPECT_YOUTUBE_SEARCH_DATA_REFERENCE_SYNTAX"
+            payloadExpressionFailureDetail == "unsupported_nested_function_call" ||
+                payloadExpressionFailureDetail == "unsupported_member_expression" ->
+                "INSPECT_YOUTUBE_SEARCH_JSON_PARSE_WRAPPER"
+            payloadExpressionFailureDetail == "dynamic_template_literal_unsupported" ->
+                "INSPECT_YOUTUBE_SEARCH_DYNAMIC_TEMPLATE_EXPRESSION"
+            payloadExpressionFailureDetail == "unsupported_json_parse_second_argument" ->
+                "INSPECT_YOUTUBE_SEARCH_JSON_PARSE_ARGUMENTS"
+            payloadExpressionFailureDetail == "json_parse_call_unterminated" ||
+                payloadExpressionFailureDetail == "quoted_string_decode_failed_or_unexpected_suffix" ->
+                "INSPECT_YOUTUBE_SEARCH_EXPRESSION_SYNTAX"
+            payloadExpressionFailureDetail == "decoded_json_syntax_invalid" ->
+                "INSPECT_YOUTUBE_SEARCH_DECODED_JSON_SYNTAX"
+            payloadExpressionFailureDetail == "decoded_json_root_shape_unexpected" ->
+                "INSPECT_YOUTUBE_SEARCH_DECODED_JSON_ROOT"
             rootCause == "YOUTUBE_BOT_CHALLENGE" && isYouTube ->
                 "REFRESH_YOUTUBE_SESSION_AFTER_BOT_CHECK"
             rootCause == "YOUTUBE_CONSENT_OR_PRIVACY_GATE" && isYouTube ->
@@ -425,9 +477,16 @@ object DiagnosticReportFormatter {
                 code != null && code in 400..599 -> "search -> http_request_failed:HTTP_$code"
                 request?.context?.get("request_outcome") == "transport_error" ->
                     "search -> network_transport_failed"
-                latestError.context["payload_failure_reason"] != null ->
-                    "search -> response_payload_unavailable:" +
-                        latestError.context["payload_failure_reason"].orEmpty()
+                latestError.context["payload_failure_reason"] != null -> {
+                    val reason = latestError.context["payload_failure_reason"].orEmpty()
+                    val expressionDetail =
+                        latestError.context["payload_expression_failure_detail"]
+                    if (!expressionDetail.isNullOrBlank() && expressionDetail != "unknown") {
+                        "search -> response_payload_unavailable:$reason -> payload_expression:$expressionDetail"
+                    } else {
+                        "search -> response_payload_unavailable:$reason"
+                    }
+                }
                 latestError.throwableMessage?.contains("payload unavailable", ignoreCase = true) == true ->
                     "search -> response_payload_unavailable"
                 else -> "search -> request_or_response_failed"
@@ -566,6 +625,15 @@ object DiagnosticReportFormatter {
                 "تم تحليل الرابط واستخراج المرشحين، ثم رُفضت المصادر أثناء التحقق حتى انتهى المسار دون مصدر وسائط صالح."
             rootCause == "HTTP_403" ->
                 "وصل الطلب إلى مرحلة جلب أو التحقق من المصدر، لكن الخادم رفض الطلب بـ HTTP 403، ثم انتهى المسار الحالي قبل بدء تنزيل صالح."
+            error.type == "YOUTUBE_SEARCH_FAILED" &&
+                error.context["payload_parser_failure_stage"] == "expression_decode" ->
+                "وصلت استجابة بحث YouTube بنجاح على مستوى HTTP، لكن تعذّر تفسير تعبير ytInitialData. حقول payload_expression_* تحدد شكل التعبير وموضعه دون حفظ محتوى الاستجابة."
+            error.type == "YOUTUBE_SEARCH_FAILED" &&
+                error.context["payload_parser_failure_stage"] == "json_syntax" ->
+                "تم فك تعبير حمولة البحث، لكن النص الناتج ليس JSON صالحًا؛ راجع حقول فك النص والتعبير في سياق الخطأ."
+            error.type == "YOUTUBE_SEARCH_FAILED" &&
+                error.context["payload_parser_failure_stage"] == "root_shape" ->
+                "تم تحليل JSON لكن بنية الجذر لا تطابق شكل بيانات بحث YouTube المتوقع."
             error.type == "AUDIO_EXTRACTION_FAILED" ->
                 "تم تنزيل المصدر بنجاح، ثم فشل استخراج المسار الصوتي من الملف المحلي؛ أخطاء الشبكة السابقة لا تُعامل كسبب جذري للحادثة الأخيرة."
             rootCause == "STORAGE_ERROR" ->
