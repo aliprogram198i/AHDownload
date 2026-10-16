@@ -266,6 +266,9 @@ private fun HomeScreen(
     val visibleSearchResults = remember(state.searchResults, state.searchFilter) {
         filterYouTubeSearchResults(state.searchResults, state.searchFilter)
     }
+    val searchResultCounts = remember(state.searchResults) {
+        countYouTubeSearchResults(state.searchResults)
+    }
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
     val resultKind = state.result?.kind ?: MediaKind.Unknown
@@ -855,12 +858,21 @@ private fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                "نتائج البحث",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
+                            Column(
                                 modifier = Modifier.weight(1f),
-                            )
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(
+                                    "نتائج البحث",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    "إجمالي ${searchResultCounts.total} • فيديوهات ${searchResultCounts.videos} • Shorts ${searchResultCounts.shorts} • قنوات ${searchResultCounts.channels}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                             if (state.selectedSearchIds.isNotEmpty()) {
                                 DiagnosticTextButton(
                                     trackingScreen = "HOME",
@@ -890,7 +902,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "all")
                                         onSearchFilterChanged(YouTubeSearchFilter.All)
                                     },
-                                    label = { Text("الكل") },
+                                    label = { Text("الكل (${searchResultCounts.total})") },
                                 )
                             }
                             item {
@@ -904,7 +916,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "videos")
                                         onSearchFilterChanged(YouTubeSearchFilter.Videos)
                                     },
-                                    label = { Text("الفيديوهات") },
+                                    label = { Text("الفيديوهات (${searchResultCounts.videos})") },
                                 )
                             }
                             item {
@@ -918,7 +930,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "shorts")
                                         onSearchFilterChanged(YouTubeSearchFilter.Shorts)
                                     },
-                                    label = { Text("Shorts") },
+                                    label = { Text("Shorts (${searchResultCounts.shorts})") },
                                 )
                             }
                             item {
@@ -932,7 +944,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "channels")
                                         onSearchFilterChanged(YouTubeSearchFilter.Channels)
                                     },
-                                    label = { Text("القنوات") },
+                                    label = { Text("القنوات (${searchResultCounts.channels})") },
                                 )
                             }
                         }
