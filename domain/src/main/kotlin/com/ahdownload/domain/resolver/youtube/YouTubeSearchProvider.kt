@@ -350,7 +350,7 @@ class YouTubeSearchProvider(
             source[position] == '\u0060' -> {
                 val quotedEnd = findQuotedStringEnd(source, position)
                 if (quotedEnd != null && quotedEnd < end &&
-                    source.substring(position + 1, quotedEnd).contains("${")
+                    source.substring(position + 1, quotedEnd).contains("\${")
                 ) "dynamic_template_literal" else "static_template_literal"
             }
             source[position] == '(' -> "parenthesized_expression"
