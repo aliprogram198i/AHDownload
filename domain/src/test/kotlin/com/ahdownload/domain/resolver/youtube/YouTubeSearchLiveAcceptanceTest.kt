@@ -116,6 +116,7 @@ class YouTubeSearchLiveAcceptanceTest {
             "shortsLockupViewModel",
             "reelItemRenderer",
             "channelRenderer",
+            "compactChannelRenderer",
             "itemSectionRenderer",
             "sectionListRenderer",
             "twoColumnSearchResultsRenderer",
