@@ -200,8 +200,11 @@ class YouTubeSearchProvider(
     private fun decodeJavaScriptStringExpression(source: String, start: Int): String? {
         val decoded = parseJavaScriptStringExpression(source, start, depth = 0) ?: return null
         val closing = skipJavaScriptTrivia(source, decoded.endExclusive)
-        if (closing >= source.length || source[closing] != ')') return null
-        return decoded.value
+        if (closing < source.length && source[closing] == ')') return decoded.value
+        if (closing < source.length && source[closing] == ',' &&
+            source.substring(closing + 1).trimStart().startsWith("null)")
+        ) return decoded.value
+        return null
     }
 
     private data class DecodedStringExpression(
@@ -267,7 +270,68 @@ class YouTubeSearchProvider(
             }.getOrNull() ?: return null
             return DecodedStringExpression(decoded, close + 1)
         }
+        val identifierEnd = readJavaScriptIdentifierEnd(source, position)
+        if (identifierEnd != null) {
+            val identifier = source.substring(position, identifierEnd)
+            val resolved = resolveStaticStringVariable(source, identifier, position, depth)
+            if (resolved != null) return DecodedStringExpression(resolved, identifierEnd)
+        }
         return null
+    }
+
+    private fun readJavaScriptIdentifierEnd(source: String, start: Int): Int? {
+        if (start >= source.length) return null
+        if (!(source[start] == '_' || source[start] == '$' || source[start].isLetter())) return null
+        var end = start + 1
+        while (end < source.length && (source[end] == '_' || source[end] == '$' || source[end].isLetterOrDigit())) end++
+        return end
+    }
+
+    private fun resolveStaticStringVariable(
+        source: String, name: String, referencePosition: Int, depth: Int,
+    ): String? {
+        if (depth >= MAX_STRING_EXPRESSION_DEPTH || name in setOf("null", "undefined", "true", "false")) return null
+        val scriptStart = source.lastIndexOf("<script", referencePosition, ignoreCase = true)
+        val scriptEnd = source.lastIndexOf("</script", referencePosition, ignoreCase = true)
+        if (scriptStart < 0 || scriptStart < scriptEnd) return null
+        val bodyStart = source.indexOf('>', scriptStart).takeIf { it >= 0 && it < referencePosition }?.plus(1) ?: return null
+        val scope = source.substring(bodyStart, referencePosition)
+        val pattern = Regex("\\b(?:var|let|const)\\s+" + Regex.escape(name) + "\\s*=")
+        for (match in pattern.findAll(scope).toList().asReversed()) {
+            val declarationStart = bodyStart + match.range.first
+            if (!isJavaScriptCodePosition(source, bodyStart, declarationStart)) continue
+            val expressionStart = bodyStart + match.range.last + 1
+            val parsed = parseJavaScriptStringExpression(source, expressionStart, depth + 1) ?: continue
+            if (parsed.endExclusive > referencePosition) continue
+            return parsed.value
+        }
+        return null
+    }
+
+    private fun isJavaScriptCodePosition(source: String, from: Int, target: Int): Boolean {
+        var i = from
+        var quote: Char? = null
+        var escaped = false
+        while (i < target) {
+            val ch = source[i]
+            if (quote != null) {
+                if (escaped) escaped = false else if (ch == '\\') escaped = true else if (ch == quote) quote = null
+                i++; continue
+            }
+            if (source.startsWith("//", i)) {
+                val end = source.indexOf('\n', i + 2)
+                if (end < 0 || end >= target) return false
+                i = end + 1; continue
+            }
+            if (source.startsWith("/*", i)) {
+                val end = source.indexOf("*/", i + 2)
+                if (end < 0 || end >= target) return false
+                i = end + 2; continue
+            }
+            if (ch == '"' || ch == '\'' || ch == '\u0060') quote = ch
+            i++
+        }
+        return quote == null
     }
 
     private fun decodeJavaScriptStringLiteral(literal: String): String? {

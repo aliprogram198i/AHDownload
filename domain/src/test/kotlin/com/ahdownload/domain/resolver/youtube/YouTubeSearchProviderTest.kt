@@ -238,6 +238,33 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesJsonParseUsingEarlierStaticStringVariable() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"static123","title":{"simpleText":"Static variable payload"}}}}"""
+        val serialized = com.google.gson.JsonPrimitive(payload).toString()
+        val html = """<html><script>
+            const serializedInitialData = $serialized;
+            window["ytInitialData"] = JSON.parse(serializedInitialData);
+        </script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("static").single()
+
+        assertEquals("static123", result.id)
+        assertEquals("Static variable payload", result.title)
+    }
+
+    @Test
+    fun parsesStaticJsonParseWithNullSecondArgument() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"secondArg123","title":{"simpleText":"Optional argument payload"}}}}"""
+        val serialized = com.google.gson.JsonPrimitive(payload).toString()
+        val html = """<html><script>ytInitialData = JSON.parse($serialized, null);</script></html>"""
+
+        val result = YouTubeSearchProvider(textClient(html)).search("second argument").single()
+
+        assertEquals("secondArg123", result.id)
+        assertEquals("Optional argument payload", result.title)
+    }
+
+    @Test
     fun rejectsUnsupportedJavaScriptExpressionWithoutScrapingUnrelatedObjects() = runTest {
         val html = """<html><script>
             var ytInitialData = createInitialData();
