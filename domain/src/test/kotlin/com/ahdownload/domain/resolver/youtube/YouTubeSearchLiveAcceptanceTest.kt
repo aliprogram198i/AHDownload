@@ -83,6 +83,10 @@ class YouTubeSearchLiveAcceptanceTest {
             "Expected at least one regular video for an Arabic music query; kinds=$resultKinds HTTP=$httpSummary html=$htmlShape innertube=$innertubeShape",
             results.any { it.kind == com.ahdownload.domain.search.ContentSearchKind.VIDEO },
         )
+        assertTrue(
+            "Expected at least one channel for an Arabic music query; kinds=$resultKinds HTTP=$httpSummary html=$htmlShape innertube=$innertubeShape",
+            results.any { it.kind == com.ahdownload.domain.search.ContentSearchKind.CHANNEL },
+        )
         assertEquals(
             "Search result IDs should be deduplicated.",
             results.size,
