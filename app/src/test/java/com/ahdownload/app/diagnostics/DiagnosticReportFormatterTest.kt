@@ -605,6 +605,67 @@ class DiagnosticReportFormatterTest {
     }
 
     @Test
+    fun reportsSpecificYouTubeSearchExpressionFailureAndAction() {
+        val session = "youtube-expression-session"
+        val operation = "youtube-expression-operation"
+        val report = DiagnosticReportFormatter.format(
+            listOf(
+                event(
+                    time = 1_000L,
+                    sequence = "1",
+                    type = "HTTP_REQUEST",
+                    level = DiagnosticLevel.INFO,
+                    reason = "http_response_received",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "request_outcome" to "success",
+                        "http_status" to "200",
+                    ),
+                ),
+                event(
+                    time = 2_000L,
+                    sequence = "2",
+                    type = "YOUTUBE_SEARCH_FAILED",
+                    level = DiagnosticLevel.ERROR,
+                    reason = "YouTube search payload unavailable",
+                    session = session,
+                    operation = operation,
+                    context = mapOf(
+                        "platform" to "YouTube",
+                        "stage" to "SEARCH",
+                        "failure_type" to "YouTubeSearchPayloadException",
+                        "request_outcome" to "failed",
+                        "payload_failure_reason" to "initial_data_parse_failed",
+                        "payload_parser_failure_stage" to "expression_decode",
+                        "payload_expression_wrapper" to "json_parse",
+                        "payload_expression_kind" to "nested_function_call",
+                        "payload_expression_failure_detail" to "unsupported_nested_function_call",
+                        "payload_expression_resolution" to "not_applicable",
+                        "payload_expression_length" to "24",
+                        "payload_expression_start_offset" to "5100",
+                        "payload_assignment_offset" to "5080",
+                        "payload_assignment_attempt" to "2",
+                        "payload_assignment_script_index" to "4",
+                        "payload_json_parse_argument_count" to "1",
+                        "payload_json_parse_argument_termination" to "closing_paren",
+                        "payload_response_marker_profile" to "yt_initial_data,ytcfg_set",
+                    ),
+                ),
+            ),
+        )
+
+        assertTrue(report.contains("root_cause=YOUTUBE_SEARCH_PAYLOAD_EXPRESSION_UNSUPPORTED"))
+        assertTrue(report.contains("action=INSPECT_YOUTUBE_SEARCH_JSON_PARSE_WRAPPER"))
+        assertTrue(report.contains("payload_expression_kind=nested_function_call"))
+        assertTrue(report.contains("payload_expression_failure_detail=unsupported_nested_function_call"))
+        assertTrue(report.contains("payload_json_parse_argument_termination=closing_paren"))
+        assertTrue(report.contains("FAILURE_CHAIN\nsearch -> response_payload_unavailable:initial_data_parse_failed -> payload_expression:unsupported_nested_function_call"))
+    }
+
+    @Test
     fun classifiesYouTubeAgeGateAsAuthenticationNotResolverOrNetworkFailure() {
         val session = "session-age-gate"
         val operation = "op-age-gate"
