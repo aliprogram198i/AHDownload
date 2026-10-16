@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Search
@@ -265,6 +266,9 @@ private fun HomeScreen(
     val androidContext = LocalContext.current
     val visibleSearchResults = remember(state.searchResults, state.searchFilter) {
         filterYouTubeSearchResults(state.searchResults, state.searchFilter)
+    }
+    val searchResultCounts = remember(state.searchResults) {
+        countYouTubeSearchResults(state.searchResults)
     }
     val candidates = state.resolution?.candidates.orEmpty()
     val resultSet = remember(candidates) { SmartResultEngine().build(candidates) }
@@ -851,28 +855,51 @@ private fun HomeScreen(
 
                 if (state.searchResults.isNotEmpty()) {
                     item {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text(
-                                "نتائج البحث",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (state.selectedSearchIds.isNotEmpty()) {
-                                DiagnosticTextButton(
-                                    trackingScreen = "HOME",
-                                    trackingId = "HOME.textbutton.01",
-                                    trackingLabel = "مسح التحديد",
-                                    disabledReason = "callsite_precondition_not_explicit",
-                                    onClick = {
-                                        uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
-                                        onClearSearchSelection()
-                                    },
-                                ) { Text("مسح التحديد") }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "نتائج البحث",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                ) {
+                                    Text(
+                                        "${searchResultCounts.all} نتيجة",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                if (state.selectedSearchIds.isNotEmpty()) {
+                                    DiagnosticTextButton(
+                                        trackingScreen = "HOME",
+                                        trackingId = "HOME.textbutton.01",
+                                        trackingLabel = "مسح التحديد",
+                                        disabledReason = "callsite_precondition_not_explicit",
+                                        onClick = {
+                                            uiTraceLogger.interaction("HOME", "search_selection", "clear_selection")
+                                            onClearSearchSelection()
+                                        },
+                                    ) { Text("مسح التحديد") }
+                                }
                             }
+                            Text(
+                                "نتائج «${state.searchQuery}» مرتبة حسب ما أعاده YouTube",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
                         }
                     }
                     item {
@@ -890,7 +917,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "all")
                                         onSearchFilterChanged(YouTubeSearchFilter.All)
                                     },
-                                    label = { Text("الكل") },
+                                    label = { Text("الكل · ${searchResultCounts.all}") },
                                 )
                             }
                             item {
@@ -904,7 +931,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "videos")
                                         onSearchFilterChanged(YouTubeSearchFilter.Videos)
                                     },
-                                    label = { Text("الفيديوهات") },
+                                    label = { Text("الفيديوهات · ${searchResultCounts.videos}") },
                                 )
                             }
                             item {
@@ -918,7 +945,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "shorts")
                                         onSearchFilterChanged(YouTubeSearchFilter.Shorts)
                                     },
-                                    label = { Text("Shorts") },
+                                    label = { Text("Shorts · ${searchResultCounts.shorts}") },
                                 )
                             }
                             item {
@@ -932,7 +959,7 @@ private fun HomeScreen(
                                         uiTraceLogger.interaction("HOME", "search_filter", "channels")
                                         onSearchFilterChanged(YouTubeSearchFilter.Channels)
                                     },
-                                    label = { Text("القنوات") },
+                                    label = { Text("القنوات · ${searchResultCounts.channels}") },
                                 )
                             }
                         }
