@@ -346,6 +346,66 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun retriesInnertubeWhenHtmlOnlyProducesShortsAndReturnsRegularVideosToo() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            window["ytInitialData"] = {"contents":{
+              "reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}
+            }};
+        </script></html>"""
+        val response = """{
+          "contents":[
+            {"richItemRenderer":{"content":{"lockupViewModel":{
+              "contentType":"LOCKUP_CONTENT_TYPE_VIDEO",
+              "contentId":"regularVideo123",
+              "metadata":{"lockupMetadataViewModel":{"title":{"content":"Regular video from lockup"}}},
+              "contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://img.example/regular.jpg"}]}}}
+            }}}},
+            {"videoRenderer":{"videoId":"classicVideo123","title":{"runs":[{"text":"Classic regular video"}]}}},
+            {"reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result from API"}}},
+            {"channelRenderer":{"channelId":"UCcreator123","title":{"simpleText":"Creator channel"}}}
+          ]
+        }"""
+        var postCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postCount++
+                assertTrue(url.startsWith("https://www.youtube.com/youtubei/v1/search"))
+                return response
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("كاظم", limit = 12)
+
+        assertEquals("Short-only HTML must trigger exactly one Innertube fallback.", 1, postCount)
+        assertEquals(
+            listOf("regularVideo123", "classicVideo123", "short123", "UCcreator123"),
+            results.map { it.id },
+        )
+        assertEquals(
+            listOf(
+                ContentSearchKind.VIDEO,
+                ContentSearchKind.VIDEO,
+                ContentSearchKind.SHORT,
+                ContentSearchKind.CHANNEL,
+            ),
+            results.map { it.kind },
+        )
+        assertEquals("Regular video from lockup", results.first().title)
+        assertEquals("https://img.example/regular.jpg", results.first().thumbnailUrl)
+        assertEquals(1, results.count { it.id == "short123" })
+    }
+
+    @Test
     fun usesInnertubeSearchWhenPageDoesNotExposeAnApiKey() = runTest {
         val html = """<html><script>
             ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}}});
