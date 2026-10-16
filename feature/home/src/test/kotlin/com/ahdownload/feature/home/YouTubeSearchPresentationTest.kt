@@ -63,6 +63,23 @@ class YouTubeSearchPresentationTest {
     }
 
     @Test
+    fun resultCountsMatchEveryKindWithoutDroppingItems() {
+        assertEquals(
+            YouTubeSearchCounts(videos = 2, shorts = 1, channels = 1),
+            countYouTubeSearchResults(results),
+        )
+        assertEquals(4, countYouTubeSearchResults(results).total)
+    }
+
+    @Test
+    fun emptyResultCountsAreAllZero() {
+        assertEquals(
+            YouTubeSearchCounts(videos = 0, shorts = 0, channels = 0),
+            countYouTubeSearchResults(emptyList()),
+        )
+    }
+
+    @Test
     fun emptyResultsRemainEmptyForEveryFilter() {
         YouTubeSearchFilter.entries.forEach { filter ->
             assertEquals(emptyList<ContentSearchItem>(), filterYouTubeSearchResults(emptyList(), filter))
