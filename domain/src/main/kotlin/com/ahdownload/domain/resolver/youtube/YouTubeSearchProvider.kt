@@ -100,13 +100,10 @@ class YouTubeSearchProvider(
         query: String,
         diagnosticContext: Map<String, String>,
     ): InnertubeSearchFallback {
+        // The Innertube API key is present in most page responses, but current WEB search
+        // clients can accept requests without it. Use the key when available instead of making
+        // it a prerequisite for the fallback.
         val apiKey = extractConfiguredString(html, "INNERTUBE_API_KEY")
-            ?: return InnertubeSearchFallback(
-                payload = null,
-                outcome = "skipped",
-                failureDetail = "api_key_missing",
-                attempted = false,
-            )
         val context = extractConfiguredObject(html, "INNERTUBE_CONTEXT")
         val clientVersion = context
             ?.getAsJsonObject("client")
@@ -161,8 +158,13 @@ class YouTubeSearchProvider(
                 ?.takeIf { it.isNotBlank() }
                 ?.let { put("X-Goog-Visitor-Id", it) }
         }
-        val endpoint = "https://www.youtube.com/youtubei/v1/search?key=" +
-            URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString())
+        val endpoint = buildString {
+            append("https://www.youtube.com/youtubei/v1/search?prettyPrint=false")
+            if (!apiKey.isNullOrBlank()) {
+                append("&key=")
+                append(URLEncoder.encode(apiKey, StandardCharsets.UTF_8.toString()))
+            }
+        }
         val fallbackContext = diagnosticContext + mapOf(
             "diagnostic_operation" to "youtube.search.innertube",
             "search_strategy" to "INNERTUBE_FALLBACK",
