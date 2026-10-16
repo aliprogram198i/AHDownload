@@ -51,30 +51,71 @@ class YouTubeSearchProvider(
         val extraction = extractInitialData(html)
         val resultLimit = limit.coerceIn(1, 24)
         val pageResults = extraction.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
-        if (pageResults.isNotEmpty()) return pageResults
 
-        // The HTML boot payload is not a stable search API. If YouTube changes its
-        // ytInitialData wrapper or ships a shell page, retry through the first-party
-        // Innertube search endpoint using the API key/context embedded in that same
-        // response. This path is only used when the page parser yields no results.
+        // A partially decoded page may contain Shorts but omit regular videos because
+        // YouTube mixes legacy renderers with lockupViewModel renderers. Treat a Shorts-only
+        // or very small page result set as incomplete and ask Innertube for the full result list.
+        val minimumUsefulPageResults = minOf(MINIMUM_USEFUL_PAGE_RESULTS, resultLimit)
+        val needsFallback = pageResults.size < minimumUsefulPageResults ||
+            pageResults.none { it.kind == ContentSearchKind.VIDEO }
+        if (!needsFallback) return pageResults
+
         val fallback = fetchInnertubeSearch(
             html = html,
             query = normalizedQuery,
             diagnosticContext = requestDiagnosticContext,
         )
-        val fallbackResults = fallback.payload?.let { collectSearchResults(it, resultLimit) }
-        if (!fallbackResults.isNullOrEmpty()) return fallbackResults
-        if (fallback.payload != null) return emptyList()
+        val fallbackResults = fallback.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
 
-        throw createPayloadUnavailableException(html, extraction, fallback)
+        // If the default YouTube result mix is Shorts-only, request the Videos filter explicitly.
+        // The WEB search endpoint can return a valid 200 response whose first result section only
+        // contains Shorts; a successful unfiltered response therefore is not enough to stop here.
+        if (fallbackResults.any { it.kind == ContentSearchKind.VIDEO }) {
+            return mergeSearchResults(fallbackResults, pageResults, resultLimit)
+        }
+        if (pageResults.any { it.kind == ContentSearchKind.VIDEO }) {
+            return mergeSearchResults(pageResults, fallbackResults, resultLimit)
+        }
+
+        val videoFallback = fetchInnertubeSearch(
+            html = html,
+            query = normalizedQuery,
+            diagnosticContext = requestDiagnosticContext,
+            searchParams = VIDEO_ONLY_SEARCH_PARAMS,
+        )
+        val videoFallbackResults =
+            videoFallback.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
+        if (videoFallbackResults.any { it.kind == ContentSearchKind.VIDEO }) {
+            val otherResults = mergeSearchResults(
+                fallbackResults,
+                pageResults,
+                MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING,
+            )
+            return mergeSearchResults(videoFallbackResults, otherResults, resultLimit)
+        }
+
+        if (fallbackResults.isNotEmpty()) return mergeSearchResults(fallbackResults, pageResults, resultLimit)
+        if (pageResults.isNotEmpty()) return pageResults
+        if (videoFallback.payload != null || fallback.payload != null) return emptyList()
+
+        throw createPayloadUnavailableException(html, extraction, videoFallback)
     }
 
     private fun collectSearchResults(root: JsonObject, resultLimit: Int): List<ContentSearchItem> {
-        // Preserve source ordering and merge duplicate video/Short renderers without showing
-        // the same video twice. Both the HTML payload and the Innertube response use this path.
+        val discovered = mutableListOf<ContentSearchItem>()
+        collectRenderersInSourceOrder(root) { item -> discovered += item }
+        return mergeSearchResults(discovered, emptyList(), resultLimit)
+    }
+
+    private fun mergeSearchResults(
+        preferred: List<ContentSearchItem>,
+        secondary: List<ContentSearchItem>,
+        resultLimit: Int,
+    ): List<ContentSearchItem> {
+        // Preserve preferred-source ordering and merge duplicate video/Short renderers.
         val ordered = mutableListOf<ContentSearchItem>()
         val indexById = mutableMapOf<String, Int>()
-        collectRenderersInSourceOrder(root) { item ->
+        (preferred + secondary).forEach { item ->
             val existingIndex = indexById[item.id]
             if (existingIndex == null) {
                 indexById[item.id] = ordered.size
@@ -99,6 +140,7 @@ class YouTubeSearchProvider(
         html: String,
         query: String,
         diagnosticContext: Map<String, String>,
+        searchParams: String? = null,
     ): InnertubeSearchFallback {
         // The Innertube API key is present in most page responses, but current WEB search
         // clients can accept requests without it. Use the key when available instead of making
@@ -149,6 +191,7 @@ class YouTubeSearchProvider(
         val body = JsonObject().apply {
             add("context", requestContext)
             addProperty("query", query)
+            searchParams?.let { addProperty("params", it) }
         }
         val headers = buildMap {
             put("Accept", "application/json")
@@ -172,8 +215,16 @@ class YouTubeSearchProvider(
         }
         val fallbackContext = diagnosticContext + mapOf(
             "diagnostic_operation" to "youtube.search.innertube",
-            "search_strategy" to "INNERTUBE_FALLBACK",
-            "request_payload_type" to "search_query_and_client_context",
+            "search_strategy" to if (searchParams == null) {
+                "INNERTUBE_FALLBACK"
+            } else {
+                "INNERTUBE_VIDEO_FILTER_FALLBACK"
+            },
+            "request_payload_type" to if (searchParams == null) {
+                "search_query_and_client_context"
+            } else {
+                "search_query_client_context_and_video_filter"
+            },
         )
 
         val raw = try {
@@ -277,11 +328,18 @@ class YouTubeSearchProvider(
         var lastValueKind = "unknown"
         var lastFailureStage = "assignment_not_found"
         var lastExpressionDiagnostics = PayloadExpressionDiagnostics()
+        var bestPayload: JsonObject? = null
+        var bestValueKind = "unknown"
+        var bestPayloadQuality = Int.MIN_VALUE
 
+        // Some YouTube pages contain more than one ytInitialData assignment. Do not stop
+        // at the first syntactically valid JSON object: an earlier payload can be a Shorts
+        // shelf while a later assignment contains the actual mixed video search results.
         for (assignment in INITIAL_DATA_ASSIGNMENT.findAll(html)) {
             assignmentCount++
             val valueStart = skipJavaScriptTrivia(html, assignment.range.last + 1)
-            lastValueKind = classifyAssignmentValue(html, valueStart)
+            val valueKind = classifyAssignmentValue(html, valueStart)
+            lastValueKind = valueKind
             val json = extractAssignedJson(html, valueStart)
             if (json == null) {
                 lastFailureStage = "expression_decode"
@@ -309,10 +367,21 @@ class YouTubeSearchProvider(
                 continue
             }
 
+            val candidateResults = collectSearchResults(parsed, MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING)
+            val candidateQuality = searchPayloadQuality(candidateResults)
+            if (bestPayload == null || candidateQuality > bestPayloadQuality) {
+                bestPayload = parsed
+                bestValueKind = valueKind
+                bestPayloadQuality = candidateQuality
+            }
+        }
+
+        val selectedPayload = bestPayload
+        if (selectedPayload != null) {
             return InitialDataExtraction(
-                payload = parsed,
+                payload = selectedPayload,
                 assignmentCount = assignmentCount,
-                assignmentValueKind = lastValueKind,
+                assignmentValueKind = bestValueKind,
                 failureStage = "success",
             )
         }
@@ -325,6 +394,14 @@ class YouTubeSearchProvider(
             expressionDiagnostics = lastExpressionDiagnostics,
         )
     }
+
+    private fun searchPayloadQuality(results: List<ContentSearchItem>): Int =
+        results.count { it.kind == ContentSearchKind.VIDEO } * 1_000 +
+            results.size * 10 +
+            results.count { it.kind == ContentSearchKind.CHANNEL } * 5 +
+            results.count { it.kind == ContentSearchKind.SHORT }
+
+
 
     private fun looksLikeInitialData(root: JsonObject): Boolean =
         root.keySet().any { it in INITIAL_DATA_ROOT_KEYS }
@@ -1071,6 +1148,7 @@ class YouTubeSearchProvider(
                         val renderer = child.asJsonObject
                         val parsed = when (key) {
                             "videoRenderer", "gridVideoRenderer" -> parseVideoRenderer(renderer)
+                            "videoWithContextRenderer" -> parseVideoWithContextRenderer(renderer)
                             "lockupViewModel" -> parseLockupViewModel(renderer)
                             "reelItemRenderer" -> parseReelRenderer(renderer)
                             "shortsLockupViewModel" -> parseShortsLockup(renderer)
@@ -1088,6 +1166,44 @@ class YouTubeSearchProvider(
                 }
             }
         }
+    }
+
+    /**
+     * YouTube search responses can place ordinary videos inside
+     * videoWithContextRenderer rather than videoRenderer. This renderer is common in
+     * current Innertube responses and must not be mistaken for a Shorts-only result set.
+     */
+    private fun parseVideoWithContextRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.getAsJsonObject("navigationEndpoint")
+                ?.getAsJsonObject("watchEndpoint")
+                ?.getAsJsonPrimitive("videoId")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        val title = firstText(renderer.getAsJsonObject("title"))
+            ?: firstText(renderer.getAsJsonObject("headline"))
+            ?: firstText(renderer.getAsJsonObject("videoTitle"))
+            ?: firstText(
+                renderer.getAsJsonObject("metadata")
+                    ?.getAsJsonObject("lockupMetadataViewModel")
+                    ?.getAsJsonObject("title"),
+            )
+            ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/watch?v=$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            durationLabel = firstText(renderer.getAsJsonObject("lengthText")),
+            channelLabel = firstText(renderer.getAsJsonObject("ownerText"))
+                ?: firstText(renderer.getAsJsonObject("shortBylineText"))
+                ?: firstText(renderer.getAsJsonObject("longBylineText")),
+            kind = ContentSearchKind.VIDEO,
+        )
     }
 
     private fun parseLockupViewModel(renderer: JsonObject): ContentSearchItem? {
@@ -1282,6 +1398,9 @@ class YouTubeSearchProvider(
             "onResponseReceivedEndpoints",
             "frameworkUpdates",
         )
+        const val MINIMUM_USEFUL_PAGE_RESULTS = 6
+        const val VIDEO_ONLY_SEARCH_PARAMS = "EgIQAQ%3D%3D"
+        const val MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING = 24
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
         const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
         const val MAX_STRING_EXPRESSION_DEPTH = 16

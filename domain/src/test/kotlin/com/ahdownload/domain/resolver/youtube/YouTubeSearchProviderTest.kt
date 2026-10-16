@@ -265,6 +265,58 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
+    fun parsesRegularVideoWithContextRendererInInnertubeSearchResults() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            window["ytInitialData"] = {"contents":{
+              "reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}
+            }};
+        </script></html>"""
+        val response = """{
+          "contents":{"sectionListRenderer":{"contents":[
+            {"itemSectionRenderer":{"contents":[
+              {"videoWithContextRenderer":{
+                "videoId":"regularVideo123",
+                "headline":{"runs":[{"text":"Regular concert video"}]},
+                "lengthText":{"simpleText":"5:41"},
+                "shortBylineText":{"runs":[{"text":"Music channel"}]},
+                "thumbnail":{"thumbnails":[{"url":"https://img.example/regular-video.jpg"}]},
+                "navigationEndpoint":{"watchEndpoint":{"videoId":"regularVideo123"}}
+              }},
+              {"reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}}
+            ]}}
+          ]}}
+        }"""
+        var postCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postCount++
+                return response
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("music", limit = 12)
+
+        assertEquals("The Shorts-only HTML payload should trigger Innertube fallback.", 1, postCount)
+        assertEquals(listOf("regularVideo123", "short123"), results.map { it.id })
+        assertEquals(ContentSearchKind.VIDEO, results.first().kind)
+        assertEquals("Regular concert video", results.first().title)
+        assertEquals("5:41", results.first().durationLabel)
+        assertEquals("Music channel", results.first().channelLabel)
+        assertEquals("https://img.example/regular-video.jpg", results.first().thumbnailUrl)
+        assertEquals(ContentSearchKind.SHORT, results.last().kind)
+    }
+
+    @Test
     fun parsesModernLockupViewModelVideoResults() = runTest {
         val html = """<html><script>ytInitialData = {"contents":[
           {"lockupViewModel":{
@@ -343,6 +395,154 @@ class YouTubeSearchProviderTest {
         assertEquals("INNERTUBE_FALLBACK", postedDiagnostics["search_strategy"])
         assertEquals("innertube-fallback-test", postedDiagnostics["operation_id"])
         assertFalse(postedDiagnostics.values.joinToString(" ").contains("كاظم"))
+    }
+
+    @Test
+    fun selectsLaterCompleteInitialDataAssignmentOverEarlierShortsShelf() = runTest {
+        val html = """<html><script>
+            window["ytInitialData"] = {"contents":{
+              "reelItemRenderer":{"videoId":"earlyShort123","headline":{"simpleText":"Early Shorts shelf"}}
+            }};
+            window["ytInitialData"] = {"contents":[
+              {"videoRenderer":{"videoId":"regularVideo01","title":{"simpleText":"Regular video one"}}},
+              {"videoRenderer":{"videoId":"regularVideo02","title":{"simpleText":"Regular video two"}}},
+              {"videoRenderer":{"videoId":"regularVideo03","title":{"simpleText":"Regular video three"}}},
+              {"videoRenderer":{"videoId":"regularVideo04","title":{"simpleText":"Regular video four"}}},
+              {"videoRenderer":{"videoId":"regularVideo05","title":{"simpleText":"Regular video five"}}},
+              {"videoRenderer":{"videoId":"regularVideo06","title":{"simpleText":"Regular video six"}}}
+            ]};
+        </script></html>"""
+
+        val results = YouTubeSearchProvider(textClient(html)).search("regular videos", limit = 12)
+
+        assertEquals(6, results.size)
+        assertTrue(results.all { it.kind == ContentSearchKind.VIDEO })
+        assertEquals(
+            listOf(
+                "regularVideo01",
+                "regularVideo02",
+                "regularVideo03",
+                "regularVideo04",
+                "regularVideo05",
+                "regularVideo06",
+            ),
+            results.map { it.id },
+        )
+    }
+
+    @Test
+    fun retriesInnertubeWhenHtmlOnlyProducesShortsAndReturnsRegularVideosToo() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            window["ytInitialData"] = {"contents":{
+              "reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}
+            }};
+        </script></html>"""
+        val response = """{
+          "contents":[
+            {"richItemRenderer":{"content":{"lockupViewModel":{
+              "contentType":"LOCKUP_CONTENT_TYPE_VIDEO",
+              "contentId":"regularVideo123",
+              "metadata":{"lockupMetadataViewModel":{"title":{"content":"Regular video from lockup"}}},
+              "contentImage":{"thumbnailViewModel":{"image":{"sources":[{"url":"https://img.example/regular.jpg"}]}}}
+            }}}},
+            {"videoRenderer":{"videoId":"classicVideo123","title":{"runs":[{"text":"Classic regular video"}]}}},
+            {"reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result from API"}}},
+            {"channelRenderer":{"channelId":"UCcreator123","title":{"simpleText":"Creator channel"}}}
+          ]
+        }"""
+        var postCount = 0
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postCount++
+                assertTrue(url.startsWith("https://www.youtube.com/youtubei/v1/search"))
+                return response
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("كاظم", limit = 12)
+
+        assertEquals("Short-only HTML must trigger exactly one Innertube fallback.", 1, postCount)
+        assertEquals(
+            listOf("regularVideo123", "classicVideo123", "short123", "UCcreator123"),
+            results.map { it.id },
+        )
+        assertEquals(
+            listOf(
+                ContentSearchKind.VIDEO,
+                ContentSearchKind.VIDEO,
+                ContentSearchKind.SHORT,
+                ContentSearchKind.CHANNEL,
+            ),
+            results.map { it.kind },
+        )
+        assertEquals("Regular video from lockup", results.first().title)
+        assertEquals("https://img.example/regular.jpg", results.first().thumbnailUrl)
+        assertEquals(1, results.count { it.id == "short123" })
+    }
+
+    @Test
+    fun requestsVideoFilteredInnertubeResultsWhenBothDefaultSourcesOnlyHaveShorts() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_API_KEY":"test-api-key","INNERTUBE_CONTEXT":{
+              "client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}
+            }});
+            ytInitialData = {"contents":{
+              "reelItemRenderer":{"videoId":"short123","headline":{"simpleText":"Short result"}}
+            }};
+        </script></html>"""
+        val shortsOnlyResponse = """{"contents":{"reelItemRenderer":{
+          "videoId":"short123","headline":{"simpleText":"Short result"}
+        }}}"""
+        val videosResponse = """{"contents":[
+          {"videoRenderer":{"videoId":"regularVid01","title":{"runs":[{"text":"Regular video 1"}]},"lengthText":{"simpleText":"4:10"}}},
+          {"videoRenderer":{"videoId":"regularVid02","title":{"simpleText":"Regular video 2"}}}
+        ]}"""
+        val requestBodies = mutableListOf<String>()
+        val requestDiagnostics = mutableListOf<Map<String, String>>()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                requestBodies += body
+                requestDiagnostics += diagnosticContext
+                val request = com.google.gson.JsonParser.parseString(body).asJsonObject
+                return if (request.has("params")) videosResponse else shortsOnlyResponse
+            }
+        }
+
+        val results = YouTubeSearchProvider(client).search("كاظم", limit = 12)
+
+        assertEquals("The unfiltered and video-filtered request should both run.", 2, requestBodies.size)
+        val defaultRequest = com.google.gson.JsonParser.parseString(requestBodies[0]).asJsonObject
+        val videoRequest = com.google.gson.JsonParser.parseString(requestBodies[1]).asJsonObject
+        assertFalse(defaultRequest.has("params"))
+        assertEquals("EgIQAQ%3D%3D", videoRequest.getAsJsonPrimitive("params").asString)
+        assertEquals("INNERTUBE_FALLBACK", requestDiagnostics[0]["search_strategy"])
+        assertEquals("INNERTUBE_VIDEO_FILTER_FALLBACK", requestDiagnostics[1]["search_strategy"])
+        assertEquals(
+            listOf("regularVid01", "regularVid02", "short123"),
+            results.map { it.id },
+        )
+        assertEquals(
+            listOf(ContentSearchKind.VIDEO, ContentSearchKind.VIDEO, ContentSearchKind.SHORT),
+            results.map { it.kind },
+        )
+        assertEquals(1, results.count { it.id == "short123" })
     }
 
     @Test

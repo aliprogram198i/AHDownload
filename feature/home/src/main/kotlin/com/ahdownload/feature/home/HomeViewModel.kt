@@ -252,6 +252,8 @@ class HomeViewModel(
             searchQuery = normalized,
             searching = true,
             searchResults = emptyList(),
+            // A new search must show the full result set, not carry over an old Shorts-only filter.
+            searchFilter = YouTubeSearchFilter.All,
             searchError = null,
             selectedSearchIds = emptySet(),
             batchDownloading = false,
@@ -282,6 +284,9 @@ class HomeViewModel(
                     searchDiagnosticContext + mapOf(
                         "request_outcome" to if (results.isEmpty()) "empty" else "success",
                         "result_count" to results.size.toString(),
+                        "result_video_count" to results.count { it.kind == ContentSearchKind.VIDEO }.toString(),
+                        "result_short_count" to results.count { it.kind == ContentSearchKind.SHORT }.toString(),
+                        "result_channel_count" to results.count { it.kind == ContentSearchKind.CHANNEL }.toString(),
                     ),
                     null,
                 )
