@@ -21,16 +21,16 @@ class YouTubeSearchLiveAcceptanceTest {
         )
 
         val results = YouTubeSearchProvider(OkHttpTextClient()).search(
-            query = "music",
+            query = "كاظم",
             limit = 12,
             diagnosticContext = mapOf("operation_id" to "live-youtube-search-acceptance"),
         )
+        val resultKinds = results.groupingBy { it.kind }.eachCount()
 
         assertFalse("Live YouTube search returned no results.", results.isEmpty())
         assertTrue(
-            "Results did not include a video or Short renderer.",
-            results.any { it.kind == com.ahdownload.domain.search.ContentSearchKind.VIDEO ||
-                it.kind == com.ahdownload.domain.search.ContentSearchKind.SHORT },
+            "Expected at least one regular video for an Arabic music query; kinds=$resultKinds",
+            results.any { it.kind == com.ahdownload.domain.search.ContentSearchKind.VIDEO },
         )
         assertEquals(
             "Search result IDs should be deduplicated.",
