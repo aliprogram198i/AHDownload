@@ -16,3 +16,20 @@ internal fun filterYouTubeSearchResults(
     YouTubeSearchFilter.Shorts -> results.filter { it.kind == ContentSearchKind.SHORT }
     YouTubeSearchFilter.Channels -> results.filter { it.kind == ContentSearchKind.CHANNEL }
 }
+
+/** Counts the kinds present in the current result set without changing source order. */
+internal data class YouTubeSearchCounts(
+    val videos: Int,
+    val shorts: Int,
+    val channels: Int,
+) {
+    val total: Int get() = videos + shorts + channels
+}
+
+internal fun countYouTubeSearchResults(
+    results: List<ContentSearchItem>,
+): YouTubeSearchCounts = YouTubeSearchCounts(
+    videos = results.count { it.kind == ContentSearchKind.VIDEO },
+    shorts = results.count { it.kind == ContentSearchKind.SHORT },
+    channels = results.count { it.kind == ContentSearchKind.CHANNEL },
+)
