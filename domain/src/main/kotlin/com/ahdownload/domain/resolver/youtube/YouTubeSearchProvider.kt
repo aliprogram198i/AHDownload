@@ -80,7 +80,7 @@ class YouTubeSearchProvider(
 
     private fun collectSearchResults(root: JsonObject, resultLimit: Int): List<ContentSearchItem> {
         val discovered = mutableListOf<ContentSearchItem>()
-        collectRenderersInSourceOrder(root, discovered::add)
+        collectRenderersInSourceOrder(root) { item -> discovered += item }
         return mergeSearchResults(discovered, emptyList(), resultLimit)
     }
 
