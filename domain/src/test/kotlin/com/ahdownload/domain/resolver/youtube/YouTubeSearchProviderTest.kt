@@ -314,7 +314,7 @@ class YouTubeSearchProviderTest {
         assertEquals("Example channel", results[0].channelLabel)
         assertEquals("https://img.example/short.jpg", results[1].thumbnailUrl)
         assertEquals("10K subscribers", results[2].subtitle)
-        assertTrue(postedUrl.startsWith("https://www.youtube.com/youtubei/v1/search?key=test-api-key"))
+        assertTrue(postedUrl.startsWith("https://www.youtube.com/youtubei/v1/search?prettyPrint=false&key=test-api-key"))
         val requestJson = com.google.gson.JsonParser.parseString(postedBody).asJsonObject
         assertEquals("كاظم", requestJson.getAsJsonPrimitive("query").asString)
         assertEquals("WEB", requestJson.getAsJsonObject("context").getAsJsonObject("client").getAsJsonPrimitive("clientName").asString)
@@ -323,6 +323,35 @@ class YouTubeSearchProviderTest {
         assertEquals("INNERTUBE_FALLBACK", postedDiagnostics["search_strategy"])
         assertEquals("innertube-fallback-test", postedDiagnostics["operation_id"])
         assertFalse(postedDiagnostics.values.joinToString(" ").contains("كاظم"))
+    }
+
+    @Test
+    fun usesInnertubeSearchWhenPageDoesNotExposeAnApiKey() = runTest {
+        val html = """<html><script>
+            ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"2.20261015.01.00","hl":"en","gl":"US"}}});
+            ytInitialData = buildInitialData();
+        </script></html>"""
+        val response = """{"contents":{"videoRenderer":{"videoId":"noKeyVideo123","title":{"simpleText":"No key fallback video"}}}}"""
+        var postedUrl = ""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String {
+                postedUrl = url
+                return response
+            }
+        }
+
+        val result = YouTubeSearchProvider(client).search("test")
+
+        assertEquals("noKeyVideo123", result.single().id)
+        assertEquals("No key fallback video", result.single().title)
+        assertEquals("https://www.youtube.com/youtubei/v1/search?prettyPrint=false", postedUrl)
     }
 
     @Test
