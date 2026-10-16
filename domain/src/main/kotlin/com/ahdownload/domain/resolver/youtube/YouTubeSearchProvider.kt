@@ -65,17 +65,40 @@ class YouTubeSearchProvider(
             query = normalizedQuery,
             diagnosticContext = requestDiagnosticContext,
         )
-        val fallbackResults = fallback.payload?.let { collectSearchResults(it, resultLimit) }
-        if (!fallbackResults.isNullOrEmpty()) {
-            // Prefer Innertube's ordering, then append any unique items found only in HTML.
-            // This retains Shorts that were visible in the first response without suppressing
-            // regular videos returned by the search endpoint.
+        val fallbackResults = fallback.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
+
+        // If the default YouTube result mix is Shorts-only, request the Videos filter explicitly.
+        // The WEB search endpoint can return a valid 200 response whose first result section only
+        // contains Shorts; a successful unfiltered response therefore is not enough to stop here.
+        if (fallbackResults.any { it.kind == ContentSearchKind.VIDEO }) {
             return mergeSearchResults(fallbackResults, pageResults, resultLimit)
         }
-        if (pageResults.isNotEmpty()) return pageResults
-        if (fallback.payload != null) return emptyList()
+        if (pageResults.any { it.kind == ContentSearchKind.VIDEO }) {
+            return mergeSearchResults(pageResults, fallbackResults, resultLimit)
+        }
 
-        throw createPayloadUnavailableException(html, extraction, fallback)
+        val videoFallback = fetchInnertubeSearch(
+            html = html,
+            query = normalizedQuery,
+            diagnosticContext = requestDiagnosticContext,
+            searchParams = VIDEO_ONLY_SEARCH_PARAMS,
+        )
+        val videoFallbackResults =
+            videoFallback.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
+        if (videoFallbackResults.any { it.kind == ContentSearchKind.VIDEO }) {
+            val otherResults = mergeSearchResults(
+                fallbackResults,
+                pageResults,
+                MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING,
+            )
+            return mergeSearchResults(videoFallbackResults, otherResults, resultLimit)
+        }
+
+        if (fallbackResults.isNotEmpty()) return mergeSearchResults(fallbackResults, pageResults, resultLimit)
+        if (pageResults.isNotEmpty()) return pageResults
+        if (videoFallback.payload != null || fallback.payload != null) return emptyList()
+
+        throw createPayloadUnavailableException(html, extraction, videoFallback)
     }
 
     private fun collectSearchResults(root: JsonObject, resultLimit: Int): List<ContentSearchItem> {
@@ -117,6 +140,7 @@ class YouTubeSearchProvider(
         html: String,
         query: String,
         diagnosticContext: Map<String, String>,
+        searchParams: String? = null,
     ): InnertubeSearchFallback {
         // The Innertube API key is present in most page responses, but current WEB search
         // clients can accept requests without it. Use the key when available instead of making
@@ -167,6 +191,7 @@ class YouTubeSearchProvider(
         val body = JsonObject().apply {
             add("context", requestContext)
             addProperty("query", query)
+            searchParams?.let { addProperty("params", it) }
         }
         val headers = buildMap {
             put("Accept", "application/json")
@@ -190,8 +215,16 @@ class YouTubeSearchProvider(
         }
         val fallbackContext = diagnosticContext + mapOf(
             "diagnostic_operation" to "youtube.search.innertube",
-            "search_strategy" to "INNERTUBE_FALLBACK",
-            "request_payload_type" to "search_query_and_client_context",
+            "search_strategy" to if (searchParams == null) {
+                "INNERTUBE_FALLBACK"
+            } else {
+                "INNERTUBE_VIDEO_FILTER_FALLBACK"
+            },
+            "request_payload_type" to if (searchParams == null) {
+                "search_query_and_client_context"
+            } else {
+                "search_query_client_context_and_video_filter"
+            },
         )
 
         val raw = try {
@@ -1327,6 +1360,7 @@ class YouTubeSearchProvider(
             "frameworkUpdates",
         )
         const val MINIMUM_USEFUL_PAGE_RESULTS = 6
+        const val VIDEO_ONLY_SEARCH_PARAMS = "EgIQAQ%3D%3D"
         const val MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING = 24
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
         const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
