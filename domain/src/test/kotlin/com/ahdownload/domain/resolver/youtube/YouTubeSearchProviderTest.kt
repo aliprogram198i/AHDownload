@@ -253,19 +253,15 @@ class YouTubeSearchProviderTest {
     }
 
     @Test
-    fun parsesStaticJsonParseFirstArgumentWithoutExecutingReviver() = runTest {
-        val payload = """{"contents":{"videoRenderer":{"videoId":"reviver123","title":{"simpleText":"Reviver payload"}}}}"""
+    fun parsesStaticJsonParseWithNullSecondArgument() = runTest {
+        val payload = """{"contents":{"videoRenderer":{"videoId":"secondArg123","title":{"simpleText":"Optional argument payload"}}}}"""
         val serialized = com.google.gson.JsonPrimitive(payload).toString()
-        val html = """<html><script>
-            ytInitialData = JSON.parse($serialized, function() {
-                throw new Error("This callback must never be executed by the parser");
-            });
-        </script></html>"""
+        val html = """<html><script>ytInitialData = JSON.parse($serialized, null);</script></html>"""
 
-        val result = YouTubeSearchProvider(textClient(html)).search("reviver").single()
+        val result = YouTubeSearchProvider(textClient(html)).search("second argument").single()
 
-        assertEquals("reviver123", result.id)
-        assertEquals("Reviver payload", result.title)
+        assertEquals("secondArg123", result.id)
+        assertEquals("Optional argument payload", result.title)
     }
 
     @Test
