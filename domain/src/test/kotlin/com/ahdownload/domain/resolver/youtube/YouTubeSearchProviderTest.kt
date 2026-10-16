@@ -581,13 +581,11 @@ class YouTubeSearchProviderTest {
             }});
             ytInitialData = {"contents":[$videoItems]};
         </script></html>"""
-        val channelResponse = """{"contents":{"lockupViewModel":{
-          "contentType":"LOCKUP_CONTENT_TYPE_CHANNEL",
-          "contentId":"UCchannelsOnly123",
-          "metadata":{"lockupMetadataViewModel":{"title":{"content":"Channel from channel-filtered request"}}},
-          "contentImage":{"avatarViewModel":{"avatar":{"image":{"sources":[
-            {"url":"https://img.example/channel-filtered.jpg"}
-          ]}}}}
+        val channelResponse = """{"contents":{"compactChannelRenderer":{
+          "channelId":"UCchannelsOnly123",
+          "title":{"simpleText":"Channel from channel-filtered request"},
+          "thumbnail":{"thumbnails":[{"url":"https://img.example/channel-filtered.jpg"}]},
+          "subscriberCountText":{"simpleText":"25K subscribers"}
         }}}"""
         var postedBody = ""
         var postedDiagnostics: Map<String, String> = emptyMap()
@@ -618,6 +616,7 @@ class YouTubeSearchProviderTest {
         assertEquals("Channel from channel-filtered request", channel.title)
         assertEquals("https://www.youtube.com/channel/UCchannelsOnly123", channel.url)
         assertEquals("https://img.example/channel-filtered.jpg", channel.thumbnailUrl)
+        assertEquals("25K subscribers", channel.subtitle)
     }
 
     @Test
