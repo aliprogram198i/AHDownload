@@ -894,11 +894,16 @@ private fun HomeScreen(
                                 }
                             }
                             Text(
-                                "نتائج «${state.searchQuery}» مرتبة حسب ما أعاده YouTube",
+                                "نتائج «${state.searchQuery}» · حسب ترتيب YouTube",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                "يعرض ${visibleSearchResults.size} من ${searchResultCounts.all} نتيجة",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
                             )
                         }
                     }
@@ -911,7 +916,8 @@ private fun HomeScreen(
                                     trackingScreen = "HOME",
                                     trackingId = "HOME.search_filter.all",
                                     trackingLabel = "كل النتائج",
-                                    disabledReason = "search_results_are_empty",
+                                    disabledReason = "لا توجد نتائج بحث متاحة",
+                                    enabled = isYouTubeSearchFilterAvailable(YouTubeSearchFilter.All, searchResultCounts),
                                     selected = state.searchFilter == YouTubeSearchFilter.All,
                                     onClick = {
                                         uiTraceLogger.interaction("HOME", "search_filter", "all")
@@ -925,7 +931,8 @@ private fun HomeScreen(
                                     trackingScreen = "HOME",
                                     trackingId = "HOME.search_filter.videos",
                                     trackingLabel = "الفيديوهات",
-                                    disabledReason = "search_results_are_empty",
+                                    disabledReason = "لا توجد فيديوهات عادية ضمن النتائج",
+                                    enabled = isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Videos, searchResultCounts),
                                     selected = state.searchFilter == YouTubeSearchFilter.Videos,
                                     onClick = {
                                         uiTraceLogger.interaction("HOME", "search_filter", "videos")
@@ -939,7 +946,8 @@ private fun HomeScreen(
                                     trackingScreen = "HOME",
                                     trackingId = "HOME.search_filter.shorts",
                                     trackingLabel = "Shorts",
-                                    disabledReason = "search_results_are_empty",
+                                    disabledReason = "لا توجد نتائج Shorts ضمن النتائج الحالية",
+                                    enabled = isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Shorts, searchResultCounts),
                                     selected = state.searchFilter == YouTubeSearchFilter.Shorts,
                                     onClick = {
                                         uiTraceLogger.interaction("HOME", "search_filter", "shorts")
@@ -953,7 +961,8 @@ private fun HomeScreen(
                                     trackingScreen = "HOME",
                                     trackingId = "HOME.search_filter.channels",
                                     trackingLabel = "القنوات",
-                                    disabledReason = "search_results_are_empty",
+                                    disabledReason = "لا توجد قنوات ضمن النتائج الحالية",
+                                    enabled = isYouTubeSearchFilterAvailable(YouTubeSearchFilter.Channels, searchResultCounts),
                                     selected = state.searchFilter == YouTubeSearchFilter.Channels,
                                     onClick = {
                                         uiTraceLogger.interaction("HOME", "search_filter", "channels")
@@ -1348,7 +1357,7 @@ private fun SearchResultCard(
     }
     val thumbnailModifier = when (item.kind) {
         ContentSearchKind.VIDEO -> Modifier.size(width = 124.dp, height = 78.dp)
-        ContentSearchKind.SHORT -> Modifier.size(width = 78.dp, height = 112.dp)
+        ContentSearchKind.SHORT -> Modifier.size(width = 72.dp, height = 96.dp)
         ContentSearchKind.CHANNEL -> Modifier.size(60.dp)
     }
     val typeLabel = when (item.kind) {
@@ -1375,7 +1384,7 @@ private fun SearchResultCard(
                 MaterialTheme.colorScheme.surface
             },
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 2.dp else 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
     ) {
         Row(
             modifier = Modifier
