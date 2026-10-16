@@ -1070,7 +1070,8 @@ class YouTubeSearchProvider(
                     if (child.isJsonObject) {
                         val renderer = child.asJsonObject
                         val parsed = when (key) {
-                            "videoRenderer" -> parseVideoRenderer(renderer)
+                            "videoRenderer", "gridVideoRenderer" -> parseVideoRenderer(renderer)
+                            "lockupViewModel" -> parseLockupViewModel(renderer)
                             "reelItemRenderer" -> parseReelRenderer(renderer)
                             "shortsLockupViewModel" -> parseShortsLockup(renderer)
                             "channelRenderer" -> parseChannelRenderer(renderer)
@@ -1087,6 +1088,53 @@ class YouTubeSearchProvider(
                 }
             }
         }
+    }
+
+    private fun parseLockupViewModel(renderer: JsonObject): ContentSearchItem? {
+        if (renderer.getAsJsonPrimitive("contentType")?.asString != "LOCKUP_CONTENT_TYPE_VIDEO") {
+            return null
+        }
+        val id = renderer.getAsJsonPrimitive("contentId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val metadata = renderer.getAsJsonObject("metadata")
+            ?.getAsJsonObject("lockupMetadataViewModel")
+        val title = metadata?.getAsJsonObject("title")
+            ?.getAsJsonPrimitive("content")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val thumbnail = renderer.getAsJsonObject("contentImage")
+            ?.getAsJsonObject("thumbnailViewModel")
+            ?.getAsJsonObject("image")
+            ?.getAsJsonArray("sources")
+            ?.lastOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.getAsJsonPrimitive("url")
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
+        val overlayBadges = renderer.getAsJsonObject("contentImage")
+            ?.getAsJsonObject("thumbnailViewModel")
+            ?.getAsJsonArray("overlays")
+            ?.mapNotNull { it.takeIf { value -> value.isJsonObject }?.asJsonObject }
+            .orEmpty()
+            .mapNotNull { it.getAsJsonObject("thumbnailBottomOverlayViewModel") }
+            .flatMap { it.getAsJsonArray("badges")?.mapNotNull { value ->
+                value.takeIf { badge -> badge.isJsonObject }?.asJsonObject
+            }.orEmpty() }
+        val duration = overlayBadges.firstNotNullOfOrNull { badge ->
+            badge.getAsJsonObject("thumbnailBadgeViewModel")
+                ?.getAsJsonPrimitive("text")?.asString
+                ?.takeIf { it.isNotBlank() }
+        }
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/watch?v=$id",
+            thumbnailUrl = thumbnail,
+            durationLabel = duration,
+            kind = ContentSearchKind.VIDEO,
+        )
     }
 
     private fun parseVideoRenderer(renderer: JsonObject): ContentSearchItem? {
