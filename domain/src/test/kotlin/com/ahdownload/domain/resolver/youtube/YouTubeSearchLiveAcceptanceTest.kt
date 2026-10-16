@@ -1,6 +1,7 @@
 package com.ahdownload.domain.resolver.youtube
 
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.resolver.OkHttpTextClient
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -33,17 +34,53 @@ class YouTubeSearchLiveAcceptanceTest {
                 ).joinToString(":")
             }
         }
-        val results = YouTubeSearchProvider(OkHttpTextClient(logger = logger)).search(
+        var htmlResponse = ""
+        var innertubeResponse = ""
+        val delegate = OkHttpTextClient(logger = logger)
+        val capturingClient = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                delegate.get(url).also { htmlResponse = it }
+
+            override suspend fun get(url: String, headers: Map<String, String>): String =
+                delegate.get(url, headers).also { htmlResponse = it }
+
+            override suspend fun get(
+                url: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String = delegate.get(url, headers, diagnosticContext).also { htmlResponse = it }
+
+            override suspend fun postJson(url: String, body: String): String =
+                delegate.postJson(url, body).also { innertubeResponse = it }
+
+            override suspend fun postJson(url: String, body: String, headers: Map<String, String>): String =
+                delegate.postJson(url, body, headers).also { innertubeResponse = it }
+
+            override suspend fun postJson(
+                url: String,
+                body: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String = delegate.postJson(url, body, headers, diagnosticContext).also {
+                innertubeResponse = it
+            }
+        }
+        val results = YouTubeSearchProvider(capturingClient).search(
             query = "كاظم",
             limit = 12,
             diagnosticContext = mapOf("operation_id" to "live-youtube-search-acceptance"),
         )
         val resultKinds = results.groupingBy { it.kind }.eachCount()
         val httpSummary = httpEvents.joinToString("|")
+        val htmlShape = safeSearchStructureProfile(htmlResponse)
+        val innertubeShape = safeSearchStructureProfile(innertubeResponse)
 
-        assertFalse("Live YouTube search returned no results. HTTP=$httpSummary", results.isEmpty())
+        assertFalse(
+            "Live YouTube search returned no results. HTTP=$httpSummary html=$htmlShape innertube=$innertubeShape",
+            results.isEmpty(),
+        )
         assertTrue(
-            "Expected at least one regular video for an Arabic music query; kinds=$resultKinds HTTP=$httpSummary",
+            "Expected at least one regular video for an Arabic music query; kinds=$resultKinds HTTP=$httpSummary html=$htmlShape innertube=$innertubeShape",
             results.any { it.kind == com.ahdownload.domain.search.ContentSearchKind.VIDEO },
         )
         assertEquals(
@@ -59,5 +96,36 @@ class YouTubeSearchLiveAcceptanceTest {
                 item.url.startsWith("https://www.youtube.com/"),
             )
         }
+    }
+
+    /**
+     * Records key-name counts only. Never dumps response text, IDs, titles, query terms, or URLs.
+     */
+    private fun safeSearchStructureProfile(source: String): String {
+        if (source.isBlank()) return "empty"
+        val keys = listOf(
+            "videoRenderer",
+            "gridVideoRenderer",
+            "compactVideoRenderer",
+            "richItemRenderer",
+            "lockupViewModel",
+            "shortsLockupViewModel",
+            "reelItemRenderer",
+            "channelRenderer",
+            "itemSectionRenderer",
+            "sectionListRenderer",
+            "twoColumnSearchResultsRenderer",
+            "continuationItemRenderer",
+        )
+        val counts = keys.mapNotNull { key ->
+            val count = Regex("\"" + Regex.escape(key) + "\"\\s*:").findAll(source).count()
+            if (count == 0) null else "$key=$count"
+        }
+        val rootKeys = runCatching {
+            val element = com.google.gson.JsonParser.parseString(source)
+            if (element.isJsonObject) element.asJsonObject.keySet().sorted().take(16).joinToString(",")
+            else "root_\${element.javaClass.simpleName}"
+        }.getOrDefault("non_json_root")
+        return "chars=\${source.length};root=$rootKeys;\${counts.joinToString(",")}".take(900)
     }
 }
