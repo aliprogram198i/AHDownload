@@ -295,11 +295,18 @@ class YouTubeSearchProvider(
         var lastValueKind = "unknown"
         var lastFailureStage = "assignment_not_found"
         var lastExpressionDiagnostics = PayloadExpressionDiagnostics()
+        var bestPayload: JsonObject? = null
+        var bestValueKind = "unknown"
+        var bestPayloadQuality = Int.MIN_VALUE
 
+        // Some YouTube pages contain more than one ytInitialData assignment. Do not stop
+        // at the first syntactically valid JSON object: an earlier payload can be a Shorts
+        // shelf while a later assignment contains the actual mixed video search results.
         for (assignment in INITIAL_DATA_ASSIGNMENT.findAll(html)) {
             assignmentCount++
             val valueStart = skipJavaScriptTrivia(html, assignment.range.last + 1)
-            lastValueKind = classifyAssignmentValue(html, valueStart)
+            val valueKind = classifyAssignmentValue(html, valueStart)
+            lastValueKind = valueKind
             val json = extractAssignedJson(html, valueStart)
             if (json == null) {
                 lastFailureStage = "expression_decode"
@@ -327,10 +334,21 @@ class YouTubeSearchProvider(
                 continue
             }
 
+            val candidateResults = collectSearchResults(parsed, MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING)
+            val candidateQuality = searchPayloadQuality(candidateResults)
+            if (bestPayload == null || candidateQuality > bestPayloadQuality) {
+                bestPayload = parsed
+                bestValueKind = valueKind
+                bestPayloadQuality = candidateQuality
+            }
+        }
+
+        val selectedPayload = bestPayload
+        if (selectedPayload != null) {
             return InitialDataExtraction(
-                payload = parsed,
+                payload = selectedPayload,
                 assignmentCount = assignmentCount,
-                assignmentValueKind = lastValueKind,
+                assignmentValueKind = bestValueKind,
                 failureStage = "success",
             )
         }
@@ -343,6 +361,14 @@ class YouTubeSearchProvider(
             expressionDiagnostics = lastExpressionDiagnostics,
         )
     }
+
+    private fun searchPayloadQuality(results: List<ContentSearchItem>): Int =
+        results.count { it.kind == ContentSearchKind.VIDEO } * 1_000 +
+            results.size * 10 +
+            results.count { it.kind == ContentSearchKind.CHANNEL } * 5 +
+            results.count { it.kind == ContentSearchKind.SHORT }
+
+
 
     private fun looksLikeInitialData(root: JsonObject): Boolean =
         root.keySet().any { it in INITIAL_DATA_ROOT_KEYS }
@@ -1301,6 +1327,7 @@ class YouTubeSearchProvider(
             "frameworkUpdates",
         )
         const val MINIMUM_USEFUL_PAGE_RESULTS = 6
+        const val MAX_SEARCH_RESULTS_FOR_PAYLOAD_SCORING = 24
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
         const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
         const val MAX_STRING_EXPRESSION_DEPTH = 16
