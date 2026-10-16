@@ -424,10 +424,14 @@ class YouTubeSearchProvider(
             "ytcfg_data" to source.contains("ytcfg.data_", ignoreCase = true),
             "video_renderer" to source.contains("videoRenderer", ignoreCase = true),
             "search_results_renderer" to source.contains("twoColumnSearchResultsRenderer", ignoreCase = true),
-            "consent_gate" to source.contains("consent.youtube.com", ignoreCase = true) ||
-                source.contains("before you continue to youtube", ignoreCase = true),
-            "bot_challenge" to source.contains("unusual traffic", ignoreCase = true) ||
-                source.contains("not a robot", ignoreCase = true),
+            "consent_gate" to (
+                source.contains("consent.youtube.com", ignoreCase = true) ||
+                    source.contains("before you continue to youtube", ignoreCase = true)
+                ),
+            "bot_challenge" to (
+                source.contains("unusual traffic", ignoreCase = true) ||
+                    source.contains("not a robot", ignoreCase = true)
+                ),
         )
         return markers.filter { it.second }.joinToString(",") { it.first }.ifEmpty { "none" }
     }
