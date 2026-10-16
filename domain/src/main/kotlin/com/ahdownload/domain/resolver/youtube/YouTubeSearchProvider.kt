@@ -200,8 +200,16 @@ class YouTubeSearchProvider(
     private fun decodeJavaScriptStringExpression(source: String, start: Int): String? {
         val decoded = parseJavaScriptStringExpression(source, start, depth = 0) ?: return null
         val closing = skipJavaScriptTrivia(source, decoded.endExclusive)
-        if (closing >= source.length || source[closing] != ')') return null
-        return decoded.value
+        if (closing < source.length && source[closing] == ')') return decoded.value
+
+        // A JSON.parse call may include a reviver argument. Do not evaluate it; validate
+        // that the remaining call arguments are balanced and parse the static first string.
+        if (closing < source.length && source[closing] == ',' &&
+            hasBalancedTrailingArguments(source, closing + 1)
+        ) {
+            return decoded.value
+        }
+        return null
     }
 
     private data class DecodedStringExpression(
@@ -267,7 +275,971 @@ class YouTubeSearchProvider(
             }.getOrNull() ?: return null
             return DecodedStringExpression(decoded, close + 1)
         }
+
+        // Resolve only an earlier, literal-valued declaration in the same <script> block.
+        // This supports JSON.parse(serializedData) without evaluating arbitrary JavaScript.
+        val identifierEnd = readJavaScriptIdentifierEnd(source, position)
+        if (identifierEnd != null) {
+            val identifier = source.substring(position, identifierEnd)
+            val resolved = resolveStaticStringVariable(source, identifier, position, depth)
+            if (resolved != null) {
+                return DecodedStringExpression(resolved, identifierEnd)
+            }
+        }
         return null
+    }
+
+    private fun readJavaScriptIdentifierEnd(source: String, start: Int): Int? {
+        if (start >= source.length) return null
+        val first = source[start]
+        if (!(first == '_' || first == '
+        return runCatching {
+        if (literal.length < 2) return null
+        val quote = literal.first()
+        if (literal.last() != quote || quote !in charArrayOf('"', '\'', '\u0060')) return null
+        val body = literal.substring(1, literal.length - 1)
+        if (quote == '\u0060' && body.contains("\${")) return null
+
+        buildString {
+            var index = 0
+            while (index < body.length) {
+                val ch = body[index]
+                if (ch != '\\') {
+                    if (quote != '\u0060' && (ch == '\n' || ch == '\r')) return null
+                    append(ch)
+                    index++
+                    continue
+                }
+
+                index++
+                if (index >= body.length) return null
+                when (val escaped = body[index]) {
+                    '\n' -> index++
+                    '\r' -> {
+                        index++
+                        if (index < body.length && body[index] == '\n') index++
+                    }
+                    'b' -> { append('\b'); index++ }
+                    'f' -> { append('\u000C'); index++ }
+                    'n' -> { append('\n'); index++ }
+                    'r' -> { append('\r'); index++ }
+                    't' -> { append('\t'); index++ }
+                    'v' -> { append('\u000B'); index++ }
+                    '0' -> {
+                        if (index + 1 < body.length && body[index + 1].isDigit()) return null
+                        append('\u0000')
+                        index++
+                    }
+                    'x' -> {
+                        if (index + 2 >= body.length) return null
+                        val code = body.substring(index + 1, index + 3).toIntOrNull(16) ?: return null
+                        append(code.toChar())
+                        index += 3
+                    }
+                    'u' -> {
+                        if (index + 1 < body.length && body[index + 1] == '{') {
+                            val close = body.indexOf('}', index + 2)
+                            if (close < 0) return null
+                            val codePoint = body.substring(index + 2, close).toIntOrNull(16) ?: return null
+                            if (!Character.isValidCodePoint(codePoint)) return null
+                            append(String(Character.toChars(codePoint)))
+                            index = close + 1
+                        } else {
+                            if (index + 4 >= body.length) return null
+                            val code = body.substring(index + 1, index + 5).toIntOrNull(16) ?: return null
+                            append(code.toChar())
+                            index += 5
+                        }
+                    }
+                    else -> {
+                        // JavaScript permits escaped quotes, backslashes, and identity escapes.
+                        append(escaped)
+                        index++
+                    }
+                }
+            }
+        }
+        }.getOrNull()
+    }
+
+    private fun findQuotedStringEnd(source: String, start: Int): Int? {
+        if (start >= source.length || source[start] !in charArrayOf('"', '\'', '\u0060')) return null
+        val quote = source[start]
+        var escaped = false
+        for (index in start + 1 until source.length) {
+            val ch = source[index]
+            if (escaped) {
+                escaped = false
+            } else if (ch == '\\') {
+                escaped = true
+            } else if (ch == quote) {
+                return index
+            }
+        }
+        return null
+    }
+
+    private fun skipJavaScriptTrivia(source: String, from: Int): Int {
+        var position = from.coerceAtLeast(0)
+        while (position < source.length) {
+            if (source[position].isWhitespace()) {
+                position++
+                continue
+            }
+            if (source.startsWith("//", position)) {
+                val newline = source.indexOf('\n', position + 2)
+                position = if (newline < 0) source.length else newline + 1
+                continue
+            }
+            if (source.startsWith("/*", position)) {
+                val close = source.indexOf("*/", position + 2)
+                position = if (close < 0) source.length else close + 2
+                continue
+            }
+            break
+        }
+        return position
+    }
+
+    private fun skipWhitespace(source: String, from: Int): Int {
+        var position = from.coerceAtLeast(0)
+        while (position < source.length && source[position].isWhitespace()) position++
+        return position
+    }
+
+    private fun extractJsonObjectText(decoded: String): String? {
+        val source = decoded.removePrefix("\uFEFF")
+        var start = skipWhitespace(source, 0)
+        if (source.startsWith(")]}'", start)) {
+            start += 4
+            start = skipWhitespace(source, start)
+            if (start < source.length && source[start] == ',') {
+                start++
+                start = skipWhitespace(source, start)
+            }
+        }
+        if (start < source.length && source[start] == '{') {
+            return extractBalancedJson(source, start)
+        }
+
+        // This is already the value of the explicit ytInitialData JSON.parse expression.
+        // Allow a known prefix before JSON, but do not search the surrounding HTML or execute JS.
+        for (candidate in start until source.length) {
+            if (source[candidate] != '{') continue
+            val json = extractBalancedJson(source, candidate) ?: continue
+            if (runCatching { JsonParser.parseString(json).isJsonObject }.getOrDefault(false)) {
+                return json
+            }
+        }
+        return null
+    }
+
+    private fun createPayloadUnavailableException(
+        html: String,
+        extraction: InitialDataExtraction,
+    ): YouTubeSearchPayloadException {
+        val sample = html.take(MAX_DIAGNOSTIC_SAMPLE_CHARS).lowercase()
+        val markerPresent = INITIAL_DATA_ASSIGNMENT.containsMatchIn(html)
+        val reason = when {
+            html.isBlank() -> "empty_response"
+            listOf(
+                "unusual traffic from your computer network",
+                "automated queries",
+                "verify you're not a robot",
+                "verify you are not a robot",
+                "our systems have detected unusual traffic",
+                "captcha",
+            ).any { it in sample } -> "bot_challenge"
+            listOf(
+                "before you continue to youtube",
+                "consent.youtube.com",
+                "consent.google.com",
+                "we use cookies and data",
+                "manage your privacy settings",
+            ).any { it in sample } -> "consent_or_privacy_gate"
+            markerPresent || "ytinitialdata" in sample -> "initial_data_parse_failed"
+            else -> "initial_data_marker_missing"
+        }
+        return YouTubeSearchPayloadException(
+            payloadFailureReason = reason,
+            responseChars = html.length,
+            initialDataAssignmentPresent = markerPresent,
+            assignmentCount = extraction.assignmentCount,
+            assignmentValueKind = extraction.assignmentValueKind,
+            parserFailureStage = extraction.failureStage,
+        )
+    }
+
+    private data class InitialDataExtraction(
+        val payload: JsonObject?,
+        val assignmentCount: Int,
+        val assignmentValueKind: String,
+        val failureStage: String,
+    )
+
+    private fun extractBalancedJson(source: String, start: Int): String? {
+        if (start >= source.length || source[start] != '{') return null
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+
+        for (index in start until source.length) {
+            val ch = source[index]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+                continue
+            }
+
+            when (ch) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun collectRenderersInSourceOrder(
+        value: JsonElement,
+        onResult: (ContentSearchItem) -> Unit,
+    ) {
+        when {
+            value.isJsonObject -> {
+                for ((key, child) in value.asJsonObject.entrySet()) {
+                    if (child.isJsonObject) {
+                        val renderer = child.asJsonObject
+                        val parsed = when (key) {
+                            "videoRenderer" -> parseVideoRenderer(renderer)
+                            "reelItemRenderer" -> parseReelRenderer(renderer)
+                            "shortsLockupViewModel" -> parseShortsLockup(renderer)
+                            "channelRenderer" -> parseChannelRenderer(renderer)
+                            else -> null
+                        }
+                        parsed?.let(onResult)
+                    }
+                    collectRenderersInSourceOrder(child, onResult)
+                }
+            }
+            value.isJsonArray -> {
+                value.asJsonArray.forEach { child ->
+                    collectRenderersInSourceOrder(child, onResult)
+                }
+            }
+        }
+    }
+
+    private fun parseVideoRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("title")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/watch?v=$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            durationLabel = firstText(renderer.getAsJsonObject("lengthText")),
+            channelLabel = firstText(renderer.getAsJsonObject("ownerText"))
+                ?: firstText(renderer.getAsJsonObject("longBylineText")),
+            kind = ContentSearchKind.VIDEO,
+        )
+    }
+
+    private fun parseReelRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("headline"))
+            ?: firstText(renderer.getAsJsonObject("title"))
+            ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/shorts/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            channelLabel = firstText(renderer.getAsJsonObject("shortBylineText"))
+                ?: firstText(renderer.getAsJsonObject("ownerText")),
+            kind = ContentSearchKind.SHORT,
+        )
+    }
+
+    private fun parseShortsLockup(renderer: JsonObject): ContentSearchItem? {
+        val commandId = renderer.getAsJsonObject("onTap")
+            ?.getAsJsonObject("innertubeCommand")
+            ?.getAsJsonObject("reelWatchEndpoint")
+            ?.getAsJsonPrimitive("videoId")
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
+        val entityId = renderer.getAsJsonPrimitive("entityId")?.asString
+        val id = commandId ?: entityId
+            ?.takeIf { it.startsWith("shorts-shelf-item-") }
+            ?.removePrefix("shorts-shelf-item-")
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(
+            renderer.getAsJsonObject("overlayMetadata")?.getAsJsonObject("primaryText"),
+        ) ?: firstText(renderer.getAsJsonObject("headline")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/shorts/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            kind = ContentSearchKind.SHORT,
+        )
+    }
+
+    private fun parseChannelRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("channelId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.getAsJsonObject("navigationEndpoint")
+                ?.getAsJsonObject("browseEndpoint")
+                ?.getAsJsonPrimitive("browseId")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("title")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/channel/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            subtitle = firstText(renderer.getAsJsonObject("subscriberCountText"))
+                ?: firstText(renderer.getAsJsonObject("videoCountText")),
+            kind = ContentSearchKind.CHANNEL,
+        )
+    }
+
+    private fun thumbnailUrl(renderer: JsonObject): String? {
+        val thumbnail = renderer.getAsJsonObject("thumbnail") ?: return null
+        val url = thumbnail.getAsJsonArray("thumbnails")?.lastOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.getAsJsonPrimitive("url")
+            ?.asString
+            ?: thumbnail.getAsJsonArray("sources")?.lastOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?.getAsJsonPrimitive("url")
+                ?.asString
+            ?: return null
+
+        return url.takeIf { it.isNotBlank() }?.let {
+            if (it.startsWith("//")) "https:$it" else it
+        }
+    }
+
+    private fun firstText(node: JsonObject?): String? {
+        if (node == null) return null
+        node.getAsJsonPrimitive("simpleText")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        node.getAsJsonPrimitive("content")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+
+        val runs: JsonArray = node.getAsJsonArray("runs") ?: return null
+        return runs
+            .mapNotNull { run ->
+                run.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    ?.getAsJsonPrimitive("text")
+                    ?.asString
+                    ?.takeIf { it.isNotBlank() }
+            }
+            .joinToString("")
+            .takeIf { it.isNotBlank() }
+    }
+
+    private companion object {
+        val INITIAL_DATA_ASSIGNMENT = Regex(
+            """(?:window\s*\[\s*["']ytInitialData["']\s*]|window\s*\.\s*ytInitialData|\b(?:var|let|const)\s+ytInitialData\b|\bytInitialData\b)\s*=\s*""",
+        )
+        val INITIAL_DATA_ROOT_KEYS = setOf(
+            "contents",
+            "responseContext",
+            "metadata",
+            "header",
+            "topbar",
+            "engagementPanels",
+            "alerts",
+            "page",
+            "microformat",
+            "onResponseReceivedCommands",
+            "onResponseReceivedEndpoints",
+            "frameworkUpdates",
+        )
+        const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
+        const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
+        const val MAX_STRING_EXPRESSION_DEPTH = 16
+    }
+
+}
+
+/**
+ * Safe, redacted details for an HTTP-200 YouTube response whose search data could not be parsed.
+ * The response body itself is intentionally never retained in the exception.
+ */
+class YouTubeSearchPayloadException(
+    val payloadFailureReason: String,
+    val responseChars: Int,
+    val initialDataAssignmentPresent: Boolean,
+    val assignmentCount: Int,
+    val assignmentValueKind: String,
+    val parserFailureStage: String,
+) : IllegalStateException("YouTube search payload unavailable")
+ || first.isLetter())) return null
+        var end = start + 1
+        while (end < source.length) {
+            val ch = source[end]
+            if (!(ch == '_' || ch == '
+        return runCatching {
+        if (literal.length < 2) return null
+        val quote = literal.first()
+        if (literal.last() != quote || quote !in charArrayOf('"', '\'', '\u0060')) return null
+        val body = literal.substring(1, literal.length - 1)
+        if (quote == '\u0060' && body.contains("\${")) return null
+
+        buildString {
+            var index = 0
+            while (index < body.length) {
+                val ch = body[index]
+                if (ch != '\\') {
+                    if (quote != '\u0060' && (ch == '\n' || ch == '\r')) return null
+                    append(ch)
+                    index++
+                    continue
+                }
+
+                index++
+                if (index >= body.length) return null
+                when (val escaped = body[index]) {
+                    '\n' -> index++
+                    '\r' -> {
+                        index++
+                        if (index < body.length && body[index] == '\n') index++
+                    }
+                    'b' -> { append('\b'); index++ }
+                    'f' -> { append('\u000C'); index++ }
+                    'n' -> { append('\n'); index++ }
+                    'r' -> { append('\r'); index++ }
+                    't' -> { append('\t'); index++ }
+                    'v' -> { append('\u000B'); index++ }
+                    '0' -> {
+                        if (index + 1 < body.length && body[index + 1].isDigit()) return null
+                        append('\u0000')
+                        index++
+                    }
+                    'x' -> {
+                        if (index + 2 >= body.length) return null
+                        val code = body.substring(index + 1, index + 3).toIntOrNull(16) ?: return null
+                        append(code.toChar())
+                        index += 3
+                    }
+                    'u' -> {
+                        if (index + 1 < body.length && body[index + 1] == '{') {
+                            val close = body.indexOf('}', index + 2)
+                            if (close < 0) return null
+                            val codePoint = body.substring(index + 2, close).toIntOrNull(16) ?: return null
+                            if (!Character.isValidCodePoint(codePoint)) return null
+                            append(String(Character.toChars(codePoint)))
+                            index = close + 1
+                        } else {
+                            if (index + 4 >= body.length) return null
+                            val code = body.substring(index + 1, index + 5).toIntOrNull(16) ?: return null
+                            append(code.toChar())
+                            index += 5
+                        }
+                    }
+                    else -> {
+                        // JavaScript permits escaped quotes, backslashes, and identity escapes.
+                        append(escaped)
+                        index++
+                    }
+                }
+            }
+        }
+        }.getOrNull()
+    }
+
+    private fun findQuotedStringEnd(source: String, start: Int): Int? {
+        if (start >= source.length || source[start] !in charArrayOf('"', '\'', '\u0060')) return null
+        val quote = source[start]
+        var escaped = false
+        for (index in start + 1 until source.length) {
+            val ch = source[index]
+            if (escaped) {
+                escaped = false
+            } else if (ch == '\\') {
+                escaped = true
+            } else if (ch == quote) {
+                return index
+            }
+        }
+        return null
+    }
+
+    private fun skipJavaScriptTrivia(source: String, from: Int): Int {
+        var position = from.coerceAtLeast(0)
+        while (position < source.length) {
+            if (source[position].isWhitespace()) {
+                position++
+                continue
+            }
+            if (source.startsWith("//", position)) {
+                val newline = source.indexOf('\n', position + 2)
+                position = if (newline < 0) source.length else newline + 1
+                continue
+            }
+            if (source.startsWith("/*", position)) {
+                val close = source.indexOf("*/", position + 2)
+                position = if (close < 0) source.length else close + 2
+                continue
+            }
+            break
+        }
+        return position
+    }
+
+    private fun skipWhitespace(source: String, from: Int): Int {
+        var position = from.coerceAtLeast(0)
+        while (position < source.length && source[position].isWhitespace()) position++
+        return position
+    }
+
+    private fun extractJsonObjectText(decoded: String): String? {
+        val source = decoded.removePrefix("\uFEFF")
+        var start = skipWhitespace(source, 0)
+        if (source.startsWith(")]}'", start)) {
+            start += 4
+            start = skipWhitespace(source, start)
+            if (start < source.length && source[start] == ',') {
+                start++
+                start = skipWhitespace(source, start)
+            }
+        }
+        if (start < source.length && source[start] == '{') {
+            return extractBalancedJson(source, start)
+        }
+
+        // This is already the value of the explicit ytInitialData JSON.parse expression.
+        // Allow a known prefix before JSON, but do not search the surrounding HTML or execute JS.
+        for (candidate in start until source.length) {
+            if (source[candidate] != '{') continue
+            val json = extractBalancedJson(source, candidate) ?: continue
+            if (runCatching { JsonParser.parseString(json).isJsonObject }.getOrDefault(false)) {
+                return json
+            }
+        }
+        return null
+    }
+
+    private fun createPayloadUnavailableException(
+        html: String,
+        extraction: InitialDataExtraction,
+    ): YouTubeSearchPayloadException {
+        val sample = html.take(MAX_DIAGNOSTIC_SAMPLE_CHARS).lowercase()
+        val markerPresent = INITIAL_DATA_ASSIGNMENT.containsMatchIn(html)
+        val reason = when {
+            html.isBlank() -> "empty_response"
+            listOf(
+                "unusual traffic from your computer network",
+                "automated queries",
+                "verify you're not a robot",
+                "verify you are not a robot",
+                "our systems have detected unusual traffic",
+                "captcha",
+            ).any { it in sample } -> "bot_challenge"
+            listOf(
+                "before you continue to youtube",
+                "consent.youtube.com",
+                "consent.google.com",
+                "we use cookies and data",
+                "manage your privacy settings",
+            ).any { it in sample } -> "consent_or_privacy_gate"
+            markerPresent || "ytinitialdata" in sample -> "initial_data_parse_failed"
+            else -> "initial_data_marker_missing"
+        }
+        return YouTubeSearchPayloadException(
+            payloadFailureReason = reason,
+            responseChars = html.length,
+            initialDataAssignmentPresent = markerPresent,
+            assignmentCount = extraction.assignmentCount,
+            assignmentValueKind = extraction.assignmentValueKind,
+            parserFailureStage = extraction.failureStage,
+        )
+    }
+
+    private data class InitialDataExtraction(
+        val payload: JsonObject?,
+        val assignmentCount: Int,
+        val assignmentValueKind: String,
+        val failureStage: String,
+    )
+
+    private fun extractBalancedJson(source: String, start: Int): String? {
+        if (start >= source.length || source[start] != '{') return null
+
+        var depth = 0
+        var inString = false
+        var escaped = false
+
+        for (index in start until source.length) {
+            val ch = source[index]
+            if (inString) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == '"') {
+                    inString = false
+                }
+                continue
+            }
+
+            when (ch) {
+                '"' -> inString = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) return source.substring(start, index + 1)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun collectRenderersInSourceOrder(
+        value: JsonElement,
+        onResult: (ContentSearchItem) -> Unit,
+    ) {
+        when {
+            value.isJsonObject -> {
+                for ((key, child) in value.asJsonObject.entrySet()) {
+                    if (child.isJsonObject) {
+                        val renderer = child.asJsonObject
+                        val parsed = when (key) {
+                            "videoRenderer" -> parseVideoRenderer(renderer)
+                            "reelItemRenderer" -> parseReelRenderer(renderer)
+                            "shortsLockupViewModel" -> parseShortsLockup(renderer)
+                            "channelRenderer" -> parseChannelRenderer(renderer)
+                            else -> null
+                        }
+                        parsed?.let(onResult)
+                    }
+                    collectRenderersInSourceOrder(child, onResult)
+                }
+            }
+            value.isJsonArray -> {
+                value.asJsonArray.forEach { child ->
+                    collectRenderersInSourceOrder(child, onResult)
+                }
+            }
+        }
+    }
+
+    private fun parseVideoRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("title")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/watch?v=$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            durationLabel = firstText(renderer.getAsJsonObject("lengthText")),
+            channelLabel = firstText(renderer.getAsJsonObject("ownerText"))
+                ?: firstText(renderer.getAsJsonObject("longBylineText")),
+            kind = ContentSearchKind.VIDEO,
+        )
+    }
+
+    private fun parseReelRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("headline"))
+            ?: firstText(renderer.getAsJsonObject("title"))
+            ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/shorts/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            channelLabel = firstText(renderer.getAsJsonObject("shortBylineText"))
+                ?: firstText(renderer.getAsJsonObject("ownerText")),
+            kind = ContentSearchKind.SHORT,
+        )
+    }
+
+    private fun parseShortsLockup(renderer: JsonObject): ContentSearchItem? {
+        val commandId = renderer.getAsJsonObject("onTap")
+            ?.getAsJsonObject("innertubeCommand")
+            ?.getAsJsonObject("reelWatchEndpoint")
+            ?.getAsJsonPrimitive("videoId")
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
+        val entityId = renderer.getAsJsonPrimitive("entityId")?.asString
+        val id = commandId ?: entityId
+            ?.takeIf { it.startsWith("shorts-shelf-item-") }
+            ?.removePrefix("shorts-shelf-item-")
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(
+            renderer.getAsJsonObject("overlayMetadata")?.getAsJsonObject("primaryText"),
+        ) ?: firstText(renderer.getAsJsonObject("headline")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/shorts/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            kind = ContentSearchKind.SHORT,
+        )
+    }
+
+    private fun parseChannelRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("channelId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.getAsJsonObject("navigationEndpoint")
+                ?.getAsJsonObject("browseEndpoint")
+                ?.getAsJsonPrimitive("browseId")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val title = firstText(renderer.getAsJsonObject("title")) ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/channel/$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            subtitle = firstText(renderer.getAsJsonObject("subscriberCountText"))
+                ?: firstText(renderer.getAsJsonObject("videoCountText")),
+            kind = ContentSearchKind.CHANNEL,
+        )
+    }
+
+    private fun thumbnailUrl(renderer: JsonObject): String? {
+        val thumbnail = renderer.getAsJsonObject("thumbnail") ?: return null
+        val url = thumbnail.getAsJsonArray("thumbnails")?.lastOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+            ?.getAsJsonPrimitive("url")
+            ?.asString
+            ?: thumbnail.getAsJsonArray("sources")?.lastOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
+                ?.getAsJsonPrimitive("url")
+                ?.asString
+            ?: return null
+
+        return url.takeIf { it.isNotBlank() }?.let {
+            if (it.startsWith("//")) "https:$it" else it
+        }
+    }
+
+    private fun firstText(node: JsonObject?): String? {
+        if (node == null) return null
+        node.getAsJsonPrimitive("simpleText")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+        node.getAsJsonPrimitive("content")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+
+        val runs: JsonArray = node.getAsJsonArray("runs") ?: return null
+        return runs
+            .mapNotNull { run ->
+                run.takeIf { it.isJsonObject }
+                    ?.asJsonObject
+                    ?.getAsJsonPrimitive("text")
+                    ?.asString
+                    ?.takeIf { it.isNotBlank() }
+            }
+            .joinToString("")
+            .takeIf { it.isNotBlank() }
+    }
+
+    private companion object {
+        val INITIAL_DATA_ASSIGNMENT = Regex(
+            """(?:window\s*\[\s*["']ytInitialData["']\s*]|window\s*\.\s*ytInitialData|\b(?:var|let|const)\s+ytInitialData\b|\bytInitialData\b)\s*=\s*""",
+        )
+        val INITIAL_DATA_ROOT_KEYS = setOf(
+            "contents",
+            "responseContext",
+            "metadata",
+            "header",
+            "topbar",
+            "engagementPanels",
+            "alerts",
+            "page",
+            "microformat",
+            "onResponseReceivedCommands",
+            "onResponseReceivedEndpoints",
+            "frameworkUpdates",
+        )
+        const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
+        const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
+        const val MAX_STRING_EXPRESSION_DEPTH = 16
+    }
+
+}
+
+/**
+ * Safe, redacted details for an HTTP-200 YouTube response whose search data could not be parsed.
+ * The response body itself is intentionally never retained in the exception.
+ */
+class YouTubeSearchPayloadException(
+    val payloadFailureReason: String,
+    val responseChars: Int,
+    val initialDataAssignmentPresent: Boolean,
+    val assignmentCount: Int,
+    val assignmentValueKind: String,
+    val parserFailureStage: String,
+) : IllegalStateException("YouTube search payload unavailable")
+ || ch.isLetterOrDigit())) break
+            end++
+        }
+        return end
+    }
+
+    private fun resolveStaticStringVariable(
+        source: String,
+        name: String,
+        referencePosition: Int,
+        depth: Int,
+    ): String? {
+        if (depth >= MAX_STRING_EXPRESSION_DEPTH || name in setOf("null", "undefined", "true", "false")) {
+            return null
+        }
+        val scriptStart = source.lastIndexOf("<script", referencePosition, ignoreCase = true)
+        val scriptEnd = source.lastIndexOf("</script", referencePosition, ignoreCase = true)
+        if (scriptStart < 0 || scriptStart < scriptEnd) return null
+        val bodyStart = source.indexOf('>', scriptStart)
+            .takeIf { it >= 0 && it < referencePosition }
+            ?.plus(1)
+            ?: return null
+        val scope = source.substring(bodyStart, referencePosition)
+        val declaration = Regex("\\b(?:var|let|const)\\s+" + Regex.escape(name) + "\\s*=")
+        val matches = declaration.findAll(scope).toList()
+        for (match in matches.asReversed()) {
+            val declarationStart = bodyStart + match.range.first
+            if (!isJavaScriptCodePosition(source, bodyStart, declarationStart)) continue
+            val expressionStart = bodyStart + match.range.last + 1
+            val parsed = parseJavaScriptStringExpression(source, expressionStart, depth + 1)
+                ?: continue
+            if (parsed.endExclusive <= expressionStart || parsed.endExclusive >= referencePosition) continue
+            return parsed.value
+        }
+        return null
+    }
+
+    private fun isJavaScriptCodePosition(source: String, from: Int, target: Int): Boolean {
+        var position = from
+        var quote: Char? = null
+        var escaped = false
+        while (position < target) {
+            val ch = source[position]
+            if (quote != null) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == quote) {
+                    quote = null
+                }
+                position++
+                continue
+            }
+            if (source.startsWith("//", position)) {
+                val newline = source.indexOf('\n', position + 2)
+                if (newline < 0 || newline >= target) return false
+                position = newline + 1
+                continue
+            }
+            if (source.startsWith("/*", position)) {
+                val close = source.indexOf("*/", position + 2)
+                if (close < 0 || close >= target) return false
+                position = close + 2
+                continue
+            }
+            if (ch == '"' || ch == '\'' || ch == '\u0060') quote = ch
+            position++
+        }
+        return quote == null
+    }
+
+    private fun hasBalancedTrailingArguments(source: String, from: Int): Boolean {
+        var roundDepth = 0
+        var squareDepth = 0
+        var curlyDepth = 0
+        var quote: Char? = null
+        var escaped = false
+        var position = from
+        while (position < source.length) {
+            val ch = source[position]
+            if (quote != null) {
+                if (escaped) {
+                    escaped = false
+                } else if (ch == '\\') {
+                    escaped = true
+                } else if (ch == quote) {
+                    quote = null
+                }
+                position++
+                continue
+            }
+            if (source.startsWith("//", position)) {
+                val newline = source.indexOf('\n', position + 2)
+                if (newline < 0) return false
+                position = newline + 1
+                continue
+            }
+            if (source.startsWith("/*", position)) {
+                val close = source.indexOf("*/", position + 2)
+                if (close < 0) return false
+                position = close + 2
+                continue
+            }
+            when (ch) {
+                '"', '\'', '\u0060' -> quote = ch
+                '(' -> roundDepth++
+                ')' -> {
+                    if (roundDepth == 0 && squareDepth == 0 && curlyDepth == 0) return true
+                    roundDepth--
+                    if (roundDepth < 0) return false
+                }
+                '[' -> squareDepth++
+                ']' -> {
+                    squareDepth--
+                    if (squareDepth < 0) return false
+                }
+                '{' -> curlyDepth++
+                '}' -> {
+                    curlyDepth--
+                    if (curlyDepth < 0) return false
+                }
+            }
+            position++
+        }
+        return false
     }
 
     private fun decodeJavaScriptStringLiteral(literal: String): String? {
