@@ -138,8 +138,10 @@ class YouTubeSearchProvider(
             ?: extractConfiguredString(html, "INNERTUBE_CLIENT_NAME")
             ?: when (clientName) {
                 "WEB" -> "1"
+                "MWEB" -> "2"
                 "ANDROID" -> "3"
                 "IOS" -> "5"
+                "TVHTML5" -> "7"
                 "WEB_EMBEDDED_PLAYER" -> "56"
                 else -> "1"
             }
@@ -154,6 +156,9 @@ class YouTubeSearchProvider(
             put("Referer", "https://www.youtube.com/")
             put("X-YouTube-Client-Name", clientNameId)
             put("X-YouTube-Client-Version", clientVersion)
+            client.getAsJsonPrimitive("userAgent")?.asString
+                ?.takeIf { it.isNotBlank() }
+                ?.let { put("User-Agent", it) }
             client.getAsJsonPrimitive("visitorData")?.asString
                 ?.takeIf { it.isNotBlank() }
                 ?.let { put("X-Goog-Visitor-Id", it) }
