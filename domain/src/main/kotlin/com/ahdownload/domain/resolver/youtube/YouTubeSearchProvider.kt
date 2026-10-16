@@ -1148,6 +1148,7 @@ class YouTubeSearchProvider(
                         val renderer = child.asJsonObject
                         val parsed = when (key) {
                             "videoRenderer", "gridVideoRenderer" -> parseVideoRenderer(renderer)
+                            "videoWithContextRenderer" -> parseVideoWithContextRenderer(renderer)
                             "lockupViewModel" -> parseLockupViewModel(renderer)
                             "reelItemRenderer" -> parseReelRenderer(renderer)
                             "shortsLockupViewModel" -> parseShortsLockup(renderer)
@@ -1165,6 +1166,44 @@ class YouTubeSearchProvider(
                 }
             }
         }
+    }
+
+    /**
+     * YouTube search responses can place ordinary videos inside
+     * videoWithContextRenderer rather than videoRenderer. This renderer is common in
+     * current Innertube responses and must not be mistaken for a Shorts-only result set.
+     */
+    private fun parseVideoWithContextRenderer(renderer: JsonObject): ContentSearchItem? {
+        val id = renderer.getAsJsonPrimitive("videoId")?.asString
+            ?.takeIf { it.isNotBlank() }
+            ?: renderer.getAsJsonObject("navigationEndpoint")
+                ?.getAsJsonObject("watchEndpoint")
+                ?.getAsJsonPrimitive("videoId")
+                ?.asString
+                ?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        val title = firstText(renderer.getAsJsonObject("title"))
+            ?: firstText(renderer.getAsJsonObject("headline"))
+            ?: firstText(renderer.getAsJsonObject("videoTitle"))
+            ?: firstText(
+                renderer.getAsJsonObject("metadata")
+                    ?.getAsJsonObject("lockupMetadataViewModel")
+                    ?.getAsJsonObject("title"),
+            )
+            ?: return null
+
+        return ContentSearchItem(
+            id = id,
+            title = title,
+            url = "https://www.youtube.com/watch?v=$id",
+            thumbnailUrl = thumbnailUrl(renderer),
+            durationLabel = firstText(renderer.getAsJsonObject("lengthText")),
+            channelLabel = firstText(renderer.getAsJsonObject("ownerText"))
+                ?: firstText(renderer.getAsJsonObject("shortBylineText"))
+                ?: firstText(renderer.getAsJsonObject("longBylineText")),
+            kind = ContentSearchKind.VIDEO,
+        )
     }
 
     private fun parseLockupViewModel(renderer: JsonObject): ContentSearchItem? {
