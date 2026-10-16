@@ -51,30 +51,48 @@ class YouTubeSearchProvider(
         val extraction = extractInitialData(html)
         val resultLimit = limit.coerceIn(1, 24)
         val pageResults = extraction.payload?.let { collectSearchResults(it, resultLimit) }.orEmpty()
-        if (pageResults.isNotEmpty()) return pageResults
 
-        // The HTML boot payload is not a stable search API. If YouTube changes its
-        // ytInitialData wrapper or ships a shell page, retry through the first-party
-        // Innertube search endpoint using the API key/context embedded in that same
-        // response. This path is only used when the page parser yields no results.
+        // A partially decoded page may contain Shorts but omit regular videos because
+        // YouTube mixes legacy renderers with lockupViewModel renderers. Treat a Shorts-only
+        // or very small page result set as incomplete and ask Innertube for the full result list.
+        val minimumUsefulPageResults = minOf(MINIMUM_USEFUL_PAGE_RESULTS, resultLimit)
+        val needsFallback = pageResults.size < minimumUsefulPageResults ||
+            pageResults.none { it.kind == ContentSearchKind.VIDEO }
+        if (!needsFallback) return pageResults
+
         val fallback = fetchInnertubeSearch(
             html = html,
             query = normalizedQuery,
             diagnosticContext = requestDiagnosticContext,
         )
         val fallbackResults = fallback.payload?.let { collectSearchResults(it, resultLimit) }
-        if (!fallbackResults.isNullOrEmpty()) return fallbackResults
+        if (!fallbackResults.isNullOrEmpty()) {
+            // Prefer Innertube's ordering, then append any unique items found only in HTML.
+            // This retains Shorts that were visible in the first response without suppressing
+            // regular videos returned by the search endpoint.
+            return mergeSearchResults(fallbackResults, pageResults, resultLimit)
+        }
+        if (pageResults.isNotEmpty()) return pageResults
         if (fallback.payload != null) return emptyList()
 
         throw createPayloadUnavailableException(html, extraction, fallback)
     }
 
     private fun collectSearchResults(root: JsonObject, resultLimit: Int): List<ContentSearchItem> {
-        // Preserve source ordering and merge duplicate video/Short renderers without showing
-        // the same video twice. Both the HTML payload and the Innertube response use this path.
+        val discovered = mutableListOf<ContentSearchItem>()
+        collectRenderersInSourceOrder(root, discovered::add)
+        return mergeSearchResults(discovered, emptyList(), resultLimit)
+    }
+
+    private fun mergeSearchResults(
+        preferred: List<ContentSearchItem>,
+        secondary: List<ContentSearchItem>,
+        resultLimit: Int,
+    ): List<ContentSearchItem> {
+        // Preserve preferred-source ordering and merge duplicate video/Short renderers.
         val ordered = mutableListOf<ContentSearchItem>()
         val indexById = mutableMapOf<String, Int>()
-        collectRenderersInSourceOrder(root) { item ->
+        (preferred + secondary).forEach { item ->
             val existingIndex = indexById[item.id]
             if (existingIndex == null) {
                 indexById[item.id] = ordered.size
@@ -1282,6 +1300,7 @@ class YouTubeSearchProvider(
             "onResponseReceivedEndpoints",
             "frameworkUpdates",
         )
+        const val MINIMUM_USEFUL_PAGE_RESULTS = 6
         const val MAX_DIAGNOSTIC_SAMPLE_CHARS = 250_000
         const val MAX_EXPRESSION_UNWRAP_DEPTH = 4
         const val MAX_STRING_EXPRESSION_DEPTH = 16
