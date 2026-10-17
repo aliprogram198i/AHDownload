@@ -81,6 +81,7 @@ private fun WelcomeScreen(
 ) {
     val transition = rememberInfiniteTransition(label = "welcomeMotion")
     val uiContext = rememberUiTraceContext()
+    val canvasPrimary = MaterialTheme.colorScheme.primary
     val canvasAccent = MaterialTheme.colorScheme.secondary
 
     LaunchedEffect(ready) {
@@ -143,11 +144,11 @@ private fun WelcomeScreen(
             }
             drawPath(
                 path = path,
-                color = MaterialTheme.colorScheme.primary,
+                color = canvasPrimary,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.2f),
             )
             drawCircle(
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                color = canvasPrimary.copy(alpha = 0.13f),
                 radius = size.width * 0.24f,
                 center = androidx.compose.ui.geometry.Offset(size.width * 0.98f, size.height * 0.18f),
             )
