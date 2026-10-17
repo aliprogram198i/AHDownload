@@ -8,7 +8,6 @@ import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.canBeCancelled
 import com.ahdownload.domain.download.canBePaused
-import com.ahdownload.domain.download.canBeRemovedFromHistory
 import com.ahdownload.domain.download.canBeResumed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
