@@ -16,7 +16,7 @@ internal object BrowserRenderStatusClassifier {
         hasVisibleContentSignals: Boolean,
         hasAnyDomContentSignals: Boolean,
         hasPrimaryVisibleContent: Boolean = hasVisibleContentSignals,
-        hasOccludedViewportContent: Boolean = false,
+        hasHitTestRejectedContent: Boolean = false,
     ): String = when {
         challengeDetected -> "POSSIBLE_ACCESS_CHALLENGE"
         // Readable text/substantial media is stronger evidence than an
@@ -24,7 +24,7 @@ internal object BrowserRenderStatusClassifier {
         hasPrimaryVisibleContent -> "CONTENT_SIGNALS_DETECTED"
         // A rejected hit-test alone cannot establish that a layer really covers
         // the page. Report uncertainty unless independent evidence proves occlusion.
-        hasOccludedViewportContent -> "CONTENT_VISIBILITY_UNCONFIRMED"
+        hasHitTestRejectedContent -> "CONTENT_VISIBILITY_UNCONFIRMED"
         hasVisibleContentSignals -> "CONTENT_VISIBILITY_UNCONFIRMED"
         readyState == "complete" && hasAnyDomContentSignals -> "CONTENT_NOT_VISIBLE_IN_VIEWPORT"
         readyState == "complete" -> "POSSIBLY_EMPTY_PAGE"
