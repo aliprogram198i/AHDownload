@@ -4,8 +4,10 @@ package com.ahdownload.app.browser
  * Conservative classification of page-render evidence.
  *
  * DOM existence and document load completion do not prove that content is
- * visible in the WebView viewport. Keep off-screen/hidden DOM content distinct
- * from visible viewport signals.
+ * visible in the WebView viewport. Hit-testing is also not definitive proof
+ * of occlusion: CSS pointer-events, clickable wrappers and WebView hit-test
+ * differences can reject an otherwise rendered element. Keep that ambiguity
+ * separate from a confirmed primary-content signal.
  */
 internal object BrowserRenderStatusClassifier {
     fun classify(
@@ -17,10 +19,12 @@ internal object BrowserRenderStatusClassifier {
         hasOccludedViewportContent: Boolean = false,
     ): String = when {
         challengeDetected -> "POSSIBLE_ACCESS_CHALLENGE"
-        // If hit testing says viewport content is fully covered/rejected, do not
-        // let weaker DOM signals override the stronger occlusion evidence.
-        hasOccludedViewportContent -> "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH"
+        // Readable text/substantial media is stronger evidence than an
+        // inconsistent elementFromPoint result. Do not downgrade it to occlusion.
         hasPrimaryVisibleContent -> "CONTENT_SIGNALS_DETECTED"
+        // A rejected hit-test alone cannot establish that a layer really covers
+        // the page. Report uncertainty unless independent evidence proves occlusion.
+        hasOccludedViewportContent -> "CONTENT_VISIBILITY_UNCONFIRMED"
         hasVisibleContentSignals -> "CONTENT_VISIBILITY_UNCONFIRMED"
         readyState == "complete" && hasAnyDomContentSignals -> "CONTENT_NOT_VISIBLE_IN_VIEWPORT"
         readyState == "complete" -> "POSSIBLY_EMPTY_PAGE"
