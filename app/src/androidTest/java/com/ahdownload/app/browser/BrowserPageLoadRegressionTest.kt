@@ -217,7 +217,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
         val targetUrl = "https://example.com/"
         composeRule.onNodeWithTag("browser-address-field").performTextReplacement(targetUrl)
         composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
@@ -280,7 +280,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
 
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
@@ -352,7 +352,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
 
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
@@ -428,7 +428,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
 
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
