@@ -103,7 +103,7 @@ class LinkAnalyzer {
             if (!target.isNullOrBlank()) {
                 val targetUri = runCatching { URI(target) }.getOrNull()
                 val targetScheme = targetUri?.scheme?.lowercase(Locale.ROOT)
-                if (targetUri?.host != null && targetScheme in setOf("http", "https")) {
+                if (targetUri?.host != null && (targetScheme == "http" || targetScheme == "https")) {
                     return target
                 }
             }
