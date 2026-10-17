@@ -58,7 +58,7 @@ class BrowserPublicSitesAcceptanceTest {
             "The browser must remain on its intentional blank page before target-site navigation",
             waitForBlankPageToSettle(),
         )
-        composeRule.assertTrue(
+        assertTrue(
             "The editable browser address must start empty",
             composeRule.onNodeWithTag("browser-address-field")
                 .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
