@@ -46,9 +46,9 @@ class BrowserRenderStatusClassifierTest {
     }
 
     @Test
-    fun viewportElementsRejectedByHitTestingGetDedicatedDiagnosticState() {
+    fun hitTestRejectionAloneIsUnconfirmedRatherThanProofOfOcclusion() {
         assertEquals(
-            "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH",
+            "CONTENT_VISIBILITY_UNCONFIRMED",
             BrowserRenderStatusClassifier.classify(
                 challengeDetected = false,
                 readyState = "complete",
@@ -61,15 +61,15 @@ class BrowserRenderStatusClassifierTest {
     }
 
     @Test
-    fun completeOcclusionTakesPrecedenceOverWeakVisibleDomSignals() {
+    fun strongPrimaryContentEvidenceTakesPrecedenceOverHitTestMismatch() {
         assertEquals(
-            "CONTENT_OCCLUDED_OR_HIT_TEST_MISMATCH",
+            "CONTENT_SIGNALS_DETECTED",
             BrowserRenderStatusClassifier.classify(
                 challengeDetected = false,
                 readyState = "complete",
                 hasVisibleContentSignals = true,
                 hasAnyDomContentSignals = true,
-                hasPrimaryVisibleContent = false,
+                hasPrimaryVisibleContent = true,
                 hasOccludedViewportContent = true,
             ),
         )
