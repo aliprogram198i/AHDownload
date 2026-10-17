@@ -40,7 +40,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
-        composeRule.assertTrue(
+        assertTrue(
             "The editable browser address must start empty",
             composeRule.onNodeWithTag("browser-address-field")
                 .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
@@ -522,7 +522,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
         waitForBlankBrowser()
-        composeRule.assertTrue(
+        assertTrue(
             "The editable browser address must start empty",
             composeRule.onNodeWithTag("browser-address-field")
                 .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
@@ -560,7 +560,7 @@ class BrowserPageLoadRegressionTest {
 
         composeRule.onNodeWithContentDescription("صفحة فارغة").performClick()
         waitForBlankBrowser()
-        composeRule.assertTrue(
+        assertTrue(
             "The editable browser address must start empty",
             composeRule.onNodeWithTag("browser-address-field")
                 .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
