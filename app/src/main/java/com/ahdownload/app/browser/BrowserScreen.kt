@@ -832,6 +832,14 @@ fun BrowserRoute(
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                 val scheme = request.url.scheme?.lowercase()
+                                // about:blank is an intentional internal navigation used by the
+                                // blank-page action; it is not an external or unsafe URL scheme.
+                                if (
+                                    request.url.toString() == "about:blank" &&
+                                    (blankNavigationPending || currentUrl.isBlank())
+                                ) {
+                                    return false
+                                }
                                 if (request.isForMainFrame && (scheme == "https" || scheme == "http")) {
                                     recordBrowserEvent(
                                         if (request.isRedirect) "NAVIGATION_REDIRECT_REQUEST" else "NAVIGATION_LINK_REQUEST",
