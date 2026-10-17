@@ -607,6 +607,10 @@ class HomeViewModel(
                 result = null,
                 resolution = null,
                 selectedCandidateId = null,
+                selectedAudioCandidateId = null,
+                selectedAudioOutputFormat = null,
+                validatingCandidateId = null,
+                downloadQueued = false,
                 error = "الرابط غير صالح أو غير مدعوم.",
             )
             return
