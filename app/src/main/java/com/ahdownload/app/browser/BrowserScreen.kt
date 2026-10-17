@@ -995,29 +995,45 @@ fun BrowserRoute(
                                           const a=luminance(foreground), z=luminance(background);
                                           return (Math.max(a,z)+0.05)/(Math.min(a,z)+0.05)>=1.4;
                                         };
+                                        const hitTestBlockers = new Map();
+                                        const rememberHitTestTarget = target => {
+                                          if(!target || !target.tagName) return;
+                                          const style=getComputedStyle(target);
+                                          const r=target.getBoundingClientRect();
+                                          const safeRole=String(target.getAttribute('role')||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,16)||'-';
+                                          const safeModal=String(target.getAttribute('aria-modal')||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,8)||'-';
+                                          const descriptor=target.tagName.toLowerCase()+
+                                            '[pos='+style.position+
+                                            ',z='+style.zIndex+
+                                            ',pe='+style.pointerEvents+
+                                            ',op='+Number(style.opacity||1).toFixed(2)+
+                                            ',size='+Math.round(r.width)+'x'+Math.round(r.height)+
+                                            ',role='+safeRole+
+                                            ',modal='+safeModal+']';
+                                          hitTestBlockers.set(descriptor,true);
+                                        };
+                                        const hitTestBlockerSummary = () => [...hitTestBlockers.keys()].slice(0,3).join(';').slice(0,220);
                                         const unobscuredAt = (element,rect) => {
                                           const left=Math.max(0,rect.left), right=Math.min(viewportWidth,rect.right);
                                           const topEdge=Math.max(0,rect.top), bottomEdge=Math.min(viewportHeight,rect.bottom);
                                           if(right<=left||bottomEdge<=topEdge) return false;
                                           const width=right-left, height=bottomEdge-topEdge;
-                                          // Probe the center and four inset side points. A single midpoint can land
-                                          // on a narrow fixed overlay even when most of the text/image remains visible.
                                           const points=[
                                             [left+width*0.5,topEdge+height*0.5],
                                             [left+width*0.2,topEdge+height*0.5],
                                             [left+width*0.8,topEdge+height*0.5],
                                             [left+width*0.5,topEdge+height*0.2],
-                                            [left+width*0.5,topEdge+height*0.8],
+                                            [left+width*0.5,topEdge+height*0.8]
                                           ];
+                                          const rejectedTargets=[];
                                           for(const [x,y] of points) {
                                             const top=d.elementFromPoint(x,y);
                                             if(!top) continue;
-                                            // WebKit can return a painted child or a local wrapper. A related
-                                            // target at any sampled point is evidence that part of this item is
-                                            // actually exposed; unrelated full-page overlays still fail every probe.
                                             if(top===element || element.contains(top)) return true;
                                             if(top!==b && top!==e && top.contains(element)) return true;
+                                            rejectedTargets.push(top);
                                           }
+                                          rejectedTargets.forEach(rememberHitTestTarget);
                                           return false;
                                         };
                                         let visibleImageCount=0, visibleImageArea=0, visibleLargeImageCount=0;
@@ -1110,6 +1126,7 @@ fun BrowserRoute(
                                           visibleLargeImageCount:visibleLargeImageCount,
                                           viewportIntersectingTextNodeCount:viewportIntersectingTextNodeCount,
                                           hitTestRejectedTextNodeCount:hitTestRejectedTextNodeCount,
+                                          hitTestBlockerSummary:hitTestBlockerSummary(),
                                           readableVisibleTextChars:readableVisibleTextChars,
                                           visibleTextHostElementCount:visibleTextHostElements.size,
                                           visibleSemanticContainerCount:visibleSemanticContainers.length,
@@ -1186,6 +1203,7 @@ fun BrowserRoute(
                                     val visibleTextChars = snapshot.optInt("visibleTextChars", 0).coerceAtLeast(0)
                                     val viewportIntersectingTextNodeCount = snapshot.optInt("viewportIntersectingTextNodeCount", 0).coerceAtLeast(0)
                                     val hitTestRejectedTextNodeCount = snapshot.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
+                                    val hitTestBlockerSummary = snapshot.optString("hitTestBlockerSummary", "").take(220)
                                     val readableVisibleTextChars = snapshot.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                     val visibleMediaElementCount = snapshot.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
                                     val visibleTextHostElementCount = snapshot.optInt("visibleTextHostElementCount", 0).coerceAtLeast(0)
@@ -1214,7 +1232,7 @@ fun BrowserRoute(
                                         hasVisibleContentSignals = hasVisibleContentSignals,
                                         hasAnyDomContentSignals = hasAnyDomContentSignals,
                                         hasPrimaryVisibleContent = hasPrimaryVisibleContent,
-                                        hasOccludedViewportContent = hasHitTestRejectedContent,
+                                        hasHitTestRejectedContent = hasHitTestRejectedContent,
                                     )
                                     val renderMessage = when (pageRenderStatus) {
                                         "POSSIBLE_ACCESS_CHALLENGE" -> "اكتمل التحميل تقنيًا، لكن ظهرت مؤشرات تحقق أو حظر محتملة"
@@ -1257,6 +1275,7 @@ fun BrowserRoute(
                                                 "visible_text_chars" to visibleTextChars.toString(),
                                                 "viewport_intersecting_text_node_count" to viewportIntersectingTextNodeCount.toString(),
                                                 "hit_test_rejected_text_node_count" to hitTestRejectedTextNodeCount.toString(),
+                                                "hit_test_blocker_summary" to hitTestBlockerSummary,
                                                 "readable_visible_text_chars" to readableVisibleTextChars.toString(),
                                                 "visible_media_element_count" to visibleMediaElementCount.toString(),
                                                 "visible_text_host_element_count" to visibleTextHostElementCount.toString(),
@@ -1381,6 +1400,7 @@ fun BrowserRoute(
                                                     val recheckVisibleText = recheckJson.optInt("visibleTextChars", 0).coerceAtLeast(0)
                                                     val recheckIntersectingTextNodes = recheckJson.optInt("viewportIntersectingTextNodeCount", 0).coerceAtLeast(0)
                                                     val recheckRejectedTextNodes = recheckJson.optInt("hitTestRejectedTextNodeCount", 0).coerceAtLeast(0)
+                                                    val recheckHitTestBlockerSummary = recheckJson.optString("hitTestBlockerSummary", "").take(220)
                                                     val recheckReadableText = recheckJson.optInt("readableVisibleTextChars", 0).coerceAtLeast(0)
                                                     val recheckVisibleMedia = recheckJson.optInt("visibleMediaElementCount", 0).coerceAtLeast(0)
                                                     val recheckVisibleTextHostElements = recheckJson.optInt("visibleTextHostElementCount", 0).coerceAtLeast(0)
@@ -1410,7 +1430,7 @@ fun BrowserRoute(
                                                         hasVisibleContentSignals = recheckVisibleSignals,
                                                         hasAnyDomContentSignals = recheckAnyDom,
                                                         hasPrimaryVisibleContent = recheckPrimaryContent,
-                                                        hasOccludedViewportContent = recheckHasHitTestRejectedContent,
+                                                        hasHitTestRejectedContent = recheckHasHitTestRejectedContent,
                                                     )
                                                     pageRenderStatus = recheckStatus
                                                     if (!inspecting && !showResults && !actionInProgress && pageLoadError == null) {
@@ -1461,6 +1481,7 @@ fun BrowserRoute(
                                                             "visible_text_chars" to recheckVisibleText.toString(),
                                                             "viewport_intersecting_text_node_count" to recheckIntersectingTextNodes.toString(),
                                                             "hit_test_rejected_text_node_count" to recheckRejectedTextNodes.toString(),
+                                                            "hit_test_blocker_summary" to recheckHitTestBlockerSummary,
                                                             "readable_visible_text_chars" to recheckReadableText.toString(),
                                                             "visible_media_element_count" to recheckVisibleMedia.toString(),
                                                             "visible_text_host_element_count" to recheckVisibleTextHostElements.toString(),
@@ -2153,11 +2174,21 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       const a=lum(fg),z=lum(bg);
       return (Math.max(a,z)+0.05)/(Math.min(a,z)+0.05)>=1.4;
     };
+        const hitTestBlockers = new Map();
+    const rememberHitTestTarget = target => {
+      if(!target || !target.tagName) return;
+      const style=getComputedStyle(target);
+      const rect=target.getBoundingClientRect();
+      const safeRole=String(target.getAttribute('role')||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,16)||'-';
+      const safeModal=String(target.getAttribute('aria-modal')||'').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,8)||'-';
+      const descriptor=target.tagName.toLowerCase()+'[pos='+style.position+',z='+style.zIndex+',pe='+style.pointerEvents+',op='+Number(style.opacity||1).toFixed(2)+',size='+Math.round(rect.width)+'x'+Math.round(rect.height)+',role='+safeRole+',modal='+safeModal+']';
+      hitTestBlockers.set(descriptor,true);
+    };
+    const hitTestBlockerSummary = () => [...hitTestBlockers.keys()].slice(0,3).join(';').slice(0,220);
     const unobscured=(el,r)=>{
       const left=Math.max(0,r.left),right=Math.min(vw,r.right),topEdge=Math.max(0,r.top),bottomEdge=Math.min(vh,r.bottom);
       if(right<=left||bottomEdge<=topEdge) return false;
       const width=right-left,height=bottomEdge-topEdge;
-      // Match the initial check: don't let a narrow center overlay reject otherwise exposed content.
       const points=[
         [left+width*0.5,topEdge+height*0.5],
         [left+width*0.2,topEdge+height*0.5],
@@ -2165,12 +2196,15 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
         [left+width*0.5,topEdge+height*0.2],
         [left+width*0.5,topEdge+height*0.8]
       ];
+      const rejectedTargets=[];
       for(const [x,y] of points) {
         const top=d.elementFromPoint(x,y);
         if(!top) continue;
         if(top===el || el.contains(top)) return true;
         if(top!==b && top!==e && top.contains(el)) return true;
+        rejectedTargets.push(top);
       }
+      rejectedTargets.forEach(rememberHitTestTarget);
       return false;
     };
     let imageCount=0,imageArea=0,visibleText=0,readableText=0,nodes=0;
@@ -2235,6 +2269,7 @@ private val PAGE_RENDER_RECHECK_SCRIPT = """
       visibleImageCount:imageCount,viewportIntersectingImageCount:intersectingImages,
       hitTestRejectedImageCount:rejectedImages,visibleImageAreaRatio:imageAreaRatio,
       viewportIntersectingTextNodeCount:intersectingTextNodes,hitTestRejectedTextNodeCount:rejectedTextNodes,
+      hitTestBlockerSummary:hitTestBlockerSummary(),
       visibleTextChars:visibleText,readableVisibleTextChars:readableText,
       visibleMediaElementCount:visibleMedia,
       visibleTextHostElementCount:visibleTextHostElements.size,
