@@ -421,6 +421,83 @@ class BrowserPageLoadRegressionTest {
         assertEquals("0", recheckEvent.details["hit_test_rejected_text_node_count"])
     }
 
+    @Test(timeout = 45_000)
+    fun pointerEventsNoneTextIsNotMisclassifiedAsConfirmedOcclusion() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
+        waitForConfiguredHomePage()
+
+        val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
+        browserStore.clear()
+        val fixtureUrl = "https://example.com/"
+        val fixtureHtml = """
+            <!doctype html>
+            <html lang="en">
+              <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>AH Pointer Events Visibility Fixture</title>
+                <style>
+                  html, body { margin: 0; min-height: 100%; background: #fff; color: #111; }
+                  main { pointer-events: none; padding: 16px; }
+                  h1, p { color: #111; background: #fff; font: 18px sans-serif; }
+                </style>
+              </head>
+              <body>
+                <main>
+                  <h1>Pointer Events Visibility Fixture</h1>
+                  <p>Non-interactive content can still be painted and readable in the viewport.</p>
+                </main>
+              </body>
+            </html>
+        """.trimIndent()
+
+        composeRule.runOnUiThread {
+            findWebView(composeRule.activity.window.decorView)?.loadDataWithBaseURL(
+                fixtureUrl,
+                fixtureHtml,
+                "text/html",
+                "UTF-8",
+                fixtureUrl,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any {
+                it.type == "PAGE_RENDER_CHECK" &&
+                    it.host == "example.com" &&
+                    it.pageTitle == "AH Pointer Events Visibility Fixture"
+            }
+        }
+        val renderEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_CHECK" &&
+                it.host == "example.com" &&
+                it.pageTitle == "AH Pointer Events Visibility Fixture"
+        }
+        assertEquals("CONTENT_VISIBILITY_UNCONFIRMED", renderEvent.details["render_status"])
+        assertTrue((renderEvent.details["viewport_intersecting_text_node_count"]?.toIntOrNull() ?: 0) > 0)
+        assertTrue((renderEvent.details["hit_test_rejected_text_node_count"]?.toIntOrNull() ?: 0) > 0)
+        assertTrue(
+            "The render diagnostic should include sanitized hit-test target metadata",
+            !renderEvent.details["hit_test_blocker_summary"].isNullOrBlank(),
+        )
+
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            browserStore.list().any {
+                it.type == "PAGE_RENDER_RECHECK" &&
+                    it.host == "example.com" &&
+                    it.pageTitle == "AH Pointer Events Visibility Fixture"
+            }
+        }
+        val recheckEvent = browserStore.list().first {
+            it.type == "PAGE_RENDER_RECHECK" &&
+                it.host == "example.com" &&
+                it.pageTitle == "AH Pointer Events Visibility Fixture"
+        }
+        assertEquals("CONTENT_VISIBILITY_UNCONFIRMED", recheckEvent.details["render_status"])
+        assertTrue(!recheckEvent.details["hit_test_blocker_summary"].isNullOrBlank())
+    }
+
     private fun waitForConfiguredHomePage(timeoutMillis: Long = 30_000L) {
         composeRule.waitUntil(timeoutMillis = timeoutMillis) {
             val state = AtomicReference<Pair<Int, String?>?>(null)
