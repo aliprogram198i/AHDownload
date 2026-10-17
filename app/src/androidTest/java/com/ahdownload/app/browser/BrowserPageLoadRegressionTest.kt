@@ -507,12 +507,13 @@ class BrowserPageLoadRegressionTest {
 
     private fun waitForBlankBrowser(timeoutMillis: Long = 10_000L) {
         composeRule.waitUntil(timeoutMillis = timeoutMillis) {
-            val viewRef = AtomicReference<WebView?>(null)
+            val blankState = AtomicReference(false)
             composeRule.runOnUiThread {
-                viewRef.set(findWebView(composeRule.activity.window.decorView))
+                val view = findWebView(composeRule.activity.window.decorView)
+                val url = view?.url
+                blankState.set(view != null && (url.isNullOrBlank() || url == "about:blank"))
             }
-            val view = viewRef.get()
-            view != null && (view.url.isNullOrBlank() || view.url == "about:blank")
+            blankState.get()
         }
     }
 
