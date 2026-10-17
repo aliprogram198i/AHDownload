@@ -97,11 +97,15 @@ class LinkAnalyzer {
             host == "facebook.com" || host.endsWith(".facebook.com")
         ) {
             val query = parseQuery(uri.rawQuery)
+            // parseQuery already decodes the outer query value exactly once. Decoding
+            // it again corrupts valid percent-escaped data and plus signs in the target URL.
             val target = query["url"] ?: query["u"] ?: query["q"]
-            if (!target.isNullOrBlank() && target.startsWith("http", ignoreCase = true)) {
-                return runCatching {
-                    URLDecoder.decode(target, StandardCharsets.UTF_8.toString())
-                }.getOrDefault(target)
+            if (!target.isNullOrBlank()) {
+                val targetUri = runCatching { URI(target) }.getOrNull()
+                val targetScheme = targetUri?.scheme?.lowercase(Locale.ROOT)
+                if (targetUri?.host != null && (targetScheme == "http" || targetScheme == "https")) {
+                    return target
+                }
             }
         }
         return url
@@ -138,26 +142,73 @@ class LinkAnalyzer {
             ?.lowercase(Locale.ROOT)
             .orEmpty()
         val query = parseQuery(uri.rawQuery)
-        val hinted = listOf(
-            query["mime"],
-            query["content_type"],
-            query["format"],
-            query["type"],
-            query["ext"],
-        )
+
+        // A syntactically valid MIME type is a strong signal; arbitrary words in query
+        // parameters (for example "video-game") are not. HLS/DASH also use application/*.
+        val mimeKind = listOf(query["mime"], query["content_type"])
+            .mapNotNull(::kindFromMime)
+            .firstOrNull()
+        if (mimeKind != null) return mimeKind
+
+        val extensionKind = kindFromKnownExtension(extension)
+        if (extensionKind != null) return extensionKind
+
+        // Some hosts expose only a format/type/ext hint. Accept known formats and exact
+        // category labels, never substring matches against untrusted parameter values.
+        return listOf(query["format"], query["type"], query["ext"])
             .filterNotNull()
-            .joinToString(" ")
-            .lowercase(Locale.ROOT)
-        val mediaValue = "$extension $hinted"
+            .mapNotNull { rawHint ->
+                val hint = rawHint.substringBefore(';')
+                    .trim()
+                    .lowercase(Locale.ROOT)
+                    .removePrefix(".")
+                kindFromMime(hint) ?: when (hint) {
+                    "video" -> MediaKind.Video
+                    "audio" -> MediaKind.Audio
+                    "image" -> MediaKind.Image
+                    else -> kindFromKnownExtension(hint)
+                }
+            }
+            .firstOrNull()
+            ?: MediaKind.Unknown
+    }
+
+    private fun kindFromMime(rawValue: String?): MediaKind? {
+        val mime = rawValue
+            ?.substringBefore(';')
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?: return null
+        val subtype = mime.substringAfter('/', missingDelimiterValue = "")
+        val isValidMediaMime = subtype.matches(Regex("[a-z0-9][a-z0-9.+_-]*"))
+        if (!isValidMediaMime) return null
 
         return when {
-            mediaValue.contains("video/") || mediaValue.contains("video") -> MediaKind.Video
-            mediaValue.contains("audio/") || mediaValue.contains("audio") -> MediaKind.Audio
-            mediaValue.contains("image/") || mediaValue.contains("image") -> MediaKind.Image
-            extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi", "ogv", "m3u8", "mpd") -> MediaKind.Video
-            extension in setOf("mp3", "m4a", "aac", "wav", "ogg", "flac") -> MediaKind.Audio
-            extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
-            else -> MediaKind.Unknown
+            mime in HLS_DASH_MIME_TYPES -> MediaKind.Video
+            mime.startsWith("video/") -> MediaKind.Video
+            mime.startsWith("audio/") -> MediaKind.Audio
+            mime.startsWith("image/") -> MediaKind.Image
+            else -> null
         }
+    }
+
+    private fun kindFromKnownExtension(extension: String): MediaKind? = when (extension) {
+        in VIDEO_EXTENSIONS -> MediaKind.Video
+        in AUDIO_EXTENSIONS -> MediaKind.Audio
+        in IMAGE_EXTENSIONS -> MediaKind.Image
+        else -> null
+    }
+
+    private companion object {
+        val VIDEO_EXTENSIONS = setOf(
+            "mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi", "ogv", "m3u8", "mpd",
+        )
+        val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "aac", "wav", "ogg", "flac")
+        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif")
+        val HLS_DASH_MIME_TYPES = setOf(
+            "application/vnd.apple.mpegurl",
+            "application/x-mpegurl",
+            "application/dash+xml",
+        )
     }
 }

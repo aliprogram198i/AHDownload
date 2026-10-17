@@ -178,6 +178,55 @@ class LinkAnalyzerTest {
     }
 
     @Test
+    fun doesNotClassifyIncidentalWordsAsMediaHints() {
+        listOf(
+            "https://cdn.example.com/resource.video",
+            "https://cdn.example.com/resource?type=video-game",
+            "https://cdn.example.com/resource?format=audio-book",
+            "https://cdn.example.com/resource?ext=imagery",
+        ).forEach { url ->
+            val result = analyzer.analyze(url)
+            assertEquals(url, MediaPlatform.Web, result?.platform)
+            assertEquals(url, MediaKind.Unknown, result?.kind)
+        }
+    }
+
+    @Test
+    fun recognizesStrictMimeHintsAndKnownFormatHints() {
+        val audio = analyzer.analyze("https://cdn.example.com/resource?mime=audio%2Fmpeg")
+        assertEquals(MediaPlatform.DirectMedia, audio?.platform)
+        assertEquals(MediaKind.Audio, audio?.kind)
+
+        val video = analyzer.analyze("https://cdn.example.com/resource?format=.mp4")
+        assertEquals(MediaPlatform.DirectMedia, video?.platform)
+        assertEquals(MediaKind.Video, video?.kind)
+
+        val image = analyzer.analyze("https://cdn.example.com/resource?content_type=image%2Fwebp")
+        assertEquals(MediaPlatform.DirectMedia, image?.platform)
+        assertEquals(MediaKind.Image, image?.kind)
+    }
+
+    @Test
+    fun unwrapsRedirectExactlyOnceAndPreservesEscapedTargetQueryValues() {
+        val result = analyzer.analyze(
+            "https://www.google.com/url?url=https%3A%2F%2Fcdn.example.com%2Fvideo.mp4%3Ftoken%3Da%252Bb%2525c",
+        )
+        assertEquals(MediaPlatform.DirectMedia, result?.platform)
+        assertEquals(
+            "https://cdn.example.com/video.mp4?token=a%2Bb%25c",
+            result?.normalizedUrl,
+        )
+    }
+
+    @Test
+    fun refusesToUnwrapNonHttpRedirectTargets() {
+        val input = "https://www.google.com/url?url=javascript%3Aalert%281%29"
+        val result = analyzer.analyze(input)
+        assertEquals(MediaPlatform.Web, result?.platform)
+        assertEquals(input, result?.normalizedUrl)
+    }
+
+    @Test
     fun trimsInputWithoutChangingOriginal() {
         val result = analyzer.analyze("  https://instagram.com/reel/example  ")
         assertEquals("  https://instagram.com/reel/example  ", result?.originalUrl)
