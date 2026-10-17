@@ -58,10 +58,11 @@ class BrowserPublicSitesAcceptanceTest {
             "The browser must remain on its intentional blank page before target-site navigation",
             waitForBlankPageToSettle(),
         )
-        assertTrue(
+        org.junit.Assert.assertEquals(
             "The editable browser address must start empty",
+            "",
             composeRule.onNodeWithTag("browser-address-field")
-                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
         )
         val results = mutableListOf<SiteResult>()
 
