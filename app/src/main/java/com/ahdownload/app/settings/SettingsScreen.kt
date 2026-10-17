@@ -25,7 +25,6 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -33,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.ahdownload.core.designsystem.AHProgressBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -72,6 +70,7 @@ import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import java.time.Instant
+import java.util.Locale
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -219,8 +218,8 @@ fun SettingsRoute(
                         items(VideoQualityPreference.entries) { quality ->
                             DiagnosticFilterChip(
                                 trackingScreen = "SETTINGS",
-                                trackingId = "SETTINGS.filterchip.01",
-                                trackingLabel = "SETTINGS.filterchip.01",
+                                trackingId = "SETTINGS.video_quality.${quality.name.lowercase(Locale.ROOT)}",
+                                trackingLabel = quality.label,
                                 disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.videoQuality == quality,
                                 onClick = {
@@ -236,8 +235,8 @@ fun SettingsRoute(
                         items(AudioBitratePreference.entries) { bitrate ->
                             DiagnosticFilterChip(
                                 trackingScreen = "SETTINGS",
-                                trackingId = "SETTINGS.filterchip.02",
-                                trackingLabel = "SETTINGS.filterchip.02",
+                                trackingId = "SETTINGS.audio_bitrate.${bitrate.name.lowercase(Locale.ROOT)}",
+                                trackingLabel = bitrate.label,
                                 disabledReason = "callsite_precondition_not_explicit",
                                 selected = preferences.audioBitrate == bitrate,
                                 onClick = {
@@ -515,10 +514,16 @@ fun SettingsRoute(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = {
-                        uiTraceLogger.interaction("SETTINGS", "performance_log_button", "open_performance_log")
-                        onOpenPerformanceLog()
-                    }, modifier = Modifier.fillMaxWidth()) {
+                    DiagnosticButton(
+                        trackingScreen = "SETTINGS",
+                        trackingId = "SETTINGS.performance_log.open",
+                        trackingLabel = "فتح سجل الأداء",
+                        onClick = {
+                            uiTraceLogger.interaction("SETTINGS", "performance_log_button", "open_performance_log")
+                            onOpenPerformanceLog()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
                         Text("فتح سجل الأداء")
                     }
                 }
@@ -534,7 +539,10 @@ fun SettingsRoute(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(
+                    DiagnosticButton(
+                        trackingScreen = "SETTINGS",
+                        trackingId = "SETTINGS.browser.open",
+                        trackingLabel = "فتح المتصفح الذكي",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "browser_open_button", "open_browser")
                             onOpenBrowser()
@@ -543,7 +551,10 @@ fun SettingsRoute(
                     ) {
                         Text("فتح المتصفح الذكي")
                     }
-                    OutlinedButton(
+                    DiagnosticOutlinedButton(
+                        trackingScreen = "SETTINGS",
+                        trackingId = "SETTINGS.browser.errors",
+                        trackingLabel = "سجل أخطاء المتصفح",
                         onClick = {
                             uiTraceLogger.interaction("SETTINGS", "browser_error_log_button", "open_browser_error_log")
                             onOpenBrowserErrors()

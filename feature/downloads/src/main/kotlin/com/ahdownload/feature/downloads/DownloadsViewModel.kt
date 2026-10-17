@@ -8,7 +8,6 @@ import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.canBeCancelled
 import com.ahdownload.domain.download.canBePaused
-import com.ahdownload.domain.download.canBeRemovedFromHistory
 import com.ahdownload.domain.download.canBeResumed
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
@@ -75,13 +74,8 @@ class DownloadsViewModel(
             .forEach { controls.cancel(it.task.id) }
     }
 
-    fun deleteHistory(record: DownloadRecord) {
-        if (record.status.canBeRemovedFromHistory) {
-            viewModelScope.launch {
-                repository.delete(record.task.id)
-            }
-        }
-    }
+    suspend fun deleteHistory(record: DownloadRecord): Boolean =
+        deleteDownloadHistoryRecord(repository, record)
 
     class Factory(
         private val repository: DownloadRepository,

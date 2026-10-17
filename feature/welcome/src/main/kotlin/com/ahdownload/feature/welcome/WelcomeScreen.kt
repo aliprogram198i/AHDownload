@@ -44,7 +44,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +81,7 @@ private fun WelcomeScreen(
 ) {
     val transition = rememberInfiniteTransition(label = "welcomeMotion")
     val uiContext = rememberUiTraceContext()
+    val canvasPrimary = MaterialTheme.colorScheme.primary
     val canvasAccent = MaterialTheme.colorScheme.secondary
 
     LaunchedEffect(ready) {
@@ -119,7 +119,7 @@ private fun WelcomeScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFFDFDFF),
+                        MaterialTheme.colorScheme.surface,
                         MaterialTheme.colorScheme.background,
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.50f),
                     ),
@@ -144,11 +144,11 @@ private fun WelcomeScreen(
             }
             drawPath(
                 path = path,
-                color = Color(0xFF8C7AF0),
+                color = canvasPrimary,
                 style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.2f),
             )
             drawCircle(
-                color = Color(0xFF8C7AF0).copy(alpha = 0.13f),
+                color = canvasPrimary.copy(alpha = 0.13f),
                 radius = size.width * 0.24f,
                 center = androidx.compose.ui.geometry.Offset(size.width * 0.98f, size.height * 0.18f),
             )
@@ -238,14 +238,14 @@ private fun WelcomeScreen(
                                     brush = Brush.linearGradient(
                                         colors = listOf(
                                             MaterialTheme.colorScheme.primary,
-                                            Color(0xFF7668E9),
-                                            Color(0xFF367DC1),
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.92f),
+                                            MaterialTheme.colorScheme.secondary,
                                         ),
                                     ),
                                     shape = CircleShape,
                                 )
                                 .border(
-                                    BorderStroke(1.dp, Color.White.copy(alpha = 0.55f)),
+                                    BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f)),
                                     CircleShape,
                                 ),
                             contentAlignment = Alignment.Center,
@@ -254,7 +254,7 @@ private fun WelcomeScreen(
                                 imageVector = Icons.Rounded.CloudDownload,
                                 contentDescription = "شعار AHDownload",
                                 modifier = Modifier.size(66.dp),
-                                tint = Color.White,
+                                tint = MaterialTheme.colorScheme.onPrimary,
                             )
                         }
                         Box(

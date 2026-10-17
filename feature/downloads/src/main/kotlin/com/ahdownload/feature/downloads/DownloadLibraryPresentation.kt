@@ -31,8 +31,11 @@ internal fun sortDownloadRecords(
         )
         DownloadSortOption.Largest -> records.sortedWith(
             activeFirst
-                .thenByDescending { it.bytesDownloaded.coerceAtLeast(0L) }
+                .thenByDescending { it.sortSizeBytes() }
                 .thenByDescending { it.updatedAtEpochMs },
         )
     }
 }
+
+private fun DownloadRecord.sortSizeBytes(): Long =
+    (totalBytes?.takeIf { it > 0L } ?: bytesDownloaded).coerceAtLeast(0L)
