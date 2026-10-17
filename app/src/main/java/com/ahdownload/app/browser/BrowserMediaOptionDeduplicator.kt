@@ -27,7 +27,6 @@ internal object BrowserMediaOptionDeduplicator {
                     videoCodec = normalizeCodec(format.videoCodec),
                     audioCodec = normalizeCodec(format.audioCodec),
                     hasAudio = format.hasAudio,
-                    fileSizeBytes = format.fileSizeBytes,
                     hasCompanionAudio = !candidate.companionAudioSourceUrl.isNullOrBlank(),
                 )
             }
@@ -35,7 +34,9 @@ internal object BrowserMediaOptionDeduplicator {
 
     fun audioSources(candidates: List<MediaCandidate>): List<MediaCandidate> =
         candidates.asSequence()
-            .filter { it.format.hasAudio || it.format.kind == MediaKind.Audio }
+            // The extraction section must contain audio-only sources. A muxed MP4 or
+            // HLS video representation may carry audio, but it is not an audio-only source.
+            .filter { !it.format.hasVideo && (it.format.hasAudio || it.format.kind == MediaKind.Audio) }
             .distinctBy(::audioSourceLabel)
             .toList()
 
@@ -47,6 +48,10 @@ internal object BrowserMediaOptionDeduplicator {
                 add("${format.width}×${format.height}")
             }
             add(sourceFormatLabel(candidate))
+            format.videoCodec?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.ROOT)) }
+            format.audioCodec?.takeIf { it.isNotBlank() }?.let { add(it.uppercase(Locale.ROOT)) }
+            format.fps?.takeIf { it > 0 }?.let { add("${it} fps") }
+            format.bitrateKbps?.takeIf { it > 0 }?.let { add("${it} kbps") }
         }.distinct().joinToString(" • ")
     }
 
@@ -111,7 +116,6 @@ internal object BrowserMediaOptionDeduplicator {
         val videoCodec: String?,
         val audioCodec: String?,
         val hasAudio: Boolean,
-        val fileSizeBytes: Long?,
         val hasCompanionAudio: Boolean,
     )
 }

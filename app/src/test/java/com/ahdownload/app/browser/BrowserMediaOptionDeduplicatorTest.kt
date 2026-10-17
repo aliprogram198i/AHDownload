@@ -149,6 +149,100 @@ class BrowserMediaOptionDeduplicatorTest {
         assertTrue(!BrowserMediaOptionDeduplicator.videoOptionTitle(hls).contains("Mkv"))
     }
 
+    @Test
+    fun videoOptionsCollapseCandidatesThatDifferOnlyByFileSizeWithoutKnownQuality() {
+        val first = candidate(
+            id = "mp4-first",
+            url = "https://cdn.example.test/file-a.mp4",
+            width = null,
+            height = null,
+            fps = null,
+            bitrateKbps = null,
+            videoCodec = null,
+            audioCodec = null,
+            fileSizeBytes = 1_310L,
+        )
+        val duplicate = candidate(
+            id = "mp4-duplicate",
+            url = "https://mirror.example.test/file-b.mp4",
+            width = null,
+            height = null,
+            fps = null,
+            bitrateKbps = null,
+            videoCodec = null,
+            audioCodec = null,
+            fileSizeBytes = 1_290L,
+        )
+
+        val result = BrowserMediaOptionDeduplicator.videoOptions(listOf(first, duplicate))
+
+        assertEquals(1, result.size)
+        assertEquals("mp4-first", result.single().id)
+        assertEquals("Mp4", BrowserMediaOptionDeduplicator.videoOptionTitle(result.single()))
+    }
+
+    @Test
+    fun audioSourcesExcludeMuxedMp4AndHlsVideoCandidates() {
+        val muxedMp4 = candidate(
+            id = "muxed-mp4",
+            url = "https://cdn.example.test/video.mp4",
+            width = 640,
+            height = 360,
+            hasVideo = true,
+            hasAudio = true,
+        )
+        val hlsVideo = candidate(
+            id = "hls-video",
+            url = "https://cdn.example.test/master.m3u8",
+            width = 640,
+            height = 360,
+            hasVideo = true,
+            hasAudio = true,
+            container = MediaContainer.Mkv,
+            fileSizeBytes = null,
+            streamingManifest = true,
+        )
+        val audioOnly = candidate(
+            id = "audio-only",
+            url = "https://cdn.example.test/audio.mp3",
+            kind = MediaKind.Audio,
+            container = MediaContainer.Mp3,
+            width = null,
+            height = null,
+            fps = null,
+            bitrateKbps = 128,
+            videoCodec = null,
+            audioCodec = "mp3",
+            hasVideo = false,
+            hasAudio = true,
+        )
+
+        val result = BrowserMediaOptionDeduplicator.audioSources(listOf(muxedMp4, hlsVideo, audioOnly))
+
+        assertEquals(listOf("audio-only"), result.map { it.id })
+        assertTrue(result.all { !it.format.hasVideo })
+    }
+
+    @Test
+    fun videoOptionTitleExposesKnownCodecAndBitrateDifferences() {
+        val candidate = candidate(
+            id = "video-detailed",
+            url = "https://cdn.example.test/video.mp4",
+            width = 1280,
+            height = 720,
+            fps = 30.0,
+            bitrateKbps = 2_500,
+            videoCodec = "h264",
+            audioCodec = "aac",
+        )
+
+        val title = BrowserMediaOptionDeduplicator.videoOptionTitle(candidate)
+
+        assertTrue(title.contains("H264"))
+        assertTrue(title.contains("AAC"))
+        assertTrue(title.contains("2500 kbps"))
+    }
+
     private fun candidate(
         id: String,
         url: String,
