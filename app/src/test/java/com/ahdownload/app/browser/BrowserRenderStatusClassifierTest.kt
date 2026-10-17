@@ -55,7 +55,7 @@ class BrowserRenderStatusClassifierTest {
                 hasVisibleContentSignals = false,
                 hasAnyDomContentSignals = true,
                 hasPrimaryVisibleContent = false,
-                hasOccludedViewportContent = true,
+                hasHitTestRejectedContent = true,
             ),
         )
     }
@@ -70,7 +70,7 @@ class BrowserRenderStatusClassifierTest {
                 hasVisibleContentSignals = true,
                 hasAnyDomContentSignals = true,
                 hasPrimaryVisibleContent = true,
-                hasOccludedViewportContent = true,
+                hasHitTestRejectedContent = true,
             ),
         )
     }
@@ -85,7 +85,7 @@ class BrowserRenderStatusClassifierTest {
                 hasVisibleContentSignals = false,
                 hasAnyDomContentSignals = true,
                 hasPrimaryVisibleContent = false,
-                hasOccludedViewportContent = true,
+                hasHitTestRejectedContent = true,
             ),
         )
     }
