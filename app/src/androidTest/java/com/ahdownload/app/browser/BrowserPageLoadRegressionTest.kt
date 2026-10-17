@@ -40,10 +40,11 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
-        assertTrue(
+        org.junit.Assert.assertEquals(
             "The editable browser address must start empty",
+            "",
             composeRule.onNodeWithTag("browser-address-field")
-                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
         )
         waitForBlankBrowser()
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
@@ -522,10 +523,11 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
         waitForBlankBrowser()
-        assertTrue(
+        org.junit.Assert.assertEquals(
             "The editable browser address must start empty",
+            "",
             composeRule.onNodeWithTag("browser-address-field")
-                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
         )
         SystemClock.sleep(500L)
 
@@ -560,10 +562,11 @@ class BrowserPageLoadRegressionTest {
 
         composeRule.onNodeWithContentDescription("صفحة فارغة").performClick()
         waitForBlankBrowser()
-        assertTrue(
+        org.junit.Assert.assertEquals(
             "The editable browser address must start empty",
+            "",
             composeRule.onNodeWithTag("browser-address-field")
-                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
         )
         composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
     }
