@@ -7,7 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -58,7 +58,11 @@ class BrowserPublicSitesAcceptanceTest {
             "The browser must remain on its intentional blank page before target-site navigation",
             waitForBlankPageToSettle(),
         )
-        composeRule.onNodeWithTag("browser-address-field").assertTextEquals("")
+        composeRule.assertTrue(
+            "The editable browser address must start empty",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+        )
         val results = mutableListOf<SiteResult>()
 
         for (site in sitesToTest) {
