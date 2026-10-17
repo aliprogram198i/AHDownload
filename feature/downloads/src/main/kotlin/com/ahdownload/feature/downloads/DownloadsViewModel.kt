@@ -75,13 +75,8 @@ class DownloadsViewModel(
             .forEach { controls.cancel(it.task.id) }
     }
 
-    fun deleteHistory(record: DownloadRecord) {
-        if (record.status.canBeRemovedFromHistory) {
-            viewModelScope.launch {
-                repository.delete(record.task.id)
-            }
-        }
-    }
+    suspend fun deleteHistory(record: DownloadRecord): Boolean =
+        deleteDownloadHistoryRecord(repository, record)
 
     class Factory(
         private val repository: DownloadRepository,

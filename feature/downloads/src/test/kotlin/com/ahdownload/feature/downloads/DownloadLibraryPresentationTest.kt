@@ -39,6 +39,45 @@ class DownloadLibraryPresentationTest {
     }
 
     @Test
+    fun largestSortUsesKnownTotalSizeRatherThanOnlyDownloadedBytes() {
+        val largePartiallyDownloaded = record(
+            id = "partial-large",
+            name = "Partial large",
+            status = DownloadStatus.FAILED,
+            bytes = 1_000,
+            createdAt = 1_000,
+            updatedAt = 1_500,
+            totalBytes = 20_000,
+        )
+        val medium = record(
+            id = "medium",
+            name = "Medium",
+            status = DownloadStatus.COMPLETED,
+            bytes = 10_000,
+            createdAt = 1_000,
+            updatedAt = 1_400,
+            totalBytes = 10_000,
+        )
+        val unknownTotal = record(
+            id = "unknown-total",
+            name = "Unknown total",
+            status = DownloadStatus.COMPLETED,
+            bytes = 5_000,
+            createdAt = 1_000,
+            updatedAt = 1_300,
+            totalBytes = null,
+        )
+
+        assertEquals(
+            listOf("partial-large", "medium", "unknown-total"),
+            sortDownloadRecords(
+                listOf(unknownTotal, medium, largePartiallyDownloaded),
+                DownloadSortOption.Largest,
+            ).map { it.task.id },
+        )
+    }
+
+    @Test
     fun oldestSortUsesCreationTimeAfterKeepingActiveWorkFirst() {
         val newer = record("newer", "Newer", DownloadStatus.COMPLETED, 10, 2_000, 2_100)
         val older = record("older", "Older", DownloadStatus.COMPLETED, 10, 1_000, 2_000)
@@ -58,6 +97,7 @@ class DownloadLibraryPresentationTest {
         bytes: Long,
         createdAt: Long,
         updatedAt: Long,
+        totalBytes: Long? = bytes,
     ) = DownloadRecord(
         task = DownloadTask(
             id = id,
@@ -67,7 +107,7 @@ class DownloadLibraryPresentationTest {
         ),
         status = status,
         bytesDownloaded = bytes,
-        totalBytes = bytes,
+        totalBytes = totalBytes,
         failureCode = null,
         failureDetail = null,
         createdAtEpochMs = createdAt,

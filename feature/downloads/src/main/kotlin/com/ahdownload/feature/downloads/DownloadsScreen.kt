@@ -327,7 +327,7 @@ private fun DownloadsScreen(
     onCancelAll: () -> Unit,
     onCancel: (DownloadRecord) -> Unit,
     onRetry: (DownloadRecord) -> Unit,
-    onDeleteHistory: (DownloadRecord) -> Unit,
+    onDeleteHistory: suspend (DownloadRecord) -> Boolean,
     onOpenDownload: (DownloadRecord) -> Unit,
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
@@ -344,11 +344,15 @@ private fun DownloadsScreen(
     var sortMenuExpanded by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pendingDelete by remember { mutableStateOf<DownloadRecord?>(null) }
+    var pendingDeleteFile by remember { mutableStateOf<DownloadRecord?>(null) }
+    var historyDeleteBusy by remember { mutableStateOf(false) }
+    var fileDeleteBusy by remember { mutableStateOf(false) }
     var pendingRename by remember { mutableStateOf<DownloadRecord?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var renameBusy by remember { mutableStateOf(false) }
     var bulkMenuExpanded by remember { mutableStateOf(false) }
     val renameScope = rememberCoroutineScope()
+    val actionScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
@@ -902,8 +906,7 @@ private fun DownloadsScreen(
                                     onShareDownload(record)
                                 },
                                 onDeleteDownloadFile = {
-                                    val deleted = onDeleteDownloadFile(record)
-                                    feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف."
+                                    pendingDeleteFile = record
                                 },
                                 onOpenDownloadFolder = {
                                     onOpenDownloadFolder(record)
@@ -927,7 +930,7 @@ private fun DownloadsScreen(
 
     pendingDelete?.let { record ->
         AlertDialog(
-            onDismissRequest = { pendingDelete = null },
+            onDismissRequest = { if (!historyDeleteBusy) pendingDelete = null },
             title = { Text("إزالة من السجل؟") },
             text = {
                 Text(
@@ -939,11 +942,29 @@ private fun DownloadsScreen(
                     trackingScreen = "DOWNLOADS",
                     trackingId = "DOWNLOADS.button.01",
                     trackingLabel = "إزالة",
-                    disabledReason = "callsite_precondition_not_explicit",
+                    disabledReason = "تتم إزالة السجل حاليًا",
+                    enabled = !historyDeleteBusy,
                     onClick = {
-                        onDeleteHistory(record)
-                        pendingDelete = null
-                        feedback = "تمت إزالة العنصر من السجل."
+                        if (!historyDeleteBusy) {
+                            historyDeleteBusy = true
+                            actionScope.launch {
+                                val removed = try {
+                                    onDeleteHistory(record)
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    false
+                                } finally {
+                                    historyDeleteBusy = false
+                                }
+                                pendingDelete = null
+                                feedback = if (removed) {
+                                    "تمت إزالة العنصر من السجل."
+                                } else {
+                                    "تعذرت إزالة العنصر من السجل. حاول مجددًا."
+                                }
+                            }
+                        }
                     },
                 ) {
                     Text("إزالة")
@@ -954,7 +975,63 @@ private fun DownloadsScreen(
                     trackingScreen = "DOWNLOADS",
                     trackingId = "DOWNLOADS.textbutton.01",
                     trackingLabel = "إلغاء",
-                    disabledReason = "callsite_precondition_not_explicit",onClick = { pendingDelete = null }) {
+                    disabledReason = "تتم إزالة السجل حاليًا",
+                    enabled = !historyDeleteBusy,
+                    onClick = { pendingDelete = null }) {
+                    Text("إلغاء")
+                }
+            },
+        )
+    }
+
+    pendingDeleteFile?.let { record ->
+        val fileName = record.task.displayName
+            ?.takeIf { it.isNotBlank() }
+            ?: record.task.destinationPath.substringAfterLast(File.separatorChar)
+        AlertDialog(
+            onDismissRequest = { if (!fileDeleteBusy) pendingDeleteFile = null },
+            title = { Text("حذف الملف نهائيًا؟") },
+            text = {
+                Text("سيُحذف الملف «$fileName» من الجهاز. لن يمكن التراجع عن هذه العملية.")
+            },
+            confirmButton = {
+                DiagnosticButton(
+                    trackingScreen = "DOWNLOADS",
+                    trackingId = "DOWNLOADS.file_delete.confirm",
+                    trackingLabel = "حذف الملف نهائيًا",
+                    disabledReason = "تتم عملية الحذف حاليًا",
+                    enabled = !fileDeleteBusy,
+                    onClick = {
+                        if (!fileDeleteBusy) {
+                            fileDeleteBusy = true
+                            actionScope.launch {
+                                val deleted = try {
+                                    withContext(Dispatchers.IO) { onDeleteDownloadFile(record) }
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    false
+                                } finally {
+                                    fileDeleteBusy = false
+                                }
+                                pendingDeleteFile = null
+                                feedback = if (deleted) "تم حذف الملف." else "تعذر حذف الملف. لم يُعرض نجاح غير مؤكد."
+                            }
+                        }
+                    },
+                ) {
+                    Text(if (fileDeleteBusy) "جارٍ الحذف..." else "حذف الملف")
+                }
+            },
+            dismissButton = {
+                DiagnosticTextButton(
+                    trackingScreen = "DOWNLOADS",
+                    trackingId = "DOWNLOADS.file_delete.dismiss",
+                    trackingLabel = "إلغاء حذف الملف",
+                    disabledReason = "تتم عملية الحذف حاليًا",
+                    enabled = !fileDeleteBusy,
+                    onClick = { pendingDeleteFile = null },
+                ) {
                     Text("إلغاء")
                 }
             },
@@ -1118,7 +1195,7 @@ private fun DownloadRecordCard(
     }
     val statusIcon = when (record.status) {
         DownloadStatus.COMPLETED -> if (fileAvailable) Icons.Rounded.CheckCircle else Icons.Rounded.ErrorOutline
-        DownloadStatus.FAILED -> Icons.Rounded.Refresh
+        DownloadStatus.FAILED -> Icons.Rounded.ErrorOutline
         DownloadStatus.PAUSED -> Icons.Rounded.Pause
         DownloadStatus.CANCELLED -> Icons.Rounded.Cancel
         else -> Icons.Rounded.Download
@@ -1161,12 +1238,12 @@ private fun DownloadRecordCard(
                             statusIcon,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = statusColor(record.status),
+                            tint = statusColor(record.status, fileAvailable),
                         )
                         Text(
                             statusText,
                             style = MaterialTheme.typography.labelLarge,
-                            color = statusColor(record.status),
+                            color = statusColor(record.status, fileAvailable),
                         )
                     }
                     val kindText = record.task.mediaKind?.let(::kindLabel)
@@ -1794,9 +1871,10 @@ private fun statusLabel(status: DownloadStatus): String = when (status) {
 }
 
 @Composable
-private fun statusColor(status: DownloadStatus) = when (status) {
-    DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
-    DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
+private fun statusColor(status: DownloadStatus, fileAvailable: Boolean) = when {
+    status == DownloadStatus.FAILED -> MaterialTheme.colorScheme.error
+    status == DownloadStatus.COMPLETED && !fileAvailable -> MaterialTheme.colorScheme.error
+    status == DownloadStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
