@@ -70,6 +70,7 @@ import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.AHThemeMode
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import java.time.Instant
+import java.util.Locale
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
