@@ -5,7 +5,9 @@ import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -37,9 +39,15 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("اتصال HTTPS").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        org.junit.Assert.assertEquals(
+            "The editable browser address must start empty",
+            "",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
+        )
+        waitForBlankBrowser()
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
 
@@ -215,7 +223,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
         val targetUrl = "https://example.com/"
         composeRule.onNodeWithTag("browser-address-field").performTextReplacement(targetUrl)
         composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
@@ -278,7 +286,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
 
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
@@ -350,7 +358,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
 
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
@@ -426,7 +434,7 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
-        waitForConfiguredHomePage()
+        waitForBlankBrowser()
 
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
@@ -498,33 +506,71 @@ class BrowserPageLoadRegressionTest {
         assertTrue(!recheckEvent.details["hit_test_blocker_summary"].isNullOrBlank())
     }
 
-    private fun waitForConfiguredHomePage(timeoutMillis: Long = 30_000L) {
+    private fun waitForBlankBrowser(timeoutMillis: Long = 10_000L) {
         composeRule.waitUntil(timeoutMillis = timeoutMillis) {
-            val state = AtomicReference<Pair<Int, String?>?>(null)
+            val blankState = AtomicReference(false)
             composeRule.runOnUiThread {
                 val view = findWebView(composeRule.activity.window.decorView)
-                state.set((view?.progress ?: 0) to view?.url)
+                val url = view?.url
+                blankState.set(view != null && (url.isNullOrBlank() || url == "about:blank"))
             }
-            val current = state.get()
-            val host = runCatching { Uri.parse(current?.second.orEmpty()).host?.lowercase() }.getOrNull()
-            current?.first == 100 && (host == "google.com" || host == "www.google.com")
+            blankState.get()
         }
     }
 
     @Test(timeout = 30_000)
-    fun browserStartsWithConfiguredHomeUrlInsteadOfBlankWebView() {
+    fun browserStartsWithBlankAddressAndDoesNotLoadHomeAutomatically() {
         composeRule.onNodeWithText("ابدأ الآن").performClick()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
+        waitForBlankBrowser()
+        org.junit.Assert.assertEquals(
+            "The editable browser address must start empty",
+            "",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
+        )
+        SystemClock.sleep(500L)
+
         val loadedUrl = AtomicReference<String?>(null)
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.runOnUiThread {
-                loadedUrl.set(findWebView(composeRule.activity.window.decorView)?.url)
-            }
-            loadedUrl.get()?.startsWith("https://") == true
+        composeRule.runOnUiThread {
+            loadedUrl.set(findWebView(composeRule.activity.window.decorView)?.url)
         }
-        assertNotNull("Browser must initiate its configured home navigation on entry", loadedUrl.get())
+        assertTrue(
+            "The browser must stay blank instead of opening Google automatically",
+            loadedUrl.get().isNullOrBlank() || loadedUrl.get() == "about:blank",
+        )
+    }
+
+    @Test(timeout = 45_000)
+    fun blankPageButtonClearsAddressAndHistoryInsteadOfOpeningAHomepage() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        waitForBlankBrowser()
+
+        val targetUrl = "https://example.com/"
+        composeRule.onNodeWithTag("browser-address-field").performTextReplacement(targetUrl)
+        composeRule.onNodeWithContentDescription("فتح العنوان").performClick()
+
+        composeRule.waitUntil(timeoutMillis = 25_000) {
+            val loaded = AtomicReference(false)
+            composeRule.runOnUiThread {
+                val view = findWebView(composeRule.activity.window.decorView)
+                loaded.set(view?.url?.startsWith(targetUrl) == true && view?.title == "Example Domain")
+            }
+            loaded.get()
+        }
+
+        composeRule.onNodeWithContentDescription("صفحة فارغة").performClick()
+        waitForBlankBrowser()
+        org.junit.Assert.assertEquals(
+            "The editable browser address must start empty",
+            "",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
+        )
+        composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
     }
 
 

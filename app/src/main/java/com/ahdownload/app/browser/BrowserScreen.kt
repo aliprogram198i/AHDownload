@@ -36,7 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
@@ -125,10 +125,11 @@ fun BrowserRoute(
             browserMediaSessionProvider = AndroidBrowserMediaSessionProvider(context.applicationContext),
         )
     }
-    var address by remember { mutableStateOf("https://www.google.com") }
-    var currentUrl by remember { mutableStateOf("https://www.google.com") }
+    var address by remember { mutableStateOf("") }
+    var currentUrl by remember { mutableStateOf("") }
     var pageProgress by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(false) }
+    var blankNavigationPending by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
@@ -404,12 +405,17 @@ fun BrowserRoute(
     }
 
     fun loadAddress() {
+        if (address.isBlank()) {
+            inspectMessage = "أدخل عنوان موقع أو عبارة بحث أولًا."
+            return
+        }
         val normalized = normalizeBrowserUrl(address)
         if (normalized == null) {
             inspectMessage = "أدخل عنوان موقع صالحًا يبدأ بـ https:// أو http://."
             recordError("INVALID_ADDRESS", "عنوان الموقع غير صالح", "navigation", address)
             return
         }
+        blankNavigationPending = false
         invalidateInspectionForNavigation()
         nextNavigationSource = "address_bar"
         // Persist the requested destination before touching WebView. The AndroidView
@@ -423,6 +429,42 @@ fun BrowserRoute(
         isLoading = true
         showResults = false
         webView?.loadUrl(normalized)
+    }
+
+    fun openBlankPage() {
+        invalidateInspectionForNavigation()
+        val activeWebView = webView
+        blankNavigationPending = activeWebView != null
+        currentUrl = ""
+        address = ""
+        pageProgress = 0
+        isLoading = false
+        canGoBack = false
+        canGoForward = false
+        pageLoadError = null
+        inspectMessage = null
+        currentPageTitle = ""
+        pageRenderStatus = "NOT_CHECKED"
+        currentNavigationId = UUID.randomUUID().toString()
+        navigationStartedAtMs = 0L
+        nextNavigationSource = "blank_page"
+        lastPageFinishedEventKey = ""
+        lastRenderSnapshotFingerprint = ""
+        lastRenderRecheckScheduledNavigationId = ""
+        lastVisualStateReadyNavigationId = ""
+        recordBrowserEvent(
+            "BLANK_PAGE_OPENED",
+            "تم فتح صفحة فارغة دون تحميل موقع تلقائيًا",
+            "navigation",
+            null,
+            severity = "INFO",
+            details = mapOf("navigation_source" to "blank_page"),
+            pageTitle = null,
+        )
+        activeWebView?.let { view ->
+            runCatching { view.stopLoading() }
+            view.loadUrl("about:blank")
+        }
     }
 
     BackHandler {
@@ -457,38 +499,16 @@ fun BrowserRoute(
                     Text("AHDownload Browser")
                 },
                 navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (canGoBack) {
-                                invalidateInspectionForNavigation()
-                                nextNavigationSource = "toolbar_back"
-                                webView?.goBack()
-                            } else {
-                                onBack()
-                            }
-                        },
-                    ) {
+                    IconButton(onClick = onBack) {
                         Icon(
                             Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = if (canGoBack) "الصفحة السابقة" else "رجوع",
+                            contentDescription = "العودة إلى التطبيق",
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        invalidateInspectionForNavigation()
-                        nextNavigationSource = "home_button"
-                        val homeUrl = "https://www.google.com"
-                        address = homeUrl
-                        currentUrl = homeUrl
-                        pageLoadError = null
-                        inspectMessage = null
-                        pageProgress = 0
-                        isLoading = true
-                        showResults = false
-                        webView?.loadUrl(homeUrl)
-                    }) {
-                        Icon(Icons.Rounded.Home, contentDescription = "الصفحة الرئيسية")
+                    IconButton(onClick = { openBlankPage() }) {
+                        Icon(Icons.Rounded.Add, contentDescription = "صفحة فارغة")
                     }
                 },
             )
@@ -724,15 +744,15 @@ fun BrowserRoute(
             ) {
                 Icon(
                     Icons.Rounded.Shield,
-                    contentDescription = if (currentUrl.startsWith("https://", ignoreCase = true)) {
-                        "اتصال HTTPS"
-                    } else {
-                        "اتصال HTTP غير مشفّر"
+                    contentDescription = when {
+                        currentUrl.startsWith("https://", ignoreCase = true) -> "اتصال HTTPS"
+                        currentUrl.startsWith("http://", ignoreCase = true) -> "اتصال HTTP غير مشفّر"
+                        else -> "لا يوجد موقع مفتوح"
                     },
-                    tint = if (currentUrl.startsWith("https://", ignoreCase = true)) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.error
+                    tint = when {
+                        currentUrl.startsWith("https://", ignoreCase = true) -> MaterialTheme.colorScheme.primary
+                        currentUrl.startsWith("http://", ignoreCase = true) -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
                 OutlinedTextField(
@@ -759,7 +779,17 @@ fun BrowserRoute(
                 IconButton(enabled = canGoForward, onClick = { invalidateInspectionForNavigation(); nextNavigationSource = "forward_button"; webView?.goForward() }) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "التالي")
                 }
-                IconButton(onClick = { invalidateInspectionForNavigation(); nextNavigationSource = "reload_button"; pageLoadError = null; isLoading = true; pageProgress = 0; webView?.reload() }) {
+                IconButton(
+                    enabled = currentUrl.isNotBlank() && !isLoading,
+                    onClick = {
+                        invalidateInspectionForNavigation()
+                        nextNavigationSource = "reload_button"
+                        pageLoadError = null
+                        isLoading = true
+                        pageProgress = 0
+                        webView?.reload()
+                    },
+                ) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
                 }
             }
@@ -802,6 +832,14 @@ fun BrowserRoute(
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                                 val scheme = request.url.scheme?.lowercase()
+                                // about:blank is an intentional internal navigation used by the
+                                // blank-page action; it is not an external or unsafe URL scheme.
+                                if (
+                                    request.url.toString() == "about:blank" &&
+                                    (blankNavigationPending || currentUrl.isBlank())
+                                ) {
+                                    return false
+                                }
                                 if (request.isForMainFrame && (scheme == "https" || scheme == "http")) {
                                     recordBrowserEvent(
                                         if (request.isRedirect) "NAVIGATION_REDIRECT_REQUEST" else "NAVIGATION_LINK_REQUEST",
@@ -823,6 +861,27 @@ fun BrowserRoute(
                             }
 
                             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                                // Keep callbacks from a cancelled page from repopulating the address
+                                // after the user explicitly requested the blank browser surface.
+                                if (blankNavigationPending && url != "about:blank") return
+                                if (url == "about:blank") {
+                                    if (currentUrl.isNotBlank() && !blankNavigationPending) return
+                                    blankNavigationPending = false
+                                    currentUrl = ""
+                                    address = ""
+                                    pageProgress = 0
+                                    isLoading = false
+                                    canGoBack = false
+                                    canGoForward = false
+                                    pageLoadError = null
+                                    inspectMessage = null
+                                    currentPageTitle = ""
+                                    pageRenderStatus = "NOT_CHECKED"
+                                    nextNavigationSource = "browser_entry"
+                                    view.clearHistory()
+                                    return
+                                }
+                                blankNavigationPending = false
                                 invalidateInspectionForNavigation()
                                 currentUrl = url
                                 address = url
@@ -855,6 +914,15 @@ fun BrowserRoute(
                             }
 
                             override fun doUpdateVisitedHistory(view: WebView, url: String, isReload: Boolean) {
+                                if (blankNavigationPending) return
+                                if (url == "about:blank") {
+                                    if (currentUrl.isBlank()) {
+                                        view.clearHistory()
+                                        canGoBack = false
+                                        canGoForward = false
+                                    }
+                                    return
+                                }
                                 if (url != currentUrl) {
                                     invalidateInspectionForNavigation()
                                     currentUrl = url
@@ -897,6 +965,19 @@ fun BrowserRoute(
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
+                                if (url == "about:blank") {
+                                    if (currentUrl.isBlank()) {
+                                        view.clearHistory()
+                                        address = ""
+                                        currentUrl = ""
+                                        isLoading = false
+                                        pageProgress = 0
+                                        canGoBack = false
+                                        canGoForward = false
+                                    }
+                                    return
+                                }
+                                if (blankNavigationPending) return
                                 // WebView callbacks may arrive after a later navigation has begun.
                                 // Validate the callback against the active view before changing UI state.
                                 val callbackNavigationId = currentNavigationId
@@ -1699,6 +1780,7 @@ fun BrowserRoute(
 
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 val activeViewUrl = view.url
+                                if (blankNavigationPending || activeViewUrl == "about:blank") return
                                 if (!BrowserNavigationCallbackGuard.isCurrent(
                                         callbackNavigationId = currentNavigationId,
                                         activeNavigationId = currentNavigationId,

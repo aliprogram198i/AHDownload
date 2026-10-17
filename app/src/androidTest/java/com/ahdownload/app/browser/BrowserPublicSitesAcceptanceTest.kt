@@ -6,7 +6,9 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -54,8 +56,14 @@ class BrowserPublicSitesAcceptanceTest {
         val store = BrowserErrorLogStore(composeRule.activity.applicationContext)
         openBrowser()
         assertTrue(
-            "The configured browser home page must settle before target-site navigation",
-            waitForHomePageToSettle(),
+            "The browser must remain on its intentional blank page before target-site navigation",
+            waitForBlankPageToSettle(),
+        )
+        org.junit.Assert.assertEquals(
+            "The editable browser address must start empty",
+            "",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
         )
         val results = mutableListOf<SiteResult>()
 
@@ -182,30 +190,25 @@ class BrowserPublicSitesAcceptanceTest {
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
     }
 
-    private fun waitForHomePageToSettle(timeoutMs: Long = 45_000L): Boolean {
+    private fun waitForBlankPageToSettle(timeoutMs: Long = 10_000L): Boolean {
         val started = SystemClock.elapsedRealtime()
-        var stableUrl: String? = null
         var stableSince = 0L
         while (SystemClock.elapsedRealtime() - started < timeoutMs) {
-            val state = AtomicReference<Pair<Int, String?>?>(null)
+            val state = AtomicReference<Pair<Boolean, String?>?>(null)
             composeRule.runOnUiThread {
                 val view = findWebView(composeRule.activity.window.decorView)
-                state.set((view?.progress ?: 0) to view?.url)
+                val url = view?.url
+                state.set((view != null && (url.isNullOrBlank() || url == "about:blank")) to url)
             }
             val now = SystemClock.elapsedRealtime()
             val current = state.get()
-            val url = current?.second
-            if (current?.first == 100 && safeHost(url) == "google.com") {
-                if (url == stableUrl && now - stableSince >= 650L) return true
-                if (url != stableUrl) {
-                    stableUrl = url
-                    stableSince = now
-                }
+            if (current?.first == true) {
+                if (stableSince != 0L && now - stableSince >= 650L) return true
+                if (stableSince == 0L) stableSince = now
             } else {
-                stableUrl = null
                 stableSince = 0L
             }
-            SystemClock.sleep(150L)
+            SystemClock.sleep(100L)
         }
         return false
     }
