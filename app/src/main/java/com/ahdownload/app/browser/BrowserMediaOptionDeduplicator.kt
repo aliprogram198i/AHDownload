@@ -116,7 +116,6 @@ internal object BrowserMediaOptionDeduplicator {
         val videoCodec: String?,
         val audioCodec: String?,
         val hasAudio: Boolean,
-        val fileSizeBytes: Long?,
         val hasCompanionAudio: Boolean,
     )
 }
