@@ -1372,7 +1372,7 @@ private fun SearchResultCard(
             .fillMaxWidth()
             .tracedClickable(
                 trackingScreen = "HOME",
-                trackingId = "HOME.search.result.${item.kind.name.lowercase()}.${item.id}",
+                trackingId = "HOME.search.result.${item.kind.name.lowercase()}.${homeTraceToken(item.id)}",
                 trackingLabel = "search_result_${item.kind.name.lowercase()}",
                 onClick = onClick,
             ),
@@ -1497,7 +1497,7 @@ private fun SearchResultCard(
             if (canSelect) {
                 DiagnosticFilterChip(
                     trackingScreen = "HOME",
-                    trackingId = "HOME.search.selection.${item.kind.name.lowercase()}.${item.id}",
+                    trackingId = "HOME.search.selection.${item.kind.name.lowercase()}.${homeTraceToken(item.id)}",
                     trackingLabel = "search_result_selection",
                     disabledReason = "callsite_precondition_not_explicit",
                     selected = selected,
@@ -1537,7 +1537,7 @@ private fun FavoriteLinksCard(
                         .fillMaxWidth()
                         .tracedClickable(
                             trackingScreen = "HOME",
-                            trackingId = "HOME.clickable.05",
+                            trackingId = "HOME.favorite.item.${homeTraceToken(item.id)}",
                             trackingLabel = "favorite_link_item",
                             onClick = { onSelect(item) },
                         ),
@@ -1575,21 +1575,29 @@ private fun FavoriteLinksCard(
     }
 }
 
+private fun homeTraceToken(value: String): String =
+    UUID.nameUUIDFromBytes(value.toByteArray(Charsets.UTF_8))
+        .toString()
+        .replace("-", "")
+        .take(16)
+
 @Composable
 private fun MediaThumbnail(
     url: String?,
     contentDescription: String,
     modifier: Modifier = Modifier,
 ) {
+    var imageLoadFailed by remember(url) { mutableStateOf(false) }
+
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(14.dp),
     ) {
-        if (url.isNullOrBlank()) {
+        if (url.isNullOrBlank() || imageLoadFailed) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Rounded.Download,
+                    Icons.Rounded.Image,
                     contentDescription = contentDescription,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(30.dp),
@@ -1599,10 +1607,11 @@ private fun MediaThumbnail(
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(url)
-                                        .build(),
+                    .build(),
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                onError = { imageLoadFailed = true },
             )
         }
     }
@@ -2173,7 +2182,7 @@ private fun AudioOutputFormatGrid(
                             .weight(1f)
                             .tracedClickable(
                                 trackingScreen = "HOME",
-                                trackingId = "HOME.clickable.03",
+                                trackingId = "HOME.audio.output_format.${homeTraceToken(format.name)}",
                                 trackingLabel = "audio_output_format_option",enabled = enabled, onClick = { onSelect(format) })
                             .semantics {
                                 contentDescription = if (format == selected) {
@@ -2371,7 +2380,7 @@ private fun MediaFormatOption(
             .fillMaxWidth()
             .tracedClickable(
                 trackingScreen = "HOME",
-                trackingId = "HOME.clickable.04",
+                trackingId = "HOME.result.option.${homeTraceToken(model.candidate.id)}",
                 trackingLabel = "media_result_option",enabled = enabled, onClick = onClick)
             .semantics {
                 contentDescription = if (selected) {
