@@ -6,7 +6,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
-import kotlin.test.assertTrue
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithTag
