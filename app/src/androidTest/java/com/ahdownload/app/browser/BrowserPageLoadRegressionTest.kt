@@ -6,7 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebView
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -40,7 +40,11 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()
-        composeRule.onNodeWithTag("browser-address-field").assertTextEquals("")
+        composeRule.assertTrue(
+            "The editable browser address must start empty",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+        )
         waitForBlankBrowser()
         val browserStore = BrowserErrorLogStore(composeRule.activity.applicationContext)
         browserStore.clear()
@@ -518,7 +522,11 @@ class BrowserPageLoadRegressionTest {
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
         waitForBlankBrowser()
-        composeRule.onNodeWithTag("browser-address-field").assertTextEquals("")
+        composeRule.assertTrue(
+            "The editable browser address must start empty",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+        )
         SystemClock.sleep(500L)
 
         val loadedUrl = AtomicReference<String?>(null)
@@ -552,7 +560,11 @@ class BrowserPageLoadRegressionTest {
 
         composeRule.onNodeWithContentDescription("صفحة فارغة").performClick()
         waitForBlankBrowser()
-        composeRule.onNodeWithTag("browser-address-field").assertTextEquals("")
+        composeRule.assertTrue(
+            "The editable browser address must start empty",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.isEmpty(),
+        )
         composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
     }
 
