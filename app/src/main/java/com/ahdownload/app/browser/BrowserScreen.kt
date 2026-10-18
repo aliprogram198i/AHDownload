@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
@@ -64,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -100,6 +102,7 @@ fun BrowserRoute(
     onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     var pendingFileChooserCallback by remember { mutableStateOf<ValueCallback<Array<Uri>>?>(null) }
 
@@ -129,6 +132,7 @@ fun BrowserRoute(
     var currentUrl by remember { mutableStateOf("") }
     var pageProgress by remember { mutableStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
+    var navigationManuallyStopped by remember { mutableStateOf(false) }
     var blankNavigationPending by remember { mutableStateOf(false) }
     var canGoBack by remember { mutableStateOf(false) }
     var canGoForward by remember { mutableStateOf(false) }
@@ -416,6 +420,8 @@ fun BrowserRoute(
             return
         }
         blankNavigationPending = false
+        navigationManuallyStopped = false
+        keyboardController?.hide()
         invalidateInspectionForNavigation()
         nextNavigationSource = "address_bar"
         // Persist the requested destination before touching WebView. The AndroidView
@@ -435,6 +441,7 @@ fun BrowserRoute(
         invalidateInspectionForNavigation()
         val activeWebView = webView
         blankNavigationPending = activeWebView != null
+        navigationManuallyStopped = false
         currentUrl = ""
         address = ""
         pageProgress = 0
@@ -761,6 +768,20 @@ fun BrowserRoute(
                     modifier = Modifier.weight(1f).testTag("browser-address-field"),
                     singleLine = true,
                     label = { Text("عنوان الموقع") },
+                    placeholder = { Text("أدخل رابطًا أو عبارة بحث") },
+                    trailingIcon = {
+                        if (address.isNotEmpty()) {
+                            IconButton(
+                                modifier = Modifier.testTag("browser-address-clear"),
+                                onClick = {
+                                    address = ""
+                                    inspectMessage = null
+                                },
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = "مسح نص العنوان")
+                            }
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { loadAddress() }),
                 )
@@ -780,17 +801,46 @@ fun BrowserRoute(
                     Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "التالي")
                 }
                 IconButton(
-                    enabled = currentUrl.isNotBlank() && !isLoading,
+                    enabled = currentUrl.isNotBlank() && webView != null,
                     onClick = {
                         invalidateInspectionForNavigation()
-                        nextNavigationSource = "reload_button"
-                        pageLoadError = null
-                        isLoading = true
-                        pageProgress = 0
-                        webView?.reload()
+                        if (isLoading) {
+                            val stoppedUrl = webView?.url ?: currentUrl
+                            nextNavigationSource = "stop_button"
+                            navigationManuallyStopped = true
+                            runCatching { webView?.stopLoading() }
+                            isLoading = false
+                            pageLoadError = null
+                            pageProgress = (webView?.progress ?: pageProgress).coerceIn(0, 100)
+                            canGoBack = webView?.canGoBack() ?: canGoBack
+                            canGoForward = webView?.canGoForward() ?: canGoForward
+                            recordBrowserEvent(
+                                "NAVIGATION_STOPPED",
+                                "أوقف المستخدم تحميل الصفحة يدويًا",
+                                "navigation",
+                                stoppedUrl,
+                                severity = "INFO",
+                                details = mapOf(
+                                    "progress_percent" to pageProgress.toString(),
+                                    "navigation_source" to "stop_button",
+                                ),
+                            )
+                        } else {
+                            navigationManuallyStopped = false
+                            nextNavigationSource = "reload_button"
+                            pageLoadError = null
+                            inspectMessage = null
+                            isLoading = true
+                            pageProgress = 0
+                            webView?.reload()
+                        }
                     },
                 ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
+                    if (isLoading) {
+                        Icon(Icons.Rounded.Close, contentDescription = "إيقاف التحميل")
+                    } else {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "تحديث")
+                    }
                 }
             }
             if (isLoading) {
@@ -882,6 +932,7 @@ fun BrowserRoute(
                                     return
                                 }
                                 blankNavigationPending = false
+                                navigationManuallyStopped = false
                                 invalidateInspectionForNavigation()
                                 currentUrl = url
                                 address = url
@@ -1014,6 +1065,7 @@ fun BrowserRoute(
                                 currentPageTitle = view.title.orEmpty().take(160)
                                 pageProgress = 100
                                 isLoading = false
+                                navigationManuallyStopped = false
                                 canGoBack = view.canGoBack()
                                 canGoForward = view.canGoForward()
                                 val pageFinishedEventKey = "$pageNavigationId|$url"
@@ -1607,6 +1659,18 @@ fun BrowserRoute(
                                 error: android.webkit.WebResourceError,
                             ) {
                                 if (request.isForMainFrame) {
+                                    if (navigationManuallyStopped) {
+                                        recordBrowserEvent(
+                                            "STOPPED_NAVIGATION_ERROR_IGNORED",
+                                            "أُهمل خطأ متأخر ناتج عن إيقاف التحميل يدويًا",
+                                            "navigation",
+                                            currentUrl,
+                                            code = error.errorCode.toString(),
+                                            severity = "INFO",
+                                            details = mapOf("reason" to "manual_stop"),
+                                        )
+                                        return
+                                    }
                                     val failedUrl = request.url.toString()
                                     if (failedUrl != currentUrl) {
                                         recordBrowserEvent(
@@ -1780,7 +1844,7 @@ fun BrowserRoute(
 
                             override fun onProgressChanged(view: WebView, newProgress: Int) {
                                 val activeViewUrl = view.url
-                                if (blankNavigationPending || activeViewUrl == "about:blank") return
+                                if (blankNavigationPending || navigationManuallyStopped || activeViewUrl == "about:blank") return
                                 if (!BrowserNavigationCallbackGuard.isCurrent(
                                         callbackNavigationId = currentNavigationId,
                                         activeNavigationId = currentNavigationId,
