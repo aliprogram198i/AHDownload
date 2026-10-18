@@ -1,6 +1,7 @@
 package com.ahdownload.core.designsystem
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.material3.Button as MaterialButton
 import androidx.compose.material3.DropdownMenuItem as MaterialDropdownMenuItem
@@ -15,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.UiTraceLogger
 import java.util.UUID
@@ -34,7 +36,9 @@ fun DiagnosticButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val logger = LocalDiagnosticUiTraceLogger.current
-    val tracked = diagnosticControlModifier(modifier, trackingScreen, trackingId, trackingLabel, enabled, disabledReason)
+    // Keep primary actions comfortably tappable and visually consistent across screens.
+    val actionModifier = modifier.defaultMinSize(minHeight = 48.dp)
+    val tracked = diagnosticControlModifier(actionModifier, trackingScreen, trackingId, trackingLabel, enabled, disabledReason)
     MaterialButton(
         onClick = { dispatchDiagnosticAction(logger, trackingScreen, trackingId, trackingLabel, onClick) },
         modifier = tracked,
@@ -55,7 +59,9 @@ fun DiagnosticOutlinedButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val logger = LocalDiagnosticUiTraceLogger.current
-    val tracked = diagnosticControlModifier(modifier, trackingScreen, trackingId, trackingLabel, enabled, disabledReason)
+    // Match the minimum touch height of filled actions.
+    val actionModifier = modifier.defaultMinSize(minHeight = 48.dp)
+    val tracked = diagnosticControlModifier(actionModifier, trackingScreen, trackingId, trackingLabel, enabled, disabledReason)
     MaterialOutlinedButton(
         onClick = { dispatchDiagnosticAction(logger, trackingScreen, trackingId, trackingLabel, onClick) },
         modifier = tracked,
