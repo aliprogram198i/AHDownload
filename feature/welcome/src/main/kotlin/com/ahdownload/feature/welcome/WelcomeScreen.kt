@@ -24,12 +24,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +40,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
@@ -81,6 +88,7 @@ private fun WelcomeScreen(
 ) {
     val transition = rememberInfiniteTransition(label = "welcomeMotion")
     val uiContext = rememberUiTraceContext()
+    var didContinue by remember { mutableStateOf(false) }
     val canvasPrimary = MaterialTheme.colorScheme.primary
     val canvasAccent = MaterialTheme.colorScheme.secondary
 
@@ -92,6 +100,17 @@ private fun WelcomeScreen(
             stateSummary = "ready=" + ready,
             context = uiContext,
         )
+    }
+
+    LaunchedEffect(ready) {
+        if (ready) {
+            delay(3_200)
+            if (!didContinue) {
+                didContinue = true
+                uiTraceLogger.interaction("WELCOME", "start_button", "auto_continue")
+                onContinue()
+            }
+        }
     }
 
     val orbScale by transition.animateFloat(
@@ -227,35 +246,56 @@ private fun WelcomeScreen(
                                 .alpha(orbAlpha + 0.08f)
                                 .background(
                                     color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = CircleShape,
+                                    shape = RoundedCornerShape(36.dp),
                                 ),
                         )
                         Box(
                             modifier = Modifier
                                 .size(124.dp)
-                                .shadow(20.dp, CircleShape)
+                                .shadow(20.dp, RoundedCornerShape(32.dp))
                                 .background(
                                     brush = Brush.linearGradient(
                                         colors = listOf(
                                             MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.92f),
                                             MaterialTheme.colorScheme.secondary,
                                         ),
                                     ),
-                                    shape = CircleShape,
+                                    shape = RoundedCornerShape(32.dp),
                                 )
                                 .border(
                                     BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f)),
-                                    CircleShape,
+                                    RoundedCornerShape(32.dp),
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.CloudDownload,
-                                contentDescription = "شعار AHDownload",
-                                modifier = Modifier.size(66.dp),
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(0.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(52.dp)
+                                        .height(30.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surface,
+                                            RoundedCornerShape(9.dp),
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(27.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Rounded.Download,
+                                    contentDescription = "شعار AHDownload",
+                                    modifier = Modifier.size(35.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                )
+                            }
                         }
                         Box(
                             modifier = Modifier
@@ -327,8 +367,11 @@ private fun WelcomeScreen(
                     text = "ابدأ الآن",
                     enabled = ready,
                     onClick = {
-                        uiTraceLogger.interaction("WELCOME", "start_button", "continue")
-                        onContinue()
+                        if (!didContinue) {
+                            didContinue = true
+                            uiTraceLogger.interaction("WELCOME", "start_button", "continue")
+                            onContinue()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
