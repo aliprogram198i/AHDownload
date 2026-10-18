@@ -67,6 +67,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.ahdownload.core.designsystem.AHProgressBar
+import com.ahdownload.core.designsystem.AHEmptyState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -800,25 +801,20 @@ private fun DownloadsScreen(
 
                 if (visibleSections.isEmpty()) {
                     item {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Search,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(38.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text("لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "غيّر البحث أو الفلتر لعرض عناصر أخرى.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+                        AHEmptyState(
+                            title = "لا توجد نتائج مطابقة",
+                            message = "لم نجد تنزيلات تطابق البحث والفلاتر الحالية. امسح عوامل التصفية لعرض السجل كاملًا.",
+                            icon = Icons.Rounded.Search,
+                            actionText = "مسح عوامل التصفية",
+                            onAction = {
+                                query = ""
+                                favoritesOnly = false
+                                mediaFilter = DownloadMediaFilter.All
+                                statusFilter = DownloadStatusFilter.All
+                            },
+                            trackingScreen = "DOWNLOADS",
+                            trackingId = "DOWNLOADS.empty_state.clear_filters",
+                        )
                     }
                 } else {
                     visibleSections.forEach { section ->
