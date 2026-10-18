@@ -13,6 +13,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1412,6 +1413,10 @@ private fun SearchResultCard(
             } else {
                 MaterialTheme.colorScheme.surface
             },
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
     ) {
