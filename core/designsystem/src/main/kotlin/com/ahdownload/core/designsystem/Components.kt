@@ -266,6 +266,7 @@ fun AHEmptyState(
     modifier: Modifier = Modifier,
     actionText: String? = null,
     onAction: (() -> Unit)? = null,
+    primaryAction: Boolean = false,
     trackingScreen: String = "GLOBAL_EMPTY_STATE",
     trackingId: String = "global.empty_state.action",
 ) {
@@ -300,13 +301,23 @@ fun AHEmptyState(
                 textAlign = TextAlign.Center,
             )
             if (!actionText.isNullOrBlank() && onAction != null) {
-                AHSecondaryButton(
-                    text = actionText,
-                    onClick = onAction,
-                    modifier = Modifier.fillMaxWidth(),
-                    trackingScreen = trackingScreen,
-                    trackingId = trackingId,
-                )
+                if (primaryAction) {
+                    AHGradientPrimaryButton(
+                        text = actionText,
+                        onClick = onAction,
+                        modifier = Modifier.fillMaxWidth(),
+                        trackingScreen = trackingScreen,
+                        trackingId = trackingId,
+                    )
+                } else {
+                    AHSecondaryButton(
+                        text = actionText,
+                        onClick = onAction,
+                        modifier = Modifier.fillMaxWidth(),
+                        trackingScreen = trackingScreen,
+                        trackingId = trackingId,
+                    )
+                }
             }
         }
     }
