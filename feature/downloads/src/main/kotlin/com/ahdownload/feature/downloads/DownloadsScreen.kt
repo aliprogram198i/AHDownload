@@ -423,8 +423,8 @@ private fun DownloadsScreen(
                 navigationIcon = {
                     DiagnosticIconButton(
                         trackingScreen = "DOWNLOADS",
-                        trackingId = "DOWNLOADS.iconbutton.01",
-                        trackingLabel = "DOWNLOADS.iconbutton.01",
+                        trackingId = "DOWNLOADS.back",
+                        trackingLabel = "رجوع إلى الشاشة السابقة",
                         disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("DOWNLOADS", "back_button", "back")
@@ -451,8 +451,8 @@ private fun DownloadsScreen(
                         Box {
                             DiagnosticIconButton(
                                 trackingScreen = "DOWNLOADS",
-                                trackingId = "DOWNLOADS.iconbutton.02",
-                                trackingLabel = "DOWNLOADS.iconbutton.02",
+                                trackingId = "DOWNLOADS.bulk_actions",
+                                trackingLabel = "إدارة التنزيلات",
                                 disabledReason = "callsite_precondition_not_explicit",onClick = { bulkMenuExpanded = true }) {
                                 Icon(Icons.Rounded.MoreVert, contentDescription = "إدارة التنزيلات")
                             }
@@ -639,8 +639,8 @@ private fun DownloadsScreen(
                             if (query.isNotBlank()) {
                                 DiagnosticIconButton(
                                     trackingScreen = "DOWNLOADS",
-                                    trackingId = "DOWNLOADS.iconbutton.03",
-                                    trackingLabel = "DOWNLOADS.iconbutton.03",
+                                    trackingId = "DOWNLOADS.clear_search",
+                                    trackingLabel = "مسح البحث",
                                     disabledReason = "callsite_precondition_not_explicit",onClick = { query = "" }) {
                                     Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
                                 }
@@ -1271,8 +1271,8 @@ private fun DownloadRecordCard(
 
                 DiagnosticIconButton(
                     trackingScreen = "DOWNLOADS",
-                    trackingId = "DOWNLOADS.iconbutton.04",
-                    trackingLabel = "DOWNLOADS.iconbutton.04",
+                    trackingId = "DOWNLOADS.favorite.toggle",
+                    trackingLabel = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة",
                     disabledReason = "callsite_precondition_not_explicit",
                     onClick = onToggleFavorite,
                     modifier = Modifier.semantics {
