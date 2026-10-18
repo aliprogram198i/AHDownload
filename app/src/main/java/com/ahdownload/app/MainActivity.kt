@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.WindowCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -90,6 +91,7 @@ class MainActivity : ComponentActivity() {
     private var openDownloadsOnStart by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         extractSharedUrl(intent)?.let { pendingSharedUrl = it }
