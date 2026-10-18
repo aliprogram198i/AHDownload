@@ -3,6 +3,7 @@ package com.ahdownload.app.diagnostics
 import com.ahdownload.core.designsystem.DiagnosticButton
 import com.ahdownload.core.designsystem.DiagnosticOutlinedButton
 import com.ahdownload.core.designsystem.DiagnosticIconButton
+import com.ahdownload.core.designsystem.AHCard
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -267,7 +268,7 @@ private fun DiagnosticsScreen(
             }
 
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AHCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -316,7 +317,7 @@ private fun DiagnosticsScreen(
 
             if (showInteractionTrace) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -358,7 +359,7 @@ private fun DiagnosticsScreen(
 
             if (latestError != null) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(18.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -383,7 +384,7 @@ private fun DiagnosticsScreen(
                 }
 
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Column(
                             modifier = Modifier.padding(18.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -429,7 +430,7 @@ private fun DiagnosticsScreen(
 
                 if (showTechnical) {
                     item {
-                        Card(modifier = Modifier.fillMaxWidth()) {
+                        AHCard(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),

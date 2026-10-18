@@ -14,7 +14,6 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +35,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ahdownload.core.designsystem.AHCard
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -181,7 +181,7 @@ fun PerformanceLogRoute(
 
 @Composable
 private fun MetricCard(title: String, value: String, modifier: Modifier = Modifier) {
-    Card(modifier = modifier) {
+    AHCard(modifier = modifier) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
@@ -191,7 +191,7 @@ private fun MetricCard(title: String, value: String, modifier: Modifier = Modifi
 
 @Composable
 private fun PerformanceEntryCard(entry: PerformanceLogEntry) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    AHCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -247,6 +248,77 @@ fun AHStatusPill(
                 )
             }
             Text(text = text, style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/**
+ * Consistent empty-state surface for filtered lists and content screens.
+ *
+ * Keeps the title, explanation and optional next action in the same hierarchy across
+ * the app, while allowing each feature to supply an appropriate icon and action.
+ */
+@Composable
+fun AHEmptyState(
+    title: String,
+    message: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    actionText: String? = null,
+    onAction: (() -> Unit)? = null,
+    primaryAction: Boolean = false,
+    trackingScreen: String = "GLOBAL_EMPTY_STATE",
+    trackingId: String = "global.empty_state.action",
+) {
+    AHCard(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 22.dp, vertical = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.primary,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(16.dp).size(30.dp),
+                )
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            if (!actionText.isNullOrBlank() && onAction != null) {
+                if (primaryAction) {
+                    AHGradientPrimaryButton(
+                        text = actionText,
+                        onClick = onAction,
+                        modifier = Modifier.fillMaxWidth(),
+                        trackingScreen = trackingScreen,
+                        trackingId = trackingId,
+                    )
+                } else {
+                    AHSecondaryButton(
+                        text = actionText,
+                        onClick = onAction,
+                        modifier = Modifier.fillMaxWidth(),
+                        trackingScreen = trackingScreen,
+                        trackingId = trackingId,
+                    )
+                }
+            }
         }
     }
 }

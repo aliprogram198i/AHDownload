@@ -67,6 +67,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.ahdownload.core.designsystem.AHProgressBar
+import com.ahdownload.core.designsystem.AHEmptyState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -422,8 +423,8 @@ private fun DownloadsScreen(
                 navigationIcon = {
                     DiagnosticIconButton(
                         trackingScreen = "DOWNLOADS",
-                        trackingId = "DOWNLOADS.iconbutton.01",
-                        trackingLabel = "DOWNLOADS.iconbutton.01",
+                        trackingId = "DOWNLOADS.back",
+                        trackingLabel = "رجوع إلى الشاشة السابقة",
                         disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("DOWNLOADS", "back_button", "back")
@@ -450,8 +451,8 @@ private fun DownloadsScreen(
                         Box {
                             DiagnosticIconButton(
                                 trackingScreen = "DOWNLOADS",
-                                trackingId = "DOWNLOADS.iconbutton.02",
-                                trackingLabel = "DOWNLOADS.iconbutton.02",
+                                trackingId = "DOWNLOADS.bulk_actions",
+                                trackingLabel = "إدارة التنزيلات",
                                 disabledReason = "callsite_precondition_not_explicit",onClick = { bulkMenuExpanded = true }) {
                                 Icon(Icons.Rounded.MoreVert, contentDescription = "إدارة التنزيلات")
                             }
@@ -638,8 +639,8 @@ private fun DownloadsScreen(
                             if (query.isNotBlank()) {
                                 DiagnosticIconButton(
                                     trackingScreen = "DOWNLOADS",
-                                    trackingId = "DOWNLOADS.iconbutton.03",
-                                    trackingLabel = "DOWNLOADS.iconbutton.03",
+                                    trackingId = "DOWNLOADS.clear_search",
+                                    trackingLabel = "مسح البحث",
                                     disabledReason = "callsite_precondition_not_explicit",onClick = { query = "" }) {
                                     Icon(Icons.Rounded.Clear, contentDescription = "مسح البحث")
                                 }
@@ -800,25 +801,20 @@ private fun DownloadsScreen(
 
                 if (visibleSections.isEmpty()) {
                     item {
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Search,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(38.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Text("لا توجد نتائج مطابقة", style = MaterialTheme.typography.titleMedium)
-                                Text(
-                                    "غيّر البحث أو الفلتر لعرض عناصر أخرى.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
+                        AHEmptyState(
+                            title = "لا توجد نتائج مطابقة",
+                            message = "لم نجد تنزيلات تطابق البحث والفلاتر الحالية. امسح عوامل التصفية لعرض السجل كاملًا.",
+                            icon = Icons.Rounded.Search,
+                            actionText = "مسح عوامل التصفية",
+                            onAction = {
+                                query = ""
+                                favoritesOnly = false
+                                mediaFilter = DownloadMediaFilter.All
+                                statusFilter = DownloadStatusFilter.All
+                            },
+                            trackingScreen = "DOWNLOADS",
+                            trackingId = "DOWNLOADS.empty_state.clear_filters",
+                        )
                     }
                 } else {
                     visibleSections.forEach { section ->
@@ -1097,42 +1093,21 @@ private fun EmptyDownloads(
     modifier: Modifier,
     onGoHome: () -> Unit,
 ) {
-    Column(
+    Box(
         modifier = modifier.padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier.size(72.dp),
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Rounded.Download,
-                    contentDescription = null,
-                    modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("لا توجد تنزيلات بعد", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "عندما تبدأ تنزيلًا سيظهر هنا مع حالته وتقدمه وإجراءات التحكم.",
-            modifier = Modifier.padding(top = 8.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-        DiagnosticButton(
+        AHEmptyState(
+            title = "لا توجد تنزيلات بعد",
+            message = "عندما تبدأ تنزيلًا سيظهر هنا مع حالته وتقدمه وإجراءات التحكم.",
+            icon = Icons.Rounded.Download,
+            modifier = Modifier.widthIn(max = 480.dp),
+            actionText = "بدء تنزيل",
+            onAction = onGoHome,
+            primaryAction = true,
             trackingScreen = "DOWNLOADS",
-            trackingId = "DOWNLOADS.button.03",
-            trackingLabel = "بدء تنزيل",
-            disabledReason = "callsite_precondition_not_explicit",onClick = onGoHome) {
-            Icon(Icons.Rounded.Download, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text("بدء تنزيل")
-        }
+            trackingId = "DOWNLOADS.empty_state.start_download",
+        )
     }
 }
 
@@ -1296,8 +1271,8 @@ private fun DownloadRecordCard(
 
                 DiagnosticIconButton(
                     trackingScreen = "DOWNLOADS",
-                    trackingId = "DOWNLOADS.iconbutton.04",
-                    trackingLabel = "DOWNLOADS.iconbutton.04",
+                    trackingId = "DOWNLOADS.favorite.toggle",
+                    trackingLabel = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة",
                     disabledReason = "callsite_precondition_not_explicit",
                     onClick = onToggleFavorite,
                     modifier = Modifier.semantics {

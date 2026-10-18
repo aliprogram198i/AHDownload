@@ -143,8 +143,8 @@ fun SettingsRoute(
                 navigationIcon = {
                     DiagnosticIconButton(
                         trackingScreen = "SETTINGS",
-                        trackingId = "SETTINGS.iconbutton.01",
-                        trackingLabel = "SETTINGS.iconbutton.01",
+                        trackingId = "SETTINGS.back",
+                        trackingLabel = "رجوع إلى الشاشة السابقة",
                         disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("SETTINGS", "back_button", "back")
                         onBack()
@@ -791,8 +791,8 @@ private fun SettingsSwitchRow(
         }
         DiagnosticSwitch(
             trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.switch.01",
-            trackingLabel = "setting_toggle",
+            trackingId = "SETTINGS.switch.wifi_only",
+            trackingLabel = title,
             disabledReason = "callsite_precondition_not_explicit",checked = checked, onCheckedChange = onCheckedChange)
     }
 }

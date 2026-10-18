@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.defaultMinSize
+import com.ahdownload.core.designsystem.AHCard
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -42,7 +44,6 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -552,7 +553,7 @@ fun BrowserRoute(
                         )
                     }
                     Button(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
                         enabled = !inspecting && !isLoading && pageLoadError == null && currentUrl.isNotBlank(),
                         onClick = {
                             val target = webView?.url ?: currentUrl
@@ -1980,7 +1981,7 @@ fun BrowserRoute(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Card(modifier = Modifier.fillMaxWidth()) {
+                        AHCard(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.fillMaxWidth().padding(20.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1988,7 +1989,11 @@ fun BrowserRoute(
                             ) {
                                 Text("تعذر تحميل الصفحة", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Button(onClick = { loadAddress() }, enabled = !isLoading) {
+                                Button(
+                                    onClick = { loadAddress() },
+                                    enabled = !isLoading,
+                                    modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+                                ) {
                                     Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Text("إعادة المحاولة")
                                 }
@@ -2135,6 +2140,7 @@ fun BrowserRoute(
                             }
                         }
                         Button(
+                            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
                             enabled = selectedAudioCandidateId != null && selectedAudioFormat != null && !actionInProgress,
                             onClick = {
                                 val candidate = audioSources.firstOrNull { it.id == selectedAudioCandidateId } ?: return@Button
@@ -2197,7 +2203,6 @@ fun BrowserRoute(
                                     }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(if (actionInProgress) "جارٍ التجهيز…" else "استخراج الصوت المحدد")
                         }
@@ -2219,7 +2224,7 @@ private fun CandidateOption(
 ) {
     // Capture the cross-module property in a local stable value for Kotlin smart-cast safety.
     val fileSizeBytes = candidate.format.fileSizeBytes
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) {
+    AHCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -2253,7 +2258,11 @@ private fun CandidateOption(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(enabled = !busy, onClick = onDownload) { Text("تنزيل") }
+            Button(
+                enabled = !busy,
+                onClick = onDownload,
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
+            ) { Text("تنزيل") }
         }
     }
 }
