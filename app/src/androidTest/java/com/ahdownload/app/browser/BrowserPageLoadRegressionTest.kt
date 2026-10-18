@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import org.junit.Assert.assertTrue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -541,6 +542,35 @@ class BrowserPageLoadRegressionTest {
             "The browser must stay blank instead of opening Google automatically",
             loadedUrl.get().isNullOrBlank() || loadedUrl.get() == "about:blank",
         )
+        composeRule.onNodeWithContentDescription("تحديث").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("فتح العنوان").assertIsNotEnabled()
+    }
+
+    @Test(timeout = 30_000)
+    fun clearAddressControlClearsOnlyTheDraftAndLeavesBlankPageUnchanged() {
+        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
+        waitForBlankBrowser()
+
+        composeRule.onNodeWithTag("browser-address-field").performTextReplacement("example.com")
+        composeRule.onNodeWithContentDescription("مسح نص العنوان").performClick()
+
+        org.junit.Assert.assertEquals(
+            "Clear address must clear editable text",
+            "",
+            composeRule.onNodeWithTag("browser-address-field")
+                .fetchSemanticsNode().config[SemanticsProperties.EditableText].text.toString(),
+        )
+        val loadedUrl = AtomicReference<String?>(null)
+        composeRule.runOnUiThread {
+            loadedUrl.set(findWebView(composeRule.activity.window.decorView)?.url)
+        }
+        assertTrue(
+            "Clearing unsubmitted address text must not navigate the WebView",
+            loadedUrl.get().isNullOrBlank() || loadedUrl.get() == "about:blank",
+        )
+        composeRule.onNodeWithContentDescription("فتح العنوان").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("تحديث").assertIsNotEnabled()
     }
 
     @Test(timeout = 45_000)
