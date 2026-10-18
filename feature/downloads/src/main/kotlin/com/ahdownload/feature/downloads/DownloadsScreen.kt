@@ -1093,42 +1093,20 @@ private fun EmptyDownloads(
     modifier: Modifier,
     onGoHome: () -> Unit,
 ) {
-    Column(
+    Box(
         modifier = modifier.padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+        contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier.size(72.dp),
-            shape = RoundedCornerShape(22.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Rounded.Download,
-                    contentDescription = null,
-                    modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        Text("لا توجد تنزيلات بعد", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text(
-            "عندما تبدأ تنزيلًا سيظهر هنا مع حالته وتقدمه وإجراءات التحكم.",
-            modifier = Modifier.padding(top = 8.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
-        DiagnosticButton(
+        AHEmptyState(
+            title = "لا توجد تنزيلات بعد",
+            message = "عندما تبدأ تنزيلًا سيظهر هنا مع حالته وتقدمه وإجراءات التحكم.",
+            icon = Icons.Rounded.Download,
+            modifier = Modifier.widthIn(max = 480.dp),
+            actionText = "بدء تنزيل",
+            onAction = onGoHome,
             trackingScreen = "DOWNLOADS",
-            trackingId = "DOWNLOADS.button.03",
-            trackingLabel = "بدء تنزيل",
-            disabledReason = "callsite_precondition_not_explicit",onClick = onGoHome) {
-            Icon(Icons.Rounded.Download, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text("بدء تنزيل")
-        }
+            trackingId = "DOWNLOADS.empty_state.start_download",
+        )
     }
 }
 
