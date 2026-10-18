@@ -539,8 +539,8 @@ private fun HomeScreen(
                     }
                     DiagnosticIconButton(
                         trackingScreen = "HOME",
-                        trackingId = "HOME.iconbutton.02",
-                        trackingLabel = "HOME.iconbutton.02",
+                        trackingId = "HOME.settings_button",
+                        trackingLabel = "فتح الإعدادات",
                         disabledReason = "callsite_precondition_not_explicit",
                         onClick = {
                             uiTraceLogger.interaction("HOME", "settings_button", "open_settings")
@@ -1828,8 +1828,8 @@ private fun UnifiedDownloadResultCard(
 
                 DiagnosticIconButton(
                     trackingScreen = "HOME",
-                    trackingId = "HOME.iconbutton.06",
-                    trackingLabel = "HOME.iconbutton.06",
+                    trackingId = "HOME.favorite.toggle",
+                    trackingLabel = if (favorite) "إزالة من المفضلة" else "إضافة إلى المفضلة",
                     disabledReason = "callsite_precondition_not_explicit",
                     onClick = {
                         resultCardTrace.recordAction(
