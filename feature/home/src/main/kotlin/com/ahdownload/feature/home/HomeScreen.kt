@@ -104,6 +104,7 @@ import com.ahdownload.core.common.snapshot
 import com.ahdownload.core.designsystem.AHBottomNavDestination
 import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.AHCard
+import com.ahdownload.core.designsystem.AHEmptyState
 import com.ahdownload.core.designsystem.AHSectionHeader
 import com.ahdownload.core.designsystem.AHGradientPrimaryButton
 import com.ahdownload.core.designsystem.AHStatusPill
@@ -821,32 +822,60 @@ private fun HomeScreen(
 
                 state.searchError?.let { error ->
                     item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                            ),
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                        if (error == "لم نجد نتائج مطابقة حاليًا.") {
+                            AHEmptyState(
+                                title = "لم نجد نتائج مطابقة",
+                                message = "لم تظهر نتائج لعبارة «${state.searchQuery}». يمكنك إعادة البحث أو تعديل العبارة.",
+                                icon = Icons.Rounded.Search,
+                                actionText = "إعادة البحث",
+                                onAction = {
+                                    uiTraceLogger.interaction("HOME", "search_empty_state", "retry_search")
+                                    onSearch()
+                                },
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.search.empty_state.retry",
+                            )
+                        } else {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                ),
                             ) {
-                                Text(
-                                    error,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                )
-                                DiagnosticOutlinedButton(
-                                    trackingScreen = "HOME",
-                                    trackingId = "HOME.outlinedbutton.01",
-                                    trackingLabel = "إعادة البحث",
-                                    disabledReason = "عبارة البحث فارغة أو يوجد بحث جارٍ",
-                                    enabled = state.searchQuery.isNotBlank() && !state.searching,
-                                    onClick = {
-                                        uiTraceLogger.interaction("HOME", "search_retry_button", "retry_search")
-                                        onSearch()
-                                    },
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Text("إعادة البحث")
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.ErrorOutline,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                        Text(
+                                            "تعذر تنفيذ البحث",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onErrorContainer,
+                                        )
+                                    }
+                                    Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
+                                    DiagnosticOutlinedButton(
+                                        trackingScreen = "HOME",
+                                        trackingId = "HOME.outlinedbutton.01",
+                                        trackingLabel = "إعادة البحث",
+                                        disabledReason = "عبارة البحث فارغة أو يوجد بحث جارٍ",
+                                        enabled = state.searchQuery.isNotBlank() && !state.searching,
+                                        onClick = {
+                                            uiTraceLogger.interaction("HOME", "search_retry_button", "retry_search")
+                                            onSearch()
+                                        },
+                                    ) {
+                                        Text("إعادة البحث")
+                                    }
                                 }
                             }
                         }
