@@ -2429,6 +2429,10 @@ private fun MediaFormatOption(
         } else {
             MaterialTheme.colorScheme.surfaceVariant
         },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+        ),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
