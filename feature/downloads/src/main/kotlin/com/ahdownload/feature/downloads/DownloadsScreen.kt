@@ -1104,6 +1104,7 @@ private fun EmptyDownloads(
             modifier = Modifier.widthIn(max = 480.dp),
             actionText = "بدء تنزيل",
             onAction = onGoHome,
+            primaryAction = true,
             trackingScreen = "DOWNLOADS",
             trackingId = "DOWNLOADS.empty_state.start_download",
         )
