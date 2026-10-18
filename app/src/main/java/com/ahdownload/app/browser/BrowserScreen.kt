@@ -2203,7 +2203,6 @@ fun BrowserRoute(
                                     }
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(if (actionInProgress) "جارٍ التجهيز…" else "استخراج الصوت المحدد")
                         }
