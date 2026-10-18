@@ -3,6 +3,7 @@ package com.ahdownload.feature.studio
 import com.ahdownload.core.designsystem.DiagnosticButton
 import com.ahdownload.core.designsystem.DiagnosticOutlinedButton
 import com.ahdownload.core.designsystem.DiagnosticIconButton
+import com.ahdownload.core.designsystem.AHCard
 
 import android.content.Context
 import android.media.MediaExtractor
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ahdownload.core.common.UiTraceLogger
 import com.ahdownload.core.common.interaction
@@ -112,7 +113,7 @@ fun StudioRoute(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Smart Studio") },
+                title = { Text("استوديو الوسائط") },
                 navigationIcon = {
                     DiagnosticIconButton(
                         trackingScreen = "STUDIO",
@@ -131,7 +132,7 @@ fun StudioRoute(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Card(modifier = Modifier.fillMaxWidth()) {
+                AHCard(modifier = Modifier.fillMaxWidth()) {
                     Column(
                         modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -154,7 +155,7 @@ fun StudioRoute(
 
             if (inspection == null && error == null) {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(18.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -169,7 +170,7 @@ fun StudioRoute(
 
             error?.let {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    AHCard(modifier = Modifier.fillMaxWidth()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(18.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -222,7 +223,7 @@ fun StudioRoute(
 
                 extractMessage?.let { message ->
                     item {
-                        Card(
+                        AHCard(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Row(
@@ -296,7 +297,7 @@ fun StudioRoute(
 
 @Composable
 private fun InspectionCard(info: MediaInspection) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    AHCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("معلومات الوسائط", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             InspectionRow("النوع", info.mimeType ?: "غير معروف")
@@ -315,9 +316,24 @@ private fun InspectionCard(info: MediaInspection) {
 
 @Composable
 private fun InspectionRow(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontWeight = FontWeight.SemiBold)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.weight(0.85f),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            modifier = Modifier.weight(1.15f),
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
