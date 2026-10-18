@@ -117,8 +117,8 @@ fun StudioRoute(
                 navigationIcon = {
                     DiagnosticIconButton(
                         trackingScreen = "STUDIO",
-                        trackingId = "STUDIO.iconbutton.01",
-                        trackingLabel = "STUDIO.iconbutton.01",
+                        trackingId = "STUDIO.back",
+                        trackingLabel = "رجوع إلى الشاشة السابقة",
                         disabledReason = "callsite_precondition_not_explicit",onClick = {
                         uiTraceLogger.interaction("STUDIO", "back_button", "back")
                         onBack()
