@@ -785,7 +785,10 @@ fun BrowserRoute(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { loadAddress() }),
                 )
-                IconButton(onClick = { loadAddress() }) {
+                IconButton(
+                    enabled = address.isNotBlank(),
+                    onClick = { loadAddress() },
+                ) {
                     Icon(Icons.Rounded.Search, contentDescription = "فتح العنوان")
                 }
             }
