@@ -791,7 +791,7 @@ private fun SettingsSwitchRow(
         }
         DiagnosticSwitch(
             trackingScreen = "SETTINGS",
-            trackingId = "SETTINGS.switch.$title",
+            trackingId = "SETTINGS.switch.wifi_only",
             trackingLabel = title,
             disabledReason = "callsite_precondition_not_explicit",checked = checked, onCheckedChange = onCheckedChange)
     }
