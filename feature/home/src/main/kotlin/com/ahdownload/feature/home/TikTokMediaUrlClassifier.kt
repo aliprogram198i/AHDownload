@@ -14,10 +14,21 @@ internal object TikTokMediaUrlClassifier {
     private val trustedHostSuffixes = setOf(
         "tiktokcdn.com",
         "tiktokcdn-us.com",
+        "tiktokcdn-eu.com",
+        "tiktokcdn-in.com",
+        "tiktokrow-cdn.com",
+        "tiktok-row.net",
         "tiktokv.com",
+        "tiktokv.eu",
+        "tiktokv.us",
+        "tiktokvapp.com",
         "byteoversea.com",
+        "byteoversea.net",
         "ibytedtos.com",
         "muscdn.com",
+        "ibyteimg.com",
+        "byteimg.com",
+        "pstatp.com",
     )
 
     private val mediaExtensions = setOf(

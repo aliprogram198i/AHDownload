@@ -18,6 +18,7 @@ import org.json.JSONTokener
 import kotlin.coroutines.resume
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 class AndroidBrowserMediaSessionProvider(
     private val context: Context,
@@ -42,6 +43,8 @@ class AndroidBrowserMediaSessionProvider(
             var inspectionInFlight = false
             lateinit var inspect: (WebView) -> Unit
             val mediaUrls = ConcurrentHashMap.newKeySet<String>()
+            val tiktokObservedResourceCount = AtomicInteger(0)
+            val tiktokObservedResourceHosts = ConcurrentHashMap.newKeySet<String>()
             val requestHeaders = ConcurrentHashMap<String, Map<String, String>>()
             val mediaHasAudioByUrl = ConcurrentHashMap<String, Boolean>()
             val instagramShortcode = if (platform == MediaPlatform.Instagram) {
@@ -103,6 +106,19 @@ class AndroidBrowserMediaSessionProvider(
                     TikTokEmbedFallbackPolicy.isPublicEmbedUrl(candidate)
                 ) return
                 finalUrl = candidate
+            }
+
+            fun recordTikTokResource(rawUrl: String) {
+                if (platform != MediaPlatform.TikTok) return
+                val uri = runCatching { URI(rawUrl) }.getOrNull() ?: return
+                if (uri.scheme?.lowercase() !in setOf("http", "https")) return
+                val host = uri.host?.lowercase()?.removePrefix("www.") ?: return
+                // Diagnostics capture hostnames only; URL paths, query strings, and request
+                // headers can contain private content IDs or access tokens.
+                tiktokObservedResourceCount.incrementAndGet()
+                if (tiktokObservedResourceHosts.size < MAX_TIKTOK_DIAGNOSTIC_HOSTS) {
+                    tiktokObservedResourceHosts.add(host)
+                }
             }
 
             fun normalizeMediaUrl(raw: String): String =
@@ -279,6 +295,8 @@ class AndroidBrowserMediaSessionProvider(
                     tiktokEmbedFallbackStatus = tiktokEmbedFallbackStatus,
                     inspectionAttemptCount = inspectionAttemptCount,
                     inspectionCallbackCount = inspectionCallbackCount,
+                    tiktokObservedResourceCount = tiktokObservedResourceCount.get(),
+                    tiktokObservedResourceHosts = tiktokObservedResourceHosts.toList().sorted().take(MAX_TIKTOK_DIAGNOSTIC_HOSTS),
                 )
                 webView?.stopLoading()
                 webView?.destroy()
@@ -613,8 +631,11 @@ class AndroidBrowserMediaSessionProvider(
                           if(/\.(?:mp4|m4v|webm|mov|mkv|3gp|avi|m3u8|mpd|m4a|mp3|aac|ogg|flac|wav)$/.test(path))return true;
                           const host=u.hostname.toLowerCase();
                           const tikTokCdnHost=[
-                            'tiktokcdn.com','tiktokcdn-us.com','tiktokv.com',
-                            'byteoversea.com','ibytedtos.com','muscdn.com'
+                            'tiktokcdn.com','tiktokcdn-us.com','tiktokcdn-eu.com',
+                            'tiktokcdn-in.com','tiktokrow-cdn.com','tiktok-row.net',
+                            'tiktokv.com','tiktokv.eu','tiktokv.us','tiktokvapp.com',
+                            'byteoversea.com','byteoversea.net','ibytedtos.com',
+                            'muscdn.com','ibyteimg.com','byteimg.com','pstatp.com'
                           ].some(domain=>host===domain||host.endsWith('.'+domain));
                           const mimeType=(u.searchParams.get('mime_type')||
                             u.searchParams.get('mime')||
@@ -871,6 +892,7 @@ class AndroidBrowserMediaSessionProvider(
                         view: WebView,
                         request: WebResourceRequest,
                     ): android.webkit.WebResourceResponse? {
+                        recordTikTokResource(request.url.toString())
                         observe(request.url.toString(), request.requestHeaders)
                         return super.shouldInterceptRequest(view, request)
                     }
@@ -907,6 +929,7 @@ class AndroidBrowserMediaSessionProvider(
         }
 
     private companion object {
+        const val MAX_TIKTOK_DIAGNOSTIC_HOSTS = 12
         const val MAX_MEDIA_URLS = 64
         const val MAX_MEDIA_CAPTURE_WINDOW_MS = 5200L
         const val USER_AGENT = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36"

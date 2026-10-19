@@ -77,6 +77,8 @@ class SocialPlatformResolverEngine(
                         "inspection_callback_count" to session.inspectionCallbackCount.toString(),
                         "instagram_api_status" to strategy.sessionInspectionStatus(session),
                         "tiktok_embed_fallback_status" to (session.tiktokEmbedFallbackStatus ?: "not_applicable"),
+                        "tiktok_observed_resource_count" to session.tiktokObservedResourceCount.toString(),
+                        "tiktok_observed_resource_hosts" to session.tiktokObservedResourceHosts.joinToString(","),
                         "title_present" to (!session.title.isNullOrBlank()).toString(),
                         "duration_present" to (session.durationMs != null).toString(),
                     ),

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/tiktok-webview-public-embed-20261019
+      - fix/tiktok-exact-link-cdn-coverage-20261019
   workflow_dispatch:
 
 permissions:
