@@ -598,7 +598,8 @@ class SocialPlatformResolverTest {
             val expectedTimeout = when (strategy.platform) {
                 MediaPlatform.X,
                 MediaPlatform.Vimeo,
-                MediaPlatform.Reddit -> 28_000L
+                MediaPlatform.Reddit,
+                MediaPlatform.TikTok -> 28_000L
                 MediaPlatform.Snapchat -> 30_000L
                 else -> SOCIAL_RESOLVE_TIMEOUT_MS
             }

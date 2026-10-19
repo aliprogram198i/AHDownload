@@ -52,9 +52,19 @@ class LiveSocialMediaDownloadE2ETest {
             .getString("targetPlatform")
             .orEmpty()
             .trim()
+        val tiktokUrlOverride = InstrumentationRegistry.getArguments()
+            .getString("tiktokUrl")
+            .orEmpty()
+            .trim()
+        val tiktokUrl = when {
+            tiktokUrlOverride.isBlank() ->
+                "https://www.tiktok.com/@scout2015/video/6718335390845095173"
+            isCanonicalTikTokVideoUrl(tiktokUrlOverride) -> tiktokUrlOverride
+            else -> error("tiktokUrl must be a canonical HTTPS TikTok video URL")
+        }
         val allTargets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
-            Target("TikTok", MediaPlatform.TikTok, "https://www.tiktok.com/@scout2015/video/6718335390845095173"),
+            Target("TikTok", MediaPlatform.TikTok, tiktokUrl),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
             Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/@anjulaeditz/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYmZiZ2J2a3VhAZgD5F41AZgD5FXFAAAAAQ"),
         )
@@ -211,6 +221,21 @@ class LiveSocialMediaDownloadE2ETest {
     }
 
 
+    private fun isCanonicalTikTokVideoUrl(value: String?): Boolean = runCatching {
+        if (value.isNullOrBlank()) return@runCatching false
+        val uri = java.net.URI(value)
+        val host = uri.host?.lowercase() ?: return@runCatching false
+        if (
+            uri.scheme?.lowercase() != "https" ||
+            (host != "tiktok.com" && !host.endsWith(".tiktok.com"))
+        ) return@runCatching false
+
+        val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        val videoIndex = segments.indexOfLast { it.equals("video", ignoreCase = true) }
+        videoIndex >= 0 &&
+            segments.getOrNull(videoIndex + 1)?.matches(Regex("""\d{6,30}""")) == true
+    }.getOrDefault(false)
+
     private fun logTargetDiagnostics(app: AHDownloadApplication, targetName: String) {
         val operationPrefix = "live-e2e-" + targetName
         val diagnosticKeys = setOf(
@@ -221,6 +246,7 @@ class LiveSocialMediaDownloadE2ETest {
             "inspection_attempt_count",
             "inspection_callback_count",
             "instagram_api_status",
+            "tiktok_embed_fallback_status",
             "title_present",
             "duration_present",
             "page_url_source",
