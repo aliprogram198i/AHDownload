@@ -238,10 +238,21 @@ internal class TikTokSocialPlatformExtractionStrategy :
         val TIKTOK_MEDIA_HOST_SUFFIXES = setOf(
             "tiktokcdn.com",
             "tiktokcdn-us.com",
+            "tiktokcdn-eu.com",
+            "tiktokcdn-in.com",
+            "tiktokrow-cdn.com",
+            "tiktok-row.net",
             "tiktokv.com",
+            "tiktokv.eu",
+            "tiktokv.us",
+            "tiktokvapp.com",
             "byteoversea.com",
+            "byteoversea.net",
             "ibytedtos.com",
             "muscdn.com",
+            "ibyteimg.com",
+            "byteimg.com",
+            "pstatp.com",
         )
         val MEDIA_URL_FIELD_REGEX = Regex(
             """(?is)["']?(?:playAddr|downloadAddr|play_addr|download_addr|video_url|videoUrl|playback_url|contentUrl|content_url)["']?\s*:\s*["']([^"']+)["']""",
