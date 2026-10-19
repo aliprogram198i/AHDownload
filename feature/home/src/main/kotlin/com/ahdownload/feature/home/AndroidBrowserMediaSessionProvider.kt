@@ -613,8 +613,11 @@ class AndroidBrowserMediaSessionProvider(
                           if(/\.(?:mp4|m4v|webm|mov|mkv|3gp|avi|m3u8|mpd|m4a|mp3|aac|ogg|flac|wav)$/.test(path))return true;
                           const host=u.hostname.toLowerCase();
                           const tikTokCdnHost=[
-                            'tiktokcdn.com','tiktokcdn-us.com','tiktokv.com',
-                            'byteoversea.com','ibytedtos.com','muscdn.com'
+                            'tiktokcdn.com','tiktokcdn-us.com','tiktokcdn-eu.com',
+                            'tiktokcdn-in.com','tiktokrow-cdn.com','tiktok-row.net',
+                            'tiktokv.com','tiktokv.eu','tiktokv.us','tiktokvapp.com',
+                            'byteoversea.com','byteoversea.net','ibytedtos.com',
+                            'muscdn.com','ibyteimg.com','byteimg.com','pstatp.com'
                           ].some(domain=>host===domain||host.endsWith('.'+domain));
                           const mimeType=(u.searchParams.get('mime_type')||
                             u.searchParams.get('mime')||
