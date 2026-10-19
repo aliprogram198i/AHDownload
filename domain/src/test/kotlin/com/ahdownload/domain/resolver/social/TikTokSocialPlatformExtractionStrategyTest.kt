@@ -113,6 +113,36 @@ class TikTokSocialPlatformExtractionStrategyTest {
     }
 
     @Test
+    fun publicEmbedFallbackRecognizesRegionalTikTokCdnOpaqueVideoUrls() = runTest {
+        val pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890"
+        val mediaUrl = "https://v16-webapp.tiktokcdn-eu.com/video/tos/eu/opaque-stream"
+        val html = """<html><script>
+            window.playerAsset = "https:\/\/v16-webapp.tiktokcdn-eu.com\/video\/tos\/eu\/opaque-stream";
+            window.coverAsset = "https:\/\/v16-webapp.tiktokcdn-eu.com\/video\/tos\/eu\/cover.webp";
+        </script></html>"""
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+            override suspend fun get(url: String, headers: Map<String, String>): String = html
+            override suspend fun get(
+                url: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String = html
+        }
+
+        val result = TikTokSocialPlatformExtractionStrategy().extractAdditionalMedia(
+            pageUrl = pageUrl,
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "tiktok-regional-cdn-test",
+            logger = DiagnosticLogger { _, _, _, _, _, _ -> },
+        )
+
+        assertEquals(listOf(mediaUrl), result?.mediaUrls)
+    }
+
+    @Test
     fun fallbackRejectsNonTikTokAndNonCanonicalUrls() = runTest {
         val strategy = TikTokSocialPlatformExtractionStrategy()
         val client = object : HttpTextClient {
