@@ -4,6 +4,7 @@ import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.resolver.HttpTextClient
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -142,5 +143,37 @@ class TikTokSocialPlatformExtractionStrategyTest {
         val strategy = TikTokSocialPlatformExtractionStrategy()
         assertTrue(strategy.pageRequestHeaders("https://www.tiktok.com/@creator/video/7345678901234567890").containsKey("User-Agent"))
         assertTrue(strategy.pageRequestHeaders("https://example.org/video.mp4").isEmpty())
+    }
+
+    @Test
+    fun publicEmbedHttp451IsRecordedAsAStatusWithoutLeakingExceptionText() = runTest {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = throw java.io.IOException("HTTP 451")
+            override suspend fun get(url: String, headers: Map<String, String>): String =
+                throw java.io.IOException("HTTP 451")
+            override suspend fun get(
+                url: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String = throw java.io.IOException("HTTP 451")
+        }
+
+        val result = TikTokSocialPlatformExtractionStrategy().extractAdditionalMedia(
+            pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890",
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "tiktok-451-test",
+            logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context },
+        )
+
+        assertNull(result)
+        val event = events.single()
+        assertEquals("SOCIAL_TIKTOK_EMBED_FALLBACK_RESULT", event.first)
+        assertEquals("http_451_unavailable", event.second["fallback_status"])
+        assertEquals("451", event.second["http_status"])
+        assertEquals("IOException", event.second["exception_type"])
+        assertFalse(event.second.containsKey("exception_message"))
     }
 }

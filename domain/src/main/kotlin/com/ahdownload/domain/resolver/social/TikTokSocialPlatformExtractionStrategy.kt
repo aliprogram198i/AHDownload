@@ -53,6 +53,7 @@ internal class TikTokSocialPlatformExtractionStrategy :
         val embedUrl = "$TIKTOK_ORIGIN/embed/v2/$videoId"
         var body: String? = null
         var exceptionType: String? = null
+        var httpStatus: Int? = null
 
         try {
             body = withTimeoutOrNull(EMBED_FETCH_TIMEOUT_MS) {
@@ -68,12 +69,19 @@ internal class TikTokSocialPlatformExtractionStrategy :
         } catch (error: Throwable) {
             // Do not log exception messages: they can contain full URLs or query tokens.
             exceptionType = error::class.java.simpleName
+            httpStatus = Regex("""(?i)\bHTTP\s+(\d{3})\b""")
+                .find(error.message.orEmpty())
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toIntOrNull()
         }
 
         val parsed = body?.let { parsePublicEmbed(it, safePageUrl) }
         val mediaFound = parsed?.mediaUrls?.isNotEmpty() == true
         val sample = body.orEmpty().take(MAX_DIAGNOSTIC_SAMPLE).lowercase()
         val status = when {
+            httpStatus == 451 -> "http_451_unavailable"
+            httpStatus != null -> "http_error"
             exceptionType != null -> "request_failed"
             body == null -> "request_timeout"
             mediaFound -> "media_found"
@@ -84,7 +92,11 @@ internal class TikTokSocialPlatformExtractionStrategy :
         logger.log(
             if (mediaFound) DiagnosticLevel.INFO else DiagnosticLevel.WARNING,
             "SOCIAL_TIKTOK_EMBED_FALLBACK_RESULT",
-            "اكتمل فحص مشغّل TikTok العام الاحتياطي",
+            if (httpStatus == 451) {
+                "تعذر الوصول إلى مشغّل TikTok العام (HTTP 451)"
+            } else {
+                "اكتمل فحص مشغّل TikTok العام الاحتياطي"
+            },
             "social.resolve.tiktok_embed",
             buildMap {
                 put("platform", MediaPlatform.TikTok.name)
@@ -93,6 +105,7 @@ internal class TikTokSocialPlatformExtractionStrategy :
                 put("response_chars", (body?.length ?: 0).toString())
                 put("media_count", (parsed?.mediaUrls?.size ?: 0).toString())
                 put("video_id_present", "true")
+                httpStatus?.let { put("http_status", it.toString()) }
                 put("marker_play_addr", ("playAddr" in body.orEmpty()).toString())
                 put("marker_download_addr", ("downloadAddr" in body.orEmpty()).toString())
                 put("marker_og_video", ("og:video" in sample).toString())
