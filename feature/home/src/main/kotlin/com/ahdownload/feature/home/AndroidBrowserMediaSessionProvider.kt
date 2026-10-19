@@ -116,6 +116,10 @@ class AndroidBrowserMediaSessionProvider(
                 if (Regex("""[?&](?:mime|content-type|type)=[^&]*?(?:video|audio)""").containsMatchIn(lower)) {
                     return true
                 }
+                if (
+                    platform == MediaPlatform.TikTok &&
+                    TikTokMediaUrlClassifier.isMediaResource(value)
+                ) return true
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
                 return (
                     host.endsWith(".fbcdn.net") ||
@@ -135,6 +139,10 @@ class AndroidBrowserMediaSessionProvider(
                 val ext = path.substringAfterLast('.', "")
                 if (ext in IMAGE_EXTENSIONS) return false
                 if (ext in MEDIA_EXTENSIONS || ext == "m3u8" || ext == "mpd" || "/videoplayback" in lower) return true
+                if (
+                    platform == MediaPlatform.TikTok &&
+                    TikTokMediaUrlClassifier.isMediaResource(value)
+                ) return true
                 val host = runCatching { URI(value).host.orEmpty().lowercase() }.getOrDefault("")
                 return host.endsWith(".fbcdn.net") || host.endsWith(".cdninstagram.com")
                     || host == "cdninstagram.com"
@@ -295,7 +303,8 @@ class AndroidBrowserMediaSessionProvider(
                             if(typeof value==='string'&&
                                ['video_url','playback_url','content_url','browser_native_hd_url',
                                 'browser_native_sd_url','playable_url','playable_url_quality_hd',
-                                'playable_url_quality_sd','hls_manifest_url','dash_manifest_url'].includes(lower)&&
+                                'playable_url_quality_sd','hls_manifest_url','dash_manifest_url',
+                                'playaddr','downloadaddr','play_addr','download_addr'].includes(lower)&&
                                (value.startsWith('https://')||value.startsWith('http://'))){
                               found.push(value);
                             }
@@ -539,6 +548,16 @@ class AndroidBrowserMediaSessionProvider(
                           if(/\.(?:jpe?g|png|webp|gif|avif|heic|heif)$/.test(path))return false;
                           if(/\.(?:mp4|m4v|webm|mov|mkv|3gp|avi|m3u8|mpd|m4a|mp3|aac|ogg|flac|wav)$/.test(path))return true;
                           const host=u.hostname.toLowerCase();
+                          const tikTokCdnHost=[
+                            'tiktokcdn.com','tiktokcdn-us.com','tiktokv.com',
+                            'byteoversea.com','ibytedtos.com','muscdn.com'
+                          ].some(domain=>host===domain||host.endsWith('.'+domain));
+                          const mimeType=(u.searchParams.get('mime_type')||
+                            u.searchParams.get('mime')||
+                            u.searchParams.get('content-type')||'').toLowerCase();
+                          if(__TIKTOK_ENABLED__&&tikTokCdnHost&&
+                             (/^(?:video|audio)(?:_|\/|$)/.test(mimeType)||
+                              /\/video\/tos(?:[-/]|$)/.test(path)))return true;
                           return (host.endsWith('.fbcdn.net')||host.endsWith('.cdninstagram.com')||host==='cdninstagram.com')&&
                             /\/(?:o1\/v\/|v\/t|video)/.test(path);
                         }catch(_){return false;}
@@ -567,7 +586,7 @@ class AndroidBrowserMediaSessionProvider(
                           .replace(/\\u003d/gi,'=')
                           .replace(/\\u003a/gi,':')
                           .replace(/\\\//g,'/');
-                        const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url)"\s*:\s*"([^"]+)"/g;
+                        const keyRe=/"(?:video_url|playback_url|videoUrl|contentUrl|content_url|player_url|stream_url|playAddr|downloadAddr|play_addr|download_addr)"\s*:\s*"([^"]+)"/g;
                         let mediaMatch;
                         while((mediaMatch=keyRe.exec(clean))!==null){
                           const candidate=mediaMatch[1];
@@ -596,6 +615,7 @@ class AndroidBrowserMediaSessionProvider(
                     })();
                 """.trimIndent()
                     .replace("__IG_SHORTCODE__", JSONObject.quote(instagramShortcode.orEmpty()))
+                    .replace("__TIKTOK_ENABLED__", (platform == MediaPlatform.TikTok).toString())
                 view.evaluateJavascript(script) { raw ->
                     inspectionCallbackCount++
                     if (activeInspectionSerial == inspectionId) inspectionInFlight = false
