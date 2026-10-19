@@ -291,7 +291,11 @@ class AndroidBrowserMediaSessionProvider(
                 if (!isMedia(value)) return
                 mediaUrls.add(value)
                 if (platform == MediaPlatform.TikTok && tiktokEmbedFallbackAttempted) {
-                    tiktokEmbedFallbackStatus = "media_observed"
+                    main.post {
+                        if (!finished && tiktokEmbedFallbackAttempted) {
+                            tiktokEmbedFallbackStatus = "media_observed"
+                        }
+                    }
                 }
                 val safe = safeHeaders(headers)
                 if (safe.isNotEmpty()) requestHeaders[value] = safe
