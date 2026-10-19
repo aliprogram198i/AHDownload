@@ -80,6 +80,39 @@ class TikTokSocialPlatformExtractionStrategyTest {
     }
 
     @Test
+    fun publicEmbedFallbackFindsBareExtensionlessTikTokCdnVideoPathsAndRejectsImages() = runTest {
+        val pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890"
+        val mediaUrl = "https://v16-webapp.tiktokcdn.com/video/tos/useast5/opaque-stream"
+        val html = """<html><script>
+            const stream = "https:\/\/v16-webapp.tiktokcdn.com\/video\/tos\/useast5\/opaque-stream";
+            const cover = "https:\/\/v16-webapp.tiktokcdn.com\/video\/tos\/useast5\/cover.jpg";
+            const unrelated = "https:\/\/example.org\/video\/tos\/not-tiktok";
+        </script></html>"""
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String = html
+            override suspend fun get(url: String, headers: Map<String, String>): String = html
+            override suspend fun get(
+                url: String,
+                headers: Map<String, String>,
+                diagnosticContext: Map<String, String>,
+            ): String = html
+        }
+
+        val result = TikTokSocialPlatformExtractionStrategy().extractAdditionalMedia(
+            pageUrl = pageUrl,
+            browserMediaCount = 0,
+            pageFallbackMediaCount = 0,
+            pageClient = client,
+            operationId = "tiktok-opaque-cdn-test",
+            logger = DiagnosticLogger { _, type, _, _, context, _ -> events += type to context },
+        )
+
+        assertEquals(listOf(mediaUrl), result?.mediaUrls)
+        assertEquals("media_found", events.single().second["fallback_status"])
+    }
+
+    @Test
     fun fallbackRejectsNonTikTokAndNonCanonicalUrls() = runTest {
         val strategy = TikTokSocialPlatformExtractionStrategy()
         val client = object : HttpTextClient {
