@@ -77,7 +77,7 @@ jobs:
               2>&1 | tee tiktok-e2e-results/instrumentation.log
             test_exit_code=$?
             adb logcat -d -v threadtime -s AH_LIVE_E2E:I AndroidRuntime:E > tiktok-e2e-results/logcat.txt 2>&1 || echo "Logcat collection failed" >> tiktok-e2e-results/logcat.txt
-            printf '%s\\n' "$test_exit_code" > tiktok-e2e-results/instrumentation-exit-code.txt
+            printf '%s\n' "$test_exit_code" > tiktok-e2e-results/instrumentation-exit-code.txt
             exit "$test_exit_code"
 
       - name: Validate the real-download acceptance report
@@ -89,20 +89,7 @@ jobs:
             echo "Missing Android instrumentation report; real download is not verified." >&2
             exit 1
           fi
-          grep -q '^test_status: PASSED
-
-      - name: Upload target-scoped report, logs, and APKs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: tiktok-exact-link-download-${{ github.run_id }}
-          path: |
-            tiktok-e2e-results/
-            app/build/outputs/androidTest-results/connected/
-            app/build/reports/androidTests/connected/
-          if-no-files-found: warn
-          retention-days: 14
- "$report"
+          grep -q '^test_status: PASSED$' "$report"
           if grep -q 'FAIL | TikTok |' tiktok-e2e-results/logcat.txt; then
             echo "TikTok exact-link resolve/download failed; see the target-scoped logs." >&2
             exit 1
