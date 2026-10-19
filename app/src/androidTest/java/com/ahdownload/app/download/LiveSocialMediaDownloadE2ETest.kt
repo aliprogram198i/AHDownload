@@ -247,6 +247,8 @@ class LiveSocialMediaDownloadE2ETest {
             "inspection_callback_count",
             "instagram_api_status",
             "tiktok_embed_fallback_status",
+            "tiktok_observed_resource_count",
+            "tiktok_observed_resource_hosts",
             "title_present",
             "duration_present",
             "page_url_source",
