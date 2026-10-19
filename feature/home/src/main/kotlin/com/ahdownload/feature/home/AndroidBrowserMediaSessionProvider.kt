@@ -789,7 +789,7 @@ class AndroidBrowserMediaSessionProvider(
                         favicon: android.graphics.Bitmap?,
                     ) {
                         super.onPageStarted(view, pageUrl, favicon)
-                        if (isHttpPageUrl(pageUrl)) finalUrl = pageUrl
+                        updateFinalPageUrl(pageUrl)
                         when (platform) {
                         MediaPlatform.TikTok -> {
                             // Inspect the normal page first; its official public embed is
@@ -877,7 +877,12 @@ class AndroidBrowserMediaSessionProvider(
                         scheduleInspection(view, 1400L)
                         scheduleInspection(view, 3000L)
                         scheduleInspection(view, 5200L)
-                        main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
+                        main.postDelayed({
+                            if (
+                                mediaUrls.isNotEmpty() &&
+                                !(platform == MediaPlatform.TikTok && tiktokEmbedFallbackAttempted)
+                            ) finish()
+                        }, 6200L)
                         if (
                             platform == MediaPlatform.TikTok &&
                             !TikTokEmbedFallbackPolicy.isPublicEmbedUrl(pageUrl)
