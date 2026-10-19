@@ -31,6 +31,9 @@ class AndroidBrowserMediaSessionProvider(
             var timeout: Runnable? = null
             var settleFinish: Runnable? = null
             var finished = false
+            var tiktokEmbedFallbackAttempted = false
+            var tiktokEmbedFallbackStatus: String? =
+                if (platform == MediaPlatform.TikTok) "not_attempted" else null
             var firstMediaObservedAt = 0L
             var inspectionAttemptCount = 0
             var inspectionCallbackCount = 0
@@ -90,6 +93,16 @@ class AndroidBrowserMediaSessionProvider(
                     val uri = URI(value)
                     uri.scheme?.lowercase() in setOf("http", "https") && !uri.host.isNullOrBlank()
                 }.getOrDefault(false)
+            }
+
+            fun updateFinalPageUrl(candidate: String?) {
+                if (!isHttpPageUrl(candidate)) return
+                if (
+                    platform == MediaPlatform.TikTok &&
+                    tiktokEmbedFallbackAttempted &&
+                    TikTokEmbedFallbackPolicy.isPublicEmbedUrl(candidate)
+                ) return
+                finalUrl = candidate
             }
 
             fun normalizeMediaUrl(raw: String): String =
@@ -194,14 +207,57 @@ class AndroidBrowserMediaSessionProvider(
                 }, delayMs)
             }
 
+            fun tryTikTokEmbedFallback(view: WebView) {
+                if (
+                    platform != MediaPlatform.TikTok ||
+                    finished ||
+                    webView !== view ||
+                    tiktokEmbedFallbackAttempted
+                ) return
+                if (mediaUrls.isNotEmpty()) {
+                    tiktokEmbedFallbackStatus = "skipped_media_already_observed"
+                    return
+                }
+
+                val embedUrl = listOf(finalUrl, url)
+                    .firstNotNullOfOrNull(TikTokEmbedFallbackPolicy::publicEmbedUrl)
+                if (embedUrl == null) {
+                    tiktokEmbedFallbackStatus = "skipped_noncanonical_video_url"
+                    return
+                }
+
+                // Render the official public embed in WebView: unlike a plain HTML GET,
+                // this lets the platform's public player execute normally and lets the
+                // existing resource observer capture only real, trusted CDN media requests.
+                tiktokEmbedFallbackAttempted = true
+                tiktokEmbedFallbackStatus = "started"
+                view.loadUrl(embedUrl)
+            }
+
+            fun scheduleTikTokEmbedFallback(view: WebView, delayMs: Long) {
+                main.postDelayed({
+                    if (!finished && webView === view && !tiktokEmbedFallbackAttempted) {
+                        tryTikTokEmbedFallback(view)
+                    }
+                }, delayMs)
+            }
+
             fun finish() {
                 if (finished) return
                 finished = true
                 timeout?.let(main::removeCallbacks)
                 settleFinish?.let(main::removeCallbacks)
-                finalUrl = webView?.url?.toString()?.takeIf(::isHttpPageUrl)
-                    ?: finalUrl?.takeIf(::isHttpPageUrl)
+                webView?.url?.toString()?.let(::updateFinalPageUrl)
+                finalUrl = finalUrl?.takeIf(::isHttpPageUrl)
                     ?: url.takeIf(::isHttpPageUrl)
+                if (
+                    platform == MediaPlatform.TikTok &&
+                    tiktokEmbedFallbackAttempted &&
+                    mediaUrls.isEmpty() &&
+                    tiktokEmbedFallbackStatus == "started"
+                ) {
+                    tiktokEmbedFallbackStatus = "no_media_observed"
+                }
                 if (platform == MediaPlatform.Instagram && instagramApiStatus == null) {
                     instagramApiStatus = when {
                         inspectionAttemptCount == 0 -> "page_not_inspected"
@@ -220,6 +276,7 @@ class AndroidBrowserMediaSessionProvider(
                     mediaHasAudioByUrl = mediaHasAudioByUrl.toMap(),
                     requestHeadersByUrl = requestHeaders.toMap(),
                     instagramApiStatus = instagramApiStatus,
+                    tiktokEmbedFallbackStatus = tiktokEmbedFallbackStatus,
                     inspectionAttemptCount = inspectionAttemptCount,
                     inspectionCallbackCount = inspectionCallbackCount,
                 )
@@ -233,6 +290,9 @@ class AndroidBrowserMediaSessionProvider(
                 val value = normalizeMediaUrl(raw.orEmpty())
                 if (!isMedia(value)) return
                 mediaUrls.add(value)
+                if (platform == MediaPlatform.TikTok && tiktokEmbedFallbackAttempted) {
+                    tiktokEmbedFallbackStatus = "media_observed"
+                }
                 val safe = safeHeaders(headers)
                 if (safe.isNotEmpty()) requestHeaders[value] = safe
 
@@ -712,7 +772,7 @@ class AndroidBrowserMediaSessionProvider(
                     ): Boolean {
                         val scheme = request.url.scheme?.lowercase()
                         if (scheme == "http" || scheme == "https") {
-                            if (request.isForMainFrame) finalUrl = request.url.toString()
+                            if (request.isForMainFrame) updateFinalPageUrl(request.url.toString())
                             return false
                         }
                         // Do not let an app deep-link replace the last usable HTTP page URL.
@@ -727,6 +787,13 @@ class AndroidBrowserMediaSessionProvider(
                         super.onPageStarted(view, pageUrl, favicon)
                         if (isHttpPageUrl(pageUrl)) finalUrl = pageUrl
                         when (platform) {
+                        MediaPlatform.TikTok -> {
+                            // Inspect the normal page first; its official public embed is
+                            // attempted only if these bounded inspections observe no media.
+                            scheduleInspection(view, 900L)
+                            scheduleInspection(view, 2200L)
+                            scheduleInspection(view, 3900L)
+                        }
                         MediaPlatform.Instagram -> {
                             // Keep polling bounded. If the normal permalink does not expose a
                             // playable source, switch to the public embed and observe its player.
@@ -764,6 +831,32 @@ class AndroidBrowserMediaSessionProvider(
                                 tryInstagramEmbedFallback(view)
                             }, 300L)
                         }
+                        if (
+                            platform == MediaPlatform.TikTok &&
+                            request.isForMainFrame &&
+                            tiktokEmbedFallbackAttempted &&
+                            mediaUrls.isEmpty() &&
+                            TikTokEmbedFallbackPolicy.isPublicEmbedUrl(view.url)
+                        ) {
+                            tiktokEmbedFallbackStatus = "main_frame_error_${error.errorCode}"
+                        }
+                    }
+
+                    override fun onReceivedHttpError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        errorResponse: android.webkit.WebResourceResponse,
+                    ) {
+                        super.onReceivedHttpError(view, request, errorResponse)
+                        if (
+                            platform == MediaPlatform.TikTok &&
+                            request.isForMainFrame &&
+                            tiktokEmbedFallbackAttempted &&
+                            mediaUrls.isEmpty() &&
+                            TikTokEmbedFallbackPolicy.isPublicEmbedUrl(request.url.toString())
+                        ) {
+                            tiktokEmbedFallbackStatus = "http_${errorResponse.statusCode}"
+                        }
                     }
 
                     override fun shouldInterceptRequest(
@@ -775,16 +868,26 @@ class AndroidBrowserMediaSessionProvider(
                     }
 
                     override fun onPageFinished(view: WebView, pageUrl: String) {
-                        if (isHttpPageUrl(pageUrl)) finalUrl = pageUrl
+                        updateFinalPageUrl(pageUrl)
                         scheduleInspection(view, 350L)
                         scheduleInspection(view, 1400L)
                         scheduleInspection(view, 3000L)
                         scheduleInspection(view, 5200L)
                         main.postDelayed({ if (mediaUrls.isNotEmpty()) finish() }, 6200L)
+                        if (
+                            platform == MediaPlatform.TikTok &&
+                            !TikTokEmbedFallbackPolicy.isPublicEmbedUrl(pageUrl)
+                        ) {
+                            scheduleTikTokEmbedFallback(view, 4800L)
+                        }
                     }
                 }
                 timeout = Runnable { finish() }
-                val sessionTimeoutMs = if (platform == MediaPlatform.Instagram) 26000L else 10000L
+                val sessionTimeoutMs = when (platform) {
+                    MediaPlatform.Instagram -> 26000L
+                    MediaPlatform.TikTok -> 18000L
+                    else -> 10000L
+                }
                 main.postDelayed(timeout!!, sessionTimeoutMs)
                 view.loadUrl(url)
             }
