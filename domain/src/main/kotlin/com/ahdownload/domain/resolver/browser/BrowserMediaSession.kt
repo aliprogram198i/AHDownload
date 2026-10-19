@@ -21,6 +21,10 @@ data class BrowserMediaSession(
     val inspectionAttemptCount: Int = 0,
     /** Number of JavaScript inspection callbacks returned by WebView. */
     val inspectionCallbackCount: Int = 0,
+    /** Count of HTTP(S) resource requests observed during the TikTok WebView session. */
+    val tiktokObservedResourceCount: Int = 0,
+    /** Hostnames only (no paths, query strings, or headers), bounded for privacy-safe diagnostics. */
+    val tiktokObservedResourceHosts: List<String> = emptyList(),
 )
 
 interface BrowserMediaSessionProvider {
