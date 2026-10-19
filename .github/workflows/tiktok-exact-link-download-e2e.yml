@@ -89,13 +89,25 @@ jobs:
             echo "Missing Android instrumentation report; real download is not verified." >&2
             exit 1
           fi
-          grep -q '^test_status: PASSED$' "$report"
-          grep -q 'TikTok' tiktok-e2e-results/instrumentation.log
-          if grep -q 'FAIL | TikTok |' tiktok-e2e-results/instrumentation.log; then
-            echo "TikTok exact-link resolve/download failed; see the target-scoped report." >&2
+          grep -q '^test_status: PASSED
+
+      - name: Upload target-scoped report, logs, and APKs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tiktok-exact-link-download-${{ github.run_id }}
+          path: |
+            tiktok-e2e-results/
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: warn
+          retention-days: 14
+ "$report"
+          if grep -q 'FAIL | TikTok |' tiktok-e2e-results/logcat.txt; then
+            echo "TikTok exact-link resolve/download failed; see the target-scoped logs." >&2
             exit 1
           fi
-          grep -q 'PASS | TikTok |' tiktok-e2e-results/instrumentation.log
+          grep -q 'PASS | TikTok |' tiktok-e2e-results/logcat.txt
 
       - name: Upload target-scoped report, logs, and APKs
         if: always()
