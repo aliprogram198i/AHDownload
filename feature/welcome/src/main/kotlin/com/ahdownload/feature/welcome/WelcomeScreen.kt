@@ -11,6 +11,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -31,8 +32,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CloudDownload
-import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -249,54 +249,13 @@ private fun WelcomeScreen(
                                     shape = RoundedCornerShape(36.dp),
                                 ),
                         )
-                        Box(
-                            modifier = Modifier
-                                .size(124.dp)
-                                .shadow(20.dp, RoundedCornerShape(32.dp))
-                                .background(
-                                    brush = Brush.linearGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.primary,
-                                            MaterialTheme.colorScheme.secondary,
-                                        ),
-                                    ),
-                                    shape = RoundedCornerShape(32.dp),
-                                )
-                                .border(
-                                    BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.55f)),
-                                    RoundedCornerShape(32.dp),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(0.dp),
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(52.dp)
-                                        .height(30.dp)
-                                        .background(
-                                            MaterialTheme.colorScheme.surface,
-                                            RoundedCornerShape(9.dp),
-                                        ),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.PlayArrow,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(27.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                                Icon(
-                                    imageVector = Icons.Rounded.Download,
-                                    contentDescription = "شعار AHDownload",
-                                    modifier = Modifier.size(35.dp),
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                )
-                            }
-                        }
+                        Image(
+                            painter = painterResource(
+                                id = com.ahdownload.core.designsystem.R.drawable.ahdownload_brand_mark,
+                            ),
+                            contentDescription = "شعار AHDownload",
+                            modifier = Modifier.size(124.dp),
+                        )
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)

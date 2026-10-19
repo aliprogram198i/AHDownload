@@ -5,4 +5,11 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <style name="Theme.AHDownload.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/ah_splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_ahdownload_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/ah_icon_background</item>
+        <item name="windowSplashScreenAnimationDuration">350</item>
+        <item name="postSplashScreenTheme">@style/Theme.AHDownload</item>
+    </style>
 </resources>

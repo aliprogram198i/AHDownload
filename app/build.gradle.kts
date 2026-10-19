@@ -21,8 +21,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 115
-        versionName = "1.4.93"
+        versionCode = 117
+        versionName = "1.4.95"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -214,6 +214,7 @@ if (useVerifiedFfmpegRuntime) {
 }
 
 dependencies {
+    implementation(libs.androidx.core.splashscreen)
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)
     androidTestImplementation(composeBom)
