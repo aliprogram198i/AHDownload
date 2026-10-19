@@ -129,7 +129,7 @@ internal class TikTokSocialPlatformExtractionStrategy :
         // Embed markup can expose a CDN URL without a stable field name such as playAddr.
         // Scan URL literals as a final fallback, then apply the same strict TikTok CDN
         // host/path validation used for keyed media values.
-        val scannedUrls = Regex("""(?i)https?://[^\\s"'<>\\\\]+""")
+        val scannedUrls = Regex("""(?i)https?://[^\s"'<>\\]+""")
             .findAll(normalizedHtml)
             .mapNotNull { match ->
                 normalizeUrl(match.value.trimEnd(',', ';', ')', ']', '.'))
