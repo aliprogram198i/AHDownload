@@ -20,6 +20,11 @@ internal class TikTokSocialPlatformExtractionStrategy :
 
     override val additionalMediaMetricName: String = "tiktok_embed_media_count"
 
+    // The browser session now renders the official public embed when the page itself
+    // exposes no media. Reserve enough time for that bounded session plus HTML fallback.
+    override fun effectiveTimeoutMillis(configuredTimeoutMs: Long): Long =
+        maxOf(configuredTimeoutMs, TIKTOK_RESOLVE_TIMEOUT_MS)
+
     override fun pageRequestHeaders(pageUrl: String): Map<String, String> =
         if (!isTikTokPageUrl(pageUrl)) emptyMap() else requestHeaders(pageUrl)
 
@@ -222,6 +227,7 @@ internal class TikTokSocialPlatformExtractionStrategy :
     private companion object {
         const val TIKTOK_ORIGIN = "https://www.tiktok.com"
         const val EMBED_FETCH_TIMEOUT_MS = 3_500L
+        const val TIKTOK_RESOLVE_TIMEOUT_MS = 24_000L
         const val MAX_DIAGNOSTIC_SAMPLE = 250_000
         const val MAX_MEDIA_URLS = 16
         const val TIKTOK_USER_AGENT =
