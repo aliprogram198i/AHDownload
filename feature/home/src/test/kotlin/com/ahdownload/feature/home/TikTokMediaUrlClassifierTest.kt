@@ -49,7 +49,7 @@ class TikTokMediaUrlClassifierTest {
             "https://v16-webapp.tiktokcdn-eu.com/video/tos/eu/opaque-stream",
             "https://v19.tiktokcdn-in.com/video/tos/in/opaque-stream",
             "https://v16-webapp.tiktokv.eu/video/tos/eu/opaque-stream",
-            "https://lf16-byteoversea.net/video/tos/eu/opaque-stream",
+            "https://lf16.byteoversea.net/video/tos/eu/opaque-stream",
         )
 
         regionalUrls.forEach { url ->
