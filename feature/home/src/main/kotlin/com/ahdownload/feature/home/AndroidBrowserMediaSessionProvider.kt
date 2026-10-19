@@ -797,6 +797,10 @@ class AndroidBrowserMediaSessionProvider(
                             scheduleInspection(view, 900L)
                             scheduleInspection(view, 2200L)
                             scheduleInspection(view, 3900L)
+                            // onPageFinished is not guaranteed for challenge/interstitial pages.
+                            // Keep a start-relative fallback so a delayed/missing finish callback
+                            // cannot consume the entire WebView session without trying the embed.
+                            scheduleTikTokEmbedFallback(view, 7000L)
                         }
                         MediaPlatform.Instagram -> {
                             // Keep polling bounded. If the normal permalink does not expose a
