@@ -6,7 +6,7 @@ mkdir -p tiktok-e2e-results
 gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest \
   "-Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest" \
   "-Pandroid.testInstrumentationRunnerArguments.targetPlatform=TikTok" \
-  "-Pandroid.testInstrumentationRunnerArguments.tiktokUrl=https://www.tiktok.com/@user4709652214847/video/7697553870800588050" \
+  "-Pandroid.testInstrumentationRunnerArguments.tiktokUrl=https://www.tiktok.com/@udhaybaah/video/7698296640272125217" \
   2>&1 | tee tiktok-e2e-results/instrumentation.log
 test_exit_code=$?
 
