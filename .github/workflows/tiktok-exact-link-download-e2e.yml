@@ -5,6 +5,7 @@ on:
     branches:
       - fix/tiktok-webview-public-embed-20261019
       - fix/tiktok-exact-link-cdn-coverage-20261019
+      - test/tiktok-reported-link-7693866295887940870-20261020
   workflow_dispatch:
 
 permissions:
