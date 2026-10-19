@@ -118,13 +118,26 @@ internal class TikTokSocialPlatformExtractionStrategy :
 
     private fun parsePublicEmbed(html: String, baseUrl: String): ParsedPageMedia {
         val generic = WebPageMediaParser.parse(html, baseUrl)
-        val embeddedUrls = MEDIA_URL_FIELD_REGEX.findAll(normalizeEscapedJson(html))
+        val normalizedHtml = normalizeEscapedJson(html)
+        val keyedUrls = MEDIA_URL_FIELD_REGEX.findAll(normalizedHtml)
             .mapNotNull { match ->
                 normalizeUrl(match.groupValues[1])
                     .takeIf(::isTikTokVideoMediaUrl)
             }
             .toList()
-        val safeUrls = (generic.mediaUrls + embeddedUrls)
+
+        // Embed markup can expose a CDN URL without a stable field name such as playAddr.
+        // Scan URL literals as a final fallback, then apply the same strict TikTok CDN
+        // host/path validation used for keyed media values.
+        val scannedUrls = Regex("""(?i)https?://[^\\s"'<>\\\\]+""")
+            .findAll(normalizedHtml)
+            .mapNotNull { match ->
+                normalizeUrl(match.value.trimEnd(',', ';', ')', ']', '.'))
+                    .takeIf(::isTikTokVideoMediaUrl)
+            }
+            .toList()
+
+        val safeUrls = (generic.mediaUrls + keyedUrls + scannedUrls)
             .filter(::isTikTokVideoMediaUrl)
             .distinct()
             .take(MAX_MEDIA_URLS)
@@ -148,10 +161,17 @@ internal class TikTokSocialPlatformExtractionStrategy :
                 host == it || host.endsWith(".$it")
             }
         ) return@runCatching false
-        val extension = uri.path.orEmpty().substringAfterLast('.', "").lowercase()
+
+        val path = uri.path.orEmpty().lowercase()
+        val extension = path.substringAfterLast('/', "").substringAfterLast('.', "").lowercase()
+        if (extension in IMAGE_EXTENSIONS) return@runCatching false
+
+        val query = uri.rawQuery.orEmpty()
         extension in VIDEO_EXTENSIONS ||
-            uri.rawQuery.orEmpty().contains("mime_type=video", ignoreCase = true) ||
-            uri.rawQuery.orEmpty().contains("content-type=video", ignoreCase = true)
+            query.contains("mime_type=video", ignoreCase = true) ||
+            query.contains("content-type=video", ignoreCase = true) ||
+            "/video/tos/" in path ||
+            Regex("""/video/tos(?:[-/]|$)""").containsMatchIn(path)
     }.getOrDefault(false)
 
     private fun requestHeaders(referer: String): Map<String, String> = mapOf(
@@ -208,6 +228,7 @@ internal class TikTokSocialPlatformExtractionStrategy :
             "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
         val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "webm", "m3u8", "mpd")
+        val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "gif", "avif", "heic", "heif")
         val TIKTOK_MEDIA_HOST_SUFFIXES = setOf(
             "tiktokcdn.com",
             "tiktokcdn-us.com",
