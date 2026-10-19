@@ -34,7 +34,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
         with:
-          packages: "platform-tools emulator"
+          packages: "platform-tools"
           accept-android-sdk-licenses: true
           log-accepted-android-sdk-licenses: false
 
@@ -42,12 +42,13 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
-            if sdkmanager "platforms;android-35" "platforms;android-37.1" "build-tools;36.1.0" "system-images;android-35;google_apis;x86_64"; then
+            if sdkmanager "platform-tools" "emulator" "platforms;android-35" "platforms;android-37.1" "build-tools;36.1.0" "system-images;android-35;google_apis;x86_64"; then
               exit 0
             fi
             echo "Android SDK install attempt $attempt failed; clearing partial emulator-image downloads before retry." >&2
             rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/temp"
             rm -rf "$ANDROID_HOME/system-images/android-35/google_apis/x86_64"
+            rm -rf "$ANDROID_HOME/emulator"
             sleep "$((attempt * 5))"
           done
           echo "Android SDK components could not be installed after three attempts." >&2
