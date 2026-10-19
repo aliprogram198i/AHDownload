@@ -44,6 +44,34 @@ class TikTokMediaUrlClassifierTest {
     }
 
     @Test
+    fun recognizesExtensionlessVideoPathsOnRegionalTikTokCdnHosts() {
+        val regionalUrls = listOf(
+            "https://v16-webapp.tiktokcdn-eu.com/video/tos/eu/opaque-stream",
+            "https://v19.tiktokcdn-in.com/video/tos/in/opaque-stream",
+            "https://v16-webapp.tiktokv.eu/video/tos/eu/opaque-stream",
+            "https://lf16-byteoversea.net/video/tos/eu/opaque-stream",
+        )
+
+        regionalUrls.forEach { url ->
+            assertTrue("Expected TikTok media URL to be recognized: $url", TikTokMediaUrlClassifier.isMediaResource(url))
+        }
+    }
+
+    @Test
+    fun rejectsRegionalCdnImagesAndUntrustedHosts() {
+        assertFalse(
+            TikTokMediaUrlClassifier.isMediaResource(
+                "https://v16-webapp.tiktokcdn-eu.com/video/tos/eu/cover.webp",
+            ),
+        )
+        assertFalse(
+            TikTokMediaUrlClassifier.isMediaResource(
+                "https://cdn.example.org/video/tos/eu/opaque-stream",
+            ),
+        )
+    }
+
+    @Test
     fun rejectsTikTokPageUrlsAndUnknownCdnResources() {
         assertFalse(
             TikTokMediaUrlClassifier.isMediaResource(
