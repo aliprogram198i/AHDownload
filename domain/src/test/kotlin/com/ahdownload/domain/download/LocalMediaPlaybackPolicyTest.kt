@@ -63,6 +63,18 @@ class LocalMediaPlaybackPolicyTest {
                 MediaKind.Image, DownloadProcessingMode.Direct, "preview.mp4", "/tmp/preview.mp4",
             ),
         )
+        assertEquals(
+            null,
+            resolveLocalMediaPlaybackType(
+                MediaKind.Video, DownloadProcessingMode.Direct, "old-video.avi", "/tmp/old-video.avi",
+            ),
+        )
+        assertEquals(
+            LocalMediaPlaybackType.VIDEO,
+            resolveLocalMediaPlaybackType(
+                MediaKind.Video, DownloadProcessingMode.Direct, "movie.mp4", "/tmp/movie.bin",
+            ),
+        )
     }
 
     @Test
