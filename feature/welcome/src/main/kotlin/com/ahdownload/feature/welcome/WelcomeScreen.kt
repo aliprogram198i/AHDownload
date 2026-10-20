@@ -83,7 +83,7 @@ private fun WelcomeScreen(
     val canvasPrimary = MaterialTheme.colorScheme.primary
     val canvasAccent = MaterialTheme.colorScheme.secondary
 
-    val continueOnce: (String) -> Unit = remember(uiTraceLogger, uiContext) {
+    val continueOnce: (String) -> Unit = remember(uiTraceLogger) {
         { source ->
             if (continuationClaimed.compareAndSet(false, true)) {
                 uiTraceLogger.interaction("WELCOME", "start_button", source)
