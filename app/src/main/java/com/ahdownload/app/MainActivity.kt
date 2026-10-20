@@ -150,6 +150,7 @@ class MainActivity : ComponentActivity() {
                     favoriteRepository = favoritesStore,
                     onExtractAudio = ::extractAndPublishAudio,
                     openDownloadsOnStart = openDownloadsOnStart,
+                    onConsumeOpenDownloadsRequest = { openDownloadsOnStart = false },
                     onPickDownloadFolder = {
                         folderPicker.launch(downloadLocationStore.persistedUri())
                     },
@@ -406,6 +407,7 @@ private fun AHRoot(
     themeMode: AHThemeMode,
     onExtractAudio: suspend (DownloadRecord) -> Boolean,
     onPickDownloadFolder: () -> Unit,
+    onConsumeOpenDownloadsRequest: () -> Unit,
     openDownloadsOnStart: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -478,13 +480,19 @@ private fun AHRoot(
     }
 
     LaunchedEffect(initialUrl) {
-        if (initialUrl?.isNotBlank() == true) {
+        if (!initialUrl.isNullOrBlank()) {
+            // Shared URLs are the strongest launch intent; consume a pending Downloads
+            // request so it cannot override the shared-link destination afterward.
+            onConsumeOpenDownloadsRequest()
             root(RootDestination.Home)
         }
     }
 
     LaunchedEffect(openDownloadsOnStart) {
-        if (openDownloadsOnStart) root(RootDestination.Downloads)
+        if (openDownloadsOnStart && initialUrl.isNullOrBlank()) {
+            root(RootDestination.Downloads)
+            onConsumeOpenDownloadsRequest()
+        }
     }
 
     BackHandler(enabled = backStack.size > 1 || backStack.lastOrNull() == RootDestination.YouTubeSearch) {
