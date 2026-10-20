@@ -12,7 +12,7 @@ class WelcomeLaunchPolicyTest {
             WelcomeLaunchPolicy.resolve(
                 showWelcomeOnLaunch = true,
                 hasIncomingUrl = true,
-                openDownloadsOnStart = false,
+                openDownloadsOnStart = true,
             ),
         )
     }
