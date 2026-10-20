@@ -79,7 +79,7 @@ fun LocalMediaPlayerDialog(
     onPlaybackError: (Throwable) -> Unit,
 ) {
     val context = LocalContext.current
-    val mediaUri = remember(record) { resolveLocalMediaUri(context, record) }
+    val mediaUri = remember(record) { resolveLocalMediaUri(record) }
     val currentErrorCallback by rememberUpdatedState(onPlaybackError)
 
     if (mediaUri == null) {
@@ -403,7 +403,7 @@ fun LocalMediaPlayerDialog(
     }
 }
 
-private fun resolveLocalMediaUri(context: Context, record: DownloadRecord): Uri? {
+private fun resolveLocalMediaUri(record: DownloadRecord): Uri? {
     val destination = record.destinationUri?.takeIf { it.isNotBlank() }
         ?.let { runCatching { Uri.parse(it) }.getOrNull() }
     if (destination != null && isLocalMediaUri(destination.toString())) return destination
