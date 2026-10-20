@@ -12,6 +12,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -37,7 +38,7 @@ class BrowserPageLoadRegressionTest {
         val baseUrl = "https://example.com/"
         val expectedTitle = "AH Browser Render Fixture"
 
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("لا يوجد موقع مفتوح").assertIsDisplayed()
@@ -220,7 +221,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 45_000)
     fun hitTestAcceptsTheAncestorWrappingAnImageWhenChildIsNotHitTarget() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
@@ -284,7 +285,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 45_000)
     fun hitTestCountsVisibleTextWhenWebKitReturnsItsClickableAncestor() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         waitForBlankBrowser()
@@ -356,7 +357,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 45_000)
     fun hitTestSamplesVisibleTextAwayFromCoveredCenterPoint() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         waitForBlankBrowser()
@@ -432,7 +433,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 45_000)
     fun pointerEventsNoneTextIsNotMisclassifiedAsConfirmedOcclusion() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         waitForBlankBrowser()
@@ -521,7 +522,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 30_000)
     fun browserStartsWithBlankAddressAndDoesNotLoadHomeAutomatically() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
 
@@ -548,7 +549,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 30_000)
     fun clearAddressControlClearsOnlyTheDraftAndLeavesBlankPageUnchanged() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         waitForBlankBrowser()
 
@@ -575,7 +576,7 @@ class BrowserPageLoadRegressionTest {
 
     @Test(timeout = 45_000)
     fun blankPageButtonClearsAddressAndHistoryInsteadOfOpeningAHomepage() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         waitForBlankBrowser()
 
@@ -624,6 +625,17 @@ class BrowserPageLoadRegressionTest {
         assertTrue(!export.contains("sample_secret"))
         assertTrue(!export.contains("?token="))
         browserStore.clear()
+    }
+
+
+    private fun continuePastWelcomeIfShown() {
+        composeRule.waitForIdle()
+        val welcomeButtonVisible =
+            composeRule.onAllNodesWithText("ابدأ الآن").fetchSemanticsNodes().isNotEmpty()
+        if (welcomeButtonVisible) {
+            composeRule.onNodeWithText("ابدأ الآن").performClick()
+            composeRule.waitForIdle()
+        }
     }
 
     private fun findWebView(view: View): WebView? {

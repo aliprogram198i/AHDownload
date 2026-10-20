@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -183,8 +184,19 @@ class BrowserPublicSitesAcceptanceTest {
         assertTrue("The browser route must remain mounted after all target checks", browserStillMounted.get())
     }
 
+
+    private fun continuePastWelcomeIfShown() {
+        composeRule.waitForIdle()
+        val welcomeButtonVisible =
+            composeRule.onAllNodesWithText("ابدأ الآن").fetchSemanticsNodes().isNotEmpty()
+        if (welcomeButtonVisible) {
+            composeRule.onNodeWithText("ابدأ الآن").performClick()
+            composeRule.waitForIdle()
+        }
+    }
+
     private fun openBrowser() {
-        composeRule.onNodeWithText("ابدأ الآن").performClick()
+        continuePastWelcomeIfShown()
         composeRule.onNodeWithContentDescription("المتصفح الذكي").performClick()
         composeRule.onNodeWithText("AHDownload Browser").assertIsDisplayed()
         composeRule.onNodeWithText("عنوان الموقع").assertIsDisplayed()

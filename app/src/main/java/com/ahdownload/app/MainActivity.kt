@@ -33,6 +33,7 @@ import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.DownloadPreferencesStore
 import com.ahdownload.app.settings.SettingsRoute
 import com.ahdownload.app.settings.ThemePreferenceStore
+import com.ahdownload.app.settings.WelcomePreferenceStore
 import com.ahdownload.app.performance.PerformanceLogRoute
 import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.core.common.DiagnosticLevel
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
     private val downloadLocationStore by lazy { DownloadLocationStore(applicationContext) }
     private val downloadPreferencesStore by lazy { DownloadPreferencesStore(applicationContext) }
     private val themePreferenceStore by lazy { ThemePreferenceStore(applicationContext) }
+    private val welcomePreferenceStore by lazy { WelcomePreferenceStore(applicationContext) }
     private val favoritesStore by lazy { FavoritesStore(applicationContext) }
 
     private val folderPicker =
@@ -96,6 +98,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         extractSharedUrl(intent)?.let { pendingSharedUrl = it }
         openDownloadsOnStart = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
+        val hasIncomingUrl = !pendingSharedUrl.isNullOrBlank()
+        val showWelcomeOnLaunch = !welcomePreferenceStore.hasSeenWelcome() &&
+            !hasIncomingUrl &&
+            !openDownloadsOnStart
+        if (!showWelcomeOnLaunch) {
+            // A shared link or an explicit destination should not cause onboarding to
+            // appear unexpectedly on the user's next ordinary launch.
+            welcomePreferenceStore.markWelcomeSeen()
+        }
 
         setContent {
             val themeMode = remember { themePreferenceStore.read() }
@@ -110,6 +121,8 @@ class MainActivity : ComponentActivity() {
                 AHRoot(
                     themeMode = themeMode,
                     initialUrl = pendingSharedUrl,
+                    showWelcomeOnLaunch = showWelcomeOnLaunch,
+                    onWelcomeCompleted = { welcomePreferenceStore.markWelcomeSeen() },
                     logger = diagnosticLogger,
                     performanceLogStore = applicationServices.performanceLogStore,
                     browserErrorLogStore = applicationServices.browserErrorLogStore,
@@ -137,6 +150,7 @@ class MainActivity : ComponentActivity() {
                     favoriteRepository = favoritesStore,
                     onExtractAudio = ::extractAndPublishAudio,
                     openDownloadsOnStart = openDownloadsOnStart,
+                    onConsumeOpenDownloadsRequest = { openDownloadsOnStart = false },
                     onPickDownloadFolder = {
                         folderPicker.launch(downloadLocationStore.persistedUri())
                     },
@@ -148,8 +162,14 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        extractSharedUrl(intent)?.let { pendingSharedUrl = it }
-        if (intent.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false)) openDownloadsOnStart = true
+        extractSharedUrl(intent)?.let {
+            pendingSharedUrl = it
+            welcomePreferenceStore.markWelcomeSeen()
+        }
+        if (intent.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false)) {
+            openDownloadsOnStart = true
+            welcomePreferenceStore.markWelcomeSeen()
+        }
     }
 
     private fun requestNotificationPermissionIfNeeded() {
@@ -363,6 +383,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AHRoot(
     initialUrl: String?,
+    showWelcomeOnLaunch: Boolean,
+    onWelcomeCompleted: () -> Unit,
     logger: PersistentDiagnosticLogger,
     performanceLogStore: PerformanceLogStore,
     browserErrorLogStore: com.ahdownload.app.browser.BrowserErrorLogStore,
@@ -385,6 +407,7 @@ private fun AHRoot(
     themeMode: AHThemeMode,
     onExtractAudio: suspend (DownloadRecord) -> Boolean,
     onPickDownloadFolder: () -> Unit,
+    onConsumeOpenDownloadsRequest: () -> Unit,
     openDownloadsOnStart: Boolean = false,
 ) {
     val history by downloadRepository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -427,11 +450,19 @@ private fun AHRoot(
             DownloadStatus.PAUSED,
         )
     }
-    val backStack = remember {
-        mutableStateListOf(
-            if (initialUrl?.isNotBlank() == true) RootDestination.Home
-            else RootDestination.Welcome,
+    val initialDestination = when (
+        WelcomeLaunchPolicy.resolve(
+            showWelcomeOnLaunch = showWelcomeOnLaunch,
+            hasIncomingUrl = !initialUrl.isNullOrBlank(),
+            openDownloadsOnStart = openDownloadsOnStart,
         )
+    ) {
+        InitialAppDestination.WELCOME -> RootDestination.Welcome
+        InitialAppDestination.HOME -> RootDestination.Home
+        InitialAppDestination.DOWNLOADS -> RootDestination.Downloads
+    }
+    val backStack = remember {
+        mutableStateListOf(initialDestination)
     }
 
     fun root(destination: RootDestination) {
@@ -449,13 +480,19 @@ private fun AHRoot(
     }
 
     LaunchedEffect(initialUrl) {
-        if (initialUrl?.isNotBlank() == true) {
+        if (!initialUrl.isNullOrBlank()) {
+            // Shared URLs are the strongest launch intent; consume a pending Downloads
+            // request so it cannot override the shared-link destination afterward.
+            onConsumeOpenDownloadsRequest()
             root(RootDestination.Home)
         }
     }
 
     LaunchedEffect(openDownloadsOnStart) {
-        if (openDownloadsOnStart) root(RootDestination.Downloads)
+        if (openDownloadsOnStart && initialUrl.isNullOrBlank()) {
+            root(RootDestination.Downloads)
+            onConsumeOpenDownloadsRequest()
+        }
     }
 
     BackHandler(enabled = backStack.size > 1 || backStack.lastOrNull() == RootDestination.YouTubeSearch) {
@@ -465,7 +502,10 @@ private fun AHRoot(
     CompositionLocalProvider(LocalDiagnosticUiTraceLogger provides uiTraceLogger) {
     when (backStack.last()) {
         RootDestination.Welcome -> WelcomeRoute(
-            onContinue = { root(RootDestination.Home) },
+            onContinue = {
+                onWelcomeCompleted()
+                root(RootDestination.Home)
+            },
             uiTraceLogger = uiTraceLogger,
         )
         RootDestination.Home, RootDestination.YouTubeSearch -> HomeRoute(
