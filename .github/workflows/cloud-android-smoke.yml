@@ -119,6 +119,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exit_code_file="cloud-test-results/instrumentation-exit-code.txt"
+          if [[ ! -s "$exit_code_file" || "$(cat "$exit_code_file")" != "0" ]]; then
+            echo "Android instrumentation command did not exit successfully; execution is not verified." >&2
+            exit 1
+          fi
           report="$(find cloud-test-results/instrumentation-results -name test-result.textproto -print -quit)"
           if [ -z "$report" ] || [ ! -s "$report" ]; then
             echo "Android instrumentation report is missing; emulator/test execution is not verified." >&2
