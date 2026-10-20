@@ -112,6 +112,8 @@ class LocalMediaPlaybackPolicyTest {
         assertTrue(isTrustedYouTubePlaybackUrl("https://www.youtube.com/watch?v=abc123"))
         assertTrue(isTrustedYouTubePlaybackUrl("https://m.youtube.com/shorts/abc123"))
         assertTrue(isTrustedYouTubePlaybackUrl("https://youtu.be/abc123"))
+        assertFalse(isTrustedYouTubePlaybackUrl("https://evil.youtube.com/watch?v=abc123"))
+        assertFalse(isTrustedYouTubePlaybackUrl("https://youtu.be/favicon.ico"))
         assertFalse(isTrustedYouTubePlaybackUrl("http://www.youtube.com/watch?v=abc123"))
         assertFalse(isTrustedYouTubePlaybackUrl("https://youtube.com.evil.example/watch?v=abc123"))
         assertFalse(isTrustedYouTubePlaybackUrl("https://evil.example/?next=https://youtube.com/watch?v=abc123"))
