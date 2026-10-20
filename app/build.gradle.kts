@@ -1,4 +1,5 @@
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
@@ -180,7 +181,7 @@ val prepareVerifiedFfmpegRuntimeAar by tasks.registering {
                     val responseCode = connection.responseCode
                     if (responseCode !in 200..299) {
                         if (responseCode in 500..599) {
-                            throw java.io.IOException(
+                            throw IOException(
                                 "FFmpeg runtime download returned retryable HTTP $responseCode",
                             )
                         }
@@ -207,7 +208,7 @@ val prepareVerifiedFfmpegRuntimeAar by tasks.registering {
                 logger.lifecycle("Downloaded and verified FFmpeg Full + HTTPS AAR (SHA-256 matched).")
                 downloaded = true
                 break
-            } catch (networkFailure: java.io.IOException) {
+            } catch (networkFailure: IOException) {
                 temporaryFile.delete()
                 if (attempt >= maxAttempts) {
                     throw GradleException(
