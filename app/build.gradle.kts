@@ -1,4 +1,5 @@
 import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
@@ -21,8 +22,8 @@ android {
         applicationId = "com.ahdownload.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 122
-        versionName = "1.5.0"
+        versionCode = 123
+        versionName = "1.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -166,36 +167,65 @@ val prepareVerifiedFfmpegRuntimeAar by tasks.registering {
             "https://github.com/aliprogram198i/AHDownload/releases/download/" +
                 "ahdownload-ffmpeg-full-https-8.1.9-r1/ahdownload-ffmpeg-full-https-8.1.9.aar",
         )
-        try {
-            val connection = assetUrl.openConnection()
-            connection.connectTimeout = 30_000
-            connection.readTimeout = 180_000
-            if (connection is HttpURLConnection) {
-                connection.instanceFollowRedirects = true
-                connection.connect()
-                require(connection.responseCode in 200..299) {
-                    "FFmpeg runtime download returned HTTP ${connection.responseCode}"
-                }
-            }
-            connection.getInputStream().buffered().use { input ->
-                temporaryFile.outputStream().buffered().use { output -> input.copyTo(output) }
-            }
-
-            val actualSha256 = sha256(temporaryFile)
-            require(actualSha256 == expectedSha256) {
-                "FFmpeg runtime SHA-256 mismatch: expected=$expectedSha256 actual=$actualSha256"
-            }
-            validateAar(temporaryFile)
-            Files.move(
-                temporaryFile.toPath(),
-                verifiedFfmpegAar.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-                StandardCopyOption.ATOMIC_MOVE,
-            )
-            logger.lifecycle("Downloaded and verified FFmpeg Full + HTTPS AAR (SHA-256 matched).")
-        } finally {
+        var downloaded = false
+        val maxAttempts = 3
+        for (attempt in 1..maxAttempts) {
             temporaryFile.delete()
+            var connection: java.net.URLConnection? = null
+            try {
+                connection = assetUrl.openConnection()
+                connection.connectTimeout = 30_000
+                connection.readTimeout = 180_000
+                if (connection is HttpURLConnection) {
+                    connection.instanceFollowRedirects = true
+                    val responseCode = connection.responseCode
+                    if (responseCode !in 200..299) {
+                        if (responseCode in 500..599) {
+                            throw IOException(
+                                "FFmpeg runtime download returned retryable HTTP $responseCode",
+                            )
+                        }
+                        throw GradleException(
+                            "FFmpeg runtime download returned non-retryable HTTP $responseCode",
+                        )
+                    }
+                }
+                connection.getInputStream().buffered().use { input ->
+                    temporaryFile.outputStream().buffered().use { output -> input.copyTo(output) }
+                }
+
+                val actualSha256 = sha256(temporaryFile)
+                require(actualSha256 == expectedSha256) {
+                    "FFmpeg runtime SHA-256 mismatch: expected=$expectedSha256 actual=$actualSha256"
+                }
+                validateAar(temporaryFile)
+                Files.move(
+                    temporaryFile.toPath(),
+                    verifiedFfmpegAar.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+                logger.lifecycle("Downloaded and verified FFmpeg Full + HTTPS AAR (SHA-256 matched).")
+                downloaded = true
+                break
+            } catch (networkFailure: IOException) {
+                temporaryFile.delete()
+                if (attempt >= maxAttempts) {
+                    throw GradleException(
+                        "FFmpeg runtime download failed after $maxAttempts attempts",
+                        networkFailure,
+                    )
+                }
+                logger.warn(
+                    "FFmpeg runtime download attempt $attempt/$maxAttempts failed " +
+                        "(${networkFailure.message}); retrying.",
+                )
+                Thread.sleep(attempt * 1_000L)
+            } finally {
+                (connection as? HttpURLConnection)?.disconnect()
+            }
         }
+        check(downloaded) { "FFmpeg runtime was not downloaded or verified" }
     }
 }
 
