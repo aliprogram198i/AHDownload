@@ -57,6 +57,7 @@ fun resolveLocalMediaPlaybackType(
         MediaKind.Video -> LocalMediaPlaybackType.VIDEO
         else -> null
     }
+}
 
 /**
  * Prevents media playback from opening a remote URL or a partial/non-completed download.
