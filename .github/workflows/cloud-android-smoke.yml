@@ -82,7 +82,7 @@ jobs:
           emulator-boot-timeout: 600
           disable-linux-hw-accel: false
           script: |
-            bash -o pipefail -c 'set +e; mkdir -p cloud-test-results; gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest,com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest,com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest,com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest 2>&1 | tee cloud-test-results/instrumentation.log; test_exit_code=\${PIPESTATUS[0]}; adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat capture failed" >> cloud-test-results/emulator-logcat.txt; printf "%s\\n" "\$test_exit_code" > cloud-test-results/instrumentation-exit-code.txt; exit "\$test_exit_code"'
+            bash -o pipefail -c 'set +e; mkdir -p cloud-test-results; gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest,com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest,com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest,com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest 2>&1 | tee cloud-test-results/instrumentation.log; test_exit_code=\${PIPESTATUS[0]}; adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat capture failed" >> cloud-test-results/emulator-logcat.txt; printf "%s\n" "$test_exit_code" > cloud-test-results/instrumentation-exit-code.txt; exit "$test_exit_code"'
 
       - name: Collect emulator logs and test reports
         if: always()
