@@ -82,15 +82,9 @@ jobs:
           emulator-boot-timeout: 600
           disable-linux-hw-accel: false
           script: |
-            set +e
-            # Keep external-platform live downloads in the dedicated manual acceptance workflow.
-            # Public platforms can challenge hosted runner IPs, making them unsuitable as deterministic smoke gates.
-            gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest,com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest,com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest,com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest
-            test_exit_code=$?
-            mkdir -p cloud-test-results
-            adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat capture failed" >> cloud-test-results/emulator-logcat.txt
-            printf '%s\n' "$test_exit_code" > cloud-test-results/instrumentation-exit-code.txt
-            exit "$test_exit_code"
+            # Use one Bash process; the emulator runner executes script lines individually.
+            # Keeping the exit code in this process prevents a blank result file.
+            bash -o pipefail -c 'gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest,com.ahdownload.app.download.PublicMediaDownloadMatrixE2ETest,com.ahdownload.app.download.FfmpegHttpsProtocolSmokeTest,com.ahdownload.app.browser.BrowserPublicSitesAcceptanceTest; test_exit_code=$?; mkdir -p cloud-test-results; adb logcat -d -v threadtime > cloud-test-results/emulator-logcat.txt 2>&1 || echo "logcat collection failed" >> cloud-test-results/emulator-logcat.txt; printf "%s\\n" "$test_exit_code" > cloud-test-results/instrumentation-exit-code.txt; exit "$test_exit_code"'
 
       - name: Collect emulator logs and test reports
         if: always()
@@ -127,6 +121,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          exit_code_file="cloud-test-results/instrumentation-exit-code.txt"
+          if [[ ! -s "$exit_code_file" || "$(cat "$exit_code_file")" != "0" ]]; then
+            echo "Android instrumentation command did not exit successfully; execution is not verified." >&2
+            exit 1
+          fi
           report="$(find cloud-test-results/instrumentation-results -name test-result.textproto -print -quit)"
           if [ -z "$report" ] || [ ! -s "$report" ]; then
             echo "Android instrumentation report is missing; emulator/test execution is not verified." >&2
