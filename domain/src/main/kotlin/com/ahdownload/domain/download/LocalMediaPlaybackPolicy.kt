@@ -39,11 +39,20 @@ fun resolveLocalMediaPlaybackType(
         .mapNotNull(::fileExtension)
         .toList()
 
-    // An explicit unsupported extension should not be offered optimistically to ExoPlayer.
-    val firstKnown = extensions.firstOrNull { it in PLAYABLE_AUDIO_EXTENSIONS || it in PLAYABLE_VIDEO_EXTENSIONS }
-    return when (firstKnown) {
-        in PLAYABLE_AUDIO_EXTENSIONS -> LocalMediaPlaybackType.AUDIO
-        in PLAYABLE_VIDEO_EXTENSIONS -> LocalMediaPlaybackType.VIDEO
+    if (extensions.any { it in KNOWN_NON_MEDIA_EXTENSIONS }) return null
+    val firstKnown = extensions.firstOrNull {
+        it in PLAYABLE_AUDIO_EXTENSIONS || it in PLAYABLE_VIDEO_EXTENSIONS
+    }
+    when {
+        firstKnown != null && firstKnown in PLAYABLE_AUDIO_EXTENSIONS ->
+            return LocalMediaPlaybackType.AUDIO
+        firstKnown != null && firstKnown in PLAYABLE_VIDEO_EXTENSIONS ->
+            return LocalMediaPlaybackType.VIDEO
+    }
+
+    return when (mediaKind) {
+        MediaKind.Audio -> LocalMediaPlaybackType.AUDIO
+        MediaKind.Video -> LocalMediaPlaybackType.VIDEO
         else -> null
     }
 }
@@ -100,7 +109,7 @@ fun isTrustedYouTubePlaybackUrl(value: String?): Boolean {
 private fun fileExtension(value: String): String? {
     val path = value.substringBefore('?').substringBefore('#')
         .substringAfterLast('/')
-        .substringAfterLast('\\\\')
+        .substringAfterLast(92.toChar())
     val extension = path.substringAfterLast('.', "").lowercase(Locale.ROOT)
     return extension.takeIf { it.isNotBlank() && it.all(Char::isLetterOrDigit) }
 }
@@ -111,4 +120,8 @@ private val PLAYABLE_AUDIO_EXTENSIONS = setOf(
 
 private val PLAYABLE_VIDEO_EXTENSIONS = setOf(
     "mp4", "m4v", "webm", "mkv", "mov", "3gp", "mpg", "mpeg", "ts",
+)
+
+private val KNOWN_NON_MEDIA_EXTENSIONS = setOf(
+    "avi", "jpg", "jpeg", "png", "gif", "webp", "bmp", "pdf", "zip", "txt", "html",
 )
