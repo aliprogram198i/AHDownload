@@ -38,11 +38,12 @@ fun resolveLocalMediaPlaybackType(
     }
 
     when {
-        firstRelevantExtension in PLAYABLE_AUDIO_EXTENSIONS ->
+        firstRelevantExtension != null && firstRelevantExtension in PLAYABLE_AUDIO_EXTENSIONS ->
             return LocalMediaPlaybackType.AUDIO
-        firstRelevantExtension in PLAYABLE_VIDEO_EXTENSIONS ->
+        firstRelevantExtension != null && firstRelevantExtension in PLAYABLE_VIDEO_EXTENSIONS ->
             return LocalMediaPlaybackType.VIDEO
-        firstRelevantExtension in KNOWN_NON_MEDIA_EXTENSIONS -> return null
+        firstRelevantExtension != null && firstRelevantExtension in KNOWN_NON_MEDIA_EXTENSIONS ->
+            return null
     }
 
     // Preserve reliable persisted metadata only when the filename does not explicitly
@@ -90,14 +91,19 @@ fun isTrustedYouTubePlaybackUrl(value: String?): Boolean {
 
     val host = uri.host?.lowercase(Locale.ROOT) ?: return false
     val path = uri.path.orEmpty()
-    val isYouTubeHost = host == "youtube.com" || host.endsWith(".youtube.com")
+    val isYouTubeHost = host in setOf(
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "music.youtube.com",
+    )
     return when {
         isYouTubeHost && path == "/watch" ->
             uri.rawQuery.orEmpty().split('&').any { part ->
                 part.substringBefore('=') == "v" && part.substringAfter('=', "").isNotBlank()
             }
         isYouTubeHost && Regex("^/shorts/[^/]+/?$").matches(path) -> true
-        host == "youtu.be" && Regex("^/[^/]+/?$").matches(path) -> true
+        host == "youtu.be" && Regex("^/[A-Za-z0-9_-]{6,20}/?$").matches(path) -> true
         else -> false
     }
 }
