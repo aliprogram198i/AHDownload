@@ -18,6 +18,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
@@ -32,6 +33,7 @@ class LocalMediaPlayerSmokeTest {
         val playerRef = AtomicReference<ExoPlayer>()
         val readyOrError = CountDownLatch(1)
         val playerError = AtomicReference<PlaybackException?>()
+        val finalState = AtomicInteger(Player.STATE_IDLE)
 
         try {
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -40,7 +42,8 @@ class LocalMediaPlayerSmokeTest {
                 player.addListener(
                     object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
-                            if (playbackState == Player.STATE_READY || playbackState == Player.STATE_IDLE) {
+                            finalState.set(playbackState)
+                            if (playbackState == Player.STATE_READY) {
                                 readyOrError.countDown()
                             }
                         }
@@ -63,7 +66,7 @@ class LocalMediaPlayerSmokeTest {
                 "ExoPlayer rejected the local WAV fixture: " + playerError.get()?.errorCodeName,
                 playerError.get(),
             )
-            assertEquals(Player.STATE_READY, playerRef.get().playbackState)
+            assertEquals(Player.STATE_READY, finalState.get())
             assertTrue(localAudio.isFile && localAudio.length() > 44L)
         } finally {
             playerRef.get()?.let { player ->
