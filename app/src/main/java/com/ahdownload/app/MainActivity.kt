@@ -46,8 +46,12 @@ import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.app.performance.PerformanceMetrics
+import com.ahdownload.app.player.LocalMediaPlayerDialog
 import com.ahdownload.feature.downloads.DownloadPerformanceSummary
 import com.ahdownload.domain.download.DownloadEnqueueResult
+import com.ahdownload.domain.download.isTrustedYouTubePlaybackUrl
+import com.ahdownload.domain.download.resolveLocalMediaPlaybackType
+import com.ahdownload.domain.download.shouldOfferInternalPlayback
 import com.ahdownload.domain.resolver.MediaCandidate
 import com.ahdownload.feature.downloads.DownloadsRoute
 import com.ahdownload.feature.home.HomeRoute
@@ -90,6 +94,7 @@ class MainActivity : ComponentActivity() {
         }
 
     private var pendingSharedUrl by mutableStateOf<String?>(null)
+    private var activePlayerRecord by mutableStateOf<DownloadRecord?>(null)
     private var openDownloadsOnStart by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -155,6 +160,34 @@ class MainActivity : ComponentActivity() {
                         folderPicker.launch(downloadLocationStore.persistedUri())
                     },
                 )
+
+                activePlayerRecord?.let { record ->
+                    resolveLocalMediaPlaybackType(
+                        mediaKind = record.task.mediaKind,
+                        processingMode = record.task.processingMode,
+                        displayName = record.task.displayName,
+                        destinationPath = record.task.destinationPath,
+                    )?.let { playbackType ->
+                        LocalMediaPlayerDialog(
+                            record = record,
+                            playbackType = playbackType,
+                            onDismiss = { activePlayerRecord = null },
+                            onPlaybackError = { error ->
+                                diagnosticLogger.log(
+                                    level = DiagnosticLevel.WARNING,
+                                    type = "LOCAL_MEDIA_PLAYBACK_FAILED",
+                                    reason = "تعذر تشغيل ملف محلي داخل التطبيق",
+                                    operation = "player.local_media",
+                                    context = mapOf(
+                                        "task_id" to record.task.id,
+                                        "media_type" to playbackType.name,
+                                    ),
+                                    throwable = error,
+                                )
+                            },
+                        )
+                    }
+                }
             }
         }
     }
@@ -226,6 +259,34 @@ class MainActivity : ComponentActivity() {
 
         val mimeType = contentResolver.getType(destination)
             ?: mimeTypeFor(record.task.displayName ?: record.task.destinationPath)
+        val playbackType = resolveLocalMediaPlaybackType(
+            mediaKind = record.task.mediaKind,
+            processingMode = record.task.processingMode,
+            displayName = record.task.displayName,
+            destinationPath = record.task.destinationPath,
+        )
+        if (
+            shouldOfferInternalPlayback(
+                status = record.status,
+                fileAvailable = true,
+                destinationUri = destination.toString(),
+                playbackType = playbackType,
+            )
+        ) {
+            activePlayerRecord = record
+            diagnosticLogger.log(
+                level = DiagnosticLevel.INFO,
+                type = "LOCAL_MEDIA_PLAYBACK_OPENED",
+                reason = "بدأ تشغيل ملف محلي",
+                operation = "main.local_media_player",
+                context = mapOf(
+                    "task_id" to record.task.id,
+                    "media_type" to playbackType!!.name,
+                ),
+                throwable = null,
+            )
+            return
+        }
 
         runCatching {
             startActivity(
@@ -441,6 +502,7 @@ private fun AHRoot(
         }.toMap()
     }
     var studioRecord by remember { mutableStateOf<DownloadRecord?>(null) }
+    var pendingBrowserUrl by remember { mutableStateOf<String?>(null) }
 
     val activeDownloads = history.count {
         it.status in setOf(
@@ -523,6 +585,21 @@ private fun AHRoot(
                 if (backStack.lastOrNull() != RootDestination.YouTubeSearch) root(RootDestination.YouTubeSearch)
             },
             onOpenBrowser = { push(RootDestination.Browser) },
+            onWatchSearchResult = { url ->
+                if (isTrustedYouTubePlaybackUrl(url)) {
+                    pendingBrowserUrl = url
+                    push(RootDestination.Browser)
+                } else {
+                    logger.log(
+                        DiagnosticLevel.WARNING,
+                        "YOUTUBE_WATCH_URL_REJECTED",
+                        "تم رفض عنوان مشاهدة غير موثوق",
+                        "main.youtube_watch",
+                        mapOf("url_rejected" to "true"),
+                        null,
+                    )
+                }
+            },
             onInitialUrlConsumed = onConsumeInitialUrl,
             uiTraceLogger = uiTraceLogger,
             activeDownloads = activeDownloads,
@@ -600,6 +677,8 @@ private fun AHRoot(
             onBack = ::popOrHome,
             onDownloadRequested = onDownloadRequested,
             onAudioOnlyRequested = onAudioOnlyRequested,
+            initialUrl = pendingBrowserUrl,
+            onInitialUrlConsumed = { pendingBrowserUrl = null },
         )
         RootDestination.BrowserErrors -> BrowserErrorLogRoute(
             store = browserErrorLogStore,

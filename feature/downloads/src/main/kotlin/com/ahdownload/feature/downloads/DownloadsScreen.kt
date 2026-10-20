@@ -112,6 +112,8 @@ import com.ahdownload.core.designsystem.AHBottomNavigationBar
 import com.ahdownload.core.designsystem.AHCard
 import com.ahdownload.core.designsystem.rememberUiTraceContext
 import com.ahdownload.domain.download.DownloadProcessingMode
+import com.ahdownload.domain.download.resolveLocalMediaPlaybackType
+import com.ahdownload.domain.download.shouldOfferInternalPlayback
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
@@ -1132,6 +1134,20 @@ private fun DownloadRecordCard(
     onToggleFavorite: () -> Unit,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val playbackType = remember(record.task) {
+        resolveLocalMediaPlaybackType(
+            mediaKind = record.task.mediaKind,
+            processingMode = record.task.processingMode,
+            displayName = record.task.displayName,
+            destinationPath = record.task.destinationPath,
+        )
+    }
+    val canPlayInternally = shouldOfferInternalPlayback(
+        status = record.status,
+        fileAvailable = fileAvailable,
+        destinationUri = record.destinationUri,
+        playbackType = playbackType,
+    )
     val rawProgress = record.totalBytes
         ?.takeIf { it > 0L }
         ?.let { (record.bytesDownloaded.toDouble() / it.toDouble()).toFloat().coerceIn(0f, 1f) }
@@ -1711,14 +1727,17 @@ private fun DownloadRecordCard(
                             DiagnosticButton(
                                 trackingScreen = "DOWNLOADS",
                                 trackingId = "DOWNLOADS.button.08",
-                                trackingLabel = "فتح",
+                                trackingLabel = if (canPlayInternally) "تشغيل داخلي" else "فتح",
                                 disabledReason = "callsite_precondition_not_explicit",
                                 modifier = Modifier.weight(1f),
                                 onClick = onOpenDownload,
                             ) {
-                                Icon(Icons.Rounded.OpenInNew, contentDescription = null)
+                                Icon(
+                                    if (canPlayInternally) Icons.Rounded.PlayArrow else Icons.Rounded.OpenInNew,
+                                    contentDescription = null,
+                                )
                                 Spacer(Modifier.size(5.dp))
-                                Text("فتح")
+                                Text(if (canPlayInternally) "تشغيل" else "فتح")
                             }
                             DiagnosticOutlinedButton(
                                 trackingScreen = "DOWNLOADS",

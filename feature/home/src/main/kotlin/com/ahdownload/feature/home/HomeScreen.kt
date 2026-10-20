@@ -143,6 +143,7 @@ fun HomeRoute(
     onNavigateHome: () -> Unit = {},
     onOpenYouTubeSearch: () -> Unit = {},
     onOpenBrowser: () -> Unit = {},
+    onWatchSearchResult: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val favorites by favoriteRepository.observe().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -201,6 +202,7 @@ fun HomeRoute(
         onNavigateHome = onNavigateHome,
         onOpenYouTubeSearch = onOpenYouTubeSearch,
         onOpenBrowser = onOpenBrowser,
+        onWatchSearchResult = onWatchSearchResult,
         uiTraceLogger = uiTraceLogger,
         activeDownloads = activeDownloads,
         favoriteItems = favorites,
@@ -262,6 +264,7 @@ private fun HomeScreen(
     currentFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     onFavoriteSelected: (FavoriteItem) -> Unit = {},
+    onWatchSearchResult: (String) -> Unit = {},
 ) {
     val mode = state.mode
     var showResultsScreen by remember { mutableStateOf(false) }
@@ -1083,6 +1086,15 @@ private fun HomeScreen(
                                 uiTraceLogger.interaction("HOME", "search_result_selection", "toggle")
                                 onSearchSelectionToggle(item.id)
                             },
+                            onWatch = {
+                                uiTraceLogger.interaction(
+                                    "HOME",
+                                    "search_result",
+                                    "watch_inside_browser",
+                                    mapOf("kind" to item.kind.name),
+                                )
+                                onWatchSearchResult(item.url)
+                            },
                             onClick = {
                                 if (item.kind == ContentSearchKind.CHANNEL) {
                                     uiTraceLogger.interaction("HOME", "search_result", "open_channel")
@@ -1378,6 +1390,7 @@ private fun SearchResultCard(
     canSelect: Boolean,
     selected: Boolean,
     onToggleSelection: () -> Unit,
+    onWatch: () -> Unit,
     onClick: () -> Unit,
 ) {
     val thumbnailShape = when (item.kind) {
@@ -1544,6 +1557,26 @@ private fun SearchResultCard(
                     contentDescription = "فتح القناة على YouTube",
                     tint = MaterialTheme.colorScheme.primary,
                 )
+            }
+        } 
+        if (item.kind != ContentSearchKind.CHANNEL) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(
+                    onClick = onWatch,
+                    modifier = Modifier.semantics {
+                        contentDescription = "مشاهدة داخل التطبيق"
+                    },
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                    Spacer(Modifier.size(4.dp))
+                    Text("مشاهدة داخل التطبيق")
+                }
             }
         }
     }
