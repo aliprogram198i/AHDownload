@@ -28,34 +28,30 @@ fun resolveLocalMediaPlaybackType(
     }
     if (mediaKind == MediaKind.Image) return null
 
-    when (mediaKind) {
-        MediaKind.Audio -> return LocalMediaPlaybackType.AUDIO
-        MediaKind.Video -> return LocalMediaPlaybackType.VIDEO
-        else -> Unit
-    }
-
     val extensions = sequenceOf(displayName, destinationPath)
         .filterNotNull()
         .mapNotNull(::fileExtension)
-        .toList()
-
-    if (extensions.any { it in KNOWN_NON_MEDIA_EXTENSIONS }) return null
-    val firstKnown = extensions.firstOrNull {
-        it in PLAYABLE_AUDIO_EXTENSIONS || it in PLAYABLE_VIDEO_EXTENSIONS
+    val firstRelevantExtension = extensions.firstOrNull {
+        it in PLAYABLE_AUDIO_EXTENSIONS ||
+            it in PLAYABLE_VIDEO_EXTENSIONS ||
+            it in KNOWN_NON_MEDIA_EXTENSIONS
     }
+
     when {
-        firstKnown != null && firstKnown in PLAYABLE_AUDIO_EXTENSIONS ->
+        firstRelevantExtension in PLAYABLE_AUDIO_EXTENSIONS ->
             return LocalMediaPlaybackType.AUDIO
-        firstKnown != null && firstKnown in PLAYABLE_VIDEO_EXTENSIONS ->
+        firstRelevantExtension in PLAYABLE_VIDEO_EXTENSIONS ->
             return LocalMediaPlaybackType.VIDEO
+        firstRelevantExtension in KNOWN_NON_MEDIA_EXTENSIONS -> return null
     }
 
+    // Preserve reliable persisted metadata only when the filename does not explicitly
+    // identify a known unsupported/non-media format.
     return when (mediaKind) {
         MediaKind.Audio -> LocalMediaPlaybackType.AUDIO
         MediaKind.Video -> LocalMediaPlaybackType.VIDEO
         else -> null
     }
-}
 
 /**
  * Prevents media playback from opening a remote URL or a partial/non-completed download.
