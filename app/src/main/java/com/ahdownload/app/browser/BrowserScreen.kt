@@ -76,6 +76,7 @@ import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.analyzer.LinkAnalyzer
 import com.ahdownload.domain.download.AudioOutputFormat
+import com.ahdownload.domain.download.isTrustedYouTubePlaybackUrl
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.resolver.MediaCandidate
@@ -101,6 +102,8 @@ fun BrowserRoute(
     onBack: () -> Unit,
     onDownloadRequested: suspend (MediaCandidate, String?, String?, String?) -> DownloadEnqueueResult,
     onAudioOnlyRequested: suspend (MediaCandidate, AudioOutputFormat, String?, String?, String?) -> DownloadEnqueueResult,
+    initialUrl: String? = null,
+    onInitialUrlConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -409,7 +412,7 @@ fun BrowserRoute(
         }
     }
 
-    fun loadAddress() {
+    fun loadAddress(source: String = "address_bar") {
         if (address.isBlank()) {
             inspectMessage = "أدخل عنوان موقع أو عبارة بحث أولًا."
             return
@@ -424,7 +427,7 @@ fun BrowserRoute(
         navigationManuallyStopped = false
         keyboardController?.hide()
         invalidateInspectionForNavigation()
-        nextNavigationSource = "address_bar"
+        nextNavigationSource = source
         // Persist the requested destination before touching WebView. The AndroidView
         // factory may not have assigned webView yet; in that case the factory must
         // still receive this URL instead of silently losing the user's navigation.
@@ -473,6 +476,24 @@ fun BrowserRoute(
             runCatching { view.stopLoading() }
             view.loadUrl("about:blank")
         }
+    }
+
+    LaunchedEffect(initialUrl) {
+        val requestedUrl = initialUrl?.trim()?.takeIf { it.isNotBlank() }
+            ?: return@LaunchedEffect
+        if (!isTrustedYouTubePlaybackUrl(requestedUrl)) {
+            onInitialUrlConsumed()
+            recordError(
+                "BLOCKED_INITIAL_URL",
+                "تم رفض عنوان مشاهدة غير موثوق",
+                "navigation",
+                null,
+            )
+            return@LaunchedEffect
+        }
+        address = requestedUrl
+        loadAddress(source = "youtube_search")
+        onInitialUrlConsumed()
     }
 
     BackHandler {
