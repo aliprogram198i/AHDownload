@@ -23,9 +23,6 @@ fun resolveLocalMediaPlaybackType(
     displayName: String?,
     destinationPath: String?,
 ): LocalMediaPlaybackType? {
-    if (processingMode == DownloadProcessingMode.ExtractAudio) {
-        return LocalMediaPlaybackType.AUDIO
-    }
     if (mediaKind == MediaKind.Image) return null
 
     val extensions = sequenceOf(displayName, destinationPath)
@@ -37,13 +34,20 @@ fun resolveLocalMediaPlaybackType(
             it in KNOWN_NON_MEDIA_EXTENSIONS
     }
 
+    // Do not infer playback merely from the original source kind when the final output
+    // is explicitly named as an unsupported or non-media format.
+    if (firstRelevantExtension != null && firstRelevantExtension in KNOWN_NON_MEDIA_EXTENSIONS) {
+        return null
+    }
+    if (processingMode == DownloadProcessingMode.ExtractAudio) {
+        return LocalMediaPlaybackType.AUDIO
+    }
+
     when {
         firstRelevantExtension != null && firstRelevantExtension in PLAYABLE_AUDIO_EXTENSIONS ->
             return LocalMediaPlaybackType.AUDIO
         firstRelevantExtension != null && firstRelevantExtension in PLAYABLE_VIDEO_EXTENSIONS ->
             return LocalMediaPlaybackType.VIDEO
-        firstRelevantExtension != null && firstRelevantExtension in KNOWN_NON_MEDIA_EXTENSIONS ->
-            return null
     }
 
     // Preserve reliable persisted metadata only when the filename does not explicitly
