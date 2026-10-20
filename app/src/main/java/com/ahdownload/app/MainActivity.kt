@@ -94,7 +94,6 @@ class MainActivity : ComponentActivity() {
         }
 
     private var pendingSharedUrl by mutableStateOf<String?>(null)
-    private var pendingBrowserUrl by mutableStateOf<String?>(null)
     private var activePlayerRecord by mutableStateOf<DownloadRecord?>(null)
     private var openDownloadsOnStart by mutableStateOf(false)
 
@@ -503,6 +502,7 @@ private fun AHRoot(
         }.toMap()
     }
     var studioRecord by remember { mutableStateOf<DownloadRecord?>(null) }
+    var pendingBrowserUrl by remember { mutableStateOf<String?>(null) }
 
     val activeDownloads = history.count {
         it.status in setOf(
