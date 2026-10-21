@@ -7,6 +7,7 @@ import com.ahdownload.domain.download.AudioOutputFormat
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.domain.download.DownloadTask
+import com.ahdownload.domain.download.DownloadUrlPolicy
 import com.ahdownload.domain.resolver.MediaCandidate
 import java.io.File
 import java.security.MessageDigest
@@ -26,6 +27,16 @@ class DownloadLauncher(
         sourcePageUrl: String? = null,
         thumbnailUrl: String? = null,
     ): DownloadEnqueueResult {
+        // Validate transfer sources before creating directories or queueing work.
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(candidate.sourceUrl)) {
+            return DownloadEnqueueResult.REJECTED
+        }
+        if (
+            !candidate.companionAudioSourceUrl.isNullOrBlank() &&
+            !DownloadUrlPolicy.isSecureHttpsUrl(candidate.companionAudioSourceUrl)
+        ) {
+            return DownloadEnqueueResult.REJECTED
+        }
         if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) {
             return DownloadEnqueueResult.INVALID_CUSTOM_LOCATION
         }
@@ -104,6 +115,9 @@ class DownloadLauncher(
         sourcePageUrl: String? = null,
         thumbnailUrl: String? = null,
     ): DownloadEnqueueResult {
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(candidate.sourceUrl)) {
+            return DownloadEnqueueResult.REJECTED
+        }
         if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) {
             return DownloadEnqueueResult.INVALID_CUSTOM_LOCATION
         }
