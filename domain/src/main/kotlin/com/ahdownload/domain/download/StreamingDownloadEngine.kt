@@ -9,6 +9,7 @@ class StreamingDownloadEngine(
     private val source: DownloadByteStream,
     private val sink: AtomicFileSink,
     private val bufferSize: Int = DEFAULT_BUFFER_SIZE,
+    private val onStorageFailure: (stage: String, error: Throwable) -> Unit = { _, _ -> },
 ) : DownloadEngine {
 
     init {
@@ -27,7 +28,8 @@ class StreamingDownloadEngine(
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            reportStorageFailure("inspect_partial", error)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         }
@@ -50,7 +52,8 @@ class StreamingDownloadEngine(
             true
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            reportStorageFailure("discard_partial", error)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             false
         }
@@ -135,8 +138,9 @@ class StreamingDownloadEngine(
             response.body.close()
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
             response.body.close()
+            reportStorageFailure("open_temporary", error)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         }
@@ -182,8 +186,8 @@ class StreamingDownloadEngine(
 
                             try {
                                 target.write(buffer, 0, read)
-                            } catch (_: IOException) {
-                                throw StorageWriteException()
+                            } catch (error: IOException) {
+                                throw StorageWriteException(error)
                             }
 
                             downloaded += read
@@ -216,18 +220,21 @@ class StreamingDownloadEngine(
         } catch (_: NetworkReadException) {
             onState(DownloadState.Failed(DownloadFailure.NetworkError))
             return
-        } catch (_: StorageWriteException) {
+        } catch (error: StorageWriteException) {
+            reportStorageFailure("write", error.cause ?: error)
             discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
-        } catch (_: IOException) {
+        } catch (error: IOException) {
+            reportStorageFailure("flush_or_close", error)
             discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            reportStorageFailure("stream_output", error)
             discardPartialBestEffort(task, onState)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
             return
@@ -238,7 +245,8 @@ class StreamingDownloadEngine(
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            reportStorageFailure("verify_temporary_size", error)
             0L
         }
         if (completedTempBytes <= 0L) {
@@ -253,9 +261,15 @@ class StreamingDownloadEngine(
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            reportStorageFailure("commit", error)
             onState(DownloadState.Failed(DownloadFailure.StorageError))
         }
+    }
+
+    private fun reportStorageFailure(stage: String, error: Throwable) {
+        // Diagnostic failures must never turn a recoverable transfer error into a worker crash.
+        runCatching { onStorageFailure(stage, error) }
     }
 
     private suspend fun discardPartialBestEffort(
@@ -267,8 +281,9 @@ class StreamingDownloadEngine(
         } catch (cancelled: CancellationException) {
             onState(DownloadState.Cancelled)
             throw cancelled
-        } catch (_: Throwable) {
-            // Preserve the primary failure reason; cleanup issues are surfaced in task diagnostics.
+        } catch (error: Throwable) {
+            reportStorageFailure("discard_partial", error)
+            // Preserve the primary failure reason; the diagnostic records the cleanup issue.
         }
     }
 
@@ -294,7 +309,7 @@ class StreamingDownloadEngine(
     ) : IOException()
     private class InvalidRangeBodyException : IOException()
     private class NetworkReadException : IOException()
-    private class StorageWriteException : IOException()
+    private class StorageWriteException(cause: Throwable) : IOException(cause)
 
     private companion object {
         const val DEFAULT_BUFFER_SIZE = 64 * 1024
