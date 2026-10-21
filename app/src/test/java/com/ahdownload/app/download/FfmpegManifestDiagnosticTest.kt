@@ -7,8 +7,8 @@ import org.junit.Test
 
 class FfmpegManifestDiagnosticTest {
     @Test
-    fun rejectsCleartextManifestBeforeCreatingOutputOrStartingFfmpeg() = kotlinx.coroutines.test.runTest {
-        val directory = createTempDir(prefix = "ahdownload-cleartext-manifest-")
+    fun rejectsCleartextManifestBeforeCreatingOutputOrStartingFfmpeg() = kotlinx.coroutines.runBlocking {
+        val directory = java.nio.file.Files.createTempDirectory("ahdownload-cleartext-manifest-").toFile()
         try {
             val output = java.io.File(directory, "output.mkv")
             val result = FfmpegManifestDownloader().download(
