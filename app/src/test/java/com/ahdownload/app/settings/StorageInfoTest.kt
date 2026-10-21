@@ -29,6 +29,44 @@ class StorageInfoTest {
     }
 
     @Test
+    fun blocksWhenKnownTransferAndSafetyReserveExceedAvailableSpace() {
+        val expectedBytes = 150L * 1024L * 1024L
+        val freeBytes = 200L * 1024L * 1024L
+
+        assertEquals(
+            DownloadStorageReadiness.INSUFFICIENT_SPACE,
+            DownloadStoragePolicy.assess(freeBytes, expectedBytes),
+        )
+        assertEquals(
+            expectedBytes + DownloadStoragePolicy.MINIMUM_FREE_BYTES,
+            DownloadStoragePolicy.requiredFreeBytes(expectedBytes),
+        )
+    }
+
+    @Test
+    fun warnsButDoesNotBlockWhenKnownSmallTransferFitsWithReserve() {
+        val expectedBytes = 1L * 1024L * 1024L
+        val freeBytes = 128L * 1024L * 1024L
+
+        assertEquals(
+            DownloadStorageReadiness.LOW_SPACE_WARNING,
+            DownloadStoragePolicy.assess(freeBytes, expectedBytes),
+        )
+    }
+
+    @Test
+    fun saturatesRequiredSpaceInsteadOfOverflowingForExtremeSizes() {
+        assertEquals(
+            Long.MAX_VALUE,
+            DownloadStoragePolicy.requiredFreeBytes(Long.MAX_VALUE),
+        )
+        assertEquals(
+            DownloadStorageReadiness.INSUFFICIENT_SPACE,
+            DownloadStoragePolicy.assess(Long.MAX_VALUE - 1L, Long.MAX_VALUE),
+        )
+    }
+
+    @Test
     fun treatsNegativeStorageReadingsAsInsufficient() {
         assertEquals(
             DownloadStorageReadiness.INSUFFICIENT_SPACE,
