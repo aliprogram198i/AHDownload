@@ -31,10 +31,8 @@ class DownloadLauncher(
         if (!DownloadUrlPolicy.isSecureHttpsUrl(candidate.sourceUrl)) {
             return DownloadEnqueueResult.REJECTED
         }
-        if (
-            !candidate.companionAudioSourceUrl.isNullOrBlank() &&
-            !DownloadUrlPolicy.isSecureHttpsUrl(candidate.companionAudioSourceUrl)
-        ) {
+        val companionAudioUrl = candidate.companionAudioSourceUrl
+        if (!companionAudioUrl.isNullOrBlank() && !DownloadUrlPolicy.isSecureHttpsUrl(companionAudioUrl)) {
             return DownloadEnqueueResult.REJECTED
         }
         if (locationStore.persistedUri() != null && !locationStore.hasAccessibleCustomLocation()) {

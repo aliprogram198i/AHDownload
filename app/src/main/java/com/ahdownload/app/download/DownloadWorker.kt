@@ -1558,7 +1558,7 @@ class DownloadWorker(
 
     private suspend fun shouldRefreshYouTubeTask(
         task: DownloadTask,
-        repository: com.ahdownload.app.download.FileDownloadRepository,
+        repository: com.ahdownload.domain.download.DownloadRepository,
     ): Boolean {
         if (!isYouTubeTask(task)) return false
 
