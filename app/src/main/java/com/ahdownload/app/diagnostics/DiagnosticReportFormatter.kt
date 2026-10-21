@@ -100,7 +100,12 @@ object DiagnosticReportFormatter {
                     "AUTHENTICATION_REQUIRED"
                 anchor.type == "AUDIO_EXTRACTION_FAILED" -> "AUDIO_EXTRACTION_FAILED"
                 anchor.type == "YOUTUBE_SEARCH_FAILED" -> youtubeSearchRootCause(scopedEvents, anchor)
-                anchor.type == "DOWNLOAD_DESTINATION_COPY_FAILED" -> "STORAGE_ERROR"
+                anchor.type == "DOWNLOAD_DESTINATION_COPY_FAILED" ||
+                    anchor.type == "DOWNLOAD_STORAGE_IO_FAILED" ||
+                    anchor.type == "DOWNLOAD_LOW_STORAGE_BLOCKED" ||
+                    anchor.reason.equals("storage_error", ignoreCase = true) ||
+                    anchor.context["failure_code"].equals("storage_error", ignoreCase = true) ->
+                    "STORAGE_ERROR"
                 anchor.type == "MEDIASTORE_PUBLISH_FAILED" -> "STORAGE_ERROR"
                 anchor.context["failure_code"] == "ResolverUnavailable" &&
                     networkFailureCategory(scopedEvents) != null -> networkFailureCategory(scopedEvents)!!
@@ -467,6 +472,7 @@ object DiagnosticReportFormatter {
     private fun isRequestEvent(event: DiagnosticLog): Boolean =
         event.type == "MEDIA_PROBE_ATTEMPT" ||
             event.type == "HTTP_REQUEST" ||
+            event.type == "DOWNLOAD_HTTP_RESPONSE" ||
             (event.type.endsWith("_REQUEST") &&
                 event.type != "MEDIA_VALIDATION_PROBE_RESULT" &&
                 event.type != "YOUTUBE_CANDIDATE_REFRESH_RESULT")
