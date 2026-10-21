@@ -11,6 +11,7 @@
     <application
         android:name=".AHDownloadApplication"
         android:allowBackup="false"
+        <!-- Needed for explicit HTTP navigation in the embedded browser; media downloads enforce HTTPS independently. -->
         android:usesCleartextTraffic="true"
         android:label="AHDownload"
         android:icon="@mipmap/ic_ahdownload"

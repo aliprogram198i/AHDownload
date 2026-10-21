@@ -23,6 +23,13 @@ class StreamingDownloadEngine(
         onState(DownloadState.Queued)
         onState(DownloadState.Preparing)
 
+        // Transfers are HTTPS-only even when the embedded browser can open HTTP pages.
+        // Reject the source before inspecting or creating partial files.
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(task.sourceUrl)) {
+            onState(DownloadState.Failed(DownloadFailure.InvalidResponse))
+            return
+        }
+
         var partialBytes = try {
             sink.temporarySize(task.destinationPath, task.id).coerceAtLeast(0L)
         } catch (cancelled: CancellationException) {

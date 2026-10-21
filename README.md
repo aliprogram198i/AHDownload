@@ -33,5 +33,5 @@ Legacy resolver code, embedded Python, old storage logic, and previous UI are in
 
 - The app minimum OS level is Android 7.0 (API 24). OS version support and CPU ABI support are separate requirements.
 - The currently pinned custom FFmpeg Full + HTTPS runtime is built with `armeabi-v7a`, `armeabi-v7a-neon`, and `x86` disabled. Native FFmpeg processing is therefore intended for `arm64-v8a` and `x86_64`; 32-bit-only devices need a separately built and tested runtime before they can be advertised as fully supported.
-- URL inputs and media candidates must use HTTPS. Scheme-less input is normalized to HTTPS; explicit HTTP links and downgrade targets are rejected rather than enabling global cleartext traffic.
+- Media downloads accept HTTPS sources only, and the downloader refuses HTTPS-to-HTTP redirect downgrades. Scheme-less media links are normalized to HTTPS. The in-app browser has a separate HTTP-navigation path; permitting HTTP page navigation does not permit cleartext media transfers.
 - App backup is disabled so local download records, preferences, favorites, and diagnostic data are not automatically included in Android backup.
