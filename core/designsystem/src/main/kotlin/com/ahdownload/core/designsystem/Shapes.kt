@@ -5,14 +5,12 @@ import androidx.compose.material3.Shapes
 import androidx.compose.ui.unit.dp
 
 /**
- * Shared AHDownload geometry.
- *
- * Small controls stay compact while content surfaces use a softer 16–24dp
- * radius. The hierarchy is intentionally restrained so the app does not feel
- * like a stack of unrelated floating cards.
+ * Shared Crystal Blue geometry.
+ * Compact controls and slightly softened content surfaces keep dense media
+ * screens clear without making every element look like a floating card.
  */
 val AHShapes = Shapes(
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(22.dp),
 )
