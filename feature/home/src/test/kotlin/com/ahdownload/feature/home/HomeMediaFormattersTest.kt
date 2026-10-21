@@ -1,9 +1,9 @@
 package com.ahdownload.feature.home
 
 import com.ahdownload.domain.model.MediaKind
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import org.junit.Test
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 
 class HomeMediaFormattersTest {
     @Test
