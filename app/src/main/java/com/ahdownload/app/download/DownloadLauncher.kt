@@ -38,7 +38,7 @@ class DownloadLauncher(
         }
 
         val extension = extensionFor(candidate)
-        val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
+        val baseName = DownloadFileNamePolicy.safeBaseName(title, "AHDownload-${candidate.id}")
         val fingerprint = fingerprint(candidate)
         if (repository.findByContentFingerprint(fingerprint) != null) {
             return DownloadEnqueueResult.DUPLICATE
@@ -115,7 +115,7 @@ class DownloadLauncher(
             return DownloadEnqueueResult.STORAGE_UNAVAILABLE
         }
 
-        val baseName = sanitize(title).ifBlank { "AHDownload-" + candidate.id }
+        val baseName = DownloadFileNamePolicy.safeBaseName(title, "AHDownload-${candidate.id}")
         val fingerprint = fingerprint(candidate, DownloadProcessingMode.ExtractAudio, outputFormat)
         if (repository.findByContentFingerprint(fingerprint) != null) {
             return DownloadEnqueueResult.DUPLICATE
@@ -196,12 +196,6 @@ class DownloadLauncher(
             index++
         }
     }
-
-    private fun sanitize(value: String?): String =
-        value.orEmpty()
-            .replace(Regex("""[\\/:*?"<>|\r\n]+"""), " ")
-            .trim()
-            .take(120)
 
     private fun extensionFor(candidate: MediaCandidate): String =
         if (candidate.streamingManifest) {
