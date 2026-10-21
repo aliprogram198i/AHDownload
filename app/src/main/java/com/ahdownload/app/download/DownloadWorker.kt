@@ -129,7 +129,9 @@ class DownloadWorker(
         } else {
             "APP_DEFAULT"
         }
-        val storageInfo = runCatching { StorageInfoReader.read(applicationContext) }.getOrNull()
+        val storageInfo = runCatching {
+            StorageInfoReader.read(applicationContext, task.destinationPath)
+        }.getOrNull()
         if (storageInfo == null) {
             diagnostics.log(
                 DiagnosticLevel.WARNING,
