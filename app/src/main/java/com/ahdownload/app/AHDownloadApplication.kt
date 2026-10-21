@@ -6,6 +6,7 @@ import com.ahdownload.app.diagnostics.PersistentDiagnosticLogger
 import com.ahdownload.app.diagnostics.PersistentUiTraceLogger
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.app.download.DownloadWorkScheduler
+import com.ahdownload.app.download.RoomDownloadRepository
 import com.ahdownload.app.download.FileDownloadRepository
 import com.ahdownload.app.performance.PerformanceLogStore
 import com.ahdownload.app.browser.BrowserErrorLogStore
