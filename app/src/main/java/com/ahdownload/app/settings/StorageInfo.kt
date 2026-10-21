@@ -51,10 +51,19 @@ object DownloadStoragePolicy {
 }
 
 object StorageInfoReader {
-    fun read(context: Context): StorageInfo {
-        val path = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.absolutePath
-            ?: context.filesDir.absolutePath
-        val stat = StatFs(path)
+    /**
+     * Measures the volume containing the actual staging path when supplied. The no-path
+     * overload remains compatible with settings UI callers.
+     */
+    fun read(context: Context, stagingFilePath: String? = null): StorageInfo {
+        val stagingDirectory = stagingFilePath
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it).absoluteFile.parentFile }
+            ?.takeIf { it.exists() && it.isDirectory }
+        val path = stagingDirectory
+            ?: context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: context.filesDir
+        val stat = StatFs(path.absolutePath)
         return StorageInfo(
             totalBytes = stat.blockCountLong.coerceAtLeast(0L) * stat.blockSizeLong.coerceAtLeast(0L),
             freeBytes = stat.availableBlocksLong.coerceAtLeast(0L) * stat.blockSizeLong.coerceAtLeast(0L),
