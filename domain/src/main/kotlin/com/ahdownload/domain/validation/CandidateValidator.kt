@@ -3,6 +3,7 @@ package com.ahdownload.domain.validation
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
 import com.ahdownload.domain.model.MediaKind
+import com.ahdownload.domain.download.DownloadUrlPolicy
 import com.ahdownload.domain.resolver.MediaCandidate
 
 class CandidateValidator(
@@ -36,7 +37,7 @@ class CandidateValidator(
         }
 
         val url = candidate.sourceUrl.trim()
-        if (!isHttpsUrl(url)) {
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(url)) {
             return reject(ValidationFailure.InvalidUrl)
         }
 
@@ -90,7 +91,7 @@ class CandidateValidator(
             null,
         )
 
-        if (!isHttpsUrl(probeResult.finalUrl)) {
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(probeResult.finalUrl)) {
             return reject(ValidationFailure.InvalidUrl)
         }
 
@@ -186,11 +187,6 @@ class CandidateValidator(
         is ValidationFailure.HttpStatus -> "HTTP_${failure.code}"
         ValidationFailure.HtmlResponse -> "HTML_RESPONSE"
         ValidationFailure.ContentTypeMismatch -> "CONTENT_TYPE_MISMATCH"
-    }
-
-    private fun isHttpsUrl(value: String): Boolean {
-        val uri = runCatching { java.net.URI(value.trim()) }.getOrNull() ?: return false
-        return uri.scheme.equals("https", ignoreCase = true) && !uri.host.isNullOrBlank()
     }
 
     private fun isSnapchatMediaCdn(url: String): Boolean {

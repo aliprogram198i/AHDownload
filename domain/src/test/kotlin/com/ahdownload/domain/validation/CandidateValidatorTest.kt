@@ -267,6 +267,34 @@ class CandidateValidatorTest {
     }
 
     @Test
+    fun rejectsHttpsUrlWithEmbeddedCredentialsBeforeProbe() = kotlinx.coroutines.test.runTest {
+        var called = false
+        val probe = object : MediaProbe {
+            override suspend fun probe(
+                url: String,
+                headers: Map<String, String>,
+                operationId: String?,
+                sourceContext: MediaSourceContext,
+            ): MediaProbeResult {
+                called = true
+                error("probe must not be called for embedded URL credentials")
+            }
+        }
+
+        val result = CandidateValidator(probe).validate(
+            candidate(MediaKind.Video).copy(
+                sourceUrl = "https://user:password@cdn.example/video.mp4",
+            ),
+        )
+
+        assertEquals(
+            ValidationFailure.InvalidUrl,
+            assertIs<CandidateValidationResult.Invalid>(result).failure,
+        )
+        assertEquals(false, called)
+    }
+
+    @Test
     fun rejectsCleartextHttpBeforeProbe() = kotlinx.coroutines.test.runTest {
         var called = false
         val probe = object : MediaProbe {
