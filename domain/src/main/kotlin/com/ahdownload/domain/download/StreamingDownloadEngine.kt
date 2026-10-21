@@ -247,7 +247,8 @@ class StreamingDownloadEngine(
             throw cancelled
         } catch (error: Throwable) {
             reportStorageFailure("verify_temporary_size", error)
-            0L
+            onState(DownloadState.Failed(DownloadFailure.StorageError))
+            return
         }
         if (completedTempBytes <= 0L) {
             discardPartialBestEffort(task, onState)
