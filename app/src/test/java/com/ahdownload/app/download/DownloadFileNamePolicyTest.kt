@@ -20,8 +20,10 @@ class DownloadFileNamePolicyTest {
         val name = DownloadFileNamePolicy.safeBaseName("😀".repeat(80), "fallback")
 
         assertTrue(name.toByteArray(Charsets.UTF_8).size <= DownloadFileNamePolicy.MAX_BASE_NAME_BYTES)
-        assertTrue(name.all { it == '😀'[0] || it == '😀'[1] })
         assertEquals(0, name.length % 2)
+        for (index in name.indices step 2) {
+            assertEquals("😀", name.substring(index, index + 2))
+        }
     }
 
     @Test
@@ -31,7 +33,7 @@ class DownloadFileNamePolicyTest {
         val normalized = DownloadFileNamePolicy.normalizeDestinationPath(original, "task-abc123")
 
         assertNotEquals(original, normalized)
-        assertEquals(".mp4", "." + File(normalized).extension)
+        assertEquals("mp4", File(normalized).extension)
         assertTrue(File(normalized).name.toByteArray(Charsets.UTF_8).size <= 160)
         assertEquals(
             normalized,
