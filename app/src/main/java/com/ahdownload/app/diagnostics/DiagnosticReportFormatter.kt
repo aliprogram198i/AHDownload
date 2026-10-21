@@ -104,7 +104,7 @@ object DiagnosticReportFormatter {
                     anchor.type == "DOWNLOAD_STORAGE_IO_FAILED" ||
                     anchor.type == "DOWNLOAD_LOW_STORAGE_BLOCKED" ||
                     anchor.reason.equals("storage_error", ignoreCase = true) ||
-                    anchor.context["failure_code"].equals("storage_error", ignoreCase = true) ->
+                    anchor.context["failure_code"]?.equals("storage_error", ignoreCase = true) == true ->
                     "STORAGE_ERROR"
                 anchor.type == "MEDIASTORE_PUBLISH_FAILED" -> "STORAGE_ERROR"
                 anchor.context["failure_code"] == "ResolverUnavailable" &&
