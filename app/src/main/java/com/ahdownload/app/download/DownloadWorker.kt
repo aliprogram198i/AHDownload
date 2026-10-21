@@ -62,15 +62,32 @@ class DownloadWorker(
     private var lowStorageWarningForTask = false
 
     override suspend fun doWork(): Result {
-        val inputTask = readTask() ?: return Result.failure()
-        val audioExtractionRequested = inputTask.processingMode == DownloadProcessingMode.ExtractAudio
-        val muxRequested = inputTask.processingMode == DownloadProcessingMode.MuxVideoAudio &&
-            !inputTask.companionAudioSourceUrl.isNullOrBlank()
+        val decodedTask = readTask() ?: return Result.failure()
+        val audioExtractionRequested = decodedTask.processingMode == DownloadProcessingMode.ExtractAudio
+        val muxRequested = decodedTask.processingMode == DownloadProcessingMode.MuxVideoAudio &&
+            !decodedTask.companionAudioSourceUrl.isNullOrBlank()
 
-        val extractionSuffix = ".source." + inputTask.id.take(8) +
-            if (inputTask.streamingManifest) ".mkv" else ""
+        val extractionSuffix = ".source." + decodedTask.id.take(8) +
+            if (decodedTask.streamingManifest) ".mkv" else ""
         val extractionAlreadyStaged =
-            audioExtractionRequested && inputTask.destinationPath.endsWith(extractionSuffix)
+            audioExtractionRequested && decodedTask.destinationPath.endsWith(extractionSuffix)
+        val originalFinalDestinationPath = if (extractionAlreadyStaged) {
+            decodedTask.destinationPath.removeSuffix(extractionSuffix)
+        } else {
+            decodedTask.destinationPath
+        }
+        val safeFinalDestinationPath = DownloadFileNamePolicy.normalizeDestinationPath(
+            originalFinalDestinationPath,
+            decodedTask.id,
+        )
+        val destinationPathNormalized = safeFinalDestinationPath != originalFinalDestinationPath
+        val inputTask = decodedTask.copy(
+            destinationPath = if (extractionAlreadyStaged) {
+                safeFinalDestinationPath + extractionSuffix
+            } else {
+                safeFinalDestinationPath
+            },
+        )
 
         var task = if (extractionAlreadyStaged) {
             inputTask.copy(destinationPath = inputTask.destinationPath.removeSuffix(extractionSuffix))
@@ -119,6 +136,23 @@ class DownloadWorker(
         val application = applicationContext as com.ahdownload.app.AHDownloadApplication
         val repository = application.downloadRepository
         val diagnostics = DownloadScopedDiagnosticLogger(diagnosticsLogger(), task.id)
+        if (destinationPathNormalized) {
+            diagnostics.log(
+                DiagnosticLevel.WARNING,
+                "DOWNLOAD_DESTINATION_NAME_NORMALIZED",
+                "تم تقصير اسم ملف قديم ليتوافق مع حدود نظام الملفات قبل إعادة التنزيل.",
+                "download.storage.filename",
+                mapOf(
+                    "task_id" to task.id,
+                    "original_name_bytes" to java.io.File(originalFinalDestinationPath)
+                        .name.toByteArray(Charsets.UTF_8).size.toString(),
+                    "normalized_name_bytes" to java.io.File(safeFinalDestinationPath)
+                        .name.toByteArray(Charsets.UTF_8).size.toString(),
+                    "staging_location" to "APP_LOCAL_EXTERNAL",
+                ),
+                null,
+            )
+        }
         var refreshAttempted = false
 
         // DownloadLauncher stages bytes in app-specific external storage first, then
