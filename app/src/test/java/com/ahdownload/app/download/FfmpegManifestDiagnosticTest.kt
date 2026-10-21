@@ -1,10 +1,31 @@
 package com.ahdownload.app.download
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FfmpegManifestDiagnosticTest {
+    @Test
+    fun rejectsCleartextManifestBeforeCreatingOutputOrStartingFfmpeg() = kotlinx.coroutines.test.runTest {
+        val directory = createTempDir(prefix = "ahdownload-cleartext-manifest-")
+        try {
+            val output = java.io.File(directory, "output.mkv")
+            val result = FfmpegManifestDownloader().download(
+                sourceUrl = "http://cdn.example/playlist.m3u8",
+                outputFile = output,
+            )
+
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull() is IllegalArgumentException)
+            assertFalse(output.exists())
+            assertNotNull(directory.list())
+            assertTrue(directory.list().isNullOrEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test
     fun redactsSignedUrlsCookiesAndAuthorizationValues() {
         val output = sanitizeFfmpegDiagnostic(

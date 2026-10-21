@@ -2,6 +2,7 @@ package com.ahdownload.app.download
 
 import com.arthenica.ffmpegkit.FFmpegKit
 import com.arthenica.ffmpegkit.ReturnCode
+import com.ahdownload.domain.download.DownloadUrlPolicy
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
@@ -61,9 +62,9 @@ class FfmpegManifestDownloader {
     ): Result<File> = withContext(Dispatchers.IO) {
         coroutineContext.ensureActive()
 
-        if (!sourceUrl.startsWith("http://") && !sourceUrl.startsWith("https://")) {
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(sourceUrl)) {
             return@withContext Result.failure(
-                IllegalArgumentException("Invalid streaming manifest URL"),
+                IllegalArgumentException("Streaming manifest must use a valid HTTPS URL"),
             )
         }
 
@@ -112,7 +113,10 @@ class FfmpegManifestDownloader {
         if (headerBlock.isNotBlank()) {
             base += listOf("-headers", headerBlock)
         }
+        // A media manifest may reference nested playlists, segments or redirects.
+        // Permit HTTPS and its required lower-level transports, but never cleartext HTTP.
         base += listOf(
+            "-protocol_whitelist", "https,tls,tcp,crypto,data",
             "-i", sourceUrl,
             "-map", "0:v:0?",
             "-map", "0:a:0?",
