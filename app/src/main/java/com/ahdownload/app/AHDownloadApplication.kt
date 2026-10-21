@@ -23,8 +23,8 @@ class AHDownloadApplication : Application() {
         PersistentDiagnosticLogger(this, uiTraceLogger, diagnosticEventStore)
     }
 
-    val downloadRepository: FileDownloadRepository by lazy {
-        FileDownloadRepository(this)
+    val downloadRepository: RoomDownloadRepository by lazy {
+        RoomDownloadRepository(this)
     }
 
     val performanceLogStore: PerformanceLogStore by lazy {

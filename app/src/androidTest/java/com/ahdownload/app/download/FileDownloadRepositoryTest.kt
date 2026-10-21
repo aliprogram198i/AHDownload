@@ -10,6 +10,7 @@ import com.ahdownload.domain.download.DownloadTask
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import java.io.File
 import org.junit.After
@@ -21,24 +22,32 @@ class FileDownloadRepositoryTest {
 
     @Before
     fun setUp() {
+        DownloadHistoryDatabase.closeForTests()
         context = ApplicationProvider.getApplicationContext()
+        context.deleteDatabase(DownloadHistoryDatabase.DATABASE_NAME)
+        context.getSharedPreferences("ahdownload_download_history_migration", Context.MODE_PRIVATE)
+            .edit().clear().commit()
         context.deleteFileStore()
         context.deleteTestTemporaryFiles()
     }
 
     @After
     fun tearDown() {
+        DownloadHistoryDatabase.closeForTests()
         context.deleteTestTemporaryFiles()
         context.deleteFileStore()
+        context.deleteDatabase(DownloadHistoryDatabase.DATABASE_NAME)
+        context.getSharedPreferences("ahdownload_download_history_migration", Context.MODE_PRIVATE)
+            .edit().clear().commit()
     }
 
     @Test
     fun persistsRecordsAcrossRepositoryInstances() = runTest {
         val task = task()
-        val first = FileDownloadRepository(context)
+        val first = RoomDownloadRepository(context)
         first.upsert(DownloadRecordMapper.queued(task, 1000))
 
-        val second = FileDownloadRepository(context)
+        val second = RoomDownloadRepository(context)
         val restored = second.get(task.id)
 
         requireNotNull(restored)
@@ -49,7 +58,7 @@ class FileDownloadRepositoryTest {
     @Test
     fun exposesLatestHistoryImmediatelyAfterPersist() = runTest {
         val task = task()
-        val repository = FileDownloadRepository(context)
+        val repository = RoomDownloadRepository(context)
         val record = DownloadRecordMapper.queued(task, 1000)
 
         repository.upsert(record)
@@ -61,9 +70,25 @@ class FileDownloadRepositoryTest {
     }
 
     @Test
+    fun importsLegacyAtomicJsonHistoryIntoRoomWithoutLosingTaskFields() = runTest {
+        val record = DownloadRecordMapper.queued(task("legacy-record"), 1000)
+        val legacyFile = File(context.filesDir, "downloads/downloads.json")
+        legacyFile.parentFile?.mkdirs()
+        legacyFile.writeText(DownloadRecordJsonCodec().encode(listOf(record)))
+
+        val repository = RoomDownloadRepository(context)
+        assertEquals(record, repository.get(record.task.id))
+        assertFalse(legacyFile.exists())
+
+        DownloadHistoryDatabase.closeForTests()
+        val restarted = RoomDownloadRepository(context)
+        assertEquals(record, restarted.get(record.task.id))
+    }
+
+    @Test
     fun repositoryInstancesShareLiveHistoryUpdates() = runTest {
-        val observer = FileDownloadRepository(context)
-        val writer = FileDownloadRepository(context)
+        val observer = RoomDownloadRepository(context)
+        val writer = RoomDownloadRepository(context)
         val record = DownloadRecordMapper.queued(task(), 1000)
 
         writer.upsert(record)
@@ -79,7 +104,7 @@ class FileDownloadRepositoryTest {
             parentFile?.mkdirs()
             writeBytes(ByteArray(512))
         }
-        val repository = FileDownloadRepository(context)
+        val repository = RoomDownloadRepository(context)
         val queued = DownloadRecordMapper.queued(task, 1000)
         repository.upsert(queued)
         repository.upsert(
@@ -98,7 +123,7 @@ class FileDownloadRepositoryTest {
         assertEquals(2048L, recovered.single().totalBytes)
         assertTrue(partial.exists())
 
-        val persisted = FileDownloadRepository(context).get(task.id)
+        val persisted = RoomDownloadRepository(context).get(task.id)
         requireNotNull(persisted)
         assertEquals(DownloadStatus.QUEUED, persisted.status)
         assertTrue(persisted.updatedAtEpochMs == 2000L)
@@ -106,7 +131,7 @@ class FileDownloadRepositoryTest {
 
     @Test
     fun recoveryNeverResumesIntentionallyPausedOrCancelledTasks() = runTest {
-        val repository = FileDownloadRepository(context)
+        val repository = RoomDownloadRepository(context)
         val pausedTask = task("paused-task")
         val cancelledTask = task("cancelled-task")
         val queuedPaused = DownloadRecordMapper.queued(pausedTask, 1000)
@@ -130,7 +155,7 @@ class FileDownloadRepositoryTest {
         val unrelatedPartial = DownloadTemporaryFiles.temporaryFile(task.destinationPath, "unrelated-task").apply {
             writeBytes(ByteArray(999))
         }
-        val repository = FileDownloadRepository(context)
+        val repository = RoomDownloadRepository(context)
         val queued = DownloadRecordMapper.queued(task, 1000)
         repository.upsert(queued)
         repository.upsert(
