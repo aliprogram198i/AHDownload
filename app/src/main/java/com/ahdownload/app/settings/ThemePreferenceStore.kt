@@ -11,7 +11,7 @@ class ThemePreferenceStore(context: Context) {
 
     fun read(): AHThemeMode {
         // Migrate previously stored System, Indigo Dark, and Dark Tech values.
-        // Modern Indigo Light is now the only supported theme.
+        // Crystal Blue is now the only supported theme.
         if (preferences.getString(KEY_THEME, null) != AHThemeMode.LIGHT.storageValue) {
             preferences.edit().putString(KEY_THEME, AHThemeMode.LIGHT.storageValue).apply()
         }
