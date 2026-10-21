@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
@@ -81,7 +82,15 @@ fun AHGradientPrimaryButton(
                 .defaultMinSize(minHeight = 56.dp)
                 .scale(scale)
                 .clip(MaterialTheme.shapes.medium)
-                .background(fill)
+                .background(
+                    if (enabled) {
+                        Brush.horizontalGradient(
+                            colors = listOf(fill, MaterialTheme.colorScheme.secondary),
+                        )
+                    } else {
+                        Brush.horizontalGradient(colors = listOf(fill, fill))
+                    },
+                )
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
@@ -161,7 +170,7 @@ fun AHCard(
         modifier = modifier,
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.9f),
