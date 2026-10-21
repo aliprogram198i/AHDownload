@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- Needed for explicit HTTP navigation in the embedded browser; media downloads enforce HTTPS independently. -->
     <application
         android:name=".AHDownloadApplication"
         android:allowBackup="false"

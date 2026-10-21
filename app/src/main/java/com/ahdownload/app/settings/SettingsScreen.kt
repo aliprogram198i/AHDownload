@@ -805,37 +805,3 @@ private fun formatPerformanceDuration(durationMs: Long): String = when {
 private fun formatDiagnosticTime(epochMs: Long): String =
     DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
         .format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
-
-class DownloadPreferencesStore(context: android.content.Context) : DownloadPreferencesProvider {
-    private val preferences = context.applicationContext.getSharedPreferences(
-        "ahdownload_download_preferences",
-        android.content.Context.MODE_PRIVATE,
-    )
-
-    init {
-        // Remove the retired setting without affecting other download preferences.
-        preferences.edit().remove("smart_download").apply()
-    }
-
-    override fun read(): DownloadPreferences = DownloadPreferences(
-        wifiOnly = preferences.getBoolean("wifi_only", false),
-        videoQuality = VideoQualityPreference.entries.firstOrNull {
-            it.wireValue == preferences.getString("video_quality", "auto")
-        } ?: VideoQualityPreference.AUTO,
-        audioBitrate = AudioBitratePreference.entries.firstOrNull {
-            it.kbps == preferences.getInt("audio_bitrate", 0)
-        } ?: AudioBitratePreference.AUTO,
-    )
-
-    fun setWifiOnly(enabled: Boolean) {
-        preferences.edit().putBoolean("wifi_only", enabled).apply()
-    }
-
-    fun setVideoQuality(value: VideoQualityPreference) {
-        preferences.edit().putString("video_quality", value.wireValue).apply()
-    }
-
-    fun setAudioBitrate(value: AudioBitratePreference) {
-        preferences.edit().putInt("audio_bitrate", value.kbps).apply()
-    }
-}

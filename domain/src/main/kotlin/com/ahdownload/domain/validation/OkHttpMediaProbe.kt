@@ -10,11 +10,21 @@ import okhttp3.Request
 import java.net.URI
 import kotlin.time.TimeSource
 
+/**
+ * Creates the production media-probe client. HTTPS redirects are supported, but a protocol
+ * downgrade is returned to validation as a redirect response instead of issuing an HTTP
+ * request that could expose session headers.
+ */
+internal fun secureMediaProbeClient(
+    configure: OkHttpClient.Builder.() -> Unit = {},
+): OkHttpClient = OkHttpClient.Builder()
+    .followRedirects(true)
+    .followSslRedirects(false)
+    .apply(configure)
+    .build()
+
 class OkHttpMediaProbe(
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build(),
+    private val client: OkHttpClient = secureMediaProbeClient(),
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
 ) : MediaProbe {
 

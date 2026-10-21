@@ -8,8 +8,23 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import java.io.IOException
 
 class OkHttpDownloadByteStreamTest {
+
+    @Test
+    fun rejectsHttpSourceBeforeExecutingAnOkHttpRequest() = runBlocking {
+        val requests = mutableListOf<Request>()
+        assertFailsWith<IOException> {
+            OkHttpDownloadByteStream(client = retryTestClient(requests)).open(
+                url = "http://cdn.example/video.mp4",
+                rangeStart = 0L,
+                headers = emptyMap(),
+            )
+        }
+        assertEquals(emptyList(), requests)
+    }
 
     @Test
     fun freshBrowserAlignedRequestDropsCapturedRangeOnAll403Retries() = runBlocking {

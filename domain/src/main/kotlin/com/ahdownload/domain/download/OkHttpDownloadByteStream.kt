@@ -6,13 +6,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.IOException
 import java.net.URI
 import kotlin.time.TimeSource
 
 class OkHttpDownloadByteStream(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
-        .followSslRedirects(true)
+        // Prevent HTTPS-to-HTTP downgrade redirects from issuing a cleartext request.
+        .followSslRedirects(false)
         .build(),
     private val logger: DiagnosticLogger = DiagnosticLogger { _, _, _, _, _, _ -> },
     private val dynamicHeaders: (String, Map<String, String>) -> Map<String, String> = { _, _ -> emptyMap() },
@@ -23,6 +25,10 @@ class OkHttpDownloadByteStream(
         rangeStart: Long,
         headers: Map<String, String>,
     ): DownloadResponse = withContext(Dispatchers.IO) {
+        if (!DownloadUrlPolicy.isSecureHttpsUrl(url)) {
+            throw IOException("Insecure media source rejected")
+        }
+
         // A Range header observed in WebView describes that browser request, not
         // this download job. Drop it before constructing the transfer request;
         // only this engine may set Range from its actual resume offset.

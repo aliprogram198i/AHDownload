@@ -13,6 +13,36 @@ import kotlin.test.assertTrue
 class StreamingDownloadEngineTest {
 
     @Test
+    fun rejectsCleartextMediaSourceBeforeOpeningNetworkOrCreatingPartialFile() = runTest {
+        var sourceOpenCount = 0
+        val source = object : DownloadByteStream {
+            override suspend fun open(
+                url: String,
+                rangeStart: Long,
+                headers: Map<String, String>,
+            ): DownloadResponse {
+                sourceOpenCount++
+                return DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = 5,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("hello".encodeToByteArray()),
+                )
+            }
+        }
+        val sink = FakeSink()
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(source = source, sink = sink)
+            .download(task().copy(sourceUrl = "http://cdn.example/video.mp4"), states::add)
+
+        assertEquals(0, sourceOpenCount)
+        assertEquals(DownloadFailure.InvalidResponse, assertIs<DownloadState.Failed>(states.last()).reason)
+        assertFalse(sink.tempOpened)
+        assertFalse(sink.committed)
+    }
+
+    @Test
     fun reportsStageAndOriginalExceptionWhenLocalFileCannotBeOpened() = runTest {
         val callbacks = mutableListOf<Pair<String, Throwable>>()
         val sink = object : AtomicFileSink {

@@ -1,7 +1,8 @@
 name: YouTube Live Search Acceptance
 
 on:
-  pull_request:
+  schedule:
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,6 @@ jobs:
     name: Verify real YouTube search result parsing
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -43,8 +43,20 @@ jobs:
         env:
           AH_YOUTUBE_LIVE_ACCEPTANCE: "true"
         run: |
-          set -o pipefail
-          gradle --no-daemon :domain:test --tests com.ahdownload.domain.resolver.youtube.YouTubeSearchLiveAcceptanceTest 2>&1 | tee youtube-live-search.log
+          set -euo pipefail
+          # Keep external-service acceptance honest while retrying transient failures.
+          # This workflow is scheduled/manual, so it does not gate deterministic PR builds.
+          for attempt in 1 2 3; do
+            if gradle --no-daemon :domain:test --tests com.ahdownload.domain.resolver.youtube.YouTubeSearchLiveAcceptanceTest 2>&1 | tee "youtube-live-search-attempt-${attempt}.log"; then
+              cp "youtube-live-search-attempt-${attempt}.log" youtube-live-search.log
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep "$((attempt * 10))"
+            fi
+          done
+          echo "YouTube live search acceptance failed after three attempts." >&2
+          exit 1
 
       - name: Upload live-search report
         if: always()
@@ -53,6 +65,7 @@ jobs:
           name: youtube-live-search-acceptance
           path: |
             youtube-live-search.log
+            youtube-live-search-attempt-*.log
             domain/build/test-results/test/
             domain/build/reports/tests/test/
           if-no-files-found: warn

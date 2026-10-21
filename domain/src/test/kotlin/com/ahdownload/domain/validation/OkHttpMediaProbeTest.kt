@@ -84,6 +84,36 @@ class OkHttpMediaProbeTest {
     }
 
     @Test
+    fun refusesHttpsToHttpRedirectWithoutSendingASecondRequest() = runTest {
+        val requestedUrls = mutableListOf<String>()
+        val client = secureMediaProbeClient {
+            addInterceptor(Interceptor { chain ->
+                val request = chain.request()
+                requestedUrls += request.url.toString()
+                Response.Builder()
+                    .request(request)
+                    .protocol(Protocol.HTTP_1_1)
+                    .code(302)
+                    .message("Found")
+                    .header("Location", "http://insecure.example/video.mp4")
+                    .body(byteArrayOf().toResponseBody(null))
+                    .build()
+            })
+        }
+
+        val result = OkHttpMediaProbe(client).probe(
+            url = "https://secure.example/video.mp4",
+            headers = mapOf("Cookie" to "SID=must-not-be-forwarded"),
+            operationId = "op-https-downgrade",
+            sourceContext = com.ahdownload.domain.resolver.MediaSourceContext.RESOLVER_GENERATED,
+        )
+
+        assertEquals(302, result.statusCode)
+        assertEquals("https://secure.example/video.mp4", result.finalUrl)
+        assertEquals(listOf("https://secure.example/video.mp4"), requestedUrls)
+    }
+
+    @Test
     fun keepsHeadThenRangeFallbackForGenericMedia() = runTest {
         val methods = mutableListOf<String>()
         val ranges = mutableListOf<String?>()

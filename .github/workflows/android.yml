@@ -45,9 +45,13 @@ jobs:
           set -euo pipefail
           gradle --no-daemon testDebugUnitTest assembleDebug assembleDebugAndroidTest
 
+  instrumentation:
+    name: Required Android emulator smoke tests
+    uses: ./.github/workflows/cloud-android-smoke.yml
+
   release:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-    needs: verify
+    needs: [verify, instrumentation]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
