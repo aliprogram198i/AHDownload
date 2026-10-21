@@ -17,27 +17,37 @@ import java.nio.charset.StandardCharsets
 class FileDownloadRepository(
     context: Context,
 ) : DownloadRepository {
-    private val lock = Any()
+    // All repository instances for this app process coordinate through one file lock.
+    private val lock = PROCESS_LOCK
     private val storeFile = File(
         context.applicationContext.filesDir,
         "downloads/downloads.json",
     )
     private val store = AtomicFile(storeFile)
     private val codec = DownloadRecordJsonCodec()
-    private val historyFlow = MutableStateFlow<List<DownloadRecord>>(emptyList())
-
-    init {
+    private val historyFlow: MutableStateFlow<List<DownloadRecord>> = synchronized(lock) {
         storeFile.parentFile?.mkdirs()
-        historyFlow.value = runCatching {
-            synchronized(lock) { readLocked().sortedByDescending { it.updatedAtEpochMs } }
-        }.getOrDefault(emptyList())
+        val key = storeFile.absolutePath
+        val existing = sharedHistoryFlows[key]
+        if (existing != null) {
+            // A missing base and backup file means the store was intentionally cleared.
+            if (!storeFile.exists() && !File(storeFile.absolutePath + ".bak").exists()) {
+                existing.value = emptyList()
+            }
+            existing
+        } else {
+            val initial = runCatching {
+                readLocked().sortedByDescending { it.updatedAtEpochMs }
+            }.getOrDefault(emptyList())
+            MutableStateFlow(initial).also { sharedHistoryFlows[key] = it }
+        }
     }
 
     override fun observeHistory(): Flow<List<DownloadRecord>> = historyFlow.asStateFlow()
 
     override suspend fun upsert(record: DownloadRecord) = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            val records = readLocked().associateBy { it.task.id }.toMutableMap()
+            val records = historyFlow.value.associateBy { it.task.id }.toMutableMap()
             records[record.task.id] = record
             writeLocked(records.values.toList())
         }
@@ -45,14 +55,15 @@ class FileDownloadRepository(
 
     override suspend fun get(taskId: String): DownloadRecord? = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            readLocked().firstOrNull { it.task.id == taskId }
+            historyFlow.value.firstOrNull { it.task.id == taskId }
         }
     }
 
     override suspend fun delete(taskId: String) = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            val records = readLocked().filterNot { it.task.id == taskId }
-            if (records.size != readLocked().size) {
+            val previous = historyFlow.value
+            val records = previous.filterNot { it.task.id == taskId }
+            if (records.size != previous.size) {
                 writeLocked(records)
             }
         }
@@ -60,7 +71,7 @@ class FileDownloadRepository(
 
     override suspend fun listHistory(): List<DownloadRecord> = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            readLocked().sortedByDescending { it.updatedAtEpochMs }
+            historyFlow.value.sortedByDescending { it.updatedAtEpochMs }
         }
     }
 
@@ -68,13 +79,13 @@ class FileDownloadRepository(
         withContext(Dispatchers.IO) {
             if (fingerprint.isNullOrBlank()) return@withContext null
             synchronized(lock) {
-                readLocked().firstOrNull { it.task.contentFingerprint == fingerprint }
+                historyFlow.value.firstOrNull { it.task.contentFingerprint == fingerprint }
             }
         }
 
     override suspend fun listActive(): List<DownloadRecord> = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            readLocked()
+            historyFlow.value
                 .filter { it.status in ACTIVE_STATUSES }
                 .sortedBy { it.createdAtEpochMs }
         }
@@ -83,7 +94,7 @@ class FileDownloadRepository(
     override suspend fun recoverInterrupted(nowEpochMs: Long): List<DownloadRecord> =
         withContext(Dispatchers.IO) {
             synchronized(lock) {
-                val records = readLocked().toMutableList()
+                val records = historyFlow.value.toMutableList()
                 val recovered = records
                     .filter { it.status in INTERRUPTED_STATUSES }
                     .map {
@@ -120,7 +131,8 @@ class FileDownloadRepository(
     private fun Long?.orZero(): Long = this?.coerceAtLeast(0L) ?: 0L
 
     private fun readLocked(): List<DownloadRecord> {
-        if (!store.baseFile.exists()) return emptyList()
+        // AtomicFile can restore a backup left by a process interruption during write.
+        if (!store.baseFile.exists() && !File(store.baseFile.absolutePath + ".bak").exists()) return emptyList()
         val bytes = store.readFully()
         if (bytes.isEmpty()) return emptyList()
         return codec.decode(String(bytes, StandardCharsets.UTF_8)).distinctBy { it.task.id }
@@ -144,6 +156,9 @@ class FileDownloadRepository(
     }
 
     private companion object {
+        val PROCESS_LOCK = Any()
+        val sharedHistoryFlows = mutableMapOf<String, MutableStateFlow<List<DownloadRecord>>>()
+
         val ACTIVE_STATUSES = setOf(
             DownloadStatus.QUEUED,
             DownloadStatus.PREPARING,

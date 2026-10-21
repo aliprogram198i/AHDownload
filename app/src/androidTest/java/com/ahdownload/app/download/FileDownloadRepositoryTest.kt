@@ -61,6 +61,18 @@ class FileDownloadRepositoryTest {
     }
 
     @Test
+    fun repositoryInstancesShareLiveHistoryUpdates() = runTest {
+        val observer = FileDownloadRepository(context)
+        val writer = FileDownloadRepository(context)
+        val record = DownloadRecordMapper.queued(task(), 1000)
+
+        writer.upsert(record)
+
+        assertEquals(listOf(record), observer.observeHistory().first())
+        assertEquals(record, observer.get(record.task.id))
+    }
+
+    @Test
     fun recoveryRequeuesInterruptedDownloadAndResetsProgress() = runTest {
         val task = task()
         val partial = File(task.destinationPath + ".part").apply {
