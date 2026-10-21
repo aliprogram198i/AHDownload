@@ -3,6 +3,7 @@ package com.ahdownload.app.settings
 import android.content.Context
 import android.os.Environment
 import android.os.StatFs
+import java.io.File
 import java.util.Locale
 
 data class StorageInfo(
