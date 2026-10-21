@@ -13,6 +13,80 @@ import kotlin.test.assertTrue
 class StreamingDownloadEngineTest {
 
     @Test
+    fun reportsStageAndOriginalExceptionWhenLocalFileCannotBeOpened() = runTest {
+        val callbacks = mutableListOf<Pair<String, Throwable>>()
+        val sink = object : AtomicFileSink {
+            override suspend fun openTemporary(
+                destinationPath: String,
+                append: Boolean,
+                transferId: String?,
+            ): java.io.OutputStream = throw IOException("No space left on device")
+
+            override suspend fun temporarySize(destinationPath: String, transferId: String?): Long = 0L
+            override suspend fun commit(destinationPath: String, transferId: String?) = Unit
+            override suspend fun discard(destinationPath: String, transferId: String?) = Unit
+        }
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = 5,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("hello".encodeToByteArray()),
+                ),
+            ),
+            sink = sink,
+            onStorageFailure = { stage, error -> callbacks += stage to error },
+        ).download(task(), states::add)
+
+        assertEquals("open_temporary", callbacks.single().first)
+        assertEquals("No space left on device", callbacks.single().second.message)
+        assertEquals(
+            DownloadFailure.StorageError,
+            assertIs<DownloadState.Failed>(states.last()).reason,
+        )
+    }
+
+    @Test
+    fun reportsStageAndCauseWhenLocalFileWriteFails() = runTest {
+        val callbacks = mutableListOf<Pair<String, Throwable>>()
+        val sink = object : AtomicFileSink {
+            override suspend fun openTemporary(
+                destinationPath: String,
+                append: Boolean,
+                transferId: String?,
+            ): java.io.OutputStream = object : java.io.OutputStream() {
+                override fun write(value: Int) {
+                    throw IOException("No space left on device")
+                }
+            }
+
+            override suspend fun temporarySize(destinationPath: String, transferId: String?): Long = 0L
+            override suspend fun commit(destinationPath: String, transferId: String?) = Unit
+            override suspend fun discard(destinationPath: String, transferId: String?) = Unit
+        }
+        val states = mutableListOf<DownloadState>()
+
+        StreamingDownloadEngine(
+            source = FakeSource(
+                DownloadResponse(
+                    statusCode = 200,
+                    contentLengthBytes = 5,
+                    contentType = "video/mp4",
+                    body = ByteArrayInputStream("hello".encodeToByteArray()),
+                ),
+            ),
+            sink = sink,
+            onStorageFailure = { stage, error -> callbacks += stage to error },
+        ).download(task(), states::add)
+
+        assertTrue(callbacks.any { (stage, error) -> stage == "write" && error.message == "No space left on device" })
+        assertEquals(DownloadFailure.StorageError, assertIs<DownloadState.Failed>(states.last()).reason)
+    }
+
+    @Test
     fun streamsBytesAndReportsProgress() = runTest {
         val sink = FakeSink()
         val states = mutableListOf<DownloadState>()

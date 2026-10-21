@@ -3,6 +3,7 @@ package com.ahdownload.app.diagnostics
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLog
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -940,6 +941,60 @@ class DiagnosticReportFormatterTest {
         assertTrue(report.contains("action=INSPECT_YOUTUBE_SEARCH_REQUEST"))
         assertTrue(report.contains("FAILURE_CHAIN\nsearch -> http_request_failed:HTTP_503"))
         assertTrue(report.contains("platform=YouTube"))
+    }
+
+    @Test
+    fun storageFailureUsesStorageClassificationAndCountsDownloadResponse() {
+        val session = "storage-regression-session"
+        val operation = "download:storage-task"
+        val logs = listOf(
+            event(
+                time = 1_000L,
+                sequence = "1",
+                type = "DOWNLOAD_HTTP_RESPONSE",
+                level = DiagnosticLevel.INFO,
+                reason = "http_response_received",
+                session = session,
+                operation = operation,
+                context = mapOf("status_code" to "200", "content_type" to "video/mp4", "stage" to "DOWNLOAD"),
+            ),
+            event(
+                time = 1_100L,
+                sequence = "2",
+                type = "DOWNLOAD_STORAGE_IO_FAILED",
+                level = DiagnosticLevel.ERROR,
+                reason = "NO_SPACE_AVAILABLE",
+                session = session,
+                operation = operation,
+                context = mapOf(
+                    "stage" to "DOWNLOAD",
+                    "storage_stage" to "write",
+                    "storage_error_category" to "NO_SPACE_AVAILABLE",
+                    "exception_type" to "IOException",
+                ),
+            ),
+            event(
+                time = 1_120L,
+                sequence = "3",
+                type = "DOWNLOAD",
+                level = DiagnosticLevel.ERROR,
+                reason = "storage_error",
+                session = session,
+                operation = operation,
+                context = mapOf("stage" to "DOWNLOAD", "failure_code" to "storage_error"),
+            ),
+        )
+
+        val report = DiagnosticReportFormatter.format(logs)
+
+        assertTrue(report.contains("requests=1"))
+        assertTrue(report.contains("status=FAILED"))
+        assertTrue(report.contains("root_cause=STORAGE_ERROR"))
+        assertTrue(report.contains("classification=STORAGE"))
+        assertTrue(report.contains("action=INSPECT_STORAGE"))
+        assertTrue(report.contains("storage_stage=write"))
+        assertTrue(report.contains("storage_error_category=NO_SPACE_AVAILABLE"))
+        assertTrue(!report.contains("No space left on device"))
     }
 
 }

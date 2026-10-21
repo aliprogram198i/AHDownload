@@ -121,81 +121,105 @@ class DownloadWorker(
         val diagnostics = DownloadScopedDiagnosticLogger(diagnosticsLogger(), task.id)
         var refreshAttempted = false
 
-        // Only probe the app-controlled default directory. A persisted SAF tree may
-        // live on a different volume, so estimating its capacity from the default path is unsafe.
-        val selectedCustomDirectory = DownloadLocationStore(applicationContext).persistedUri() != null
-        if (selectedCustomDirectory) {
+        // DownloadLauncher stages bytes in app-specific external storage first, then
+        // copies the completed file to an optional user-selected SAF directory. A custom
+        // final destination must therefore never disable the staging-volume space check.
+        val destinationMode = if (DownloadLocationStore(applicationContext).persistedUri() != null) {
+            "CUSTOM_DIRECTORY"
+        } else {
+            "APP_DEFAULT"
+        }
+        val storageInfo = runCatching {
+            StorageInfoReader.read(applicationContext, task.destinationPath)
+        }.getOrNull()
+        if (storageInfo == null) {
             diagnostics.log(
-                DiagnosticLevel.INFO,
-                "DOWNLOAD_STORAGE_PREFLIGHT_SKIPPED",
-                "تم تخطي تقدير المساحة لأن مجلد التنزيل مخصص وقد يكون على وحدة تخزين مختلفة.",
+                DiagnosticLevel.WARNING,
+                "DOWNLOAD_STORAGE_PREFLIGHT_UNAVAILABLE",
+                "تعذر قياس مساحة مجلد العمل المحلي؛ سيستمر التنزيل دون افتراض سعة التخزين.",
                 "download.storage.preflight",
-                mapOf("destination_mode" to "CUSTOM_DIRECTORY"),
+                mapOf(
+                    "destination_mode" to destinationMode,
+                    "staging_location" to "APP_LOCAL_EXTERNAL",
+                    "expected_bytes" to (task.expectedBytes?.takeIf { it > 0L }?.toString() ?: "unknown"),
+                ),
                 null,
             )
         } else {
-            val storageInfo = runCatching { StorageInfoReader.read(applicationContext) }.getOrNull()
-            if (storageInfo == null) {
-                diagnostics.log(
-                    DiagnosticLevel.WARNING,
-                    "DOWNLOAD_STORAGE_PREFLIGHT_UNAVAILABLE",
-                    "تعذر قياس المساحة الحرة؛ سيستمر التنزيل دون تخمين سعة التخزين.",
-                    "download.storage.preflight",
-                    mapOf("destination_mode" to "APP_DEFAULT"),
-                    null,
-                )
-            } else {
-                when (DownloadStoragePolicy.assess(storageInfo.freeBytes)) {
-                    DownloadStorageReadiness.READY -> Unit
-                    DownloadStorageReadiness.LOW_SPACE_WARNING -> {
-                        lowStorageWarningForTask = true
-                        diagnostics.log(
-                            DiagnosticLevel.WARNING,
-                            "DOWNLOAD_LOW_STORAGE_WARNING",
-                            "المساحة الحرة أقل من 1 GiB؛ قد تفشل الملفات الكبيرة.",
-                            "download.storage.preflight",
-                            mapOf(
-                                "destination_mode" to "APP_DEFAULT",
-                                "free_bytes" to storageInfo.freeBytes.toString(),
-                                "minimum_free_bytes" to DownloadStoragePolicy.MINIMUM_FREE_BYTES.toString(),
-                            ),
-                            null,
-                        )
-                        setForeground(createForegroundInfo(DownloadState.Preparing))
-                    }
-                    DownloadStorageReadiness.INSUFFICIENT_SPACE -> {
-                        val detail = "المساحة الحرة أقل من 100 MiB. وفر مساحة ثم أعد التنزيل."
-                        diagnostics.log(
-                            DiagnosticLevel.ERROR,
-                            "DOWNLOAD_LOW_STORAGE_BLOCKED",
-                            "أُوقف التنزيل قبل نقل البيانات لأن المساحة الحرة أقل من الحد الأدنى الآمن.",
-                            "download.storage.preflight",
-                            mapOf(
-                                "destination_mode" to "APP_DEFAULT",
-                                "free_bytes" to storageInfo.freeBytes.toString(),
-                                "minimum_free_bytes" to DownloadStoragePolicy.MINIMUM_FREE_BYTES.toString(),
-                                "task_id" to task.id,
-                            ),
-                            null,
-                        )
-                        val existing = repository.get(task.id)
-                            ?: com.ahdownload.domain.download.DownloadRecordMapper.queued(inputTask, System.currentTimeMillis())
-                        repository.upsert(
-                            existing.copy(
-                                status = DownloadStatus.FAILED,
-                                failureCode = "storage_space_low",
-                                failureDetail = detail,
-                                updatedAtEpochMs = System.currentTimeMillis(),
-                            ),
-                        )
-                        setForeground(createForegroundInfo(DownloadState.Failed(DownloadFailure.StorageError)))
-                        return Result.failure(
-                            workDataOf(
-                                KEY_FAILURE_CODE to "storage_space_low",
-                                KEY_FAILURE_DETAIL to detail,
-                            ),
-                        )
-                    }
+            val expectedBytes = task.expectedBytes?.takeIf { it > 0L }
+            val requiredFreeBytes = DownloadStoragePolicy.requiredFreeBytes(expectedBytes)
+            val readiness = DownloadStoragePolicy.assess(storageInfo.freeBytes, expectedBytes)
+            diagnostics.log(
+                DiagnosticLevel.INFO,
+                "DOWNLOAD_STORAGE_PREFLIGHT_CHECKED",
+                "تم فحص مساحة مجلد العمل المحلي قبل بدء نقل البيانات.",
+                "download.storage.preflight",
+                mapOf(
+                    "destination_mode" to destinationMode,
+                    "staging_location" to "APP_LOCAL_EXTERNAL",
+                    "free_bytes" to storageInfo.freeBytes.toString(),
+                    "expected_bytes" to (expectedBytes?.toString() ?: "unknown"),
+                    "required_free_bytes" to requiredFreeBytes.toString(),
+                    "storage_readiness" to readiness.name,
+                ),
+                null,
+            )
+            when (readiness) {
+                DownloadStorageReadiness.READY -> Unit
+                DownloadStorageReadiness.LOW_SPACE_WARNING -> {
+                    lowStorageWarningForTask = true
+                    diagnostics.log(
+                        DiagnosticLevel.WARNING,
+                        "DOWNLOAD_LOW_STORAGE_WARNING",
+                        "المساحة الحرة منخفضة؛ قد تفشل الملفات الكبيرة أو المعالجة اللاحقة.",
+                        "download.storage.preflight",
+                        mapOf(
+                            "destination_mode" to destinationMode,
+                            "staging_location" to "APP_LOCAL_EXTERNAL",
+                            "free_bytes" to storageInfo.freeBytes.toString(),
+                            "expected_bytes" to (expectedBytes?.toString() ?: "unknown"),
+                            "required_free_bytes" to requiredFreeBytes.toString(),
+                            "minimum_free_bytes" to DownloadStoragePolicy.MINIMUM_FREE_BYTES.toString(),
+                        ),
+                        null,
+                    )
+                    setForeground(createForegroundInfo(DownloadState.Preparing))
+                }
+                DownloadStorageReadiness.INSUFFICIENT_SPACE -> {
+                    val detail = "المساحة المتاحة في مجلد العمل المحلي لا تكفي لتنزيل الملف مع الاحتياطي الآمن. وفر مساحة ثم أعد التنزيل."
+                    diagnostics.log(
+                        DiagnosticLevel.ERROR,
+                        "DOWNLOAD_LOW_STORAGE_BLOCKED",
+                        "أُوقف التنزيل قبل نقل البيانات لأن المساحة المحلية أقل من الحجم المطلوب مع الاحتياطي الآمن.",
+                        "download.storage.preflight",
+                        mapOf(
+                            "destination_mode" to destinationMode,
+                            "staging_location" to "APP_LOCAL_EXTERNAL",
+                            "free_bytes" to storageInfo.freeBytes.toString(),
+                            "expected_bytes" to (expectedBytes?.toString() ?: "unknown"),
+                            "required_free_bytes" to requiredFreeBytes.toString(),
+                            "minimum_free_bytes" to DownloadStoragePolicy.MINIMUM_FREE_BYTES.toString(),
+                            "task_id" to task.id,
+                        ),
+                        null,
+                    )
+                    val existing = repository.get(task.id)
+                        ?: com.ahdownload.domain.download.DownloadRecordMapper.queued(inputTask, System.currentTimeMillis())
+                    repository.upsert(
+                        existing.copy(
+                            status = DownloadStatus.FAILED,
+                            failureCode = "storage_space_low",
+                            failureDetail = detail,
+                            updatedAtEpochMs = System.currentTimeMillis(),
+                        ),
+                    )
+                    setForeground(createForegroundInfo(DownloadState.Failed(DownloadFailure.StorageError)))
+                    return Result.failure(
+                        workDataOf(
+                            KEY_FAILURE_CODE to "storage_space_low",
+                            KEY_FAILURE_DETAIL to detail,
+                        ),
+                    )
                 }
             }
         }
@@ -295,6 +319,24 @@ class DownloadWorker(
                     },
                 ),
                 sink = LocalAtomicFileSink(),
+                onStorageFailure = { storageStage, error ->
+                    val category = StorageFailureDiagnostics.classify(error)
+                    diagnostics.log(
+                        DiagnosticLevel.ERROR,
+                        "DOWNLOAD_STORAGE_IO_FAILED",
+                        category,
+                        "download.storage.$storageStage",
+                        mapOf(
+                            "stage" to "DOWNLOAD",
+                            "storage_stage" to storageStage,
+                            "storage_error_category" to category,
+                            "exception_type" to error.javaClass.simpleName,
+                            "destination_mode" to destinationMode,
+                            "staging_location" to "APP_LOCAL_EXTERNAL",
+                        ),
+                        null,
+                    )
+                },
             ),
             performanceLogStore = applicationServices.performanceLogStore,
         )
@@ -309,7 +351,7 @@ class DownloadWorker(
             mapOf(
                 "task_id" to task.id,
                 "source_host" to hostOf(task.sourceUrl),
-                "destination_mode" to if (DownloadLocationStore(applicationContext).persistedUri() != null) "CUSTOM_DIRECTORY" else "APP_DEFAULT",
+                "destination_mode" to destinationMode,
                 "youtube_session_context" to isYouTubeMediaHost(task.sourceUrl).toString(),
                 "request_context_present" to task.requestHeaders.keys.sorted().joinToString(",").ifBlank { "none" },
             ),
@@ -744,6 +786,7 @@ class DownloadWorker(
                 operation = "download.worker",
                 context = buildMap {
                     put("task_id", task.id)
+                    record.failureCode?.let { put("failure_code", it) }
                     record.failureDetail?.let { put("failure_detail", it) }
                 },
                 throwable = null,

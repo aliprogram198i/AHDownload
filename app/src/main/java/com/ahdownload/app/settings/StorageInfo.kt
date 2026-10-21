@@ -3,6 +3,7 @@ package com.ahdownload.app.settings
 import android.content.Context
 import android.os.Environment
 import android.os.StatFs
+import java.io.File
 import java.util.Locale
 
 data class StorageInfo(
@@ -26,18 +27,44 @@ object DownloadStoragePolicy {
     const val LOW_SPACE_WARNING_BYTES = 1L * 1024L * 1024L * 1024L
     const val MINIMUM_FREE_BYTES = 100L * 1024L * 1024L
 
-    fun assess(freeBytes: Long): DownloadStorageReadiness = when {
-        freeBytes < MINIMUM_FREE_BYTES -> DownloadStorageReadiness.INSUFFICIENT_SPACE
+    /**
+     * Keeps a reserve after expected transfer bytes so the app can close files and finish
+     * local processing without exhausting the staging volume. Unknown lengths retain the
+     * conservative minimum-free-space threshold.
+     */
+    fun requiredFreeBytes(expectedBytes: Long? = null): Long {
+        val expected = expectedBytes?.takeIf { it > 0L } ?: 0L
+        return if (expected > Long.MAX_VALUE - MINIMUM_FREE_BYTES) {
+            Long.MAX_VALUE
+        } else {
+            expected + MINIMUM_FREE_BYTES
+        }
+    }
+
+    fun assess(
+        freeBytes: Long,
+        expectedBytes: Long? = null,
+    ): DownloadStorageReadiness = when {
+        freeBytes < requiredFreeBytes(expectedBytes) -> DownloadStorageReadiness.INSUFFICIENT_SPACE
         freeBytes < LOW_SPACE_WARNING_BYTES -> DownloadStorageReadiness.LOW_SPACE_WARNING
         else -> DownloadStorageReadiness.READY
     }
 }
 
 object StorageInfoReader {
-    fun read(context: Context): StorageInfo {
-        val path = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.absolutePath
-            ?: context.filesDir.absolutePath
-        val stat = StatFs(path)
+    /**
+     * Measures the volume containing the actual staging path when supplied. The no-path
+     * overload remains compatible with settings UI callers.
+     */
+    fun read(context: Context, stagingFilePath: String? = null): StorageInfo {
+        val stagingDirectory = stagingFilePath
+            ?.takeIf { it.isNotBlank() }
+            ?.let { File(it).absoluteFile.parentFile }
+            ?.takeIf { it.exists() && it.isDirectory }
+        val path = stagingDirectory
+            ?: context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: context.filesDir
+        val stat = StatFs(path.absolutePath)
         return StorageInfo(
             totalBytes = stat.blockCountLong.coerceAtLeast(0L) * stat.blockSizeLong.coerceAtLeast(0L),
             freeBytes = stat.availableBlocksLong.coerceAtLeast(0L) * stat.blockSizeLong.coerceAtLeast(0L),
