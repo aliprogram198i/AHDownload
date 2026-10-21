@@ -3,6 +3,7 @@ package com.ahdownload.app.download
 import android.content.Context
 import androidx.core.util.AtomicFile
 import androidx.room.withTransaction
+import com.google.gson.JsonParser
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
@@ -118,21 +119,37 @@ class RoomDownloadRepository(context: Context) : DownloadRepository {
 
                 val legacyBackup = File(legacyFile.absolutePath + ".bak")
                 if (legacyFile.exists() || legacyBackup.exists()) {
+                    var keepLegacyForRecovery = false
                     val bytes = try {
                         legacyStore.readFully()
                     } catch (error: IOException) {
-                        preserveUnreadableLegacyStore()
+                        if (!preserveUnreadableLegacyStore()) {
+                            throw IOException(
+                                "Legacy download history could not be read or preserved",
+                                error,
+                            )
+                        }
+                        // The Room store may continue to serve new records, but retain the
+                        // unreadable source and its recovery copy instead of deleting history.
+                        keepLegacyForRecovery = true
                         byteArrayOf()
                     }
                     val decoded = codec.decode(String(bytes, StandardCharsets.UTF_8))
-                    if (bytes.isNotEmpty() && decoded.isEmpty()) {
-                        // Keep an on-device recovery copy instead of silently discarding
-                        // malformed legacy data; the new repository remains available.
-                        preserveUnreadableLegacyStore()
+                    if (
+                        bytes.isNotEmpty() &&
+                        decoded.isEmpty() &&
+                        !isValidEmptyLegacyArray(String(bytes, StandardCharsets.UTF_8))
+                    ) {
+                        if (!preserveUnreadableLegacyStore()) {
+                            throw IOException(
+                                "Malformed legacy download history could not be preserved",
+                            )
+                        }
+                        keepLegacyForRecovery = true
                     } else if (decoded.isNotEmpty()) {
                         dao.insertLegacyIfAbsent(decoded.map(::toEntity))
                     }
-                    legacyStore.delete()
+                    if (!keepLegacyForRecovery) legacyStore.delete()
                 }
 
                 if (!migrationPreferences.edit().putBoolean(MIGRATION_KEY, true).commit()) {
@@ -143,14 +160,23 @@ class RoomDownloadRepository(context: Context) : DownloadRepository {
         }
     }
 
-    private fun preserveUnreadableLegacyStore() {
-        val parent = legacyFile.parentFile ?: return
-        if (!parent.exists()) return
+    private fun isValidEmptyLegacyArray(json: String): Boolean =
+        runCatching {
+            val root = JsonParser.parseString(json)
+            root.isJsonArray && root.asJsonArray.size() == 0
+        }.getOrDefault(false)
+
+    /** Returns true only after a byte-for-byte recovery copy has been created. */
+    private fun preserveUnreadableLegacyStore(): Boolean {
+        val parent = legacyFile.parentFile ?: return false
+        if (!parent.exists() && !parent.mkdirs()) return false
         val backup = File(parent, "downloads.json.unreadable-backup")
-        val possibleSources = listOf(legacyFile, File(legacyFile.absolutePath + ".bak"))
-        possibleSources.firstOrNull { it.isFile }?.let { source ->
-            runCatching { source.copyTo(backup, overwrite = true) }
-        }
+        val source = listOf(legacyFile, File(legacyFile.absolutePath + ".bak"))
+            .firstOrNull { it.isFile } ?: return false
+        return runCatching {
+            source.copyTo(backup, overwrite = true)
+            backup.isFile && backup.length() == source.length()
+        }.getOrDefault(false)
     }
 
     private fun toEntity(record: DownloadRecord): DownloadHistoryEntity =

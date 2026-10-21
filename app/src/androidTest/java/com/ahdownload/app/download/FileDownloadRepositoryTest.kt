@@ -86,6 +86,23 @@ class FileDownloadRepositoryTest {
     }
 
     @Test
+    fun preservesMalformedLegacyHistoryInsteadOfDeletingIt() = runTest {
+        val legacyFile = File(context.filesDir, "downloads/downloads.json")
+        legacyFile.parentFile?.mkdirs()
+        val malformed = """{"unfinished":"""
+        legacyFile.writeText(malformed)
+
+        val repository = RoomDownloadRepository(context)
+        assertEquals(null, repository.get("missing-record"))
+
+        val recoveryCopy = File(legacyFile.parentFile, "downloads.json.unreadable-backup")
+        assertTrue(legacyFile.exists())
+        assertTrue(recoveryCopy.isFile)
+        assertEquals(malformed, recoveryCopy.readText())
+        assertEquals(malformed, legacyFile.readText())
+    }
+
+    @Test
     fun repositoryInstancesShareLiveHistoryUpdates() = runTest {
         val observer = RoomDownloadRepository(context)
         val writer = RoomDownloadRepository(context)
