@@ -12,7 +12,9 @@ import java.net.URI
 import java.net.URLDecoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -48,8 +50,8 @@ class SocialPlatformResolverEngine(
 
         val effectiveTimeoutMs = strategy.effectiveTimeoutMillis(resolveTimeoutMs)
 
-        return try {
-            withTimeout(effectiveTimeoutMs) {
+        val resolution = try {
+            withTimeoutOrNull(effectiveTimeoutMs) {
                 logger.log(
                     DiagnosticLevel.INFO,
                     "SOCIAL_RESOLUTION_STARTED",
@@ -182,6 +184,24 @@ class SocialPlatformResolverEngine(
                                 "operation_id" to (request.operationId ?: "none"),
                                 "page_url_source" to pageUrlSource,
                                 "fallback_media_count" to fallback?.mediaUrls?.size?.toString().orEmpty(),
+                            ),
+                            null,
+                        )
+                    } catch (error: TimeoutCancellationException) {
+                        // A child HTTP timeout is local to this fallback. If the operation
+                        // itself was cancelled, ensureActive rethrows the owning cancellation.
+                        currentCoroutineContext().ensureActive()
+                        logger.log(
+                            DiagnosticLevel.WARNING,
+                            "SOCIAL_PAGE_FETCH_FAILED",
+                            "انتهت مهلة جلب HTML الاحتياطي",
+                            "social.resolve.page_fetch",
+                            mapOf(
+                                "platform" to platform.name,
+                                "operation_id" to (request.operationId ?: "none"),
+                                "page_url_source" to pageUrlSource,
+                                "failure_code" to "PAGE_FETCH_TIMEOUT",
+                                "exception_type" to error::class.java.simpleName,
                             ),
                             null,
                         )
@@ -361,23 +381,29 @@ class SocialPlatformResolverEngine(
                 }
             }
         } catch (error: TimeoutCancellationException) {
+            // A timeout thrown by a nested resolver/browser request is not the resolver's
+            // own deadline. Preserve genuine caller cancellation and classify child timeouts.
+            currentCoroutineContext().ensureActive()
             logger.log(
-                DiagnosticLevel.ERROR,
-                "SOCIAL_RESOLUTION_TIMEOUT",
-                "انتهت مهلة تحليل المنصة الاجتماعية دون إكمال المسار",
+                DiagnosticLevel.WARNING,
+                "SOCIAL_RESOLVER_SUBTASK_TIMEOUT",
+                "انتهت مهلة أحد المسارات الفرعية لتحليل الوسائط",
                 "social.resolve",
                 mapOf(
                     "platform" to platform.name,
-                    "timeout_ms" to effectiveTimeoutMs.toString(),
                     "operation_id" to (request.operationId ?: "none"),
+                    "failure_code" to "SUBTASK_TIMEOUT",
+                    "timeout_scope" to "subtask",
+                    "exception_type" to error::class.java.simpleName,
                 ),
-                error,
+                null,
             )
-            ResolverResult.Failure(
-                FailureCode.ResolverTimeout,
-                "استغرق تحليل الصفحة وقتًا أطول من المتوقع. أعد المحاولة.",
+            return ResolverResult.Failure(
+                FailureCode.ResolverUnavailable,
+                "انتهت مهلة أحد مسارات استخراج الوسائط. أعد المحاولة.",
             )
         } catch (error: CancellationException) {
+            // Caller/lifecycle cancellation must not be converted into a media-resolution failure.
             throw error
         } catch (error: Throwable) {
             logger.log(
@@ -388,14 +414,35 @@ class SocialPlatformResolverEngine(
                 mapOf(
                     "platform" to platform.name,
                     "operation_id" to (request.operationId ?: "none"),
+                    "exception_type" to error::class.java.simpleName,
                 ),
                 error,
             )
-            ResolverResult.Failure(
+            return ResolverResult.Failure(
                 FailureCode.ResolverUnavailable,
                 "تعذر تحليل الصفحة حاليًا. أعد المحاولة أو افتح التشخيص لمعرفة السبب.",
             )
         }
+
+        if (resolution != null) return resolution
+
+        logger.log(
+            DiagnosticLevel.ERROR,
+            "SOCIAL_RESOLUTION_TIMEOUT",
+            "انتهت مهلة تحليل المنصة الاجتماعية دون إكمال المسار",
+            "social.resolve",
+            mapOf(
+                "platform" to platform.name,
+                "timeout_ms" to effectiveTimeoutMs.toString(),
+                "operation_id" to (request.operationId ?: "none"),
+                "timeout_scope" to "resolver",
+            ),
+            null,
+        )
+        return ResolverResult.Failure(
+            FailureCode.ResolverTimeout,
+            "استغرق تحليل الصفحة وقتًا أطول من المتوقع. أعد المحاولة.",
+        )
     }
 
     private fun inferCandidate(

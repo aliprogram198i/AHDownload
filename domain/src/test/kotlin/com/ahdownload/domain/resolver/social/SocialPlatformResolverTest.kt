@@ -7,7 +7,9 @@ import com.ahdownload.domain.resolver.ResolverRequest
 import com.ahdownload.domain.resolver.ResolverResult
 import com.ahdownload.domain.resolver.browser.BrowserMediaSession
 import com.ahdownload.domain.resolver.browser.BrowserMediaSessionProvider
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,6 +17,168 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SocialPlatformResolverTest {
+    @Test
+    fun nestedTimeoutIsNotMisreportedAsTheResolversOwnDeadline() = runTest {
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = InstagramResolverAdapter(
+            provider = object : BrowserMediaSessionProvider {
+                override suspend fun snapshot(
+                    url: String,
+                    platform: MediaPlatform,
+                ): BrowserMediaSession = withTimeout(1L) {
+                    delay(10L)
+                    error("unreachable")
+                }
+            },
+            resolveTimeoutMs = 5_000L,
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram),
+                operationId = "instagram-subtask-timeout",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals("ResolverUnavailable", (result as ResolverResult.Failure).code.name)
+        val timeoutEvent = events.single { it.first == "SOCIAL_RESOLVER_SUBTASK_TIMEOUT" }
+        assertEquals("subtask", timeoutEvent.second["timeout_scope"])
+        assertEquals("SUBTASK_TIMEOUT", timeoutEvent.second["failure_code"])
+        assertTrue(events.none { it.first == "SOCIAL_RESOLUTION_TIMEOUT" })
+    }
+
+    @Test
+    fun instagramEmbedRequestTimeoutRemainsLocalToFallbackAttempt() = runTest {
+        val pageUrl = "https://www.instagram.com/reel/ABC123/"
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = InstagramResolverAdapter(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = pageUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            resolveTimeoutMs = 5_000L,
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    if ("/embed/" in url) {
+                        return withTimeout(1L) {
+                            delay(10L)
+                            ""
+                        }
+                    }
+                    return "<html><head><title>Instagram</title></head><body></body></html>"
+                }
+
+                override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram).copy(
+                    originalUrl = pageUrl,
+                    normalizedUrl = pageUrl,
+                ),
+                operationId = "instagram-local-embed-timeout",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals("NoCandidates", (result as ResolverResult.Failure).code.name)
+        val embedEvents = events.filter { it.first == "SOCIAL_INSTAGRAM_EMBED_FALLBACK_RESULT" }
+        assertEquals(2, embedEvents.size)
+        assertTrue(embedEvents.all { it.second["fallback_status"] == "request_failed" })
+        assertTrue(events.none { it.first == "SOCIAL_RESOLUTION_TIMEOUT" })
+    }
+
+    @Test
+    fun callerTimeoutIsPropagatedInsteadOfMisreportedAsResolverTimeout() = runTest {
+        val resolver = InstagramResolverAdapter(
+            provider = object : BrowserMediaSessionProvider {
+                override suspend fun snapshot(
+                    url: String,
+                    platform: MediaPlatform,
+                ): BrowserMediaSession {
+                    delay(10_000L)
+                    error("unreachable")
+                }
+            },
+            resolveTimeoutMs = 5_000L,
+        )
+
+        val thrown = runCatching {
+            withTimeout(25L) {
+                resolver.resolve(ResolverRequest(link = link(MediaPlatform.Instagram)))
+            }
+        }.exceptionOrNull()
+
+        assertTrue(
+            "A timeout owned by the caller must propagate, not become ResolverResult.Failure",
+            thrown is TimeoutCancellationException,
+        )
+    }
+
+    @Test
+    fun pageFetchTimeoutIsRecordedAsLocalFallbackFailure() = runTest {
+        val pageUrl = "https://www.instagram.com/reel/ABC123/"
+        val events = mutableListOf<Pair<String, Map<String, String>>>()
+        val resolver = InstagramResolverAdapter(
+            provider = FakeProvider(
+                BrowserMediaSession(
+                    platform = MediaPlatform.Instagram,
+                    pageUrl = pageUrl,
+                    mediaUrls = emptyList(),
+                ),
+            ),
+            resolveTimeoutMs = 5_000L,
+            logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                events += type to context
+            },
+            pageClient = object : HttpTextClient {
+                override suspend fun get(url: String): String {
+                    if (url == pageUrl) {
+                        return withTimeout(1L) {
+                            delay(10L)
+                            ""
+                        }
+                    }
+                    return "<html><head><title>Instagram</title></head><body></body></html>"
+                }
+
+                override suspend fun get(url: String, headers: Map<String, String>): String = get(url)
+            },
+        )
+
+        val result = resolver.resolve(
+            ResolverRequest(
+                link = link(MediaPlatform.Instagram).copy(
+                    originalUrl = pageUrl,
+                    normalizedUrl = pageUrl,
+                ),
+                operationId = "instagram-local-page-timeout",
+            ),
+        )
+
+        assertTrue(result is ResolverResult.Failure)
+        assertEquals("NoCandidates", (result as ResolverResult.Failure).code.name)
+        assertTrue(
+            events.any {
+                it.first == "SOCIAL_PAGE_FETCH_FAILED" &&
+                    it.second["failure_code"] == "PAGE_FETCH_TIMEOUT"
+            },
+        )
+        assertTrue(events.none { it.first == "SOCIAL_RESOLUTION_TIMEOUT" })
+    }
+
     @Test
     fun instagramApiDiscoveredMediaGetsSafeRefererFallback() = runTest {
         val mediaUrl = "https://scontent.cdninstagram.com/o1/v/t2/f2/m367/AQExample.mp4?token=1"
