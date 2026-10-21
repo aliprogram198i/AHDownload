@@ -1,0 +1,185 @@
+name: Instagram E2E
+
+on:
+  push:
+    branches: ["e2e/instagram-20261009"]
+
+permissions:
+  contents: read
+
+jobs:
+  instagram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download release APK
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 \
+            -o app-release.apk \
+            "https://github.com/aliprogram198i/AHDownload/releases/download/release-37847746695/app-release.apk"
+          test -s app-release.apk
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools emulator"
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install emulator image
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "emulator" "system-images;android-35;google_apis;x86_64"
+          echo "no" | avdmanager create avd \
+            -n ahdownload-e2e \
+            -k "system-images;android-35;google_apis;x86_64" \
+            --force
+          test -d "$HOME/.android/avd"
+
+      - name: Run Instagram download test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: false
+          disable-animations: true
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+          script: |
+            set -euo pipefail
+
+            adb install -r app-release.apk
+            adb shell pm clear com.ahdownload.app >/dev/null 2>&1 || true
+            adb shell monkey -p com.ahdownload.app 1 >/dev/null 2>&1
+            sleep 5
+
+            dump_ui() {
+              adb shell uiautomator dump /sdcard/window.xml >/dev/null 2>&1 || true
+              adb exec-out cat /sdcard/window.xml 2>/dev/null || true
+            }
+
+            find_text_bounds() {
+              local needle="$1"
+              dump_ui | python3 -c '
+            import sys, xml.etree.ElementTree as ET, re
+            needle=sys.argv[1]
+            data=sys.stdin.read()
+            try:
+                root=ET.fromstring(data)
+            except Exception:
+                raise SystemExit(1)
+            for node in root.iter():
+                text=node.attrib.get("text","")
+                desc=node.attrib.get("content-desc","")
+                if needle == text or needle in text or needle == desc or needle in desc:
+                    b=node.attrib.get("bounds","")
+                    m=re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", b)
+                    if m:
+                        x1,y1,x2,y2=map(int,m.groups())
+                        print((x1+x2)//2,(y1+y2)//2)
+                        raise SystemExit(0)
+            raise SystemExit(1)
+            ' "$needle"
+            }
+
+            tap_text() {
+              local needle="$1"
+              local bounds
+              bounds="$(find_text_bounds "$needle" || true)"
+              test -n "$bounds"
+              adb shell input tap $bounds
+            }
+
+            tap_text "ابدأ الآن" || true
+            sleep 2
+
+            tap_text "حقل رابط المحتوى"
+            adb shell input text 'https://www.instagram.com/reel/DeN30fXocWW/?dlrf=MXJ5dGRkeXlzbWRxdw=='
+            tap_text "الحصول على الخيارات"
+
+            ready=0
+            for i in $(seq 1 30); do
+              ui="$(dump_ui)"
+              if printf '%s' "$ui" | grep -Eq "النتيجة جاهزة|الخيارات جاهزة"; then
+                ready=1
+                break
+              fi
+              if printf '%s' "$ui" | grep -q "تعذر تجهيز الرابط"; then
+                printf '%s\n' "$ui" > instagram-ui-failure.xml
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$ready" -ne 1 ]; then
+              echo "INSTAGRAM_ANALYSIS=FAILED"
+              grep -o 'text="[^"]*"\|content-desc="[^"]*"' instagram-ui-failure.xml 2>/dev/null | head -80 || true
+              adb logcat -d | grep -i -E 'SOCIAL_RESOLUTION|SOCIAL_BROWSER|MEDIA_VALIDATION|instagram|ahdownload' | tail -80 || true
+              exit 1
+            fi
+
+            echo "INSTAGRAM_ANALYSIS=PASS"
+
+            selected=0
+            for quality in 1080p 720p 480p 360p; do
+              if tap_text "$quality" >/dev/null 2>&1; then
+                selected=1
+                echo "INSTAGRAM_VIDEO_QUALITY=$quality"
+                break
+              fi
+            done
+            if [ "$selected" -ne 1 ]; then
+              echo "INSTAGRAM_VIDEO_QUALITY=NOT_FOUND"
+              dump_ui > instagram-ui-no-quality.xml
+              exit 1
+            fi
+
+            tap_text "تنزيل" || tap_text "تحميل" || {
+              echo "INSTAGRAM_DOWNLOAD_CTA=NOT_FOUND"
+              dump_ui > instagram-ui-no-cta.xml
+              exit 1
+            }
+
+            queued=0
+            for i in $(seq 1 20); do
+              ui="$(dump_ui)"
+              if printf '%s' "$ui" | grep -q "تمت إضافة التنزيل"; then
+                queued=1
+                break
+              fi
+              sleep 1
+            done
+
+            if [ "$queued" -ne 1 ]; then
+              echo "INSTAGRAM_QUEUE=FAILED"
+              exit 1
+            fi
+            echo "INSTAGRAM_QUEUE=PASS"
+
+            completed=0
+            for i in $(seq 1 45); do
+              if adb shell find /sdcard/Android/data/com.ahdownload.app/files/Download -type f -size +1024c 2>/dev/null | grep -q .; then
+                completed=1
+                break
+              fi
+              if adb shell find /sdcard/Download -type f -size +1024c 2>/dev/null | grep -q .; then
+                completed=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$completed" -ne 1 ]; then
+              echo "INSTAGRAM_FILE=NOT_FOUND"
+              adb logcat -d | grep -i -E 'download.completed|DOWNLOAD_COMPLETED|DOWNLOAD_FAILED|download.worker|MEDIA_VALIDATION' | tail -100 || true
+              exit 1
+            fi
+
+            echo "INSTAGRAM_FILE=PASS"
+            echo "INSTAGRAM_E2E=PASS"
