@@ -48,6 +48,7 @@ import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.app.performance.PerformanceMetrics
 import com.ahdownload.app.player.LocalMediaPlayerDialog
 import com.ahdownload.feature.downloads.DownloadPerformanceSummary
+import com.ahdownload.feature.downloads.MediaLibraryRoute
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.download.isTrustedYouTubePlaybackUrl
 import com.ahdownload.domain.download.resolveLocalMediaPlaybackType
@@ -66,6 +67,7 @@ private enum class RootDestination {
     Home,
     YouTubeSearch,
     Downloads,
+    MediaLibrary,
     Diagnostics,
     Settings,
     Studio,
@@ -625,6 +627,7 @@ private fun AHRoot(
             onOpenDownload = onOpenDownload,
             onShareDownload = onShareDownload,
             onOpenDownloadFolder = onOpenDownloadFolder,
+            onOpenMediaLibrary = { push(RootDestination.MediaLibrary) },
             onOpenStudio = { record ->
                 studioRecord = record
                 push(RootDestination.Studio)
@@ -637,6 +640,11 @@ private fun AHRoot(
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
             performanceSummaries = downloadPerformanceSummaries,
+        )
+        RootDestination.MediaLibrary -> MediaLibraryRoute(
+            repository = downloadRepository,
+            onBack = ::popOrHome,
+            onOpenMedia = onOpenDownload,
         )
         RootDestination.Studio -> studioRecord?.let { record ->
             StudioRoute(
