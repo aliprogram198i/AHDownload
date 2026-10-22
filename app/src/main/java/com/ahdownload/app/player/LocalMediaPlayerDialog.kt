@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -59,6 +60,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -161,6 +163,8 @@ fun LocalMediaPlayerDialog(
     var isScrubbing by remember(player) { mutableStateOf(false) }
     var scrubPosition by remember(player) { mutableFloatStateOf(0f) }
     var hasPlaybackError by remember(player) { mutableStateOf(false) }
+    var showSpeedDialog by remember(player) { mutableStateOf(false) }
+    var playbackSpeed by remember(player) { mutableFloatStateOf(1f) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(player) {
@@ -320,11 +324,27 @@ fun LocalMediaPlayerDialog(
                     }
 
                     if (hasPlaybackError) {
-                        Text(
-                            "تعذّر تشغيل الملف. قد تكون الصيغة غير مدعومة أو قد يكون الملف تالفًا.",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                "تعذّر تشغيل الملف. قد تكون الصيغة غير مدعومة أو قد يكون الملف تالفًا.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            TextButton(
+                                onClick = {
+                                    hasPlaybackError = false
+                                    player.seekToDefaultPosition()
+                                    player.prepare()
+                                    player.play()
+                                },
+                            ) {
+                                Text("إعادة المحاولة")
+                            }
+                        }
                     }
 
                     Column(
@@ -379,7 +399,14 @@ fun LocalMediaPlayerDialog(
                         ) {
                             IconButton(
                                 onClick = {
-                                    if (player.isPlaying) player.pause() else player.play()
+                                    if (player.isPlaying) {
+                                        player.pause()
+                                    } else {
+                                        if (player.playbackState == Player.STATE_ENDED) {
+                                            player.seekToDefaultPosition()
+                                        }
+                                        player.play()
+                                    }
                                 },
                                 enabled = !hasPlaybackError,
                                 modifier = Modifier.size(64.dp),
@@ -397,9 +424,55 @@ fun LocalMediaPlayerDialog(
                             enabled = durationMs > 0L && !hasPlaybackError,
                         ) { Text("+10 ث") }
                     }
+
+                    TextButton(onClick = { showSpeedDialog = true }) {
+                        Text("سرعة التشغيل · ${formatPlaybackSpeed(playbackSpeed)}×")
+                    }
                 }
             }
         }
+    }
+
+    if (showSpeedDialog) {
+        AlertDialog(
+            onDismissRequest = { showSpeedDialog = false },
+            title = { Text("سرعة التشغيل") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
+                        TextButton(
+                            onClick = {
+                                playbackSpeed = speed
+                                player.setPlaybackParameters(PlaybackParameters(speed))
+                                showSpeedDialog = false
+                            },
+                        ) {
+                            Text(
+                                text = buildString {
+                                    if (speed == playbackSpeed) append("✓ ")
+                                    append(formatPlaybackSpeed(speed))
+                                    append("×")
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSpeedDialog = false }) { Text("إغلاق") }
+            },
+        )
+    }
+}
+
+private fun formatPlaybackSpeed(speed: Float): String {
+    return if (speed % 1f == 0f) {
+        String.format(Locale.ROOT, "%.0f", speed)
+    } else {
+        String.format(Locale.ROOT, "%.2f", speed).trimEnd('0').trimEnd('.')
     }
 }
 
