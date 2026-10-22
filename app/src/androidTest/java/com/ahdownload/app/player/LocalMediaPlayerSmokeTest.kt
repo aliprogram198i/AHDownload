@@ -3,6 +3,7 @@ package com.ahdownload.app.player
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -67,6 +68,20 @@ class LocalMediaPlayerSmokeTest {
                 playerError.get(),
             )
             assertEquals(Player.STATE_READY, finalState.get())
+
+            val preparedPlayer = playerRef.get()
+                ?: throw AssertionError("ExoPlayer instance was not created")
+            val appliedSpeed = AtomicReference<Float>()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                preparedPlayer.setPlaybackParameters(PlaybackParameters(1.5f))
+                appliedSpeed.set(preparedPlayer.playbackParameters.speed)
+            }
+            assertEquals(
+                "ExoPlayer did not apply the requested playback speed",
+                1.5f,
+                appliedSpeed.get() ?: throw AssertionError("Playback speed was not read on the main thread"),
+                0.001f,
+            )
             assertTrue(localAudio.isFile && localAudio.length() > 44L)
         } finally {
             playerRef.get()?.let { player ->
