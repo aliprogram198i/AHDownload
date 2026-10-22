@@ -167,6 +167,7 @@ fun DownloadsRoute(
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
+    onOpenMediaLibrary: () -> Unit,
     onOpenStudio: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
     onBack: () -> Unit,
@@ -289,6 +290,7 @@ fun DownloadsRoute(
         onShareDownload = onShareDownload,
         onDeleteDownloadFile = onDeleteDownloadFile,
         onOpenDownloadFolder = onOpenDownloadFolder,
+        onOpenMediaLibrary = onOpenMediaLibrary,
         onOpenStudio = onOpenStudio,
         onToggleFavorite = { record ->
             val url = (record.task.sourcePageUrl ?: record.task.sourceUrl).trim()
@@ -335,6 +337,7 @@ private fun DownloadsScreen(
     onShareDownload: (DownloadRecord) -> Unit,
     onDeleteDownloadFile: (DownloadRecord) -> Boolean,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
+    onOpenMediaLibrary: () -> Unit,
     onOpenStudio: (DownloadRecord) -> Unit,
     onToggleFavorite: (DownloadRecord) -> Unit,
     uiTraceLogger: UiTraceLogger,
@@ -437,6 +440,18 @@ private fun DownloadsScreen(
                     }
                 },
                 actions = {
+                    DiagnosticIconButton(
+                        trackingScreen = "DOWNLOADS",
+                        trackingId = "DOWNLOADS.iconbutton.media_library",
+                        trackingLabel = "مكتبة الوسائط",
+                        disabledReason = "navigation_is_available",
+                        onClick = {
+                            uiTraceLogger.interaction("DOWNLOADS", "media_library_button", "open_media_library")
+                            onOpenMediaLibrary()
+                        },
+                    ) {
+                        Icon(Icons.Rounded.FolderOpen, contentDescription = "مكتبة الوسائط")
+                    }
                     DiagnosticIconButton(
                         trackingScreen = "DOWNLOADS",
                         trackingId = "DOWNLOADS.iconbutton.settings",

@@ -48,6 +48,7 @@ import com.ahdownload.domain.download.DownloadProcessingMode
 import com.ahdownload.app.performance.PerformanceMetrics
 import com.ahdownload.app.player.LocalMediaPlayerDialog
 import com.ahdownload.feature.downloads.DownloadPerformanceSummary
+import com.ahdownload.feature.downloads.MediaLibraryRoute
 import com.ahdownload.domain.download.DownloadEnqueueResult
 import com.ahdownload.domain.download.isTrustedYouTubePlaybackUrl
 import com.ahdownload.domain.download.resolveLocalMediaPlaybackType
@@ -66,6 +67,7 @@ private enum class RootDestination {
     Home,
     YouTubeSearch,
     Downloads,
+    MediaLibrary,
     Diagnostics,
     Settings,
     Studio,
@@ -254,7 +256,8 @@ class MainActivity : ComponentActivity() {
     private fun openCompletedDownload(record: DownloadRecord) {
         val destination = record.destinationUri
             ?.takeIf { it.isNotBlank() }
-            ?.let(Uri::parse)
+            ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
+            ?: File(record.task.destinationPath).takeIf { it.isFile }?.let(Uri::fromFile)
             ?: return
 
         val mimeType = contentResolver.getType(destination)
@@ -273,7 +276,9 @@ class MainActivity : ComponentActivity() {
                 playbackType = playbackType,
             )
         ) {
-            activePlayerRecord = record
+            // Pass the exact URI that was just resolved and validated. If a stale provider URI
+            // fell back to a readable local file, the player must not retry the stale URI.
+            activePlayerRecord = record.copy(destinationUri = destination.toString())
             diagnosticLogger.log(
                 level = DiagnosticLevel.INFO,
                 type = "LOCAL_MEDIA_PLAYBACK_OPENED",
@@ -625,6 +630,7 @@ private fun AHRoot(
             onOpenDownload = onOpenDownload,
             onShareDownload = onShareDownload,
             onOpenDownloadFolder = onOpenDownloadFolder,
+            onOpenMediaLibrary = { push(RootDestination.MediaLibrary) },
             onOpenStudio = { record ->
                 studioRecord = record
                 push(RootDestination.Studio)
@@ -637,6 +643,11 @@ private fun AHRoot(
             onNavigateSettings = { root(RootDestination.Settings) },
             activeDownloads = activeDownloads,
             performanceSummaries = downloadPerformanceSummaries,
+        )
+        RootDestination.MediaLibrary -> MediaLibraryRoute(
+            repository = downloadRepository,
+            onBack = ::popOrHome,
+            onOpenMedia = onOpenDownload,
         )
         RootDestination.Studio -> studioRecord?.let { record ->
             StudioRoute(
