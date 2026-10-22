@@ -86,8 +86,11 @@ fun MediaLibraryRoute(
                 .filter { it.status == DownloadStatus.COMPLETED }
                 .mapNotNull { record ->
                     val type = classifyMediaLibraryRecord(record) ?: return@mapNotNull null
-                    if (!localMediaRecordExists(context, record)) return@mapNotNull null
-                    MediaLibraryEntry(record, type)
+                    val resolvedUri = resolveReadableMediaUri(context, record)
+                        ?: return@mapNotNull null
+                    // Carry the verified URI with the card so opening it cannot choose a stale
+                    // provider URI over a readable local-file fallback.
+                    MediaLibraryEntry(record.copy(destinationUri = resolvedUri.toString()), type)
                 }
                 .toList()
         }
@@ -289,7 +292,7 @@ private fun MediaLibraryItemCard(
     }
 }
 
-private fun localMediaRecordExists(context: Context, record: DownloadRecord): Boolean {
+private fun resolveReadableMediaUri(context: Context, record: DownloadRecord): Uri? {
     val rawDestination = record.destinationUri?.takeIf { it.isNotBlank() }
     if (rawDestination != null) {
         val uri = runCatching { Uri.parse(rawDestination) }.getOrNull()
@@ -298,14 +301,20 @@ private fun localMediaRecordExists(context: Context, record: DownloadRecord): Bo
                 val readable = runCatching {
                     context.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
                 }.getOrDefault(false)
-                if (readable) return true
+                if (readable) return uri
             }
             "file" -> {
-                if (uri.path?.let(::File)?.isFile == true) return true
+                val file = uri.path?.let(::File)?.takeIf { it.isFile && it.canRead() }
+                if (file != null) return uri
             }
         }
     }
-    return runCatching { File(record.task.destinationPath).isFile }.getOrDefault(false)
+
+    return runCatching {
+        File(record.task.destinationPath)
+            .takeIf { it.isFile && it.canRead() }
+            ?.let(Uri::fromFile)
+    }.getOrNull()
 }
 
 private fun formatMediaBytes(value: Long): String {
