@@ -33,7 +33,7 @@ internal fun classifyMediaLibraryRecord(record: DownloadRecord): MediaLibraryTyp
     }
     if (record.task.mediaKind == MediaKind.Video) return MediaLibraryType.Video
 
-    val extension = sequenceOf(record.task.displayName, record.task.destinationPath)
+    val extensions = sequenceOf(record.task.destinationPath, record.task.displayName)
         .filterNotNull()
         .map {
             it.substringBefore('?')
@@ -42,16 +42,11 @@ internal fun classifyMediaLibraryRecord(record: DownloadRecord): MediaLibraryTyp
                 .substringAfterLast('.', "")
                 .lowercase(Locale.ROOT)
         }
-        .firstOrNull { it.isNotBlank() }
-        ?: return null
+        .toList()
 
-    return when (extension) {
-        "mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "amr" ->
-            MediaLibraryType.Audio
-        "mp4", "m4v", "mkv", "mov", "3gp", "mpg", "mpeg", "ts", "webm" ->
-            MediaLibraryType.Video
-        else -> null
-    }
+    if (extensions.any { it in AUDIO_EXTENSIONS }) return MediaLibraryType.Audio
+    if (extensions.any { it in VIDEO_EXTENSIONS }) return MediaLibraryType.Video
+    return null
 }
 
 internal fun filterMediaLibraryEntries(
@@ -78,3 +73,6 @@ internal fun filterMediaLibraryEntries(
         )
         .toList()
 }
+
+private val AUDIO_EXTENSIONS = setOf("mp3", "m4a", "aac", "wav", "flac", "ogg", "oga", "opus", "amr")
+private val VIDEO_EXTENSIONS = setOf("mp4", "m4v", "mkv", "mov", "3gp", "mpg", "mpeg", "ts", "webm")
