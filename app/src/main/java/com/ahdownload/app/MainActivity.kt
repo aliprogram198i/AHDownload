@@ -276,7 +276,9 @@ class MainActivity : ComponentActivity() {
                 playbackType = playbackType,
             )
         ) {
-            activePlayerRecord = record
+            // Pass the exact URI that was just resolved and validated. If a stale provider URI
+            // fell back to a readable local file, the player must not retry the stale URI.
+            activePlayerRecord = record.copy(destinationUri = destination.toString())
             diagnosticLogger.log(
                 level = DiagnosticLevel.INFO,
                 type = "LOCAL_MEDIA_PLAYBACK_OPENED",
