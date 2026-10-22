@@ -2,6 +2,7 @@ package com.ahdownload.app.player
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,8 @@ import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -171,6 +174,10 @@ fun LocalMediaPlayerDialog(
     var hasPlaybackError by remember(player) { mutableStateOf(false) }
     var showSpeedDialog by remember(player) { mutableStateOf(false) }
     var playbackSpeed by remember(player) { mutableFloatStateOf(1f) }
+    var repeatOneEnabled by remember(player) { mutableStateOf(player.repeatMode == Player.REPEAT_MODE_ONE) }
+    var showSleepTimerDialog by remember(player) { mutableStateOf(false) }
+    var sleepTimerDeadlineElapsedMs by remember(player) { mutableLongStateOf(0L) }
+    var sleepTimerRemainingSeconds by remember(player) { mutableLongStateOf(0L) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
     DisposableEffect(player) {
@@ -224,6 +231,28 @@ fun LocalMediaPlayerDialog(
         while (true) {
             delay(1_000L)
             persistPlaybackPosition(playbackPositionStore, playbackTaskId, player)
+        }
+    }
+
+    LaunchedEffect(player, sleepTimerDeadlineElapsedMs) {
+        val deadline = sleepTimerDeadlineElapsedMs
+        if (deadline <= 0L) {
+            sleepTimerRemainingSeconds = 0L
+            return@LaunchedEffect
+        }
+        while (true) {
+            val remainingMs = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+            sleepTimerRemainingSeconds = PlaybackTimerPolicy.remainingSeconds(
+                deadlineElapsedMs = deadline,
+                nowElapsedMs = SystemClock.elapsedRealtime(),
+            )
+            if (remainingMs == 0L) {
+                player.pause()
+                sleepTimerDeadlineElapsedMs = 0L
+                sleepTimerRemainingSeconds = 0L
+                break
+            }
+            delay(minOf(1_000L, remainingMs.coerceAtLeast(1L)))
         }
     }
 
@@ -445,6 +474,42 @@ fun LocalMediaPlayerDialog(
                     TextButton(onClick = { showSpeedDialog = true }) {
                         Text("سرعة التشغيل · ${formatPlaybackSpeed(playbackSpeed)}×")
                     }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = {
+                                repeatOneEnabled = !repeatOneEnabled
+                                player.repeatMode = if (repeatOneEnabled) {
+                                    Player.REPEAT_MODE_ONE
+                                } else {
+                                    Player.REPEAT_MODE_OFF
+                                }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Rounded.RepeatOne,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.size(6.dp))
+                            Text(if (repeatOneEnabled) "تكرار الملف" else "التكرار متوقف")
+                        }
+                        TextButton(onClick = { showSleepTimerDialog = true }) {
+                            Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text(
+                                if (sleepTimerDeadlineElapsedMs > 0L) {
+                                    "الإيقاف · ${formatPlaybackTime(sleepTimerRemainingSeconds * 1_000L)}"
+                                } else {
+                                    "مؤقت الإيقاف"
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -480,6 +545,48 @@ fun LocalMediaPlayerDialog(
             },
             confirmButton = {
                 TextButton(onClick = { showSpeedDialog = false }) { Text("إغلاق") }
+            },
+        )
+    }
+
+    if (showSleepTimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showSleepTimerDialog = false },
+            title = { Text("مؤقت إيقاف التشغيل") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("أوقف التشغيل تلقائيًا بعد المدة المحددة.")
+                    PlaybackTimerPolicy.presetMinutes.forEach { minutes ->
+                        TextButton(
+                            onClick = {
+                                sleepTimerDeadlineElapsedMs = PlaybackTimerPolicy.deadlineAfterMinutes(
+                                    nowElapsedMs = SystemClock.elapsedRealtime(),
+                                    minutes = minutes,
+                                ) ?: 0L
+                                showSleepTimerDialog = false
+                            },
+                        ) {
+                            Text("$minutes دقيقة")
+                        }
+                    }
+                    if (sleepTimerDeadlineElapsedMs > 0L) {
+                        TextButton(
+                            onClick = {
+                                sleepTimerDeadlineElapsedMs = 0L
+                                sleepTimerRemainingSeconds = 0L
+                                showSleepTimerDialog = false
+                            },
+                        ) {
+                            Text("إلغاء المؤقت الحالي")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSleepTimerDialog = false }) { Text("إغلاق") }
             },
         )
     }
