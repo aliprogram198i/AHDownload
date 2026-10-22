@@ -83,6 +83,11 @@ fun LocalMediaPlayerDialog(
     val context = LocalContext.current
     val mediaUri = remember(record) { resolveLocalMediaUri(record) }
     val currentErrorCallback by rememberUpdatedState(onPlaybackError)
+    val playbackPositionStore = remember(context) { PlaybackPositionStore(context) }
+    val playbackTaskId = record.task.id
+    val initialPlaybackPositionMs = remember(playbackTaskId, playbackPositionStore) {
+        restorablePlaybackPosition(playbackPositionStore.read(playbackTaskId))
+    }
 
     if (mediaUri == null) {
         Dialog(
@@ -148,6 +153,7 @@ fun LocalMediaPlayerDialog(
                     .setUri(mediaUri)
                     .apply { mimeType?.let(::setMimeType) }
                     .build(),
+                initialPlaybackPositionMs,
             )
             prepare()
             playWhenReady = true
@@ -188,6 +194,7 @@ fun LocalMediaPlayerDialog(
         }
         player.addListener(listener)
         onDispose {
+            persistPlaybackPosition(playbackPositionStore, playbackTaskId, player)
             player.removeListener(listener)
             player.release()
         }
@@ -195,7 +202,10 @@ fun LocalMediaPlayerDialog(
 
     DisposableEffect(player, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) player.pause()
+            if (event == Lifecycle.Event.ON_STOP) {
+                persistPlaybackPosition(playbackPositionStore, playbackTaskId, player)
+                player.pause()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -207,6 +217,13 @@ fun LocalMediaPlayerDialog(
             durationMs = if (duration > 0L && duration != C.TIME_UNSET) duration else 0L
             if (!isScrubbing) positionMs = player.currentPosition.coerceAtLeast(0L)
             delay(250L)
+        }
+    }
+
+    LaunchedEffect(player, playbackTaskId, playbackPositionStore) {
+        while (true) {
+            delay(1_000L)
+            persistPlaybackPosition(playbackPositionStore, playbackTaskId, player)
         }
     }
 
@@ -466,6 +483,22 @@ fun LocalMediaPlayerDialog(
             },
         )
     }
+}
+
+private fun persistPlaybackPosition(
+    store: PlaybackPositionStore,
+    taskId: String,
+    player: Player,
+) {
+    val durationMs = player.duration
+    if (durationMs <= 0L || durationMs == C.TIME_UNSET || player.playbackState == Player.STATE_IDLE) {
+        return
+    }
+    store.write(
+        taskId = taskId,
+        positionMs = player.currentPosition.coerceAtLeast(0L),
+        durationMs = durationMs,
+    )
 }
 
 private fun formatPlaybackSpeed(speed: Float): String {
