@@ -21,6 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class LocalMediaPlayerSmokeTest {
@@ -88,6 +89,24 @@ class LocalMediaPlayerSmokeTest {
                 InstrumentationRegistry.getInstrumentation().runOnMainSync { player.release() }
             }
             localAudio.delete()
+        }
+    }
+
+    @Test
+    fun playbackPositionStorePersistsAndClearsPerTask() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val store = PlaybackPositionStore(context)
+        val taskId = "playback-position-test-${UUID.randomUUID()}"
+        try {
+            val saved = PlaybackPositionSnapshot(positionMs = 23_400L, durationMs = 60_000L)
+            store.write(taskId, saved.positionMs, saved.durationMs)
+
+            assertEquals(saved, store.read(taskId))
+
+            store.clear(taskId)
+            assertNull(store.read(taskId))
+        } finally {
+            store.clear(taskId)
         }
     }
 
