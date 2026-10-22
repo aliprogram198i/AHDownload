@@ -71,13 +71,15 @@ class LocalMediaPlayerSmokeTest {
 
             val preparedPlayer = playerRef.get()
                 ?: throw AssertionError("ExoPlayer instance was not created")
+            val appliedSpeed = AtomicReference<Float>()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 preparedPlayer.setPlaybackParameters(PlaybackParameters(1.5f))
+                appliedSpeed.set(preparedPlayer.playbackParameters.speed)
             }
             assertEquals(
                 "ExoPlayer did not apply the requested playback speed",
                 1.5f,
-                preparedPlayer.playbackParameters.speed,
+                appliedSpeed.get() ?: throw AssertionError("Playback speed was not read on the main thread"),
                 0.001f,
             )
             assertTrue(localAudio.isFile && localAudio.length() > 44L)
