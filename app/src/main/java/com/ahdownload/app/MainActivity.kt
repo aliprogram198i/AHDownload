@@ -256,7 +256,8 @@ class MainActivity : ComponentActivity() {
     private fun openCompletedDownload(record: DownloadRecord) {
         val destination = record.destinationUri
             ?.takeIf { it.isNotBlank() }
-            ?.let(Uri::parse)
+            ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
+            ?: File(record.task.destinationPath).takeIf { it.isFile }?.let(Uri::fromFile)
             ?: return
 
         val mimeType = contentResolver.getType(destination)
