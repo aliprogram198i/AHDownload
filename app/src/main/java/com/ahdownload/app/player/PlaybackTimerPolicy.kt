@@ -17,6 +17,7 @@ internal object PlaybackTimerPolicy {
     fun remainingSeconds(deadlineElapsedMs: Long, nowElapsedMs: Long): Long {
         if (deadlineElapsedMs <= 0L || nowElapsedMs < 0L) return 0L
         val remainingMs = (deadlineElapsedMs - nowElapsedMs).coerceAtLeast(0L)
-        return if (remainingMs == 0L) 0L else (remainingMs + 999L) / 1_000L
+        val wholeSeconds = remainingMs / 1_000L
+        return wholeSeconds + if (remainingMs % 1_000L == 0L) 0L else 1L
     }
 }
