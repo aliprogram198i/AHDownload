@@ -60,6 +60,26 @@ class MediaLibraryPresentationTest {
     }
 
     @Test
+    fun usesDestinationExtensionWhenDisplayNameHasNoExtension() {
+        val legacy = DownloadRecord(
+            task = DownloadTask(
+                id = "legacy",
+                sourceUrl = "https://example.com/audio",
+                destinationPath = "/downloads/audio.wav",
+                displayName = "Voice note",
+            ),
+            status = DownloadStatus.COMPLETED,
+            bytesDownloaded = 1_000L,
+            totalBytes = 1_000L,
+            failureCode = null,
+            failureDetail = null,
+            createdAtEpochMs = 500L,
+            updatedAtEpochMs = 1_000L,
+        )
+        assertEquals(MediaLibraryType.Audio, classifyMediaLibraryRecord(legacy))
+    }
+
+    @Test
     fun explicitAudioExtractionWinsOverUnknownOrVideoMetadata() {
         val extracted = record("extracted", "result.dat", MediaKind.Video, DownloadProcessingMode.ExtractAudio, 1_000L)
         assertEquals(MediaLibraryType.Audio, classifyMediaLibraryRecord(extracted))
