@@ -8,8 +8,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * AHDownload exposes one carefully tuned light theme to keep every screen consistent.
- * Keep the enum/storage contract stable so appearance preferences remain backwards compatible.
+ * The single Modern Indigo Light theme is the visual source of truth for all app surfaces.
+ * Keep the enum/storage contract stable so saved appearance preferences remain compatible.
  */
 val LocalAHThemeMode = staticCompositionLocalOf { AHThemeMode.LIGHT }
 
@@ -20,35 +20,35 @@ enum class AHThemeMode(
 ) {
     LIGHT(
         storageValue = "light",
-        label = "Crystal Blue",
-        description = "واجهة فاتحة ونظيفة بأزرق بلوري مريح وتباين واضح للقراءة",
+        label = "Modern Indigo Light",
+        description = "واجهة فاتحة بإنديغو حديث، ومساحات نظيفة، وتباين مريح للقراءة",
     ),
 }
 
-private val CrystalBlueColors = lightColorScheme(
-    primary = Color(0xFF245ED8),
+private val ModernIndigoLightColors = lightColorScheme(
+    primary = Color(0xFF4F46E5),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFDCEAFF),
-    onPrimaryContainer = Color(0xFF163A70),
-    secondary = Color(0xFF3072D5),
+    primaryContainer = Color(0xFFE0E7FF),
+    onPrimaryContainer = Color(0xFF26215F),
+    secondary = Color(0xFF6366F1),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE4F0FF),
-    onSecondaryContainer = Color(0xFF183B69),
-    tertiary = Color(0xFF16836C),
+    secondaryContainer = Color(0xFFE8E9FF),
+    onSecondaryContainer = Color(0xFF2D2E72),
+    tertiary = Color(0xFF0F8B7D),
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFD9F4EC),
-    onTertiaryContainer = Color(0xFF0F4A3E),
-    background = Color(0xFFF4F8FF),
-    onBackground = Color(0xFF1B2A41),
+    tertiaryContainer = Color(0xFFD5F5EF),
+    onTertiaryContainer = Color(0xFF104E46),
+    background = Color(0xFFF7F8FE),
+    onBackground = Color(0xFF202442),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF1B2A41),
-    surfaceVariant = Color(0xFFEAF1FB),
-    onSurfaceVariant = Color(0xFF4E5E76),
-    outline = Color(0xFFCAD7E8),
-    outlineVariant = Color(0xFFDEE7F3),
-    error = Color(0xFFBA1A1A),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
+    onSurface = Color(0xFF202442),
+    surfaceVariant = Color(0xFFF0F1FB),
+    onSurfaceVariant = Color(0xFF535A76),
+    outline = Color(0xFFCDD2E8),
+    outlineVariant = Color(0xFFE1E5F2),
+    error = Color(0xFFB42318),
+    errorContainer = Color(0xFFFEE4E2),
+    onErrorContainer = Color(0xFF7A271A),
 )
 
 @Composable
@@ -58,7 +58,7 @@ fun AHTheme(
 ) {
     CompositionLocalProvider(LocalAHThemeMode provides themeMode) {
         MaterialTheme(
-            colorScheme = CrystalBlueColors,
+            colorScheme = ModernIndigoLightColors,
             typography = AHTypography,
             shapes = AHShapes,
             content = content,
