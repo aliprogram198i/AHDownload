@@ -9,8 +9,8 @@ import com.ahdownload.domain.download.DownloadState
  * localized status contract easy to exercise with JVM unit tests.
  */
 internal fun DownloadState.toNotificationText(
-lowStorageWarningForTask: Boolean,
-notificationBytesPerSecond: Long,
+    lowStorageWarningForTask: Boolean,
+    notificationBytesPerSecond: Long,
 ): String = when (this) {
     DownloadState.Queued -> "في قائمة الانتظار"
     DownloadState.Preparing -> if (lowStorageWarningForTask) {
