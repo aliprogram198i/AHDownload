@@ -1848,259 +1848,140 @@ fun BrowserRoute(
     }
 
     if (showResults) {
-        ModalBottomSheet(onDismissRequest = { showResults = false }) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                item {
-                    Text("خيارات التنزيل", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(
-                        resultTitle ?: "مصادر الصفحة",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
-                    Text(
-                        "${videoCandidates.size} خيار فيديو • ${audioSources.size} مصدر صوت • لا يتم اختيار أي مصدر تلقائيًا",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                item { Text("الفيديو", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                if (videoCandidates.isEmpty()) {
-                    item { Text("لم يتم العثور على خيار فيديو.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                } else {
-                    items(videoCandidates, key = { "video-${it.id}" }) { candidate ->
-                        CandidateOption(
-                            candidate = candidate,
-                            title = resultTitle,
-                            sourceUrl = resultSourceUrl,
-                            thumbnailUrl = resultThumbnail,
-                            busy = actionInProgress,
-                            onDownload = {
-                                actionInProgress = true
-                                scope.launch {
-                                    try {
-                                        when (val validation = resolver.validate(candidate, "browser-download-${UUID.randomUUID()}")) {
-                                            is CandidateValidationResult.Valid -> {
-                                                val outcome = onDownloadRequested(validation.candidate, resultTitle, resultSourceUrl, resultThumbnail)
-                                                inspectMessage = when (outcome) {
-                                                    DownloadEnqueueResult.QUEUED -> "أُضيف التنزيل إلى قائمة الانتظار."
-                                                    DownloadEnqueueResult.DUPLICATE -> "هذا الملف موجود بالفعل في قائمة التنزيلات."
-                                                    DownloadEnqueueResult.INVALID_CUSTOM_LOCATION -> "مجلد الحفظ غير صالح؛ راجع الإعدادات."
-                                                    DownloadEnqueueResult.STORAGE_UNAVAILABLE -> "مساحة التخزين أو المجلد غير متاح."
-                                                    DownloadEnqueueResult.REJECTED -> "لم يقبل التطبيق طلب التنزيل."
-                                                }
-                                                recordBrowserEvent(
-                                                    if (outcome == DownloadEnqueueResult.QUEUED) "VIDEO_DOWNLOAD_QUEUED" else "VIDEO_DOWNLOAD_NOT_QUEUED",
-                                                    inspectMessage.orEmpty(),
-                                                    "download",
-                                                    resultSourceUrl,
-                                                    code = outcome.name,
-                                                    severity = if (outcome == DownloadEnqueueResult.QUEUED) "SUCCESS" else "WARNING",
-                                                    details = mapOf(
-                                                        "candidate_id" to validation.candidate.id,
-                                                        "format" to validation.candidate.format.container.name,
-                                                        "has_audio" to validation.candidate.format.hasAudio.toString(),
-                                                        "has_video" to validation.candidate.format.hasVideo.toString(),
-                                                        "enqueue_outcome" to outcome.name,
-                                                    ),
-                                                )
-                                            }
-                                            is CandidateValidationResult.Invalid -> {
-                                                inspectMessage = validation.failure.toBrowserMessage()
-                                                recordBrowserEvent(
-                                                    "VIDEO_CANDIDATE_VALIDATION_FAILED",
-                                                    inspectMessage.orEmpty(),
-                                                    "validation",
-                                                    candidate.sourceUrl,
-                                                    severity = "ERROR",
-                                                    details = mapOf(
-                                                        "candidate_id" to candidate.id,
-                                                        "validation_failure" to validation.failure.javaClass.simpleName,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
-                                        inspectMessage = "تعذر بدء التنزيل."
-                                        recordBrowserEvent(
-                                            "VIDEO_DOWNLOAD_EXCEPTION",
-                                            "حدث استثناء أثناء تجهيز تنزيل الفيديو",
-                                            "download",
-                                            resultSourceUrl,
-                                            code = error.javaClass.simpleName,
-                                            severity = "ERROR",
-                                            details = mapOf("exception_type" to error.javaClass.simpleName),
-                                        )
-                                    } finally {
-                                        actionInProgress = false
-                                    }
+        BrowserMediaResultsSheet(
+            resultTitle = resultTitle,
+            resultSourceUrl = resultSourceUrl,
+            resultThumbnail = resultThumbnail,
+            videoCandidates = videoCandidates,
+            audioSources = audioSources,
+            selectedAudioCandidateId = selectedAudioCandidateId,
+            selectedAudioFormat = selectedAudioFormat,
+            actionInProgress = actionInProgress,
+            onDismiss = { showResults = false },
+            onSelectAudioCandidate = { selectedAudioCandidateId = it },
+            onSelectAudioFormat = { selectedAudioFormat = it },
+            onDownloadVideo = { candidate ->
+                actionInProgress = true
+                scope.launch {
+                    try {
+                        when (val validation = resolver.validate(candidate, "browser-download-${UUID.randomUUID()}")) {
+                            is CandidateValidationResult.Valid -> {
+                                val outcome = onDownloadRequested(validation.candidate, resultTitle, resultSourceUrl, resultThumbnail)
+                                inspectMessage = when (outcome) {
+                                    DownloadEnqueueResult.QUEUED -> "أُضيف التنزيل إلى قائمة الانتظار."
+                                    DownloadEnqueueResult.DUPLICATE -> "هذا الملف موجود بالفعل في قائمة التنزيلات."
+                                    DownloadEnqueueResult.INVALID_CUSTOM_LOCATION -> "مجلد الحفظ غير صالح؛ راجع الإعدادات."
+                                    DownloadEnqueueResult.STORAGE_UNAVAILABLE -> "مساحة التخزين أو المجلد غير متاح."
+                                    DownloadEnqueueResult.REJECTED -> "لم يقبل التطبيق طلب التنزيل."
                                 }
-                            },
-                        )
-                    }
-                }
-                item { Text("استخراج الصوت", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold) }
-                if (audioSources.isEmpty()) {
-                    item { Text("لم يتم العثور على مصدر صوت قابل للتحقق.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                } else {
-                    item {
-                        Text("اختر المصدر أولًا، ثم صيغة الصوت.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            audioSources.forEach { candidate ->
-                                FilterChip(
-                                    selected = selectedAudioCandidateId == candidate.id,
-                                    onClick = { selectedAudioCandidateId = candidate.id },
-                                    label = { Text(BrowserMediaOptionDeduplicator.audioSourceLabel(candidate)) },
+                                recordBrowserEvent(
+                                    if (outcome == DownloadEnqueueResult.QUEUED) "VIDEO_DOWNLOAD_QUEUED" else "VIDEO_DOWNLOAD_NOT_QUEUED",
+                                    inspectMessage.orEmpty(),
+                                    "download",
+                                    resultSourceUrl,
+                                    code = outcome.name,
+                                    severity = if (outcome == DownloadEnqueueResult.QUEUED) "SUCCESS" else "WARNING",
+                                    details = mapOf(
+                                        "candidate_id" to validation.candidate.id,
+                                        "format" to validation.candidate.format.container.name,
+                                        "has_audio" to validation.candidate.format.hasAudio.toString(),
+                                        "has_video" to validation.candidate.format.hasVideo.toString(),
+                                        "enqueue_outcome" to outcome.name,
+                                    ),
+                                )
+                            }
+                            is CandidateValidationResult.Invalid -> {
+                                inspectMessage = validation.failure.toBrowserMessage()
+                                recordBrowserEvent(
+                                    "VIDEO_CANDIDATE_VALIDATION_FAILED",
+                                    inspectMessage.orEmpty(),
+                                    "validation",
+                                    candidate.sourceUrl,
+                                    severity = "ERROR",
+                                    details = mapOf(
+                                        "candidate_id" to candidate.id,
+                                        "validation_failure" to validation.failure.javaClass.simpleName,
+                                    ),
                                 )
                             }
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            AudioOutputFormat.entries.forEach { format ->
-                                FilterChip(
-                                    selected = selectedAudioFormat == format,
-                                    onClick = { selectedAudioFormat = format },
-                                    label = { Text(format.label) },
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        inspectMessage = "تعذر بدء التنزيل."
+                        recordBrowserEvent(
+                            "VIDEO_DOWNLOAD_EXCEPTION",
+                            "حدث استثناء أثناء تجهيز تنزيل الفيديو",
+                            "download",
+                            resultSourceUrl,
+                            code = error.javaClass.simpleName,
+                            severity = "ERROR",
+                            details = mapOf("exception_type" to error.javaClass.simpleName),
+                        )
+                    } finally {
+                        actionInProgress = false
+                    }
+                }
+            },
+            onExtractAudio = { candidate, format ->
+                actionInProgress = true
+                scope.launch {
+                    try {
+                        when (val validation = resolver.validate(candidate, "browser-audio-${UUID.randomUUID()}")) {
+                            is CandidateValidationResult.Valid -> {
+                                val outcome = onAudioOnlyRequested(validation.candidate, format, resultTitle, resultSourceUrl, resultThumbnail)
+                                inspectMessage = if (outcome == DownloadEnqueueResult.QUEUED) {
+                                    "أُضيف استخراج الصوت إلى قائمة الانتظار."
+                                } else {
+                                    "تعذر إضافة استخراج الصوت: ${outcome.name}."
+                                }
+                                recordBrowserEvent(
+                                    if (outcome == DownloadEnqueueResult.QUEUED) "AUDIO_EXTRACTION_QUEUED" else "AUDIO_EXTRACTION_NOT_QUEUED",
+                                    inspectMessage.orEmpty(),
+                                    "audio",
+                                    resultSourceUrl,
+                                    code = outcome.name,
+                                    severity = if (outcome == DownloadEnqueueResult.QUEUED) "SUCCESS" else "WARNING",
+                                    details = mapOf(
+                                        "candidate_id" to validation.candidate.id,
+                                        "output_format" to format.name,
+                                        "enqueue_outcome" to outcome.name,
+                                    ),
+                                )
+                            }
+                            is CandidateValidationResult.Invalid -> {
+                                inspectMessage = validation.failure.toBrowserMessage()
+                                recordBrowserEvent(
+                                    "AUDIO_CANDIDATE_VALIDATION_FAILED",
+                                    inspectMessage.orEmpty(),
+                                    "validation",
+                                    candidate.sourceUrl,
+                                    severity = "ERROR",
+                                    details = mapOf(
+                                        "candidate_id" to candidate.id,
+                                        "validation_failure" to validation.failure.javaClass.simpleName,
+                                    ),
                                 )
                             }
                         }
-                        Button(
-                            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
-                            enabled = selectedAudioCandidateId != null && selectedAudioFormat != null && !actionInProgress,
-                            onClick = {
-                                val candidate = audioSources.firstOrNull { it.id == selectedAudioCandidateId } ?: return@Button
-                                val format = selectedAudioFormat ?: return@Button
-                                actionInProgress = true
-                                scope.launch {
-                                    try {
-                                        when (val validation = resolver.validate(candidate, "browser-audio-${UUID.randomUUID()}")) {
-                                            is CandidateValidationResult.Valid -> {
-                                                val outcome = onAudioOnlyRequested(validation.candidate, format, resultTitle, resultSourceUrl, resultThumbnail)
-                                                inspectMessage = if (outcome == DownloadEnqueueResult.QUEUED) {
-                                                    "أُضيف استخراج الصوت إلى قائمة الانتظار."
-                                                } else {
-                                                    "تعذر إضافة استخراج الصوت: ${outcome.name}."
-                                                }
-                                                recordBrowserEvent(
-                                                    if (outcome == DownloadEnqueueResult.QUEUED) "AUDIO_EXTRACTION_QUEUED" else "AUDIO_EXTRACTION_NOT_QUEUED",
-                                                    inspectMessage.orEmpty(),
-                                                    "audio",
-                                                    resultSourceUrl,
-                                                    code = outcome.name,
-                                                    severity = if (outcome == DownloadEnqueueResult.QUEUED) "SUCCESS" else "WARNING",
-                                                    details = mapOf(
-                                                        "candidate_id" to validation.candidate.id,
-                                                        "output_format" to format.name,
-                                                        "enqueue_outcome" to outcome.name,
-                                                    ),
-                                                )
-                                            }
-                                            is CandidateValidationResult.Invalid -> {
-                                                inspectMessage = validation.failure.toBrowserMessage()
-                                                recordBrowserEvent(
-                                                    "AUDIO_CANDIDATE_VALIDATION_FAILED",
-                                                    inspectMessage.orEmpty(),
-                                                    "validation",
-                                                    candidate.sourceUrl,
-                                                    severity = "ERROR",
-                                                    details = mapOf(
-                                                        "candidate_id" to candidate.id,
-                                                        "validation_failure" to validation.failure.javaClass.simpleName,
-                                                    ),
-                                                )
-                                            }
-                                        }
-                                    } catch (cancelled: CancellationException) {
-                                        throw cancelled
-                                    } catch (error: Exception) {
-                                        inspectMessage = "تعذر تجهيز استخراج الصوت."
-                                        recordBrowserEvent(
-                                            "AUDIO_EXTRACTION_EXCEPTION",
-                                            "حدث استثناء أثناء تجهيز استخراج الصوت",
-                                            "audio",
-                                            resultSourceUrl,
-                                            code = error.javaClass.simpleName,
-                                            severity = "ERROR",
-                                            details = mapOf("exception_type" to error.javaClass.simpleName),
-                                        )
-                                    } finally {
-                                        actionInProgress = false
-                                    }
-                                }
-                            },
-                        ) {
-                            Text(if (actionInProgress) "جارٍ التجهيز…" else "استخراج الصوت المحدد")
-                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        inspectMessage = "تعذر تجهيز استخراج الصوت."
+                        recordBrowserEvent(
+                            "AUDIO_EXTRACTION_EXCEPTION",
+                            "حدث استثناء أثناء تجهيز استخراج الصوت",
+                            "audio",
+                            resultSourceUrl,
+                            code = error.javaClass.simpleName,
+                            severity = "ERROR",
+                            details = mapOf("exception_type" to error.javaClass.simpleName),
+                        )
+                    } finally {
+                        actionInProgress = false
                     }
                 }
-            }
-        }
+            },
+        )
     }
 }
-
-@Composable
-private fun CandidateOption(
-    candidate: MediaCandidate,
-    title: String?,
-    sourceUrl: String?,
-    thumbnailUrl: String?,
-    busy: Boolean,
-    onDownload: () -> Unit,
-) {
-    // Capture the cross-module property in a local stable value for Kotlin smart-cast safety.
-    val fileSizeBytes = candidate.format.fileSizeBytes
-    AHCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    BrowserMediaOptionDeduplicator.videoOptionTitle(candidate),
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    buildList {
-                        candidate.format.videoCodec?.takeIf { it.isNotBlank() }?.let { add("Video ${it.uppercase()}") }
-                        candidate.format.audioCodec?.takeIf { it.isNotBlank() }?.let { add("Audio ${it.uppercase()}") }
-                        candidate.format.fps?.let { add("${it} fps") }
-                        candidate.format.bitrateKbps?.takeIf { it > 0 }?.let { add("${it} kbps") }
-                        add(
-                            when {
-                                candidate.format.hasAudio -> "صوت مضمّن"
-                                !candidate.companionAudioSourceUrl.isNullOrBlank() -> "صوت منفصل"
-                                else -> "مسار الصوت غير مؤكد"
-                            },
-                        )
-                        when {
-                            candidate.streamingManifest -> add("حجم الفيديو النهائي يحدده البث أثناء التنزيل")
-                            fileSizeBytes != null && fileSizeBytes > 0L -> add(formatBytes(fileSizeBytes))
-                            else -> add("الحجم غير معروف؛ سيُحدَّد عند التحقق")
-                        }
-                    }.joinToString(" • "),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Button(
-                enabled = !busy,
-                onClick = onDownload,
-                modifier = Modifier.defaultMinSize(minHeight = 48.dp),
-            ) { Text("تنزيل") }
-        }
-    }
-}
-
-
-
