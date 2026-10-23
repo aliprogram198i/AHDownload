@@ -16,6 +16,7 @@ import android.net.http.SslError
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +55,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -553,29 +555,50 @@ fun BrowserRoute(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     inspectMessage?.takeIf { it.isNotBlank() }?.let { message ->
-                        Text(
-                            message,
+                        val positiveMessage = message.startsWith("أُضيف") ||
+                            message.startsWith("تم العثور") ||
+                            message.startsWith("هذا الملف موجود بالفعل")
+                        val errorMessage = message.contains("تعذر") ||
+                            message.contains("خطأ") ||
+                            message.contains("رفض") ||
+                            message.contains("غير صالح") ||
+                            message.startsWith("لم يُعثر") ||
+                            message.startsWith("لم يتم العثور")
+                        Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.labelSmall,
+                            shape = RoundedCornerShape(12.dp),
                             color = when {
-                                message.startsWith("أُضيف") ||
-                                    message.startsWith("تم العثور") ||
-                                    message.startsWith("هذا الملف موجود بالفعل") ->
-                                    MaterialTheme.colorScheme.primary
-                                message.contains("تعذر") ||
-                                    message.contains("خطأ") ||
-                                    message.contains("رفض") ||
-                                    message.contains("غير صالح") ||
-                                    message.startsWith("لم يُعثر") ||
-                                    message.startsWith("لم يتم العثور") ->
-                                    MaterialTheme.colorScheme.error
+                                positiveMessage -> MaterialTheme.colorScheme.primaryContainer
+                                errorMessage -> MaterialTheme.colorScheme.errorContainer
+                                else -> MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            contentColor = when {
+                                positiveMessage -> MaterialTheme.colorScheme.onPrimaryContainer
+                                errorMessage -> MaterialTheme.colorScheme.onErrorContainer
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
-                            maxLines = 2,
-                        )
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                            ),
+                        ) {
+                            Text(
+                                message,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = when {
+                                    positiveMessage -> MaterialTheme.colorScheme.onPrimaryContainer
+                                    errorMessage -> MaterialTheme.colorScheme.onErrorContainer
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                maxLines = 2,
+                            )
+                        }
                     }
                     Button(
-                        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 48.dp),
+                        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 52.dp),
                         enabled = !inspecting && !isLoading && pageLoadError == null && currentUrl.isNotBlank(),
                         onClick = {
                             val target = webView?.url ?: currentUrl
@@ -768,8 +791,8 @@ fun BrowserRoute(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
@@ -816,8 +839,8 @@ fun BrowserRoute(
                 }
             }
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.SpaceAround,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(enabled = canGoBack, onClick = { invalidateInspectionForNavigation(); nextNavigationSource = "back_button"; webView?.goBack() }) {
