@@ -167,7 +167,7 @@ fun MediaLibraryRoute(
                     FilterChip(
                         selected = selectedFilter == filter,
                         onClick = { selectedFilter = filter },
-                        label = { Text("${filter.label} (${count})" , maxLines = 1) },
+                        label = { Text("${filter.label} (${count})", maxLines = 1) },
                     )
                 }
             }
