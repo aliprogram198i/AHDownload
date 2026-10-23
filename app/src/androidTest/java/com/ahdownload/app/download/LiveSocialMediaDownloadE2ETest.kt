@@ -52,6 +52,16 @@ class LiveSocialMediaDownloadE2ETest {
             .getString("targetPlatform")
             .orEmpty()
             .trim()
+        val instagramStoryUrlOverride = InstrumentationRegistry.getArguments()
+            .getString("instagramStoryUrl")
+            .orEmpty()
+            .trim()
+        val instagramStoryUrl = when {
+            instagramStoryUrlOverride.isBlank() ->
+                "https://www.instagram.com/stories/nasa/3975089864169193671/"
+            isCanonicalInstagramStoryUrl(instagramStoryUrlOverride) -> instagramStoryUrlOverride
+            else -> error("instagramStoryUrl must be a canonical HTTPS Instagram Story URL")
+        }
         val tiktokUrlOverride = InstrumentationRegistry.getArguments()
             .getString("tiktokUrl")
             .orEmpty()
@@ -68,7 +78,7 @@ class LiveSocialMediaDownloadE2ETest {
             Target("Instagram-P-Video", MediaPlatform.Instagram, "https://www.instagram.com/p/Dcea3BiPTBm/"),
             Target("Instagram-Carousel", MediaPlatform.Instagram, "https://www.instagram.com/p/Dd7GZ70jYuM/"),
             Target("Instagram-Highlight", MediaPlatform.Instagram, "https://www.instagram.com/stories/highlights/18195781759377100/"),
-            Target("Instagram-Story", MediaPlatform.Instagram, "https://www.instagram.com/stories/nasa/3975089864169193671/"),
+            Target("Instagram-Story", MediaPlatform.Instagram, instagramStoryUrl),
             Target("TikTok", MediaPlatform.TikTok, tiktokUrl),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
             Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/@anjulaeditz/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYmZiZ2J2a3VhAZgD5F41AZgD5FXFAAAAAQ"),
@@ -227,6 +237,21 @@ class LiveSocialMediaDownloadE2ETest {
         )
     }
 
+
+    private fun isCanonicalInstagramStoryUrl(value: String?): Boolean = runCatching {
+        if (value.isNullOrBlank()) return@runCatching false
+        val uri = java.net.URI(value)
+        val host = uri.host?.lowercase() ?: return@runCatching false
+        if (
+            uri.scheme?.lowercase() != "https" ||
+            (host != "instagram.com" && !host.endsWith(".instagram.com"))
+        ) return@runCatching false
+        val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        segments.size >= 3 &&
+            segments[0].equals("stories", ignoreCase = true) &&
+            segments[1].isNotBlank() &&
+            segments[2].matches(Regex("""\\d{6,30}"""))
+    }.getOrDefault(false)
 
     private fun isCanonicalTikTokVideoUrl(value: String?): Boolean = runCatching {
         if (value.isNullOrBlank()) return@runCatching false
