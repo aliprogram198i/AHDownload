@@ -254,7 +254,7 @@ private fun MediaLibraryItemCard(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.size(52.dp),
             ) {
