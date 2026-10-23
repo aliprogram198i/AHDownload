@@ -1,5 +1,6 @@
 package com.ahdownload.domain.network
 
+import okhttp3.Dns
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
