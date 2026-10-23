@@ -23,7 +23,7 @@ object PublicInternetDns : Dns {
         ) return true
 
         val bytes = address.address.map { it.toInt() and 0xff }
-        if (address is InetAddress && address !is Inet6Address && bytes.size == 4) {
+        if (address !is Inet6Address && bytes.size == 4) {
             val a = bytes[0]
             val b = bytes[1]
             val c = bytes[2]
