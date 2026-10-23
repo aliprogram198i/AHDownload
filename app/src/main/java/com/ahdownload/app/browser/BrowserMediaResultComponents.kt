@@ -126,7 +126,6 @@ internal fun BrowserMediaResultsSheet(
 }
 
 @Composable
-@Composable
 internal fun CandidateOption(
     candidate: MediaCandidate,
     title: String?,
