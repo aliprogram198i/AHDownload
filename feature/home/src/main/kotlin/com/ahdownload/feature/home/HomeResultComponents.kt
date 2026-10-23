@@ -1103,41 +1103,49 @@ internal fun SearchResultCard(
                     )
                 }
             }
-            if (canSelect) {
-                DiagnosticFilterChip(
-                    trackingScreen = "HOME",
-                    trackingId = "HOME.search.selection.${item.kind.name.lowercase()}.${homeTraceToken(item.id)}",
-                    trackingLabel = "search_result_selection",
-                    disabledReason = "callsite_precondition_not_explicit",
-                    selected = selected,
-                    onClick = onToggleSelection,
-                    label = { Text(if (selected) "محدد" else "تحديد") },
-                )
-            } else {
+            if (item.kind == ContentSearchKind.CHANNEL) {
                 Icon(
                     Icons.Rounded.Link,
                     contentDescription = "فتح القناة على YouTube",
                     tint = MaterialTheme.colorScheme.primary,
                 )
             }
-        } 
+        }
         if (item.kind != ContentSearchKind.CHANNEL) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp)
-                    .padding(bottom = 4.dp),
-                horizontalArrangement = Arrangement.End,
+                    .padding(bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextButton(
                     onClick = onWatch,
-                    modifier = Modifier.semantics {
-                        contentDescription = "مشاهدة داخل التطبيق"
-                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics {
+                            contentDescription = "مشاهدة داخل التطبيق"
+                        },
                 ) {
                     Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                     Spacer(Modifier.size(4.dp))
-                    Text("مشاهدة داخل التطبيق")
+                    Text(
+                        "مشاهدة داخل التطبيق",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (canSelect) {
+                    DiagnosticFilterChip(
+                        trackingScreen = "HOME",
+                        trackingId = "HOME.search.selection.${item.kind.name.lowercase()}.${homeTraceToken(item.id)}",
+                        trackingLabel = "search_result_selection",
+                        disabledReason = "callsite_precondition_not_explicit",
+                        selected = selected,
+                        onClick = onToggleSelection,
+                        label = { Text(if (selected) "محدد" else "تحديد") },
+                    )
                 }
             }
         }
