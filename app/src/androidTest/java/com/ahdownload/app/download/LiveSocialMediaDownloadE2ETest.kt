@@ -63,13 +63,20 @@ class LiveSocialMediaDownloadE2ETest {
             else -> error("tiktokUrl must be a canonical HTTPS TikTok video URL")
         }
         val allTargets = listOf(
-            Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
+            Target("Instagram-Reel", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
+            // Public URL-shape coverage: /p/ media, carousel, Highlight, and a Story URL.
+            Target("Instagram-P-Video", MediaPlatform.Instagram, "https://www.instagram.com/p/DaTSSukB-Lb/"),
+            Target("Instagram-Carousel", MediaPlatform.Instagram, "https://www.instagram.com/p/DdHyaYAifb6/"),
+            Target("Instagram-Highlight", MediaPlatform.Instagram, "https://www.instagram.com/stories/highlights/18195781759377100/"),
+            Target("Instagram-Story", MediaPlatform.Instagram, "https://www.instagram.com/stories/nasa/3975089864169193671/"),
             Target("TikTok", MediaPlatform.TikTok, tiktokUrl),
             Target("YouTube", MediaPlatform.YouTube, "https://www.youtube.com/watch?v=aqz-KE-bpKQ"),
             Target("Snapchat", MediaPlatform.Snapchat, "https://www.snapchat.com/@anjulaeditz/spotlight/W7_EDlXWTBiXAEEniNoMPwAAYYmZiZ2J2a3VhAZgD5F41AZgD5FXFAAAAAQ"),
         )
         val targets = allTargets.filter {
-            requestedTarget.isBlank() || it.name.equals(requestedTarget, ignoreCase = true)
+            requestedTarget.isBlank() ||
+                it.name.equals(requestedTarget, ignoreCase = true) ||
+                it.platform.name.equals(requestedTarget, ignoreCase = true)
         }
         check(targets.isNotEmpty()) { "Unknown live media target: " + requestedTarget }
 
