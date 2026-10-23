@@ -249,4 +249,33 @@ class LinkAnalyzerTest {
         }
     }
 
+    @Test
+    fun canonicalizesMobileTikTokVideoHostWithoutChangingOriginalUrlOrQuery() {
+        val input = "https://m.tiktok.com/@scout2015/video/6718335390845095173?is_from_webapp=1&sender_device=pc"
+        val result = analyzer.analyze(input)
+
+        assertEquals(MediaPlatform.TikTok, result?.platform)
+        assertEquals(input, result?.originalUrl)
+        assertEquals(
+            "https://www.tiktok.com/@scout2015/video/6718335390845095173?is_from_webapp=1&sender_device=pc",
+            result?.normalizedUrl,
+        )
+    }
+
+    @Test
+    fun doesNotRewriteMobilePhotoStoryLiveOrOfficialShortLinkRoutes() {
+        val urls = listOf(
+            "https://m.tiktok.com/@creator/photo/7345678901234567890",
+            "https://m.tiktok.com/@creator/story/7345678901234567890",
+            "https://m.tiktok.com/@creator/live",
+            "https://vm.tiktok.com/ZMYS13VCF",
+            "https://vt.tiktok.com/ZS8eY5678/",
+        )
+
+        urls.forEach { url ->
+            assertEquals(url, MediaPlatform.TikTok, analyzer.analyze(url)?.platform)
+            assertEquals(url, url, analyzer.analyze(url)?.normalizedUrl)
+        }
+    }
+
 }

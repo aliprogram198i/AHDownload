@@ -22,7 +22,7 @@ private val SCHEMELESS_URL_PATTERN = Regex(
 class LinkAnalyzer {
     fun analyze(rawUrl: String): MediaLink? {
         val extracted = extractHttpUrl(rawUrl) ?: return null
-        val normalized = unwrapRedirect(extracted)
+        val normalized = normalizeTikTokMobileVideoUrl(unwrapRedirect(extracted))
         val uri = runCatching { URI(normalized) }.getOrNull() ?: return null
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
         if (scheme != "https" && scheme != "http") return null
@@ -109,6 +109,24 @@ class LinkAnalyzer {
             }
         }
         return url
+    }
+
+    /**
+     * The mobile TikTok hostname can return 404 for public /@user/video/id pages.
+     * Normalize only canonical video URLs to the primary host; short links and other route
+     * families keep their original host/path so their own redirect and routing logic is preserved.
+     */
+    private fun normalizeTikTokMobileVideoUrl(url: String): String {
+        val uri = runCatching { URI(url) }.getOrNull() ?: return url
+        if (!uri.host.equals("m.tiktok.com", ignoreCase = true)) return url
+
+        val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
+        val videoIndex = segments.indexOfLast { it.equals("video", ignoreCase = true) }
+        val videoId = segments.getOrNull(videoIndex + 1)
+        if (videoIndex < 0 || videoId?.matches(Regex("""\\d{6,30}""")) != true) return url
+
+        return Regex("""(?i)^(https?://)m\\.tiktok\\.com(?=[:/?#]|$)""")
+            .replaceFirst(url) { match -> match.groupValues[1] + "www.tiktok.com" }
     }
 
     private fun parseQuery(rawQuery: String?): Map<String, String> =
