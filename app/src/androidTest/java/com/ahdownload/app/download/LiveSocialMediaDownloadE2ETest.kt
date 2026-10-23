@@ -250,7 +250,7 @@ class LiveSocialMediaDownloadE2ETest {
         segments.size >= 3 &&
             segments[0].equals("stories", ignoreCase = true) &&
             segments[1].isNotBlank() &&
-            segments[2].matches(Regex("""\\d{6,30}"""))
+            segments[2].matches(Regex("""\d{6,30}"""))
     }.getOrDefault(false)
 
     private fun isCanonicalTikTokVideoUrl(value: String?): Boolean = runCatching {
