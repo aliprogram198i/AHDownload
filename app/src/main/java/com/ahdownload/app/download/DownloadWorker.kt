@@ -1443,7 +1443,7 @@ class DownloadWorker(
             .setSmallIcon(R.drawable.ic_ahdownload_notification)
             .setColor(0xFFFF791A.toInt())
             .setContentTitle("AHDownload")
-            .setContentText(state.toNotificationText())
+            .setContentText(state.toNotificationText(lowStorageWarningForTask, notificationBytesPerSecond))
             .setOngoing(
                 state !is DownloadState.Completed &&
                     state !is DownloadState.Failed &&
@@ -1488,68 +1488,6 @@ class DownloadWorker(
                 description = "حالة تنزيلات الملفات والوسائط"
             },
         )
-    }
-
-    private fun DownloadState.toNotificationText(): String = when (this) {
-        DownloadState.Queued -> "في قائمة الانتظار"
-        DownloadState.Preparing -> if (lowStorageWarningForTask) {
-            "المساحة منخفضة — راقب التنزيل"
-        } else {
-            "جاري تجهيز التنزيل"
-        }
-        is DownloadState.Downloading -> {
-            totalBytes?.let { total ->
-                val percent = if (total > 0) {
-                    (bytesDownloaded * 100 / total).coerceIn(0L, 100L)
-                } else {
-                    0L
-                }
-                buildString {
-                    append("جاري التنزيل — ")
-                    append(percent)
-                    append("%")
-                    if (lowStorageWarningForTask) append(" · مساحة منخفضة")
-                    if (notificationBytesPerSecond > 0L) {
-                        append(" · ")
-                        append(formatBytes(notificationBytesPerSecond))
-                        append("/s")
-                        if (total > bytesDownloaded) {
-                            val etaSeconds = (total - bytesDownloaded) / notificationBytesPerSecond
-                            append(" · ")
-                            append(formatEta(etaSeconds))
-                        }
-                    }
-                }
-            } ?: "جاري التنزيل"
-        }
-        DownloadState.Paused -> "تم الإيقاف المؤقت"
-        DownloadState.Completed -> "اكتمل التنزيل"
-        is DownloadState.Failed -> "فشل التنزيل"
-        DownloadState.Cancelled -> "تم إلغاء التنزيل"
-    }
-
-    private fun DownloadState.totalBytesOrNull(): Long? = when (this) {
-        is DownloadState.Downloading -> totalBytes
-        else -> null
-    }
-
-    private fun DownloadState.bytesDownloadedOrNull(): Long? = when (this) {
-        is DownloadState.Downloading -> bytesDownloaded
-        else -> null
-    }
-
-    private fun formatBytes(bytes: Long): String = when {
-        bytes < 1024L -> "$bytes B"
-        bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
-        bytes < 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
-        else -> "${bytes / (1024L * 1024L * 1024L)} GB"
-    }
-
-    private fun formatEta(seconds: Long): String {
-        val safe = seconds.coerceAtLeast(0L)
-        val minutes = safe / 60L
-        val secs = safe % 60L
-        return if (minutes > 0L) "${minutes}د ${secs.toString()}ث" else "${secs}ث"
     }
 
     private fun extractionSourcePath(task: DownloadTask): String =
