@@ -61,6 +61,21 @@ class DownloadWorker(
     private var notificationBytesPerSecond = 0L
     private var lowStorageWarningForTask = false
 
+    private val transferCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        DownloadTransferCoordinator(
+            applicationContext = applicationContext,
+            setForegroundForState = { state -> setForeground(createForegroundInfo(state)) },
+            updateNotificationSpeedForState = { state -> updateNotificationSpeed(state) },
+            persistAdaptiveRecord = { repository, taskId, state, now ->
+                updateAdaptiveRecord(repository, taskId, state, now)
+            },
+            resolveDynamicHeaders = { url, sessionCookieHost, headers ->
+                dynamicHeadersFor(url, sessionCookieHost, headers)
+            },
+            resolveHost = { url -> hostOf(url) },
+        )
+    }
+
     override suspend fun doWork(): Result {
         val decodedTask = readTask() ?: return Result.failure()
         val audioExtractionRequested = decodedTask.processingMode == DownloadProcessingMode.ExtractAudio
@@ -425,7 +440,7 @@ class DownloadWorker(
                 )
                 reused
             } else if (sourceTask.streamingManifest && !muxRequested) {
-                executeStreamingManifest(
+                transferCoordinator.executeStreamingManifest(
                     task = task,
                     sourceTask = sourceTask,
                     repository = repository,
@@ -438,7 +453,7 @@ class DownloadWorker(
                     ),
                 )
             } else if (muxRequested && companionAudioTask != null) {
-                executeAdaptiveMux(
+                transferCoordinator.executeAdaptiveMux(
                     task = task,
                     videoTask = sourceTask,
                     audioTask = companionAudioTask,
@@ -1074,317 +1089,6 @@ class DownloadWorker(
             expectedBytes = expectedBytes,
             requestHeaders = requestHeaders,
         )
-    }
-
-    private suspend fun executeStreamingManifest(
-        task: DownloadTask,
-        sourceTask: DownloadTask,
-        repository: com.ahdownload.domain.download.DownloadRepository,
-        controlStore: DownloadControlStore,
-        diagnostics: DiagnosticLogger,
-    ): com.ahdownload.domain.download.DownloadRecord? {
-        val queue = PersistentDownloadQueue(repository)
-        queue.enqueue(task, System.currentTimeMillis())
-        updateAdaptiveRecord(
-            repository,
-            task.id,
-            DownloadState.Downloading(0L, null),
-            System.currentTimeMillis(),
-        )
-        setForeground(createForegroundInfo(DownloadState.Downloading(0L, null)))
-
-        return try {
-            val cookie = CookieManager.getInstance()
-                .getCookie(sourceTask.sourceUrl)
-                ?.takeIf { it.isNotBlank() }
-
-            val performanceStore = (applicationContext.applicationContext as com.ahdownload.app.AHDownloadApplication).performanceLogStore
-            val performanceSession = performanceStore.beginDownload(sourceTask)
-            val result = try {
-                FfmpegManifestDownloader().download(
-                    sourceUrl = sourceTask.sourceUrl,
-                    outputFile = java.io.File(sourceTask.destinationPath),
-                    requestHeaders = sourceTask.requestHeaders,
-                    cookie = cookie,
-                )
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                performanceStore.finishDownload(performanceSession, "CANCELLED")
-                throw cancelled
-            } catch (error: Throwable) {
-                performanceStore.finishDownload(performanceSession, "FAILED")
-                throw error
-            }
-            if (result.isSuccess) {
-                val outputFile = result.getOrNull()?.takeIf { it.isFile }
-                performanceStore.finishDownload(
-                    session = performanceSession,
-                    outcome = "COMPLETED",
-                    bytesDownloadedOverride = outputFile?.length(),
-                    totalBytesOverride = outputFile?.length(),
-                )
-            } else {
-                performanceStore.finishDownload(performanceSession, "FAILED_MANIFEST")
-            }
-            if (result.isFailure) {
-                val error = result.exceptionOrNull()
-                diagnostics.log(
-                    DiagnosticLevel.ERROR,
-                    "STREAMING_MANIFEST_DOWNLOAD_FAILED",
-                    error?.message ?: "manifest_download_failed",
-                    "download.manifest",
-                    mapOf(
-                        "task_id" to task.id,
-                        "source_host" to hostOf(sourceTask.sourceUrl),
-                        "manifest_type" to if (sourceTask.sourceUrl.contains(".mpd", true)) "DASH" else "HLS",
-                    ),
-                    error,
-                )
-                val failedRecord = queue.applyState(
-                    task.id,
-                    DownloadState.Failed(DownloadFailure.InvalidResponse),
-                    System.currentTimeMillis(),
-                )
-                val safeDetail = error?.message
-                    ?.replace('\n', ' ')
-                    ?.take(1000)
-                    ?.takeIf { it.isNotBlank() }
-                val enrichedFailure = failedRecord.copy(
-                    failureDetail = safeDetail ?: failedRecord.failureDetail
-                        ?: "FFmpeg could not acquire the HLS/DASH media source.",
-                    updatedAtEpochMs = System.currentTimeMillis(),
-                )
-                repository.upsert(enrichedFailure)
-                return enrichedFailure
-            }
-
-            val output = result.getOrThrow()
-            updateAdaptiveRecord(
-                repository,
-                task.id,
-                DownloadState.Downloading(output.length(), output.length()),
-                System.currentTimeMillis(),
-            )
-            queue.applyState(task.id, DownloadState.Completed, System.currentTimeMillis())
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            // The enclosing worker handler alone persists explicit, current user intent.
-            throw cancelled
-        } catch (error: Throwable) {
-            diagnostics.log(
-                DiagnosticLevel.ERROR,
-                "STREAMING_MANIFEST_UNEXPECTED",
-                error.message ?: error::class.simpleName.orEmpty(),
-                "download.manifest",
-                mapOf("task_id" to task.id, "source_host" to hostOf(sourceTask.sourceUrl)),
-                error,
-            )
-            queue.applyState(
-                task.id,
-                DownloadState.Failed(DownloadFailure.NetworkError),
-                System.currentTimeMillis(),
-            )
-        }
-    }
-
-    private suspend fun executeAdaptiveMux(
-        task: DownloadTask,
-        videoTask: DownloadTask,
-        audioTask: DownloadTask,
-        engine: DownloadEngine,
-        repository: com.ahdownload.domain.download.DownloadRepository,
-        controlStore: DownloadControlStore,
-        diagnostics: DiagnosticLogger,
-    ): com.ahdownload.domain.download.DownloadRecord? {
-        val queue = PersistentDownloadQueue(repository)
-        queue.enqueue(task, System.currentTimeMillis())
-
-        fun update(state: DownloadState) {
-            // State persistence is intentionally tied to the main user-visible task.
-            // The staged video/audio files remain private implementation details.
-        }
-
-        val videoFile = java.io.File(videoTask.destinationPath)
-        val audioFile = java.io.File(audioTask.destinationPath)
-        val outputFile = java.io.File(task.destinationPath)
-
-        try {
-            if (!videoFile.isFile || videoFile.length() <= 0L) {
-                val videoFinal = if (videoTask.streamingManifest) {
-                    setForeground(createForegroundInfo(DownloadState.Preparing))
-                    val manifestResult = FfmpegManifestDownloader().download(
-                        sourceUrl = videoTask.sourceUrl,
-                        outputFile = videoFile,
-                        requestHeaders = videoTask.requestHeaders,
-                        cookie = CookieManager.getInstance()
-                            .getCookie(videoTask.sourceUrl)
-                            ?.takeIf { it.isNotBlank() },
-                    )
-                    if (manifestResult.isSuccess && videoFile.isFile && videoFile.length() > 0L) {
-                        val size = videoFile.length()
-                        val stagedState = DownloadState.Downloading(size, size)
-                        updateAdaptiveRecord(repository, task.id, stagedState, System.currentTimeMillis())
-                        setForeground(createForegroundInfo(stagedState))
-                        DownloadState.Completed
-                    } else {
-                        val error = manifestResult.exceptionOrNull()
-                            ?: IllegalStateException("Manifest staging produced no media file")
-                        diagnostics.log(
-                            DiagnosticLevel.ERROR,
-                            "ADAPTIVE_VIDEO_MANIFEST_FAILED",
-                            "تعذر تجهيز مصدر الفيديو HLS/DASH قبل دمج الصوت",
-                            "download.mux.video_manifest",
-                            mapOf(
-                                "task_id" to task.id,
-                                "source_host" to hostOf(videoTask.sourceUrl),
-                            ),
-                            error,
-                        )
-                        updateAdaptiveRecord(
-                            repository,
-                            task.id,
-                            DownloadState.Failed(DownloadFailure.NetworkError),
-                            System.currentTimeMillis(),
-                        )
-                        DownloadState.Failed(DownloadFailure.NetworkError)
-                    }
-                } else {
-                    var directVideoFinal: DownloadState = DownloadState.Preparing
-                    engine.download(videoTask) { state ->
-                        directVideoFinal = state
-                        updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
-                        updateNotificationSpeed(state)
-                        setForeground(createForegroundInfo(state))
-                    }
-                    directVideoFinal
-                }
-                if (videoFinal !is DownloadState.Completed) return null
-            }
-
-            if (!audioFile.isFile || audioFile.length() <= 0L) {
-                val audioFinal = if (audioTask.streamingManifest) {
-                    setForeground(createForegroundInfo(DownloadState.Preparing))
-                    val manifestResult = FfmpegManifestDownloader().download(
-                        sourceUrl = audioTask.sourceUrl,
-                        outputFile = audioFile,
-                        requestHeaders = audioTask.requestHeaders,
-                        cookie = CookieManager.getInstance()
-                            .getCookie(audioTask.sourceUrl)
-                            ?.takeIf { it.isNotBlank() },
-                    )
-                    if (manifestResult.isSuccess && audioFile.isFile && audioFile.length() > 0L) {
-                        val size = audioFile.length()
-                        val stagedState = DownloadState.Downloading(size, size)
-                        updateAdaptiveRecord(repository, task.id, stagedState, System.currentTimeMillis())
-                        setForeground(createForegroundInfo(stagedState))
-                        DownloadState.Completed
-                    } else {
-                        val error = manifestResult.exceptionOrNull()
-                            ?: IllegalStateException("Companion audio manifest produced no media file")
-                        diagnostics.log(
-                            DiagnosticLevel.ERROR,
-                            "ADAPTIVE_AUDIO_MANIFEST_FAILED",
-                            "تعذر تجهيز مصدر الصوت HLS/DASH قبل دمج المسارين",
-                            "download.mux.audio_manifest",
-                            mapOf(
-                                "task_id" to task.id,
-                                "source_host" to hostOf(audioTask.sourceUrl),
-                            ),
-                            error,
-                        )
-                        updateAdaptiveRecord(
-                            repository,
-                            task.id,
-                            DownloadState.Failed(DownloadFailure.NetworkError),
-                            System.currentTimeMillis(),
-                        )
-                        DownloadState.Failed(DownloadFailure.NetworkError)
-                    }
-                } else {
-                    var directAudioFinal: DownloadState = DownloadState.Preparing
-                    val audioEngine = StreamingDownloadEngine(
-                        source = OkHttpDownloadByteStream(
-                            logger = diagnostics,
-                            dynamicHeaders = { url, headers ->
-                                dynamicHeadersFor(url, task.companionAudioSessionCookieHost, headers)
-                            },
-                        ),
-                        sink = LocalAtomicFileSink(),
-                    )
-                    audioEngine.download(audioTask) { state ->
-                        directAudioFinal = state
-                        val mapped = when (state) {
-                            is DownloadState.Downloading -> DownloadState.Downloading(
-                                bytesDownloaded = state.bytesDownloaded.coerceAtLeast(0L),
-                                totalBytes = state.totalBytes,
-                            )
-                            DownloadState.Completed -> DownloadState.Downloading(
-                                bytesDownloaded = audioFile.length(),
-                                totalBytes = audioFile.length(),
-                            )
-                            else -> state
-                        }
-                        updateAdaptiveRecord(repository, task.id, mapped, System.currentTimeMillis())
-                        setForeground(createForegroundInfo(mapped))
-                    }
-                    directAudioFinal
-                }
-                if (audioFinal !is DownloadState.Completed) return null
-            }
-
-            setForeground(createForegroundInfo(DownloadState.Preparing))
-            val mux = MediaVideoAudioMuxer().mux(videoFile, audioFile, outputFile)
-            if (mux.isFailure) {
-                val error = mux.exceptionOrNull()
-                diagnostics.log(
-                    DiagnosticLevel.ERROR,
-                    "VIDEO_AUDIO_MUX_FAILED",
-                    error?.message ?: "mux_failed",
-                    "download.mux",
-                    mapOf(
-                        "task_id" to task.id,
-                        "video_size_bytes" to videoFile.length().toString(),
-                        "audio_size_bytes" to audioFile.length().toString(),
-                    ),
-                    error,
-                )
-                updateAdaptiveRecord(
-                    repository,
-                    task.id,
-                    DownloadState.Failed(DownloadFailure.StorageError),
-                    System.currentTimeMillis(),
-                )
-                return null
-            }
-
-            runCatching { videoFile.delete() }
-            runCatching { audioFile.delete() }
-            val now = System.currentTimeMillis()
-            updateAdaptiveRecord(
-                repository,
-                task.id,
-                DownloadState.Downloading(outputFile.length(), outputFile.length()),
-                now,
-            )
-            return queue.applyState(task.id, DownloadState.Completed, now)
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            // The enclosing worker handler alone persists explicit, current user intent.
-            throw cancelled
-        } catch (error: Throwable) {
-            diagnostics.log(
-                DiagnosticLevel.ERROR,
-                "ADAPTIVE_MUX_UNEXPECTED",
-                error.message ?: error::class.simpleName.orEmpty(),
-                "download.mux",
-                mapOf("task_id" to task.id),
-                error,
-            )
-            updateAdaptiveRecord(
-                repository,
-                task.id,
-                DownloadState.Failed(DownloadFailure.NetworkError),
-                System.currentTimeMillis(),
-            )
-            return null
-        }
     }
 
     private suspend fun updateAdaptiveRecord(
