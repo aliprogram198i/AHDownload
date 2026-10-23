@@ -78,6 +78,8 @@ jobs:
         run: |
           mkdir -p live-e2e-artifacts
           adb devices -l > live-e2e-artifacts/adb-devices.txt 2>&1 || true
+          # Capture only the test's structured diagnostics; avoid dumping unrelated system logs.
+          adb logcat -d -v threadtime AH_LIVE_E2E:I '*:S' > live-e2e-artifacts/instagram-live-e2e-logcat.txt 2>&1 || true
           ps -ef | grep -E '[e]mulator|[q]emu-system' > live-e2e-artifacts/emulator-processes.txt || true
           if [[ -e /dev/kvm ]]; then
             ls -l /dev/kvm > live-e2e-artifacts/kvm-permissions.txt 2>&1 || true
