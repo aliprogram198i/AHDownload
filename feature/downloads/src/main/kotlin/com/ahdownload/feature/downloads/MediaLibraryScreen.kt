@@ -2,6 +2,7 @@ package com.ahdownload.feature.downloads
 
 import android.content.Context
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,12 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -52,6 +55,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ahdownload.core.designsystem.AHEmptyState
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadRepository
 import com.ahdownload.domain.download.DownloadStatus
@@ -145,10 +149,17 @@ fun MediaLibraryRoute(
                 singleLine = true,
                 label = { Text("البحث في الملفات") },
                 leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotBlank()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "مسح البحث")
+                        }
+                    }
+                },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MediaLibraryFilter.entries.forEach { filter ->
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(MediaLibraryFilter.entries, key = { it.name }) { filter ->
                     val count = when (filter) {
                         MediaLibraryFilter.All -> entries.size
                         MediaLibraryFilter.Video -> entries.count { it.type == MediaLibraryType.Video }
@@ -157,7 +168,7 @@ fun MediaLibraryRoute(
                     FilterChip(
                         selected = selectedFilter == filter,
                         onClick = { selectedFilter = filter },
-                        label = { Text("${filter.label} (${count})") },
+                        label = { Text("${filter.label} (${count})", maxLines = 1) },
                     )
                 }
             }
@@ -174,34 +185,35 @@ fun MediaLibraryRoute(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                if (selectedFilter == MediaLibraryFilter.Audio) {
-                                    Icons.Rounded.AudioFile
-                                } else {
-                                    Icons.Rounded.VideoFile
-                                },
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                            Text(
-                                if (entries.isEmpty()) {
-                                    "لا توجد ملفات وسائط مكتملة ومتاحة بعد"
-                                } else {
-                                    "لا توجد ملفات تطابق البحث أو الفلتر"
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                            )
-                            Text(
-                                "تظهر هنا الملفات المكتملة من سجل التنزيلات",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
+                        AHEmptyState(
+                            title = if (entries.isEmpty()) {
+                                "لا توجد ملفات وسائط بعد"
+                            } else {
+                                "لا توجد نتائج مطابقة"
+                            },
+                            message = if (entries.isEmpty()) {
+                                "تظهر هنا ملفات الفيديو والصوت المكتملة والمتاحة من سجل التنزيلات."
+                            } else {
+                                "لم نجد ملفات تطابق البحث أو نوع الوسائط المحدد. امسح البحث والفلاتر لعرض المكتبة كاملة."
+                            },
+                            icon = if (selectedFilter == MediaLibraryFilter.Audio) {
+                                Icons.Rounded.AudioFile
+                            } else {
+                                Icons.Rounded.VideoFile
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            actionText = if (entries.isNotEmpty()) "مسح البحث والفلاتر" else null,
+                            onAction = if (entries.isNotEmpty()) {
+                                {
+                                    searchQuery = ""
+                                    selectedFilter = MediaLibraryFilter.All
+                                }
+                            } else {
+                                null
+                            },
+                            trackingScreen = "MEDIA_LIBRARY",
+                            trackingId = "MEDIA_LIBRARY.empty_state.clear_filters",
+                        )
                     }
                 }
                 else -> {
@@ -210,11 +222,17 @@ fun MediaLibraryRoute(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
                         item(key = "media-library-summary") {
-                            Text(
-                                "${visibleEntries.size} ملف",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ) {
+                                Text(
+                                    "${visibleEntries.size} ملف",
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                         }
                         val playbackQueue = visibleEntries.map { it.record }
                         items(visibleEntries, key = { it.record.task.id }) { entry ->
@@ -247,6 +265,10 @@ private fun MediaLibraryItemCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f),
+        ),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),

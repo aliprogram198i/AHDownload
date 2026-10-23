@@ -16,6 +16,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -122,7 +124,7 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class, UnstableApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, UnstableApi::class)
 @Composable
 fun LocalMediaPlayerDialog(
     record: DownloadRecord,
@@ -680,23 +682,31 @@ fun LocalMediaPlayerDialog(
                         TextButton(onClick = { showSpeedDialog = true }) {
                             Text("سرعة التشغيل · " + formatPlaybackSpeed(playbackSpeed) + "×")
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             TextButton(onClick = { repeatMode = nextRepeatMode(repeatMode); player.repeatMode = repeatMode }) {
                                 Icon(if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text(repeatModeLabel(repeatMode))
+                                Text(repeatModeLabel(repeatMode), maxLines = 1)
                             }
                             TextButton(onClick = { shuffleEnabled = !shuffleEnabled; player.shuffleModeEnabled = shuffleEnabled }) {
                                 Icon(Icons.Rounded.Shuffle, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text(if (shuffleEnabled) "العشوائي يعمل" else "تشغيل عشوائي")
+                                Text(if (shuffleEnabled) "العشوائي يعمل" else "تشغيل عشوائي", maxLines = 1)
                             }
                         }
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
                             TextButton(onClick = { showQueueDialog = true }) {
                                 Icon(Icons.Rounded.QueueMusic, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("قائمة التشغيل (" + activeQueue.size + ")")
+                                Text("قائمة التشغيل (" + activeQueue.size + ")", maxLines = 1)
                             }
                             TextButton(onClick = { showSleepTimerDialog = true }) {
                                 Icon(Icons.Rounded.Timer, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -705,6 +715,7 @@ fun LocalMediaPlayerDialog(
                                     if (sleepTimerDeadlineElapsedMs > 0L) {
                                         "مؤقت · " + formatPlaybackTime(sleepTimerRemainingSeconds * 1_000L)
                                     } else "مؤقت النوم",
+                                    maxLines = 1,
                                 )
                             }
                         }
