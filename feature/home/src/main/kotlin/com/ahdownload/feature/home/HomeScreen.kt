@@ -993,11 +993,33 @@ private fun HomeScreen(
                     }
                     if (visibleSearchResults.isEmpty() && !state.searching) {
                         item {
-                            Text(
-                                "لا توجد نتائج ضمن هذا التصنيف. جرّب «الكل» أو غيّر عبارة البحث.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 12.dp),
+                            AHEmptyState(
+                                title = "لا توجد نتائج مطابقة",
+                                message = if (state.searchFilter == YouTubeSearchFilter.All) {
+                                    "لم يعثر YouTube على نتائج لهذه العبارة. جرّب عبارة بحث أخرى."
+                                } else {
+                                    "لا توجد نتائج ضمن هذا التصنيف. اعرض كل النتائج أو غيّر عبارة البحث."
+                                },
+                                icon = Icons.Rounded.Search,
+                                actionText = if (state.searchFilter != YouTubeSearchFilter.All) {
+                                    "عرض كل النتائج"
+                                } else {
+                                    null
+                                },
+                                onAction = if (state.searchFilter != YouTubeSearchFilter.All) {
+                                    {
+                                        uiTraceLogger.interaction(
+                                            "HOME",
+                                            "search_filter",
+                                            "show_all_from_empty_state",
+                                        )
+                                        onSearchFilterChanged(YouTubeSearchFilter.All)
+                                    }
+                                } else {
+                                    null
+                                },
+                                trackingScreen = "HOME",
+                                trackingId = "HOME.search.empty.show_all",
                             )
                         }
                     }
