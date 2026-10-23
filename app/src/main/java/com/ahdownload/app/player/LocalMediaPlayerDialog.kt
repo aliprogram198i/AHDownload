@@ -349,6 +349,10 @@ fun LocalMediaPlayerDialog(
         showQueueDialog = false
     }
 
+    val canSkipPrevious = activeQueue.size > 1 &&
+        (currentQueueIndex > 0 || shuffleEnabled || repeatMode == Player.REPEAT_MODE_ALL)
+    val canSkipNext = activeQueue.size > 1 &&
+        (currentQueueIndex < activeQueue.lastIndex || shuffleEnabled || repeatMode == Player.REPEAT_MODE_ALL)
     val maxSlider = durationMs.coerceAtLeast(1L).toFloat()
     val sliderPosition = if (isScrubbing) scrubPosition else positionMs.toFloat()
     val containerRatio = PlayerEnhancementPolicy.aspectRatio(aspectMode, videoAspectRatio)
@@ -487,9 +491,9 @@ fun LocalMediaPlayerDialog(
                                 PlaybackTransportRow(
                                     isPlaying = isPlaying,
                                     hasError = hasPlaybackError,
-                                    canPrevious = currentQueueIndex > 0,
-                                    canNext = currentQueueIndex < activeQueue.lastIndex,
-                                    onPrevious = { selectQueueItem(currentQueueIndex - 1) },
+                                    canPrevious = canSkipPrevious,
+                                    canNext = canSkipNext,
+                                    onPrevious = { player.seekToPreviousMediaItem() },
                                     onRewind = { player.seekTo(PlayerEnhancementPolicy.seekTarget(player.currentPosition, player.duration, false)) },
                                     onTogglePlay = {
                                         if (player.isPlaying) player.pause()
@@ -499,7 +503,7 @@ fun LocalMediaPlayerDialog(
                                         }
                                     },
                                     onForward = { player.seekTo(PlayerEnhancementPolicy.seekTarget(player.currentPosition, player.duration, true)) },
-                                    onNext = { selectQueueItem(currentQueueIndex + 1) },
+                                    onNext = { player.seekToNextMediaItem() },
                                     light = true,
                                 )
                             }
@@ -658,9 +662,9 @@ fun LocalMediaPlayerDialog(
                         PlaybackTransportRow(
                             isPlaying = isPlaying,
                             hasError = hasPlaybackError,
-                            canPrevious = currentQueueIndex > 0,
-                            canNext = currentQueueIndex < activeQueue.lastIndex,
-                            onPrevious = { selectQueueItem(currentQueueIndex - 1) },
+                            canPrevious = canSkipPrevious,
+                            canNext = canSkipNext,
+                            onPrevious = { player.seekToPreviousMediaItem() },
                             onRewind = { player.seekTo(PlayerEnhancementPolicy.seekTarget(player.currentPosition, player.duration, false)) },
                             onTogglePlay = {
                                 if (player.isPlaying) player.pause()
@@ -670,7 +674,7 @@ fun LocalMediaPlayerDialog(
                                 }
                             },
                             onForward = { player.seekTo(PlayerEnhancementPolicy.seekTarget(player.currentPosition, player.duration, true)) },
-                            onNext = { selectQueueItem(currentQueueIndex + 1) },
+                            onNext = { player.seekToNextMediaItem() },
                             light = false,
                         )
                         TextButton(onClick = { showSpeedDialog = true }) {
