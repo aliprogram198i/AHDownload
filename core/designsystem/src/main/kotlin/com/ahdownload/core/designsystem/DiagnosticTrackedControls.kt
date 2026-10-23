@@ -36,8 +36,8 @@ fun DiagnosticButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val logger = LocalDiagnosticUiTraceLogger.current
-    // Keep primary actions comfortably tappable and visually consistent across screens.
-    val actionModifier = modifier.defaultMinSize(minHeight = 48.dp)
+    // Keep filled actions aligned to the shared 52dp touch target across screens.
+    val actionModifier = modifier.defaultMinSize(minHeight = 52.dp)
     val tracked = diagnosticControlModifier(actionModifier, trackingScreen, trackingId, trackingLabel, enabled, disabledReason)
     MaterialButton(
         onClick = { dispatchDiagnosticAction(logger, trackingScreen, trackingId, trackingLabel, onClick) },
@@ -59,8 +59,8 @@ fun DiagnosticOutlinedButton(
     content: @Composable RowScope.() -> Unit,
 ) {
     val logger = LocalDiagnosticUiTraceLogger.current
-    // Match the minimum touch height of filled actions.
-    val actionModifier = modifier.defaultMinSize(minHeight = 48.dp)
+    // Match the shared minimum touch height of filled actions.
+    val actionModifier = modifier.defaultMinSize(minHeight = 52.dp)
     val tracked = diagnosticControlModifier(actionModifier, trackingScreen, trackingId, trackingLabel, enabled, disabledReason)
     MaterialOutlinedButton(
         onClick = { dispatchDiagnosticAction(logger, trackingScreen, trackingId, trackingLabel, onClick) },
