@@ -71,7 +71,7 @@ jobs:
           disable-linux-hw-accel: false
           emulator-boot-timeout: 600
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data -camera-back none -camera-front none"
-          script: gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest -Pandroid.testInstrumentationRunnerArguments.targetPlatform=Instagram
+          script: gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ahdownload.app.download.LiveSocialMediaDownloadE2ETest -Pandroid.testInstrumentationRunnerArguments.targetPlatform=Instagram-Story '-Pandroid.testInstrumentationRunnerArguments.instagramStoryUrl=https://www.instagram.com/stories/muh_13k/4013858403151007324?utm_source=ig_story_item_share&cplk=YnkwczNhcjFuaTly'
 
       - name: Collect emulator diagnostics
         if: always()
