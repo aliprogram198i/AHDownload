@@ -1408,7 +1408,7 @@ private fun SearchResultCard(
         ContentSearchKind.SHORT -> "Shorts"
         ContentSearchKind.CHANNEL -> "قناة"
     }
-    val cardShape = RoundedCornerShape(18.dp)
+    val cardShape = MaterialTheme.shapes.large
 
     Card(
         modifier = Modifier
