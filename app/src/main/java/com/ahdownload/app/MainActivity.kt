@@ -97,6 +97,7 @@ class MainActivity : ComponentActivity() {
 
     private var pendingSharedUrl by mutableStateOf<String?>(null)
     private var activePlayerRecord by mutableStateOf<DownloadRecord?>(null)
+    private var activePlayerQueue by mutableStateOf<List<DownloadRecord>>(emptyList())
     private var openDownloadsOnStart by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -151,6 +152,7 @@ class MainActivity : ComponentActivity() {
                     onResumeDownload = downloadWorkScheduler::resume,
                     onCancelDownload = downloadWorkScheduler::cancel,
                     onOpenDownload = ::openCompletedDownload,
+                    onOpenMediaQueue = ::openCompletedMediaQueue,
                     onOpenDownloadFolder = ::openDownloadFolder,
                     downloadLocationStore = downloadLocationStore,
                     downloadPreferencesProvider = downloadPreferencesStore,
@@ -173,7 +175,11 @@ class MainActivity : ComponentActivity() {
                         LocalMediaPlayerDialog(
                             record = record,
                             playbackType = playbackType,
-                            onDismiss = { activePlayerRecord = null },
+                            queueRecords = activePlayerQueue.ifEmpty { listOf(record) },
+                            onDismiss = {
+                                activePlayerRecord = null
+                                activePlayerQueue = emptyList()
+                            },
                             onPlaybackError = { error ->
                                 diagnosticLogger.log(
                                     level = DiagnosticLevel.WARNING,
@@ -279,6 +285,7 @@ class MainActivity : ComponentActivity() {
             // Pass the exact URI that was just resolved and validated. If a stale provider URI
             // fell back to a readable local file, the player must not retry the stale URI.
             activePlayerRecord = record.copy(destinationUri = destination.toString())
+            activePlayerQueue = listOf(record.copy(destinationUri = destination.toString()))
             diagnosticLogger.log(
                 level = DiagnosticLevel.INFO,
                 type = "LOCAL_MEDIA_PLAYBACK_OPENED",
@@ -314,6 +321,52 @@ class MainActivity : ComponentActivity() {
                 throwable = error,
             )
         }
+    }
+
+    private fun openCompletedMediaQueue(record: DownloadRecord, queue: List<DownloadRecord>) {
+        val verifiedQueue = queue.asSequence()
+            .filter { it.status == DownloadStatus.COMPLETED }
+            .distinctBy { it.task.id }
+            .mapNotNull { candidate ->
+                val destination = candidate.destinationUri
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { raw -> runCatching { Uri.parse(raw) }.getOrNull() }
+                    ?: File(candidate.task.destinationPath).takeIf { it.isFile && it.canRead() }?.let(Uri::fromFile)
+                    ?: return@mapNotNull null
+                val resolvedType = resolveLocalMediaPlaybackType(
+                    mediaKind = candidate.task.mediaKind,
+                    processingMode = candidate.task.processingMode,
+                    displayName = candidate.task.displayName,
+                    destinationPath = candidate.task.destinationPath,
+                ) ?: return@mapNotNull null
+                if (!shouldOfferInternalPlayback(
+                        status = candidate.status,
+                        fileAvailable = true,
+                        destinationUri = destination.toString(),
+                        playbackType = resolvedType,
+                    )
+                ) return@mapNotNull null
+                candidate.copy(destinationUri = destination.toString())
+            }
+            .toList()
+        val selected = verifiedQueue.firstOrNull { it.task.id == record.task.id }
+        if (selected == null) {
+            openCompletedDownload(record)
+            return
+        }
+        activePlayerRecord = selected
+        activePlayerQueue = verifiedQueue
+        diagnosticLogger.log(
+            level = DiagnosticLevel.INFO,
+            type = "LOCAL_MEDIA_PLAYBACK_QUEUE_OPENED",
+            reason = "بدأ تشغيل ملف من قائمة الوسائط",
+            operation = "main.local_media_player",
+            context = mapOf(
+                "task_id" to selected.task.id,
+                "queue_size" to verifiedQueue.size.toString(),
+            ),
+            throwable = null,
+        )
     }
 
     private fun openDownloadFolder(record: DownloadRecord) {
@@ -466,6 +519,7 @@ private fun AHRoot(
     onResumeDownload: (DownloadRecord) -> Unit,
     onCancelDownload: (String) -> Unit,
     onOpenDownload: (DownloadRecord) -> Unit,
+    onOpenMediaQueue: (DownloadRecord, List<DownloadRecord>) -> Unit,
     onOpenDownloadFolder: (DownloadRecord) -> Unit,
     downloadLocationStore: DownloadLocationStore,
     downloadPreferencesProvider: com.ahdownload.core.common.DownloadPreferencesProvider,
@@ -647,7 +701,7 @@ private fun AHRoot(
         RootDestination.MediaLibrary -> MediaLibraryRoute(
             repository = downloadRepository,
             onBack = ::popOrHome,
-            onOpenMedia = onOpenDownload,
+            onOpenMedia = onOpenMediaQueue,
         )
         RootDestination.Studio -> studioRecord?.let { record ->
             StudioRoute(

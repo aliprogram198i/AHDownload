@@ -69,7 +69,7 @@ import java.util.Locale
 fun MediaLibraryRoute(
     repository: DownloadRepository,
     onBack: () -> Unit,
-    onOpenMedia: (DownloadRecord) -> Unit,
+    onOpenMedia: (DownloadRecord, List<DownloadRecord>) -> Unit,
 ) {
     val context = LocalContext.current
     val history by repository.observeHistory().collectAsStateWithLifecycle(initialValue = emptyList())
@@ -216,8 +216,12 @@ fun MediaLibraryRoute(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        val playbackQueue = visibleEntries.map { it.record }
                         items(visibleEntries, key = { it.record.task.id }) { entry ->
-                            MediaLibraryItemCard(entry = entry, onClick = { onOpenMedia(entry.record) })
+                            MediaLibraryItemCard(
+                                entry = entry,
+                                onClick = { onOpenMedia(entry.record, playbackQueue) },
+                            )
                         }
                         item(key = "media-library-bottom-spacer") { Spacer(Modifier.height(8.dp)) }
                     }
