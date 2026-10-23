@@ -864,7 +864,7 @@ class DownloadWorker(
                 if (
                     completedRecord.failureCode == "network_error" ||
                     completedRecord.failureCode == "incomplete_response" && runAttemptCount < MAX_INCOMPLETE_RESPONSE_RETRIES ||
-                    completedRecord.failureCode == "http_error" && isRetryableHttp(completedRecord.failureDetail) ||
+                    completedRecord.failureCode == "http_error" && DownloadRetryPolicy.isRetryableHttp(completedRecord.failureDetail) ||
                     retryableYouTube403
                 ) {
                     Result.retry()
@@ -1250,7 +1250,7 @@ class DownloadWorker(
                     requestedKind = MediaKind.Audio,
                 )
                 .sortedWith(
-                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                    compareBy<MediaCandidate> { DownloadRetryPolicy.youtubeRefreshPriority(it) }
                         .thenByDescending { it.format.bitrateKbps ?: 0 }
                         .thenBy { it.id },
                 )
@@ -1265,13 +1265,13 @@ class DownloadWorker(
                     requestedKind = MediaKind.Video,
                 )
                 .sortedWith(
-                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                    compareBy<MediaCandidate> { DownloadRetryPolicy.youtubeRefreshPriority(it) }
                         .thenByDescending { it.format.height ?: 0 }
                         .thenByDescending { it.format.bitrateKbps ?: 0 }
                         .thenBy { it.id },
                 )
                 .take(4)
-            interleaveYouTubeRefreshCandidates(
+            DownloadRetryPolicy.interleaveYouTubeRefreshCandidates(
                 primary = directAudio,
                 fallback = muxedVideo,
             )
@@ -1289,7 +1289,7 @@ class DownloadWorker(
                     requestedKind = expectedKind,
                 )
                 .sortedWith(
-                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                    compareBy<MediaCandidate> { DownloadRetryPolicy.youtubeRefreshPriority(it) }
                         .thenByDescending { it.format.height ?: 0 }
                         .thenByDescending { it.format.bitrateKbps ?: 0 }
                         .thenBy { it.id },
@@ -1328,31 +1328,6 @@ class DownloadWorker(
         }
 
         return null
-    }
-
-    private fun youtubeRefreshPriority(candidate: MediaCandidate): Int = when {
-        candidate.id.startsWith("embedded-") -> 0
-        candidate.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED -> 1
-        candidate.id.startsWith("android-") -> 2
-        else -> 3
-    }
-
-    private fun interleaveYouTubeRefreshCandidates(
-        primary: List<MediaCandidate>,
-        fallback: List<MediaCandidate>,
-    ): List<MediaCandidate> {
-        val result = ArrayList<MediaCandidate>(primary.size + fallback.size)
-        val limit = maxOf(primary.size, fallback.size)
-        for (index in 0 until limit) {
-            primary.getOrNull(index)?.let(result::add)
-            fallback.getOrNull(index)?.let(result::add)
-        }
-        return result.distinctBy { it.id }
-    }
-
-    private fun isRetryableHttp(detail: String?): Boolean {
-        val code = detail?.toIntOrNull() ?: return false
-        return code == 408 || code == 429 || code in 500..599
     }
 
     companion object {
