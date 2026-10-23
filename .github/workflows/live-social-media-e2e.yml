@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/platform-specific-resolvers
+      - test/instagram-live-download-20261023
   workflow_dispatch:
 
 permissions:
@@ -70,7 +71,7 @@ jobs:
           disable-linux-hw-accel: false
           emulator-boot-timeout: 600
           emulator-options: "-no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -wipe-data -camera-back none -camera-front none"
-          script: bash .github/scripts/run-live-e2e.sh
+          script: gradle --no-daemon --no-parallel --max-workers=2 :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.targetPlatform=Instagram
 
       - name: Collect emulator diagnostics
         if: always()
