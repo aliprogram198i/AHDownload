@@ -25,6 +25,10 @@ jobs:
             tiktok_url: "https://www.tiktok.com/@udhaybaah/video/7698296640272125217?is_from_webapp=1&sender_device=pc"
           - case_name: second-public-video
             tiktok_url: https://www.tiktok.com/@scout2015/video/6718335390845095173
+          - case_name: mobile-canonical-video
+            tiktok_url: https://m.tiktok.com/@scout2015/video/6718335390845095173
+          - case_name: short-share-link
+            tiktok_url: https://vm.tiktok.com/ZMYS13VCF
     env:
       TIKTOK_URL: ${{ matrix.tiktok_url }}
     runs-on: ubuntu-latest

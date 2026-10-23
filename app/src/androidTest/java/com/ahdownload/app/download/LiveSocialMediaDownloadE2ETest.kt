@@ -59,8 +59,8 @@ class LiveSocialMediaDownloadE2ETest {
         val tiktokUrl = when {
             tiktokUrlOverride.isBlank() ->
                 "https://www.tiktok.com/@scout2015/video/6718335390845095173"
-            isCanonicalTikTokVideoUrl(tiktokUrlOverride) -> tiktokUrlOverride
-            else -> error("tiktokUrl must be a canonical HTTPS TikTok video URL")
+            isSupportedTikTokInputUrl(tiktokUrlOverride) -> tiktokUrlOverride
+            else -> error("tiktokUrl must be a supported HTTPS TikTok video or short-share URL")
         }
         val allTargets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
@@ -225,6 +225,20 @@ class LiveSocialMediaDownloadE2ETest {
         )
     }
 
+
+    private fun isSupportedTikTokInputUrl(value: String?): Boolean = runCatching {
+        if (value.isNullOrBlank()) return@runCatching false
+        val uri = java.net.URI(value)
+        val host = uri.host?.lowercase() ?: return@runCatching false
+        if (uri.scheme?.lowercase() != "https") return@runCatching false
+        if (host != "tiktok.com" && !host.endsWith(".tiktok.com")) return@runCatching false
+        if (isCanonicalTikTokVideoUrl(value)) return@runCatching true
+
+        // TikTok Share may provide an opaque vm/vt short URL instead of a canonical /video/ path.
+        val isOfficialShortHost = host == "vm.tiktok.com" || host == "vt.tiktok.com"
+        val token = uri.path.orEmpty().split('/').filter(String::isNotBlank).singleOrNull()
+        isOfficialShortHost && token != null && token.matches(Regex("""[A-Za-z0-9_-]{5,80}"""))
+    }.getOrDefault(false)
 
     private fun isCanonicalTikTokVideoUrl(value: String?): Boolean = runCatching {
         if (value.isNullOrBlank()) return@runCatching false

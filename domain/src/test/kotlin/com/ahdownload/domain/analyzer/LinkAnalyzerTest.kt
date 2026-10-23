@@ -232,4 +232,21 @@ class LinkAnalyzerTest {
         assertEquals("  https://instagram.com/reel/example  ", result?.originalUrl)
         assertEquals("https://instagram.com/reel/example", result?.normalizedUrl)
     }
+
+    @Test
+    fun recognizesTikTokShortMobilePhotoStoryAndLiveUrlFamilies() {
+        val urls = listOf(
+            "https://vm.tiktok.com/ZMYS13VCF",
+            "https://vt.tiktok.com/ZS8eY5678/",
+            "https://m.tiktok.com/@scout2015/video/6718335390845095173?is_from_webapp=1",
+            "https://www.tiktok.com/t/ZMYS13VCF/",
+            "https://www.tiktok.com/@creator/photo/7345678901234567890",
+            "https://www.tiktok.com/@creator/story/7345678901234567890",
+            "https://www.tiktok.com/@creator/live",
+        )
+        urls.forEach { url ->
+            assertEquals(url, MediaPlatform.TikTok, analyzer.analyze(url)?.platform)
+        }
+    }
+
 }
