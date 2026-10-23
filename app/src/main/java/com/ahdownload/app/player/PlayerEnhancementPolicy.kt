@@ -25,9 +25,9 @@ internal object PlayerEnhancementPolicy {
     }
 
     fun aspectRatio(mode: PlayerAspectMode, sourceRatio: Float): Float = when (mode) {
-        PlayerAspectMode.WIDE_16_9 -> 16f / 9f
+        PlayerAspectMode.FIT -> sourceRatio.takeIf { it.isFinite() && it in 0.25f..4f } ?: (16f / 9f)
+        PlayerAspectMode.FILL, PlayerAspectMode.ZOOM, PlayerAspectMode.WIDE_16_9 -> 16f / 9f
         PlayerAspectMode.CLASSIC_4_3 -> 4f / 3f
-        else -> sourceRatio.takeIf { it.isFinite() && it in 0.25f..4f } ?: (16f / 9f)
     }
 
     fun <T> moveItem(items: List<T>, fromIndex: Int, toIndex: Int): List<T> {
