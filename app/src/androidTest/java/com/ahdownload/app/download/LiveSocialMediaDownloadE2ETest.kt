@@ -65,8 +65,8 @@ class LiveSocialMediaDownloadE2ETest {
         val allTargets = listOf(
             Target("Instagram-Reel", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
             // Public URL-shape coverage: /p/ media, carousel, Highlight, and a Story URL.
-            Target("Instagram-P-Video", MediaPlatform.Instagram, "https://www.instagram.com/p/DaTSSukB-Lb/"),
-            Target("Instagram-Carousel", MediaPlatform.Instagram, "https://www.instagram.com/p/DdHyaYAifb6/"),
+            Target("Instagram-P-Video", MediaPlatform.Instagram, "https://www.instagram.com/p/Dcea3BiPTBm/"),
+            Target("Instagram-Carousel", MediaPlatform.Instagram, "https://www.instagram.com/p/Dd7GZ70jYuM/"),
             Target("Instagram-Highlight", MediaPlatform.Instagram, "https://www.instagram.com/stories/highlights/18195781759377100/"),
             Target("Instagram-Story", MediaPlatform.Instagram, "https://www.instagram.com/stories/nasa/3975089864169193671/"),
             Target("TikTok", MediaPlatform.TikTok, tiktokUrl),
