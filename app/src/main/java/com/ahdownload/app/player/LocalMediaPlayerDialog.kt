@@ -41,6 +41,8 @@ import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -129,8 +131,6 @@ fun LocalMediaPlayerDialog(
     onPlaybackError: (Throwable) -> Unit,
 ) {
     val context = LocalContext.current
-    val localView = LocalView.current
-    val dialogWindow = (localView.parent as? DialogWindowProvider)?.window
     val currentErrorCallback by rememberUpdatedState(onPlaybackError)
     val playbackPositionStore = remember(context) { PlaybackPositionStore(context) }
     val queueOrderStore = remember(context) { PlaybackQueueStore(context) }
@@ -212,6 +212,7 @@ fun LocalMediaPlayerDialog(
     var sleepTimerDeadlineElapsedMs by remember(player) { mutableLongStateOf(0L) }
     var sleepTimerRemainingSeconds by remember(player) { mutableLongStateOf(0L) }
     var isFullscreen by remember(player) { mutableStateOf(false) }
+    var isMiniPlayer by remember(player) { mutableStateOf(false) }
     var controlsVisible by remember(player) { mutableStateOf(true) }
     var touchLocked by remember(player) { mutableStateOf(false) }
     var gestureFeedback by remember(player) { mutableStateOf<String?>(null) }
@@ -285,33 +286,6 @@ fun LocalMediaPlayerDialog(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    DisposableEffect(isFullscreen, dialogWindow, localView) {
-        val window = dialogWindow
-        if (!isFullscreen || window == null) {
-            onDispose { }
-        } else {
-            val controller = WindowCompat.getInsetsController(window, localView)
-            val originalBrightness = window.attributes.screenBrightness
-            val oldBehavior = controller.systemBarsBehavior
-            val barsWereVisible = runCatching {
-                WindowInsetsCompat.toWindowInsetsCompat(window.decorView.rootWindowInsets, window.decorView)
-                    .isVisible(WindowInsetsCompat.Type.systemBars())
-            }.getOrDefault(true)
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            onDispose {
-                val attributes = window.attributes
-                attributes.screenBrightness = originalBrightness
-                window.attributes = attributes
-                controller.systemBarsBehavior = oldBehavior
-                if (barsWereVisible) controller.show(WindowInsetsCompat.Type.systemBars())
-                else controller.hide(WindowInsetsCompat.Type.systemBars())
-                WindowCompat.setDecorFitsSystemWindows(window, true)
-            }
-        }
-    }
-
     LaunchedEffect(player) {
         while (true) {
             val duration = player.duration
@@ -383,16 +357,31 @@ fun LocalMediaPlayerDialog(
         else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            decorFitsSystemWindows = !isFullscreen,
-        ),
-    ) {
-        Surface(
+    if (isMiniPlayer) {
+        MiniPlayerBar(
+            title = currentTitle,
+            subtitle = mediaMetadata?.artist?.takeIf { it.isNotBlank() } ?: if (currentType == LocalMediaPlaybackType.AUDIO) "ملف صوتي محلي" else "فيديو محلي",
+            isPlaying = isPlaying,
+            onExpand = { isMiniPlayer = false },
+            onTogglePlay = {
+                if (player.isPlaying) player.pause() else player.play()
+            },
+            onClose = onDismiss,
+        )
+    } else {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(
+                usePlatformDefaultWidth = false,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = false,
+                decorFitsSystemWindows = !isFullscreen,
+            ),
+        ) {
+            val dialogView = LocalView.current
+            val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+            ImmersiveWindowBarsEffect(isFullscreen, dialogWindow, dialogView)
+            Surface(
             modifier = Modifier.fillMaxSize(),
             color = if (isFullscreen) Color.Black else MaterialTheme.colorScheme.background,
         ) {
@@ -556,8 +545,16 @@ fun LocalMediaPlayerDialog(
                                 }
                             },
                             navigationIcon = {
-                                IconButton(onClick = onDismiss) {
-                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, "العودة إلى التنزيلات")
+                                IconButton(onClick = {
+                                    if (currentType == LocalMediaPlaybackType.AUDIO) isMiniPlayer = true
+                                    else onDismiss()
+                                }) {
+                                    Icon(
+                                        if (currentType == LocalMediaPlaybackType.AUDIO) Icons.Rounded.KeyboardArrowDown
+                                        else Icons.AutoMirrored.Rounded.ArrowBack,
+                                        if (currentType == LocalMediaPlaybackType.AUDIO) "تصغير المشغل ومتابعة التصفح"
+                                        else "العودة إلى التنزيلات",
+                                    )
                                 }
                             },
                             actions = {
@@ -565,6 +562,9 @@ fun LocalMediaPlayerDialog(
                                     IconButton(onClick = { isFullscreen = true; controlsVisible = true }) {
                                         Icon(Icons.Rounded.Fullscreen, "ملء الشاشة")
                                     }
+                                }
+                                IconButton(onClick = onDismiss) {
+                                    Icon(Icons.Rounded.Close, "إغلاق المشغل")
                                 }
                             },
                         )
@@ -708,6 +708,7 @@ fun LocalMediaPlayerDialog(
             }
         }
     }
+    }
 
     if (showSpeedDialog) {
         AlertDialog(
@@ -792,6 +793,82 @@ fun LocalMediaPlayerDialog(
             },
             confirmButton = { TextButton(onClick = { showQueueDialog = false }) { Text("إغلاق") } },
         )
+    }
+}
+
+@Composable
+private fun MiniPlayerBar(
+    title: String,
+    subtitle: String,
+    isPlaying: Boolean,
+    onExpand: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 8.dp,
+            shadowElevation = 8.dp,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                IconButton(onClick = onExpand) {
+                    Icon(Icons.Rounded.Fullscreen, contentDescription = "تكبير المشغل")
+                }
+                Column(
+                    modifier = Modifier.weight(1f).clickable(onClick = onExpand).padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                    Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onTogglePlay) {
+                    Icon(if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = if (isPlaying) "إيقاف مؤقت" else "تشغيل")
+                }
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Rounded.Close, contentDescription = "إغلاق المشغل")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImmersiveWindowBarsEffect(
+    enabled: Boolean,
+    window: Window?,
+    view: android.view.View,
+) {
+    DisposableEffect(enabled, window, view) {
+        if (!enabled || window == null) {
+            onDispose { }
+        } else {
+            val controller = WindowCompat.getInsetsController(window, view)
+            val originalBrightness = window.attributes.screenBrightness
+            val oldBehavior = controller.systemBarsBehavior
+            val barsWereVisible = runCatching {
+                WindowInsetsCompat.toWindowInsetsCompat(window.decorView.rootWindowInsets, window.decorView)
+                    .isVisible(WindowInsetsCompat.Type.systemBars())
+            }.getOrDefault(true)
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                val attributes = window.attributes
+                attributes.screenBrightness = originalBrightness
+                window.attributes = attributes
+                controller.systemBarsBehavior = oldBehavior
+                if (barsWereVisible) controller.show(WindowInsetsCompat.Type.systemBars())
+                else controller.hide(WindowInsetsCompat.Type.systemBars())
+                WindowCompat.setDecorFitsSystemWindows(window, true)
+            }
+        }
     }
 }
 
