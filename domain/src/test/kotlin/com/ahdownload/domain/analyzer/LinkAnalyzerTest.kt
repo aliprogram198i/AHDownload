@@ -274,7 +274,7 @@ class LinkAnalyzerTest {
 
         urls.forEach { url ->
             assertEquals(url, MediaPlatform.TikTok, analyzer.analyze(url)?.platform)
-            assertEquals(url, url, analyzer.analyze(url)?.normalizedUrl)
+            assertEquals(url, analyzer.analyze(url)?.normalizedUrl)
         }
     }
 

@@ -123,9 +123,9 @@ class LinkAnalyzer {
         val segments = uri.path.orEmpty().split('/').filter(String::isNotBlank)
         val videoIndex = segments.indexOfLast { it.equals("video", ignoreCase = true) }
         val videoId = segments.getOrNull(videoIndex + 1)
-        if (videoIndex < 0 || videoId?.matches(Regex("""\\d{6,30}""")) != true) return url
+        if (videoIndex < 0 || videoId?.matches(Regex("""\d{6,30}""")) != true) return url
 
-        return Regex("""(?i)^(https?://)m\\.tiktok\\.com(?=[:/?#]|$)""")
+        return Regex("""(?i)^(https?://)m\.tiktok\.com(?=[:/?#]|$)""")
             .replaceFirst(url) { match -> match.groupValues[1] + "www.tiktok.com" }
     }
 
