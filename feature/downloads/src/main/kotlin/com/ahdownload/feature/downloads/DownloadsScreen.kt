@@ -569,6 +569,10 @@ private fun DownloadsScreen(
                             Card(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                                ),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                                 ),
@@ -584,16 +588,31 @@ private fun DownloadsScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                                     )
-                                    Text(
-                                        "نشطة",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.PlayArrow,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                        Text(
+                                            "نشطة",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                    }
                                 }
                             }
                             Card(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                                ),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 ),
@@ -609,16 +628,31 @@ private fun DownloadsScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    Text(
-                                        "متوقفة",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Pause,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            "متوقفة",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 }
                             }
                             Card(
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                                ),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                                 ),
@@ -634,11 +668,22 @@ private fun DownloadsScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                                     )
-                                    Text(
-                                        "مكتملة",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.CheckCircle,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        )
+                                        Text(
+                                            "مكتملة",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        )
+                                    }
                                 }
                             }
                         }
