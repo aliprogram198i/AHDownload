@@ -61,6 +61,25 @@ class DownloadWorker(
     private var notificationBytesPerSecond = 0L
     private var lowStorageWarningForTask = false
 
+    private val transferCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        DownloadTransferCoordinator(
+            applicationContext = applicationContext,
+            setForegroundForState = { state -> setForeground(createForegroundInfo(state)) },
+            updateNotificationSpeedForState = { state -> updateNotificationSpeed(state) },
+            persistAdaptiveRecord = { repository, taskId, state, now ->
+                updateAdaptiveRecord(repository, taskId, state, now)
+            },
+            resolveDynamicHeaders = { url, sessionCookieHost, headers ->
+                dynamicHeadersFor(url, sessionCookieHost, headers)
+            },
+            resolveHost = { url -> hostOf(url) },
+        )
+    }
+
+    private val destinationPublisher by lazy(LazyThreadSafetyMode.NONE) {
+        DownloadDestinationPublisher(applicationContext)
+    }
+
     override suspend fun doWork(): Result {
         val decodedTask = readTask() ?: return Result.failure()
         val audioExtractionRequested = decodedTask.processingMode == DownloadProcessingMode.ExtractAudio
@@ -425,7 +444,7 @@ class DownloadWorker(
                 )
                 reused
             } else if (sourceTask.streamingManifest && !muxRequested) {
-                executeStreamingManifest(
+                transferCoordinator.executeStreamingManifest(
                     task = task,
                     sourceTask = sourceTask,
                     repository = repository,
@@ -438,7 +457,7 @@ class DownloadWorker(
                     ),
                 )
             } else if (muxRequested && companionAudioTask != null) {
-                executeAdaptiveMux(
+                transferCoordinator.executeAdaptiveMux(
                     task = task,
                     videoTask = sourceTask,
                     audioTask = companionAudioTask,
@@ -712,99 +731,13 @@ class DownloadWorker(
         }
 
         if (completedRecord.status == DownloadStatus.COMPLETED) {
-            val locationStore = DownloadLocationStore(applicationContext)
-            val treeUri = locationStore.persistedUri()
-            if (treeUri != null) {
-                val localFile = java.io.File(task.destinationPath)
-                val copied = runCatching {
-                    SelectedDirectoryStorage.copyFromLocal(
-                        context = applicationContext,
-                        source = localFile,
-                        treeUri = treeUri,
-                        displayName = localFile.name,
-                    )
-                }
-                if (copied.isSuccess) {
-                    val destinationUri = copied.getOrThrow()
-                    localFile.delete()
-                    completedRecord = completedRecord.copy(
-                        destinationUri = destinationUri.toString(),
-                        updatedAtEpochMs = System.currentTimeMillis(),
-                    )
-                    diagnostics.log(
-                        DiagnosticLevel.INFO,
-                        "DOWNLOAD_DESTINATION_COMMITTED",
-                        "تم نقل الوسيط المكتمل إلى المسار الذي اختاره المستخدم",
-                        "download.destination",
-                        mapOf(
-                            "task_id" to task.id,
-                            "destination_mode" to "CUSTOM_DIRECTORY",
-                            "destination_uri_present" to "true",
-                            "source_deleted_after_copy" to "true",
-                        ),
-                        null,
-                    )
-                } else {
-                    diagnostics.log(
-                        DiagnosticLevel.ERROR,
-                        "DOWNLOAD_DESTINATION_COPY_FAILED",
-                        "فشل حفظ الوسيط المكتمل في المسار المحدد",
-                        "download.destination",
-                        mapOf(
-                            "task_id" to task.id,
-                            "destination_mode" to "CUSTOM_DIRECTORY",
-                            "local_recovery_file_present" to localFile.exists().toString(),
-                            "failure" to (copied.exceptionOrNull()?.message ?: "unknown"),
-                        ),
-                        copied.exceptionOrNull(),
-                    )
-                    persistDestinationFailure(completedRecord, "تعذر الكتابة في مجلد التنزيل المحدد.")
-                    return Result.failure(
-                        workDataOf(
-                            KEY_FAILURE_CODE to "destination_storage_error",
-                            KEY_FAILURE_DETAIL to "تعذر الكتابة في مجلد التنزيل المحدد.",
-                        ),
-                    )
-                }
-            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                val localFile = java.io.File(task.destinationPath)
-                val published = MediaStorePublisher(applicationContext).publish(localFile)
-                if (published.isFailure) {
-                    val detail = "تم تنزيل الملف، لكن تعذر حفظه في مكتبة الوسائط. بقيت نسخة استرداد محلية."
-                    persistDestinationFailure(completedRecord, detail)
-                    return Result.failure(
-                        workDataOf(
-                            KEY_FAILURE_CODE to "destination_storage_error",
-                            KEY_FAILURE_DETAIL to detail,
-                        ),
-                    )
-                }
-                completedRecord = completedRecord.copy(
-                    destinationUri = published.getOrThrow().toString(),
-                    updatedAtEpochMs = System.currentTimeMillis(),
-                )
-            } else {
-                // Before Android 10, keep the file in app-specific external storage but
-                // provide a safe content:// URI so the app can open, share, and delete it.
-                val localFile = java.io.File(task.destinationPath)
-                if (!localFile.isFile || localFile.length() <= 0L) {
-                    val detail = "اكتمل النقل دون ملف محلي صالح للنشر."
-                    persistDestinationFailure(completedRecord, detail)
-                    return Result.failure(
-                        workDataOf(
-                            KEY_FAILURE_CODE to "destination_storage_error",
-                            KEY_FAILURE_DETAIL to detail,
-                        ),
-                    )
-                }
-                val destinationUri = FileProvider.getUriForFile(
-                    applicationContext,
-                    "${applicationContext.packageName}.fileprovider",
-                    localFile,
-                )
-                completedRecord = completedRecord.copy(
-                    destinationUri = destinationUri.toString(),
-                    updatedAtEpochMs = System.currentTimeMillis(),
+            when (val publishOutcome = destinationPublisher.publish(completedRecord, task, diagnostics)) {
+                is DownloadDestinationPublishOutcome.Published -> completedRecord = publishOutcome.record
+                is DownloadDestinationPublishOutcome.Failed -> return Result.failure(
+                    workDataOf(
+                        KEY_FAILURE_CODE to "destination_storage_error",
+                        KEY_FAILURE_DETAIL to publishOutcome.detail,
+                    ),
                 )
             }
             if (completedRecord !== record) {
@@ -849,7 +782,7 @@ class DownloadWorker(
                 if (
                     completedRecord.failureCode == "network_error" ||
                     completedRecord.failureCode == "incomplete_response" && runAttemptCount < MAX_INCOMPLETE_RESPONSE_RETRIES ||
-                    completedRecord.failureCode == "http_error" && isRetryableHttp(completedRecord.failureDetail) ||
+                    completedRecord.failureCode == "http_error" && DownloadRetryPolicy.isRetryableHttp(completedRecord.failureDetail) ||
                     retryableYouTube403
                 ) {
                     Result.retry()
@@ -942,22 +875,6 @@ class DownloadWorker(
             ),
             null,
         )
-    }
-
-    private suspend fun persistDestinationFailure(
-        record: com.ahdownload.domain.download.DownloadRecord,
-        detail: String,
-    ) {
-        runCatching {
-            (applicationContext as com.ahdownload.app.AHDownloadApplication).downloadRepository.upsert(
-                record.copy(
-                    status = DownloadStatus.FAILED,
-                    failureCode = "destination_storage_error",
-                    failureDetail = detail,
-                    updatedAtEpochMs = System.currentTimeMillis(),
-                ),
-            )
-        }
     }
 
     private fun diagnosticsLogger(): com.ahdownload.app.diagnostics.PersistentDiagnosticLogger =
@@ -1076,317 +993,6 @@ class DownloadWorker(
         )
     }
 
-    private suspend fun executeStreamingManifest(
-        task: DownloadTask,
-        sourceTask: DownloadTask,
-        repository: com.ahdownload.domain.download.DownloadRepository,
-        controlStore: DownloadControlStore,
-        diagnostics: DiagnosticLogger,
-    ): com.ahdownload.domain.download.DownloadRecord? {
-        val queue = PersistentDownloadQueue(repository)
-        queue.enqueue(task, System.currentTimeMillis())
-        updateAdaptiveRecord(
-            repository,
-            task.id,
-            DownloadState.Downloading(0L, null),
-            System.currentTimeMillis(),
-        )
-        setForeground(createForegroundInfo(DownloadState.Downloading(0L, null)))
-
-        return try {
-            val cookie = CookieManager.getInstance()
-                .getCookie(sourceTask.sourceUrl)
-                ?.takeIf { it.isNotBlank() }
-
-            val performanceStore = (applicationContext.applicationContext as com.ahdownload.app.AHDownloadApplication).performanceLogStore
-            val performanceSession = performanceStore.beginDownload(sourceTask)
-            val result = try {
-                FfmpegManifestDownloader().download(
-                    sourceUrl = sourceTask.sourceUrl,
-                    outputFile = java.io.File(sourceTask.destinationPath),
-                    requestHeaders = sourceTask.requestHeaders,
-                    cookie = cookie,
-                )
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                performanceStore.finishDownload(performanceSession, "CANCELLED")
-                throw cancelled
-            } catch (error: Throwable) {
-                performanceStore.finishDownload(performanceSession, "FAILED")
-                throw error
-            }
-            if (result.isSuccess) {
-                val outputFile = result.getOrNull()?.takeIf { it.isFile }
-                performanceStore.finishDownload(
-                    session = performanceSession,
-                    outcome = "COMPLETED",
-                    bytesDownloadedOverride = outputFile?.length(),
-                    totalBytesOverride = outputFile?.length(),
-                )
-            } else {
-                performanceStore.finishDownload(performanceSession, "FAILED_MANIFEST")
-            }
-            if (result.isFailure) {
-                val error = result.exceptionOrNull()
-                diagnostics.log(
-                    DiagnosticLevel.ERROR,
-                    "STREAMING_MANIFEST_DOWNLOAD_FAILED",
-                    error?.message ?: "manifest_download_failed",
-                    "download.manifest",
-                    mapOf(
-                        "task_id" to task.id,
-                        "source_host" to hostOf(sourceTask.sourceUrl),
-                        "manifest_type" to if (sourceTask.sourceUrl.contains(".mpd", true)) "DASH" else "HLS",
-                    ),
-                    error,
-                )
-                val failedRecord = queue.applyState(
-                    task.id,
-                    DownloadState.Failed(DownloadFailure.InvalidResponse),
-                    System.currentTimeMillis(),
-                )
-                val safeDetail = error?.message
-                    ?.replace('\n', ' ')
-                    ?.take(1000)
-                    ?.takeIf { it.isNotBlank() }
-                val enrichedFailure = failedRecord.copy(
-                    failureDetail = safeDetail ?: failedRecord.failureDetail
-                        ?: "FFmpeg could not acquire the HLS/DASH media source.",
-                    updatedAtEpochMs = System.currentTimeMillis(),
-                )
-                repository.upsert(enrichedFailure)
-                return enrichedFailure
-            }
-
-            val output = result.getOrThrow()
-            updateAdaptiveRecord(
-                repository,
-                task.id,
-                DownloadState.Downloading(output.length(), output.length()),
-                System.currentTimeMillis(),
-            )
-            queue.applyState(task.id, DownloadState.Completed, System.currentTimeMillis())
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            // The enclosing worker handler alone persists explicit, current user intent.
-            throw cancelled
-        } catch (error: Throwable) {
-            diagnostics.log(
-                DiagnosticLevel.ERROR,
-                "STREAMING_MANIFEST_UNEXPECTED",
-                error.message ?: error::class.simpleName.orEmpty(),
-                "download.manifest",
-                mapOf("task_id" to task.id, "source_host" to hostOf(sourceTask.sourceUrl)),
-                error,
-            )
-            queue.applyState(
-                task.id,
-                DownloadState.Failed(DownloadFailure.NetworkError),
-                System.currentTimeMillis(),
-            )
-        }
-    }
-
-    private suspend fun executeAdaptiveMux(
-        task: DownloadTask,
-        videoTask: DownloadTask,
-        audioTask: DownloadTask,
-        engine: DownloadEngine,
-        repository: com.ahdownload.domain.download.DownloadRepository,
-        controlStore: DownloadControlStore,
-        diagnostics: DiagnosticLogger,
-    ): com.ahdownload.domain.download.DownloadRecord? {
-        val queue = PersistentDownloadQueue(repository)
-        queue.enqueue(task, System.currentTimeMillis())
-
-        fun update(state: DownloadState) {
-            // State persistence is intentionally tied to the main user-visible task.
-            // The staged video/audio files remain private implementation details.
-        }
-
-        val videoFile = java.io.File(videoTask.destinationPath)
-        val audioFile = java.io.File(audioTask.destinationPath)
-        val outputFile = java.io.File(task.destinationPath)
-
-        try {
-            if (!videoFile.isFile || videoFile.length() <= 0L) {
-                val videoFinal = if (videoTask.streamingManifest) {
-                    setForeground(createForegroundInfo(DownloadState.Preparing))
-                    val manifestResult = FfmpegManifestDownloader().download(
-                        sourceUrl = videoTask.sourceUrl,
-                        outputFile = videoFile,
-                        requestHeaders = videoTask.requestHeaders,
-                        cookie = CookieManager.getInstance()
-                            .getCookie(videoTask.sourceUrl)
-                            ?.takeIf { it.isNotBlank() },
-                    )
-                    if (manifestResult.isSuccess && videoFile.isFile && videoFile.length() > 0L) {
-                        val size = videoFile.length()
-                        val stagedState = DownloadState.Downloading(size, size)
-                        updateAdaptiveRecord(repository, task.id, stagedState, System.currentTimeMillis())
-                        setForeground(createForegroundInfo(stagedState))
-                        DownloadState.Completed
-                    } else {
-                        val error = manifestResult.exceptionOrNull()
-                            ?: IllegalStateException("Manifest staging produced no media file")
-                        diagnostics.log(
-                            DiagnosticLevel.ERROR,
-                            "ADAPTIVE_VIDEO_MANIFEST_FAILED",
-                            "تعذر تجهيز مصدر الفيديو HLS/DASH قبل دمج الصوت",
-                            "download.mux.video_manifest",
-                            mapOf(
-                                "task_id" to task.id,
-                                "source_host" to hostOf(videoTask.sourceUrl),
-                            ),
-                            error,
-                        )
-                        updateAdaptiveRecord(
-                            repository,
-                            task.id,
-                            DownloadState.Failed(DownloadFailure.NetworkError),
-                            System.currentTimeMillis(),
-                        )
-                        DownloadState.Failed(DownloadFailure.NetworkError)
-                    }
-                } else {
-                    var directVideoFinal: DownloadState = DownloadState.Preparing
-                    engine.download(videoTask) { state ->
-                        directVideoFinal = state
-                        updateAdaptiveRecord(repository, task.id, state, System.currentTimeMillis())
-                        updateNotificationSpeed(state)
-                        setForeground(createForegroundInfo(state))
-                    }
-                    directVideoFinal
-                }
-                if (videoFinal !is DownloadState.Completed) return null
-            }
-
-            if (!audioFile.isFile || audioFile.length() <= 0L) {
-                val audioFinal = if (audioTask.streamingManifest) {
-                    setForeground(createForegroundInfo(DownloadState.Preparing))
-                    val manifestResult = FfmpegManifestDownloader().download(
-                        sourceUrl = audioTask.sourceUrl,
-                        outputFile = audioFile,
-                        requestHeaders = audioTask.requestHeaders,
-                        cookie = CookieManager.getInstance()
-                            .getCookie(audioTask.sourceUrl)
-                            ?.takeIf { it.isNotBlank() },
-                    )
-                    if (manifestResult.isSuccess && audioFile.isFile && audioFile.length() > 0L) {
-                        val size = audioFile.length()
-                        val stagedState = DownloadState.Downloading(size, size)
-                        updateAdaptiveRecord(repository, task.id, stagedState, System.currentTimeMillis())
-                        setForeground(createForegroundInfo(stagedState))
-                        DownloadState.Completed
-                    } else {
-                        val error = manifestResult.exceptionOrNull()
-                            ?: IllegalStateException("Companion audio manifest produced no media file")
-                        diagnostics.log(
-                            DiagnosticLevel.ERROR,
-                            "ADAPTIVE_AUDIO_MANIFEST_FAILED",
-                            "تعذر تجهيز مصدر الصوت HLS/DASH قبل دمج المسارين",
-                            "download.mux.audio_manifest",
-                            mapOf(
-                                "task_id" to task.id,
-                                "source_host" to hostOf(audioTask.sourceUrl),
-                            ),
-                            error,
-                        )
-                        updateAdaptiveRecord(
-                            repository,
-                            task.id,
-                            DownloadState.Failed(DownloadFailure.NetworkError),
-                            System.currentTimeMillis(),
-                        )
-                        DownloadState.Failed(DownloadFailure.NetworkError)
-                    }
-                } else {
-                    var directAudioFinal: DownloadState = DownloadState.Preparing
-                    val audioEngine = StreamingDownloadEngine(
-                        source = OkHttpDownloadByteStream(
-                            logger = diagnostics,
-                            dynamicHeaders = { url, headers ->
-                                dynamicHeadersFor(url, task.companionAudioSessionCookieHost, headers)
-                            },
-                        ),
-                        sink = LocalAtomicFileSink(),
-                    )
-                    audioEngine.download(audioTask) { state ->
-                        directAudioFinal = state
-                        val mapped = when (state) {
-                            is DownloadState.Downloading -> DownloadState.Downloading(
-                                bytesDownloaded = state.bytesDownloaded.coerceAtLeast(0L),
-                                totalBytes = state.totalBytes,
-                            )
-                            DownloadState.Completed -> DownloadState.Downloading(
-                                bytesDownloaded = audioFile.length(),
-                                totalBytes = audioFile.length(),
-                            )
-                            else -> state
-                        }
-                        updateAdaptiveRecord(repository, task.id, mapped, System.currentTimeMillis())
-                        setForeground(createForegroundInfo(mapped))
-                    }
-                    directAudioFinal
-                }
-                if (audioFinal !is DownloadState.Completed) return null
-            }
-
-            setForeground(createForegroundInfo(DownloadState.Preparing))
-            val mux = MediaVideoAudioMuxer().mux(videoFile, audioFile, outputFile)
-            if (mux.isFailure) {
-                val error = mux.exceptionOrNull()
-                diagnostics.log(
-                    DiagnosticLevel.ERROR,
-                    "VIDEO_AUDIO_MUX_FAILED",
-                    error?.message ?: "mux_failed",
-                    "download.mux",
-                    mapOf(
-                        "task_id" to task.id,
-                        "video_size_bytes" to videoFile.length().toString(),
-                        "audio_size_bytes" to audioFile.length().toString(),
-                    ),
-                    error,
-                )
-                updateAdaptiveRecord(
-                    repository,
-                    task.id,
-                    DownloadState.Failed(DownloadFailure.StorageError),
-                    System.currentTimeMillis(),
-                )
-                return null
-            }
-
-            runCatching { videoFile.delete() }
-            runCatching { audioFile.delete() }
-            val now = System.currentTimeMillis()
-            updateAdaptiveRecord(
-                repository,
-                task.id,
-                DownloadState.Downloading(outputFile.length(), outputFile.length()),
-                now,
-            )
-            return queue.applyState(task.id, DownloadState.Completed, now)
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            // The enclosing worker handler alone persists explicit, current user intent.
-            throw cancelled
-        } catch (error: Throwable) {
-            diagnostics.log(
-                DiagnosticLevel.ERROR,
-                "ADAPTIVE_MUX_UNEXPECTED",
-                error.message ?: error::class.simpleName.orEmpty(),
-                "download.mux",
-                mapOf("task_id" to task.id),
-                error,
-            )
-            updateAdaptiveRecord(
-                repository,
-                task.id,
-                DownloadState.Failed(DownloadFailure.NetworkError),
-                System.currentTimeMillis(),
-            )
-            return null
-        }
-    }
-
     private suspend fun updateAdaptiveRecord(
         repository: com.ahdownload.domain.download.DownloadRepository,
         taskId: String,
@@ -1443,7 +1049,7 @@ class DownloadWorker(
             .setSmallIcon(R.drawable.ic_ahdownload_notification)
             .setColor(0xFFFF791A.toInt())
             .setContentTitle("AHDownload")
-            .setContentText(state.toNotificationText())
+            .setContentText(state.toNotificationText(lowStorageWarningForTask, notificationBytesPerSecond))
             .setOngoing(
                 state !is DownloadState.Completed &&
                     state !is DownloadState.Failed &&
@@ -1488,68 +1094,6 @@ class DownloadWorker(
                 description = "حالة تنزيلات الملفات والوسائط"
             },
         )
-    }
-
-    private fun DownloadState.toNotificationText(): String = when (this) {
-        DownloadState.Queued -> "في قائمة الانتظار"
-        DownloadState.Preparing -> if (lowStorageWarningForTask) {
-            "المساحة منخفضة — راقب التنزيل"
-        } else {
-            "جاري تجهيز التنزيل"
-        }
-        is DownloadState.Downloading -> {
-            totalBytes?.let { total ->
-                val percent = if (total > 0) {
-                    (bytesDownloaded * 100 / total).coerceIn(0L, 100L)
-                } else {
-                    0L
-                }
-                buildString {
-                    append("جاري التنزيل — ")
-                    append(percent)
-                    append("%")
-                    if (lowStorageWarningForTask) append(" · مساحة منخفضة")
-                    if (notificationBytesPerSecond > 0L) {
-                        append(" · ")
-                        append(formatBytes(notificationBytesPerSecond))
-                        append("/s")
-                        if (total > bytesDownloaded) {
-                            val etaSeconds = (total - bytesDownloaded) / notificationBytesPerSecond
-                            append(" · ")
-                            append(formatEta(etaSeconds))
-                        }
-                    }
-                }
-            } ?: "جاري التنزيل"
-        }
-        DownloadState.Paused -> "تم الإيقاف المؤقت"
-        DownloadState.Completed -> "اكتمل التنزيل"
-        is DownloadState.Failed -> "فشل التنزيل"
-        DownloadState.Cancelled -> "تم إلغاء التنزيل"
-    }
-
-    private fun DownloadState.totalBytesOrNull(): Long? = when (this) {
-        is DownloadState.Downloading -> totalBytes
-        else -> null
-    }
-
-    private fun DownloadState.bytesDownloadedOrNull(): Long? = when (this) {
-        is DownloadState.Downloading -> bytesDownloaded
-        else -> null
-    }
-
-    private fun formatBytes(bytes: Long): String = when {
-        bytes < 1024L -> "$bytes B"
-        bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
-        bytes < 1024L * 1024L * 1024L -> "${bytes / (1024L * 1024L)} MB"
-        else -> "${bytes / (1024L * 1024L * 1024L)} GB"
-    }
-
-    private fun formatEta(seconds: Long): String {
-        val safe = seconds.coerceAtLeast(0L)
-        val minutes = safe / 60L
-        val secs = safe % 60L
-        return if (minutes > 0L) "${minutes}د ${secs.toString()}ث" else "${secs}ث"
     }
 
     private fun extractionSourcePath(task: DownloadTask): String =
@@ -1608,7 +1152,7 @@ class DownloadWorker(
                     requestedKind = MediaKind.Audio,
                 )
                 .sortedWith(
-                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                    compareBy<MediaCandidate> { DownloadRetryPolicy.youtubeRefreshPriority(it) }
                         .thenByDescending { it.format.bitrateKbps ?: 0 }
                         .thenBy { it.id },
                 )
@@ -1623,13 +1167,13 @@ class DownloadWorker(
                     requestedKind = MediaKind.Video,
                 )
                 .sortedWith(
-                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                    compareBy<MediaCandidate> { DownloadRetryPolicy.youtubeRefreshPriority(it) }
                         .thenByDescending { it.format.height ?: 0 }
                         .thenByDescending { it.format.bitrateKbps ?: 0 }
                         .thenBy { it.id },
                 )
                 .take(4)
-            interleaveYouTubeRefreshCandidates(
+            DownloadRetryPolicy.interleaveYouTubeRefreshCandidates(
                 primary = directAudio,
                 fallback = muxedVideo,
             )
@@ -1647,7 +1191,7 @@ class DownloadWorker(
                     requestedKind = expectedKind,
                 )
                 .sortedWith(
-                    compareBy<MediaCandidate> { youtubeRefreshPriority(it) }
+                    compareBy<MediaCandidate> { DownloadRetryPolicy.youtubeRefreshPriority(it) }
                         .thenByDescending { it.format.height ?: 0 }
                         .thenByDescending { it.format.bitrateKbps ?: 0 }
                         .thenBy { it.id },
@@ -1686,31 +1230,6 @@ class DownloadWorker(
         }
 
         return null
-    }
-
-    private fun youtubeRefreshPriority(candidate: MediaCandidate): Int = when {
-        candidate.id.startsWith("embedded-") -> 0
-        candidate.sourceContext == com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED -> 1
-        candidate.id.startsWith("android-") -> 2
-        else -> 3
-    }
-
-    private fun interleaveYouTubeRefreshCandidates(
-        primary: List<MediaCandidate>,
-        fallback: List<MediaCandidate>,
-    ): List<MediaCandidate> {
-        val result = ArrayList<MediaCandidate>(primary.size + fallback.size)
-        val limit = maxOf(primary.size, fallback.size)
-        for (index in 0 until limit) {
-            primary.getOrNull(index)?.let(result::add)
-            fallback.getOrNull(index)?.let(result::add)
-        }
-        return result.distinctBy { it.id }
-    }
-
-    private fun isRetryableHttp(detail: String?): Boolean {
-        val code = detail?.toIntOrNull() ?: return false
-        return code == 408 || code == 429 || code in 500..599
     }
 
     companion object {
