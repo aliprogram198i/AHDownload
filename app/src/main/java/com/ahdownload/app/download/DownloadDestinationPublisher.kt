@@ -6,6 +6,7 @@ import com.ahdownload.app.AHDownloadApplication
 import com.ahdownload.app.diagnostics.DownloadScopedDiagnosticLogger
 import com.ahdownload.app.settings.DownloadLocationStore
 import com.ahdownload.app.settings.SelectedDirectoryStorage
+import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.domain.download.DownloadRecord
 import com.ahdownload.domain.download.DownloadStatus
 import com.ahdownload.domain.download.DownloadTask
