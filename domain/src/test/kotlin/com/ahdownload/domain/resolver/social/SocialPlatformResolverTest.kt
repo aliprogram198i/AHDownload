@@ -178,6 +178,52 @@ class SocialPlatformResolverTest {
     }
 
     @Test
+    fun tiktokExtensionlessCdnVideoSourcesAreClassifiedInsteadOfDropped() = runTest {
+        val mediaUrls = listOf(
+            "https://v16-webapp.tiktokcdn-eu.com/video/tos/eu/opaque-stream",
+            "https://v16-webapp.tiktokcdn.com/obj/tos/sample?mime_type=video_mp4",
+        )
+
+        mediaUrls.forEachIndexed { index, mediaUrl ->
+            val events = mutableListOf<Pair<String, Map<String, String>>>()
+            val resolver = TikTokResolverAdapter(
+                provider = FakeProvider(
+                    BrowserMediaSession(
+                        platform = MediaPlatform.TikTok,
+                        pageUrl = "https://www.tiktok.com/@creator/video/7345678901234567890",
+                        mediaUrls = listOf(mediaUrl),
+                        mediaHasAudioByUrl = mapOf(mediaUrl to false),
+                    ),
+                ),
+                logger = com.ahdownload.core.common.DiagnosticLogger { _, type, _, _, context, _ ->
+                    events += type to context
+                },
+                pageClient = RecordingTextClient { },
+            )
+
+            val result = resolver.resolve(
+                ResolverRequest(
+                    link = link(MediaPlatform.TikTok),
+                    operationId = "tiktok-extensionless-source-$index",
+                ),
+            )
+
+            assertTrue("Expected TikTok media URL to become a candidate: $mediaUrl", result is ResolverResult.Success)
+            val candidate = (result as ResolverResult.Success).candidates.single()
+            assertEquals(mediaUrl, candidate.sourceUrl)
+            assertEquals(com.ahdownload.domain.model.MediaKind.Video, candidate.format.kind)
+            assertEquals(com.ahdownload.domain.resolver.MediaContainer.Mp4, candidate.format.container)
+            assertEquals(
+                com.ahdownload.domain.resolver.MediaSourceContext.BROWSER_OBSERVED,
+                candidate.sourceContext,
+            )
+            val resolutionEvent = events.single { it.first == "SOCIAL_RESOLUTION_RESULT" }.second
+            assertEquals("1", resolutionEvent["candidate_count"])
+            assertEquals("0", resolutionEvent["unclassified_source_count"])
+        }
+    }
+
+    @Test
     fun tiktokShortLinkUsesCanonicalResolvedVideoUrlForPublicEmbedFallback() = runTest {
         val shortUrl = "https://vm.tiktok.com/ZMshortCode/"
         val canonicalUrl = "https://www.tiktok.com/@creator/video/7345678901234567890"

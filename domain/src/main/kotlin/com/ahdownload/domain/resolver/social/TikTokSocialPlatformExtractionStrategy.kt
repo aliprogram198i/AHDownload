@@ -2,6 +2,7 @@ package com.ahdownload.domain.resolver.social
 
 import com.ahdownload.core.common.DiagnosticLevel
 import com.ahdownload.core.common.DiagnosticLogger
+import com.ahdownload.domain.model.MediaKind
 import com.ahdownload.domain.model.MediaPlatform
 import com.ahdownload.domain.resolver.HttpTextClient
 import com.ahdownload.domain.resolver.browser.ParsedPageMedia
@@ -27,6 +28,9 @@ internal class TikTokSocialPlatformExtractionStrategy :
 
     override fun pageRequestHeaders(pageUrl: String): Map<String, String> =
         if (!isTikTokPageUrl(pageUrl)) emptyMap() else requestHeaders(pageUrl)
+
+    override fun candidateKindHint(sourceUrl: String): MediaKind? =
+        if (isTikTokVideoMediaUrl(sourceUrl)) MediaKind.Video else null
 
     override suspend fun extractAdditionalMedia(
         pageUrl: String?,
