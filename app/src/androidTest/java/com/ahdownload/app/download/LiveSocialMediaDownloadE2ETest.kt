@@ -59,8 +59,8 @@ class LiveSocialMediaDownloadE2ETest {
         val tiktokUrl = when {
             tiktokUrlOverride.isBlank() ->
                 "https://www.tiktok.com/@scout2015/video/6718335390845095173"
-            isCanonicalTikTokVideoUrl(tiktokUrlOverride) -> tiktokUrlOverride
-            else -> error("tiktokUrl must be a canonical HTTPS TikTok video URL")
+            isSupportedTikTokInputUrl(tiktokUrlOverride) -> tiktokUrlOverride
+            else -> error("tiktokUrl must be a supported HTTPS TikTok video or short-share URL")
         }
         val allTargets = listOf(
             Target("Instagram", MediaPlatform.Instagram, "https://www.instagram.com/reel/DH56yy7p3lZ/"),
@@ -98,7 +98,6 @@ class LiveSocialMediaDownloadE2ETest {
                             compareBy<com.ahdownload.domain.resolver.MediaCandidate> { it.format.height ?: Int.MAX_VALUE }
                                 .thenBy { it.format.fileSizeBytes ?: Long.MAX_VALUE },
                         )
-                        .take(2)
                     is ResolverResult.Failure -> error(
                         "Resolver returned " + resolved.code + ": " + (resolved.message ?: "no details"),
                     )
@@ -108,7 +107,8 @@ class LiveSocialMediaDownloadE2ETest {
                 }
 
                 var candidateFailure = "No candidate was accepted"
-                var downloaded = false
+                var downloadedCount = 0
+                val candidateOutcomes = mutableListOf<String>()
                 for ((index, candidate) in candidates.withIndex()) {
                     val validation = withTimeoutOrNull(20_000L) {
                         resolver.validate(candidate, operationId = "live-e2e-" + target.name + "-" + index)
@@ -123,9 +123,10 @@ class LiveSocialMediaDownloadE2ETest {
                         continue
                     }
 
+                    val candidateTitle = title + "-Q" + (index + 1)
                     val enqueue = launcher.enqueue(
                         candidate = validation.candidate.copy(sourceUrl = validation.finalUrl),
-                        title = title,
+                        title = candidateTitle,
                         sourcePageUrl = target.url,
                         thumbnailUrl = null,
                     )
@@ -137,7 +138,7 @@ class LiveSocialMediaDownloadE2ETest {
                     val record = awaitTerminalRecord(
                         app = app,
                         sourcePageUrl = target.url,
-                        displayName = title,
+                        displayName = candidateTitle,
                         timeoutMs = 90_000L,
                     )
                     if (record == null) {
@@ -189,17 +190,21 @@ class LiveSocialMediaDownloadE2ETest {
                         }
                     }
 
-                    downloaded = true
+                    downloadedCount++
                     val headerHex = prefix.toByteArray(Charsets.ISO_8859_1)
                         .take(12).joinToString("") { "%02x".format(it) }
-                    candidateFailure = "downloaded " + byteCount + " bytes; header=" + headerHex
+                    candidateOutcomes += "candidate " + (index + 1) + ": downloaded " + byteCount +
+                        " bytes; header=" + headerHex
                     runCatching { context.contentResolver.delete(uri, null, null) }
-                    break
                 }
 
-                check(downloaded) { candidateFailure }
+                check(downloadedCount == candidates.size) {
+                    "Downloaded " + downloadedCount + "/" + candidates.size + " video candidates. Last issue: " +
+                        candidateFailure + "; successful: " + candidateOutcomes.joinToString("; ")
+                }
                 report += "PASS | " + target.name + " | candidates=" + candidates.size + " | " +
-                    candidateFailure + " | " + (SystemClock.elapsedRealtime() - started) + "ms"
+                    candidateOutcomes.joinToString("; ") + " | " +
+                    (SystemClock.elapsedRealtime() - started) + "ms"
             } catch (error: Throwable) {
                 val reason = (error.message ?: error.javaClass.simpleName).replace('\n', ' ').take(900)
                 report += "FAIL | " + target.name + " | " + reason + " | " +
@@ -220,6 +225,20 @@ class LiveSocialMediaDownloadE2ETest {
         )
     }
 
+
+    private fun isSupportedTikTokInputUrl(value: String?): Boolean = runCatching {
+        if (value.isNullOrBlank()) return@runCatching false
+        val uri = java.net.URI(value)
+        val host = uri.host?.lowercase() ?: return@runCatching false
+        if (uri.scheme?.lowercase() != "https") return@runCatching false
+        if (host != "tiktok.com" && !host.endsWith(".tiktok.com")) return@runCatching false
+        if (isCanonicalTikTokVideoUrl(value)) return@runCatching true
+
+        // TikTok Share may provide an opaque vm/vt short URL instead of a canonical /video/ path.
+        val isOfficialShortHost = host == "vm.tiktok.com" || host == "vt.tiktok.com"
+        val token = uri.path.orEmpty().split('/').filter(String::isNotBlank).singleOrNull()
+        isOfficialShortHost && token != null && token.matches(Regex("""[A-Za-z0-9_-]{5,80}"""))
+    }.getOrDefault(false)
 
     private fun isCanonicalTikTokVideoUrl(value: String?): Boolean = runCatching {
         if (value.isNullOrBlank()) return@runCatching false

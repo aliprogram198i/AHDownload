@@ -239,4 +239,37 @@ class TikTokSocialPlatformExtractionStrategyTest {
         assertEquals("IOException", event.second["exception_type"])
         assertFalse(event.second.containsKey("exception_message"))
     }
+
+    @Test
+    fun fallbackDoesNotTreatShortPhotoStoryLiveProfileOrPlayerRoutesAsCanonicalVideoIds() = runTest {
+        val strategy = TikTokSocialPlatformExtractionStrategy()
+        val client = object : HttpTextClient {
+            override suspend fun get(url: String): String =
+                error("Non-canonical route must not trigger the embed fallback network request")
+        }
+        val nonCanonicalRoutes = listOf(
+            "https://vm.tiktok.com/ZMYS13VCF",
+            "https://vt.tiktok.com/ZS8eY5678/",
+            "https://www.tiktok.com/@creator/photo/7345678901234567890",
+            "https://www.tiktok.com/@creator/story/7345678901234567890",
+            "https://www.tiktok.com/@creator/live",
+            "https://www.tiktok.com/@creator",
+            "https://www.tiktok.com/player/v1/7345678901234567890",
+        )
+
+        nonCanonicalRoutes.forEach { url ->
+            assertFalse("Must not treat this route as a canonical /video/ post: $url", isTikTokCanonicalVideoUrl(url))
+            assertNull(
+                strategy.extractAdditionalMedia(
+                    pageUrl = url,
+                    browserMediaCount = 0,
+                    pageFallbackMediaCount = 0,
+                    pageClient = client,
+                    operationId = "tiktok-noncanonical-route-test",
+                    logger = DiagnosticLogger { _, _, _, _, _, _ -> },
+                ),
+            )
+        }
+    }
+
 }
