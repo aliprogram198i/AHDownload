@@ -34,6 +34,9 @@ interface SocialPlatformExtractionStrategy {
     fun shouldKeepCandidate(requestedKind: MediaKind, candidateKind: MediaKind): Boolean =
         !(requestedKind == MediaKind.Video && candidateKind == MediaKind.Image)
 
+    /** Strict platform-specific media classification for extensionless CDN URLs. */
+    fun candidateKindHint(sourceUrl: String): MediaKind? = null
+
     fun requestHeadersForCandidate(sourceUrl: String, safeHeaders: Map<String, String>): Map<String, String> =
         safeHeaders
 }
