@@ -443,7 +443,6 @@ class SocialPlatformResolverEngine(
         val container = when {
             platformFallbackVideoSource -> MediaContainer.Mp4
             streamingManifest -> MediaContainer.Mkv
-            strategyKindHint == MediaKind.Video -> MediaContainer.Mp4
             extension == "mp4" || mime.contains("mp4") -> MediaContainer.Mp4
             extension == "webm" -> MediaContainer.Webm
             extension == "mov" || mime.contains("quicktime") -> MediaContainer.Mov
@@ -452,6 +451,7 @@ class SocialPlatformResolverEngine(
             extension == "aac" -> MediaContainer.Aac
             extension == "ogg" -> MediaContainer.Ogg
             extension == "flac" -> MediaContainer.Flac
+            strategyKindHint == MediaKind.Video -> MediaContainer.Mp4
             else -> MediaContainer.Unknown
         }
 
