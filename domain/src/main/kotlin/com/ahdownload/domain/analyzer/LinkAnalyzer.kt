@@ -234,8 +234,6 @@ class LinkAnalyzer {
         )
     }
 }
-}1www.tiktok.com")
-    }
 
     private fun parseQuery(rawQuery: String?): Map<String, String> =
         rawQuery.orEmpty().split('&')
