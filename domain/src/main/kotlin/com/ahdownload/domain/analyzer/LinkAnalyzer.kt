@@ -125,7 +125,7 @@ class LinkAnalyzer {
         val videoId = segments.getOrNull(videoIndex + 1)
         if (videoIndex < 0 || videoId?.matches(Regex("""\d{6,30}""")) != true) return url
 
-        val hostPrefix = Regex("""(?i)^(https?://)m\\.tiktok\\.com(?=[:/?#]|$)""").find(url)
+        val hostPrefix = Regex("""(?i)^(https?://)m\.tiktok\.com(?=[:/?#]|$)""").find(url)
             ?: return url
         return url.replaceRange(
             hostPrefix.range,
