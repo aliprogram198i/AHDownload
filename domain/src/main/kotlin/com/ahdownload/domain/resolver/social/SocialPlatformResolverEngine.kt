@@ -426,9 +426,11 @@ class SocialPlatformResolverEngine(
         val streamingManifest = extension in setOf("m3u8", "mpd") ||
             mime.contains("mpegurl") ||
             mime.contains("dash+xml")
+        val strategyKindHint = strategy.candidateKindHint(sourceUrl)
 
         val kind = when {
             platformFallbackVideoSource -> MediaKind.Video
+            strategyKindHint != null -> strategyKindHint
             streamingManifest || mime.startsWith("video") || extension in setOf("mp4", "m4v", "webm", "mov", "mkv", "3gp", "avi") -> MediaKind.Video
             mime.startsWith("audio") || extension in setOf("mp3", "m4a", "aac", "ogg", "flac", "wav") -> MediaKind.Audio
             mime.startsWith("image") || extension in setOf("jpg", "jpeg", "png", "webp", "gif") -> MediaKind.Image
@@ -441,6 +443,7 @@ class SocialPlatformResolverEngine(
         val container = when {
             platformFallbackVideoSource -> MediaContainer.Mp4
             streamingManifest -> MediaContainer.Mkv
+            strategyKindHint == MediaKind.Video -> MediaContainer.Mp4
             extension == "mp4" || mime.contains("mp4") -> MediaContainer.Mp4
             extension == "webm" -> MediaContainer.Webm
             extension == "mov" || mime.contains("quicktime") -> MediaContainer.Mov
